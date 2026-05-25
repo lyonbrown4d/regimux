@@ -1,0 +1,30 @@
+# Environment and local overrides
+.env
+.env.*
+!.env.example
+configs/*.local.yaml
+configs/*.local.yml
+
+# Logs
+*.log
+logs/
+
+# Go build and test artifacts
+bin/
+dist/
+build/
+tmp/
+*.exe
+*.test
+*.out
+coverage.out
+coverage.html
+*.prof
+
+# Editor and OS files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
