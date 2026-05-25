@@ -2,23 +2,31 @@ package object
 
 import (
 	"context"
+	"errors"
 	"io"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 )
 
+var (
+	ErrNotFound       = errors.New("object not found")
+	ErrDigestMismatch = errors.New("object digest mismatch")
+)
+
 type Store interface {
-	Stat(ctx context.Context, key string) (*Info, error)
-	Get(ctx context.Context, key string, opts GetOptions) (io.ReadCloser, *Info, error)
-	Put(ctx context.Context, key string, r io.Reader, opts PutOptions) (*Info, error)
-	Delete(ctx context.Context, key string) error
+	Stat(ctx context.Context, digest string) (*Info, error)
+	Exists(ctx context.Context, digest string) (bool, error)
+	Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error)
+	Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error)
+	Delete(ctx context.Context, digest string) error
 }
 
 type Info struct {
-	Key         string
+	Digest      string
 	Size        int64
 	ContentType string
 	ETag        string
+	Path        string
 }
 
 type GetOptions struct {
@@ -26,8 +34,6 @@ type GetOptions struct {
 }
 
 type PutOptions struct {
-	Size        int64
 	ContentType string
 	Metadata    map[string]string
 }
-

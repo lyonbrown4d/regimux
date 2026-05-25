@@ -8,12 +8,16 @@ This repository currently contains a runnable skeleton based on the design docum
 - Cobra-based command line with a single config-driven daemon mode.
 - Strongly typed `httpx.Endpoint` routes for health, Registry V2 ping, manifests, blobs, tags, and referrers.
 - Alias-based upstream routing such as `/v2/hub/library/alpine/manifests/latest`.
-- Raw `net/http` upstream client with basic bearer-token challenge handling.
+- Upstream registry client based on `github.com/arcgolabs/clientx/http` with bearer-token challenge handling.
+- Manifest cache backed by memory/Redis/Valkey plus bboltx metadata and local object storage.
+- Blob cache-then-serve path with local CAS storage, digest verification, range reads, and repo-to-blob access links.
+- Tags/list and referrers response caching, including tags Link header rewrite and OCI referrers fallback tag support.
 - DI and lifecycle wiring with `github.com/arcgolabs/dix`, including endpoint collection injection into the HTTP server.
 - Config loading with `github.com/arcgolabs/configx`.
 - Logging with `github.com/arcgolabs/logx` on top of `log/slog`.
 - Event bus wiring with `github.com/arcgolabs/eventx`.
 - `collectionx` usage for ordered upstream registry snapshots.
+- Storage uses `github.com/arcgolabs/storx/bboltx` for metadata and local filesystem objects for the first version.
 
 Run locally:
 

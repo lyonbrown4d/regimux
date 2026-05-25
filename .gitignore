@@ -9,6 +9,9 @@ configs/*.local.yml
 *.log
 logs/
 
+# Local runtime data
+data/
+
 # Go build and test artifacts
 bin/
 dist/

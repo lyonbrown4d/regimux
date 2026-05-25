@@ -1,0 +1,146 @@
+version: "2"
+
+run:
+  timeout: 20m
+  go: "1.26.3"
+
+linters:
+  default: none
+  enable:
+    - asasalint
+    - bodyclose
+    - contextcheck
+    - copyloopvar
+    - cyclop
+    - dupl
+    - errcheck
+    - errorlint
+    - exhaustive
+    - exptostd
+    - fatcontext
+    - funlen
+    - gochecksumtype
+    - gocognit
+    - gocritic
+    - gocyclo
+    - godoclint
+    - gosec
+    - govet
+    - ineffassign
+    - intrange
+    - makezero
+    - misspell
+    - modernize
+    - nestif
+    - nilerr
+    - nilnesserr
+    - nilnil
+    - noctx
+    - nolintlint
+    - perfsprint
+    - prealloc
+    - revive
+    - rowserrcheck
+    - sqlclosecheck
+    - thelper
+    - unconvert
+    - unparam
+    - unused
+    - usestdlibvars
+    - usetesting
+    - wastedassign
+    - wrapcheck
+    - sloglint
+    - spancheck
+    - staticcheck
+    - tagalign
+    - testpackage
+    - unqueryvet
+  settings:
+    cyclop:
+      max-complexity: 10
+    errcheck:
+      check-type-assertions: true
+      check-blank: true
+      disable-default-exclusions: true
+    errorlint:
+      errorf: true
+      errorf-multi: true
+      asserts: true
+      comparison: true
+    exhaustive:
+      check:
+        - switch
+        - map
+      default-signifies-exhaustive: false
+      package-scope-only: true
+      explicit-exhaustive-switch: false
+      explicit-exhaustive-map: false
+      default-case-required: false
+    funlen:
+      lines: 80
+      statements: 40
+      ignore-comments: false
+    gochecksumtype:
+      default-signifies-exhaustive: false
+      include-shared-interfaces: true
+    gocognit:
+      min-complexity: 10
+    gocritic:
+      enable-all: true
+      disabled-checks:
+        - commentedOutCode
+        - hugeParam
+        - unnamedResult
+    gocyclo:
+      min-complexity: 10
+    godoclint:
+      default: basic
+      options:
+        start-with-name:
+          include-unexported: false
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+    misspell:
+      locale: US
+    nolintlint:
+      allow-unused: false
+      require-specific: true
+      require-explanation: true
+    perfsprint:
+      int-conversion: true
+      err-error: true
+      errorf: true
+      sprintf1: true
+      strconcat: true
+    revive:
+      confidence: 0.8
+      enable-default-rules: true
+      rules:
+        - name: file-length-limit
+          arguments:
+            - max: 300
+              skip-comments: false
+              skip-blank-lines: false
+        - name: exported
+          disabled: true
+        - name: unexported-return
+          disabled: true
+        - name: unused-parameter
+          disabled: true
+    staticcheck:
+      checks:
+        - all
+        - -ST1000
+  exclusions:
+    rules:
+      - path: _test\.go
+        linters:
+          - godoclint
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+  uniq-by-line: false

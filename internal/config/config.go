@@ -20,6 +20,7 @@ type Config struct {
 	Server    ServerConfig              `json:"server" koanf:"server" mapstructure:"server" yaml:"server"`
 	Log       LogConfig                 `json:"log" koanf:"log" mapstructure:"log" yaml:"log"`
 	Cache     CacheConfig               `json:"cache" koanf:"cache" mapstructure:"cache" yaml:"cache"`
+	Store     StoreConfig               `json:"store" koanf:"store" mapstructure:"store" yaml:"store"`
 	Upstreams map[string]UpstreamConfig `json:"upstreams" koanf:"upstreams" mapstructure:"upstreams" yaml:"upstreams"`
 }
 
@@ -47,10 +48,28 @@ type LogConfig struct {
 }
 
 type CacheConfig struct {
-	Manifest  ManifestCacheConfig `json:"manifest" koanf:"manifest" mapstructure:"manifest" yaml:"manifest"`
-	Blob      BlobCacheConfig     `json:"blob" koanf:"blob" mapstructure:"blob" yaml:"blob"`
-	Tags      TagsCacheConfig     `json:"tags" koanf:"tags" mapstructure:"tags" yaml:"tags"`
-	Referrers ReferrersConfig     `json:"referrers" koanf:"referrers" mapstructure:"referrers" yaml:"referrers"`
+	Backend    string              `json:"backend" koanf:"backend" mapstructure:"backend" yaml:"backend"`
+	Prefix     string              `json:"prefix" koanf:"prefix" mapstructure:"prefix" yaml:"prefix"`
+	DefaultTTL time.Duration       `json:"default_ttl" koanf:"default_ttl" mapstructure:"default_ttl" yaml:"default_ttl"`
+	Memory     MemoryCacheConfig   `json:"memory" koanf:"memory" mapstructure:"memory" yaml:"memory"`
+	Redis      ExternalCacheConfig `json:"redis" koanf:"redis" mapstructure:"redis" yaml:"redis"`
+	Valkey     ExternalCacheConfig `json:"valkey" koanf:"valkey" mapstructure:"valkey" yaml:"valkey"`
+	Manifest   ManifestCacheConfig `json:"manifest" koanf:"manifest" mapstructure:"manifest" yaml:"manifest"`
+	Blob       BlobCacheConfig     `json:"blob" koanf:"blob" mapstructure:"blob" yaml:"blob"`
+	Tags       TagsCacheConfig     `json:"tags" koanf:"tags" mapstructure:"tags" yaml:"tags"`
+	Referrers  ReferrersConfig     `json:"referrers" koanf:"referrers" mapstructure:"referrers" yaml:"referrers"`
+}
+
+type MemoryCacheConfig struct {
+	MaxItems int `json:"max_items" koanf:"max_items" mapstructure:"max_items" yaml:"max_items"`
+}
+
+type ExternalCacheConfig struct {
+	Addrs    []string `json:"addrs" koanf:"addrs" mapstructure:"addrs" yaml:"addrs"`
+	Username string   `json:"username" koanf:"username" mapstructure:"username" yaml:"username"`
+	Password string   `json:"password" koanf:"password" mapstructure:"password" yaml:"password"`
+	DB       int      `json:"db" koanf:"db" mapstructure:"db" yaml:"db"`
+	Debug    bool     `json:"debug" koanf:"debug" mapstructure:"debug" yaml:"debug"`
 }
 
 type ManifestCacheConfig struct {
@@ -73,12 +92,28 @@ type ReferrersConfig struct {
 	FallbackTag bool          `json:"fallback_tag" koanf:"fallback_tag" mapstructure:"fallback_tag" yaml:"fallback_tag"`
 }
 
+type StoreConfig struct {
+	Meta   StoreMetaConfig   `json:"meta" koanf:"meta" mapstructure:"meta" yaml:"meta"`
+	Object StoreObjectConfig `json:"object" koanf:"object" mapstructure:"object" yaml:"object"`
+}
+
+type StoreMetaConfig struct {
+	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" yaml:"driver"`
+	Path   string `json:"path" koanf:"path" mapstructure:"path" yaml:"path"`
+}
+
+type StoreObjectConfig struct {
+	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" yaml:"driver"`
+	Path   string `json:"path" koanf:"path" mapstructure:"path" yaml:"path"`
+}
+
 type UpstreamConfig struct {
 	Alias            string        `json:"-" koanf:"-" mapstructure:"-" yaml:"-"`
 	Registry         string        `json:"registry" koanf:"registry" mapstructure:"registry" yaml:"registry"`
 	DefaultNamespace string        `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace" yaml:"default_namespace"`
 	TagTTL           time.Duration `json:"tag_ttl" koanf:"tag_ttl" mapstructure:"tag_ttl" yaml:"tag_ttl"`
 	Auth             AuthConfig    `json:"auth" koanf:"auth" mapstructure:"auth" yaml:"auth"`
+	HTTP             HTTPConfig    `json:"http" koanf:"http" mapstructure:"http" yaml:"http"`
 }
 
 type AuthConfig struct {
@@ -86,6 +121,25 @@ type AuthConfig struct {
 	Username string `json:"username" koanf:"username" mapstructure:"username" yaml:"username"`
 	Password string `json:"password" koanf:"password" mapstructure:"password" yaml:"password"`
 	Token    string `json:"token" koanf:"token" mapstructure:"token" yaml:"token"`
+}
+
+type HTTPConfig struct {
+	Timeout time.Duration   `json:"timeout" koanf:"timeout" mapstructure:"timeout" yaml:"timeout"`
+	Retry   HTTPRetryConfig `json:"retry" koanf:"retry" mapstructure:"retry" yaml:"retry"`
+	TLS     HTTPTLSConfig   `json:"tls" koanf:"tls" mapstructure:"tls" yaml:"tls"`
+}
+
+type HTTPRetryConfig struct {
+	Enabled    bool          `json:"enabled" koanf:"enabled" mapstructure:"enabled" yaml:"enabled"`
+	MaxRetries int           `json:"max_retries" koanf:"max_retries" mapstructure:"max_retries" yaml:"max_retries"`
+	WaitMin    time.Duration `json:"wait_min" koanf:"wait_min" mapstructure:"wait_min" yaml:"wait_min"`
+	WaitMax    time.Duration `json:"wait_max" koanf:"wait_max" mapstructure:"wait_max" yaml:"wait_max"`
+}
+
+type HTTPTLSConfig struct {
+	Enabled            bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled" yaml:"enabled"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify" koanf:"insecure_skip_verify" mapstructure:"insecure_skip_verify" yaml:"insecure_skip_verify"`
+	ServerName         string `json:"server_name" koanf:"server_name" mapstructure:"server_name" yaml:"server_name"`
 }
 
 func Load(ctx context.Context, path string) (Config, error) {
@@ -125,6 +179,9 @@ func (c *Config) NormalizeAndValidate() error {
 	if len(c.Upstreams) == 0 {
 		return errors.New("at least one upstream is required")
 	}
+	if err := c.validateCache(); err != nil {
+		return err
+	}
 	for alias, upstreamCfg := range c.Upstreams {
 		if strings.TrimSpace(alias) == "" {
 			return errors.New("upstream alias cannot be empty")
@@ -140,6 +197,71 @@ func (c *Config) NormalizeAndValidate() error {
 	}
 	if c.Cache.Tags.MaxPageSize < 0 {
 		return errors.New("cache.tags.max_page_size cannot be negative")
+	}
+	if err := c.validateStore(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *Config) validateCache() error {
+	c.Cache.Backend = strings.ToLower(strings.TrimSpace(c.Cache.Backend))
+	switch c.Cache.Backend {
+	case "", "memory":
+		c.Cache.Backend = "memory"
+	case "redis":
+		if len(c.Cache.Redis.Addrs) == 0 {
+			return errors.New("cache.redis.addrs is required when cache.backend is redis")
+		}
+	case "valkey":
+		if len(c.Cache.Valkey.Addrs) == 0 {
+			return errors.New("cache.valkey.addrs is required when cache.backend is valkey")
+		}
+	default:
+		return fmt.Errorf("unsupported cache.backend %q", c.Cache.Backend)
+	}
+	if c.Cache.Memory.MaxItems < 0 {
+		return errors.New("cache.memory.max_items cannot be negative")
+	}
+	if c.Cache.DefaultTTL < 0 {
+		return errors.New("cache.default_ttl cannot be negative")
+	}
+	if c.Cache.Redis.DB < 0 {
+		return errors.New("cache.redis.db cannot be negative")
+	}
+	if c.Cache.Valkey.DB < 0 {
+		return errors.New("cache.valkey.db cannot be negative")
+	}
+	return nil
+}
+
+func (c *Config) validateStore() error {
+	metaDriver := strings.ToLower(strings.TrimSpace(c.Store.Meta.Driver))
+	if metaDriver == "" {
+		metaDriver = "bboltx"
+	}
+	c.Store.Meta.Driver = metaDriver
+	switch metaDriver {
+	case "bboltx":
+	default:
+		return fmt.Errorf("store.meta.driver must be bboltx")
+	}
+	if strings.TrimSpace(c.Store.Meta.Path) == "" {
+		c.Store.Meta.Path = "data/regimux.db"
+	}
+
+	objectDriver := strings.ToLower(strings.TrimSpace(c.Store.Object.Driver))
+	if objectDriver == "" {
+		objectDriver = "local"
+	}
+	c.Store.Object.Driver = objectDriver
+	switch objectDriver {
+	case "local":
+	default:
+		return fmt.Errorf("store.object.driver must be local")
+	}
+	if strings.TrimSpace(c.Store.Object.Path) == "" {
+		c.Store.Object.Path = "data/objects"
 	}
 	return nil
 }
@@ -175,33 +297,50 @@ func validateURL(name, value string) error {
 
 func defaultValues() map[string]any {
 	return map[string]any{
-		"server.listen":                   ":5000",
-		"server.public_url":               "http://localhost:5000",
-		"server.read_timeout":             30 * time.Second,
-		"server.write_timeout":            0,
-		"server.idle_timeout":             120 * time.Second,
-		"log.level":                       "info",
-		"log.console":                     true,
-		"log.no_color":                    true,
-		"log.add_caller":                  false,
-		"log.max_size_mb":                 100,
-		"log.max_age_days":                7,
-		"log.max_backups":                 10,
-		"log.time_format":                 "2006-01-02 15:04:05",
-		"log.set_default":                 true,
-		"log.local_time":                  true,
-		"log.compress":                    true,
-		"cache.manifest.tag_ttl":          10 * time.Minute,
-		"cache.manifest.stale_if_error":   true,
-		"cache.manifest.max_stale":        168 * time.Hour,
-		"cache.blob.stream_and_cache":     false,
-		"cache.tags.ttl":                  5 * time.Minute,
-		"cache.tags.max_page_size":        1000,
-		"cache.referrers.ttl":             5 * time.Minute,
-		"cache.referrers.fallback_tag":    true,
-		"upstreams.hub.registry":          "https://registry-1.docker.io",
-		"upstreams.hub.default_namespace": "library",
-		"upstreams.hub.tag_ttl":           10 * time.Minute,
-		"upstreams.hub.auth.type":         "anonymous",
+		"server.listen":                        ":5000",
+		"server.public_url":                    "http://localhost:5000",
+		"server.read_timeout":                  30 * time.Second,
+		"server.write_timeout":                 0,
+		"server.idle_timeout":                  120 * time.Second,
+		"log.level":                            "info",
+		"log.console":                          true,
+		"log.no_color":                         true,
+		"log.add_caller":                       false,
+		"log.max_size_mb":                      100,
+		"log.max_age_days":                     7,
+		"log.max_backups":                      10,
+		"log.time_format":                      "2006-01-02 15:04:05",
+		"log.set_default":                      true,
+		"log.local_time":                       true,
+		"log.compress":                         true,
+		"cache.backend":                        "memory",
+		"cache.prefix":                         "regimux",
+		"cache.default_ttl":                    10 * time.Minute,
+		"cache.memory.max_items":               10000,
+		"cache.redis.addrs":                    []string{"127.0.0.1:6379"},
+		"cache.redis.db":                       0,
+		"cache.valkey.addrs":                   []string{"127.0.0.1:6379"},
+		"cache.valkey.db":                      0,
+		"cache.manifest.tag_ttl":               10 * time.Minute,
+		"cache.manifest.stale_if_error":        true,
+		"cache.manifest.max_stale":             168 * time.Hour,
+		"cache.blob.stream_and_cache":          false,
+		"cache.tags.ttl":                       5 * time.Minute,
+		"cache.tags.max_page_size":             1000,
+		"cache.referrers.ttl":                  5 * time.Minute,
+		"cache.referrers.fallback_tag":         true,
+		"store.meta.driver":                    "bboltx",
+		"store.meta.path":                      "data/regimux.db",
+		"store.object.driver":                  "local",
+		"store.object.path":                    "data/objects",
+		"upstreams.hub.registry":               "https://registry-1.docker.io",
+		"upstreams.hub.default_namespace":      "library",
+		"upstreams.hub.tag_ttl":                10 * time.Minute,
+		"upstreams.hub.auth.type":              "anonymous",
+		"upstreams.hub.http.timeout":           0,
+		"upstreams.hub.http.retry.enabled":     true,
+		"upstreams.hub.http.retry.max_retries": 2,
+		"upstreams.hub.http.retry.wait_min":    100 * time.Millisecond,
+		"upstreams.hub.http.retry.wait_max":    1 * time.Second,
 	}
 }

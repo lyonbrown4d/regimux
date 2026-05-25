@@ -10,8 +10,11 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
@@ -68,10 +71,18 @@ func (a *Application) build() *dix.App {
 			dix.Provider2[*upstream.Client, config.Config, *slog.Logger](newUpstreamClient, dix.As[upstream.RegistryClient]()),
 		),
 	)
-	cacheModule := dix.NewModule("cache",
-		dix.Imports(upstreamModule),
+	storeModule := dix.NewModule("store",
+		dix.Imports(configModule, observabilityModule),
 		dix.Providers(
-			dix.Provider1[*cache.Proxy, upstream.RegistryClient](cache.NewProxy),
+			dix.Provider2[meta.Store, config.Config, *slog.Logger](newMetadataStore, dix.Eager()),
+			dix.Provider1[object.Store, config.Config](newObjectStore, dix.Eager()),
+		),
+	)
+	cacheModule := dix.NewModule("cache",
+		dix.Imports(configModule, observabilityModule, upstreamModule, storeModule),
+		dix.Providers(
+			dix.Provider2[backend.Backend, config.Config, *slog.Logger](newCacheBackend, dix.Eager()),
+			dix.Provider5[*cache.Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config](newCacheProxy),
 			dix.Provider1[cache.ManifestService, *cache.Proxy](func(proxy *cache.Proxy) cache.ManifestService {
 				return proxy.Manifests()
 			}),
@@ -109,7 +120,7 @@ func (a *Application) build() *dix.App {
 		),
 	)
 	runtimeModule := dix.NewModule("runtime",
-		dix.Imports(configModule, observabilityModule, eventsModule, apiModule),
+		dix.Imports(configModule, observabilityModule, eventsModule, apiModule, cacheModule, storeModule),
 		dix.Hooks(
 			dix.OnStart2[config.Config, *slog.Logger](a.logStartup, dix.LifecycleName("regimux.log_startup"), dix.LifecyclePriority(-200)),
 			dix.OnStart[events.Bus](a.publishStarting, dix.LifecycleName("regimux.application_starting"), dix.LifecyclePriority(-100)),
@@ -118,6 +129,8 @@ func (a *Application) build() *dix.App {
 			dix.OnStop[events.Bus](a.publishStopping, dix.LifecycleName("regimux.application_stopping"), dix.LifecyclePriority(100)),
 			dix.OnStop[Server](stopServer, dix.LifecycleName("regimux.server_stop"), dix.LifecyclePriority(0), dix.LifecycleTimeout(20*time.Second)),
 			dix.OnStop[events.Bus](a.publishStopped, dix.LifecycleName("regimux.application_stopped"), dix.LifecyclePriority(-100)),
+			dix.OnStop[backend.Backend](closeCacheBackend, dix.LifecycleName("regimux.cache_close"), dix.LifecyclePriority(-150)),
+			dix.OnStop[meta.Store](closeMetadataStore, dix.LifecycleName("regimux.meta_store_close"), dix.LifecyclePriority(-160)),
 			dix.OnStop[events.Bus](closeBus, dix.LifecycleName("regimux.events_close"), dix.LifecyclePriority(-200)),
 		),
 	)
@@ -128,7 +141,7 @@ func (a *Application) build() *dix.App {
 		dix.UseLogger(a.logger),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, observabilityModule, eventsModule, upstreamModule, cacheModule, endpointModule, apiModule, runtimeModule),
+		dix.Modules(configModule, observabilityModule, eventsModule, upstreamModule, storeModule, cacheModule, endpointModule, apiModule, runtimeModule),
 	)
 }
 
@@ -150,9 +163,93 @@ func toUpstreamConfigs(configs map[string]config.UpstreamConfig) map[string]upst
 				Password: cfg.Auth.Password,
 				Token:    cfg.Auth.Token,
 			},
+			HTTP: upstream.HTTPConfig{
+				Timeout: cfg.HTTP.Timeout,
+				Retry: upstream.HTTPRetryConfig{
+					Enabled:    cfg.HTTP.Retry.Enabled,
+					MaxRetries: cfg.HTTP.Retry.MaxRetries,
+					WaitMin:    cfg.HTTP.Retry.WaitMin,
+					WaitMax:    cfg.HTTP.Retry.WaitMax,
+				},
+				TLS: upstream.HTTPTLSConfig{
+					Enabled:            cfg.HTTP.TLS.Enabled,
+					InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
+					ServerName:         cfg.HTTP.TLS.ServerName,
+				},
+			},
 		}
 	}
 	return out
+}
+
+func newCacheBackend(cfg config.Config, logger *slog.Logger) backend.Backend {
+	switch cfg.Cache.Backend {
+	case "redis":
+		cache, err := backend.NewRedis(backend.KVOptions{
+			Addrs:    cfg.Cache.Redis.Addrs,
+			Username: cfg.Cache.Redis.Username,
+			Password: cfg.Cache.Redis.Password,
+			DB:       cfg.Cache.Redis.DB,
+			Prefix:   cfg.Cache.Prefix,
+			Logger:   logger,
+			Debug:    cfg.Cache.Redis.Debug,
+		})
+		if err != nil {
+			logger.Error("create redis cache backend failed", "error", err)
+			return backend.Noop{}
+		}
+		return cache
+	case "valkey":
+		cache, err := backend.NewValkey(backend.KVOptions{
+			Addrs:    cfg.Cache.Valkey.Addrs,
+			Username: cfg.Cache.Valkey.Username,
+			Password: cfg.Cache.Valkey.Password,
+			DB:       cfg.Cache.Valkey.DB,
+			Prefix:   cfg.Cache.Prefix,
+			Logger:   logger,
+			Debug:    cfg.Cache.Valkey.Debug,
+		})
+		if err != nil {
+			logger.Error("create valkey cache backend failed", "error", err)
+			return backend.Noop{}
+		}
+		return cache
+	default:
+		return backend.NewMemory(backend.MemoryOptions{
+			MaxItems: cfg.Cache.Memory.MaxItems,
+			Prefix:   cfg.Cache.Prefix,
+		})
+	}
+}
+
+func newMetadataStore(cfg config.Config, logger *slog.Logger) meta.Store {
+	store, err := meta.OpenBbolt(cfg.Store.Meta.Path, logger)
+	if err != nil {
+		logger.Error("open metadata store failed", "path", cfg.Store.Meta.Path, "error", err)
+		return nil
+	}
+	return store
+}
+
+func newObjectStore(cfg config.Config) object.Store {
+	store, err := object.NewLocal(cfg.Store.Object.Path)
+	if err != nil {
+		return nil
+	}
+	return store
+}
+
+func newCacheProxy(client upstream.RegistryClient, cacheBackend backend.Backend, metadata meta.Store, objects object.Store, cfg config.Config) *cache.Proxy {
+	return cache.NewProxy(
+		client,
+		cache.WithBackend(cacheBackend),
+		cache.WithMetadata(metadata),
+		cache.WithObjects(objects),
+		cache.WithManifestTTL(cfg.Cache.Manifest.TagTTL),
+		cache.WithTagsTTL(cfg.Cache.Tags.TTL),
+		cache.WithReferrersTTL(cfg.Cache.Referrers.TTL),
+		cache.WithReferrersFallbackTag(cfg.Cache.Referrers.FallbackTag),
+	)
 }
 
 func newAPIServer(cfg config.Config, logger *slog.Logger, _ events.Bus, endpoints *collectionlist.List[httpx.Endpoint]) *api.Server {
@@ -215,4 +312,18 @@ func closeBus(_ context.Context, bus events.Bus) error {
 		return nil
 	}
 	return bus.Close()
+}
+
+func closeCacheBackend(_ context.Context, cache backend.Backend) error {
+	if cache == nil {
+		return nil
+	}
+	return cache.Close()
+}
+
+func closeMetadataStore(_ context.Context, store meta.Store) error {
+	if store == nil {
+		return nil
+	}
+	return store.Close()
 }
