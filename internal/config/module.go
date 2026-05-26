@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arcgolabs/dix"
+	"github.com/arcgolabs/configx"
 )
 
 func Module(cfg Config) dix.Module {
@@ -14,12 +15,12 @@ func Module(cfg Config) dix.Module {
 	)
 }
 
-func ModuleFromPath(configPath string, args ...string) dix.Module {
-	configArgs := append([]string(nil), args...)
+func ModuleFromOptions(options ...configx.Option) dix.Module {
+	optCopy := append([]configx.Option(nil), options...)
 	return dix.NewModule("config",
 		dix.Providers(
 			dix.ProviderErr0[Config](func() (Config, error) {
-				return Load(context.Background(), configPath, configArgs...)
+				return LoadWithOptions(context.Background(), optCopy...)
 			}),
 		),
 	)

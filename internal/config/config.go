@@ -28,7 +28,43 @@ const (
 )
 
 func Load(ctx context.Context, path string, args ...string) (Config, error) {
-	opts := []configx.Option{
+	opts, err := buildLoadOptions(path, args...)
+	if err != nil {
+		return Config{}, err
+	}
+	return LoadWithOptions(ctx, opts...)
+}
+
+// LoadWithOptions loads config with explicit configx options and then applies
+// regimux-specific normalization and validation.
+func LoadWithOptions(ctx context.Context, options ...configx.Option) (Config, error) {
+	opts := append(baseLoadOptions(), options...)
+	var cfg Config
+	if err := configx.LoadContext(ctx, &cfg, opts...); err != nil {
+		return Config{}, oops.In("config").Wrapf(err, "load config")
+	}
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		return Config{}, err
+	}
+	return cfg, nil
+}
+
+func buildLoadOptions(path string, args ...string) ([]configx.Option, error) {
+	opts := []configx.Option{}
+	if strings.TrimSpace(path) != "" {
+		if err := validateConfigPath(path); err != nil {
+			return nil, err
+		}
+		opts = append(opts, configx.WithFiles(path))
+	}
+	if len(args) > 0 {
+		opts = append(opts, configx.WithArgs(args...))
+	}
+	return opts, nil
+}
+
+func baseLoadOptions() []configx.Option {
+	return []configx.Option{
 		formathcl.WithHCLSupport(),
 		configx.WithDefaults(defaultValues()),
 		configx.WithDotenv(),
@@ -38,24 +74,6 @@ func Load(ctx context.Context, path string, args ...string) (Config, error) {
 		configx.WithValidator(validator.New(validator.WithRequiredStructEnabled())),
 		configx.WithValidateLevel(configx.ValidateLevelStruct),
 	}
-	if strings.TrimSpace(path) != "" {
-		if err := validateConfigPath(path); err != nil {
-			return Config{}, err
-		}
-		opts = append(opts, configx.WithFiles(path))
-	}
-	if len(args) > 0 {
-		opts = append(opts, configx.WithArgs(args...))
-	}
-
-	var cfg Config
-	if err := configx.LoadContext(ctx, &cfg, opts...); err != nil {
-		return Config{}, oops.In("config").Wrapf(err, "load config")
-	}
-	if err := cfg.NormalizeAndValidate(); err != nil {
-		return Config{}, err
-	}
-	return cfg, nil
 }
 
 func validateConfigPath(path string) error {

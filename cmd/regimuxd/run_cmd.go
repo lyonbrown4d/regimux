@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"github.com/arcgolabs/dix"
+	"github.com/arcgolabs/configx"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/cache"
@@ -27,7 +28,10 @@ func run(ctx context.Context, configPath string, args ...string) error {
 }
 
 func buildApp(configPath string, version string, args ...string) *dix.App {
-	configModule := config.ModuleFromPath(configPath, args...)
+	configModule := config.ModuleFromOptions(
+		configx.WithFiles(configPath),
+		configx.WithArgs(args...),
+	)
 	observabilityModule := observability.Module()
 	buildModule := build.Module(version)
 	eventsModule := events.Module()
