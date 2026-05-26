@@ -5,8 +5,12 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"time"
 
+	"github.com/panjf2000/ants/v2"
+
+	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -34,23 +38,39 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 		ctx = context.Background()
 	}
 
-	var probeErr error
-	successes := 0
-	failures := 0
+	var successes atomic.Int32
+	var failures atomic.Int32
+	tasks := make([]func(context.Context) error, 0, len(pool.runtimes))
 	for _, runtime := range pool.runtimes {
-		if err := c.probeRuntime(ctx, pool, runtime); err != nil {
-			probeErr = errors.Join(probeErr, err)
-			failures++
-			continue
-		}
-		successes++
+		runtime := runtime
+		tasks = append(tasks, func(taskCtx context.Context) error {
+			if err := c.probeRuntime(taskCtx, pool, runtime); err != nil {
+				failures.Add(1)
+				return err
+			}
+			successes.Add(1)
+			return nil
+		})
 	}
-	if successes > 0 {
-		c.logProbeSummary(ctx, alias, successes, failures, nil)
+	probeErr := worker.RunAll(ctx, c.probePool(), tasks)
+	successCount := int(successes.Load())
+	failureCount := int(failures.Load())
+	if successCount > 0 {
+		c.logProbeSummary(ctx, alias, successCount, failureCount, nil)
 		return nil
 	}
-	c.logProbeSummary(ctx, alias, successes, failures, probeErr)
+	c.logProbeSummary(ctx, alias, successCount, failureCount, probeErr)
 	return probeErr
+}
+
+func (c *Client) probePool() *ants.Pool {
+	if c == nil {
+		return nil
+	}
+	if c.workers == nil {
+		return nil
+	}
+	return c.workers.ProbePool()
 }
 
 func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) error {

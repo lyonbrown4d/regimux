@@ -7,11 +7,15 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/panjf2000/ants/v2"
 	"github.com/samber/oops"
 )
 
@@ -26,6 +30,7 @@ type Service struct {
 	metadata  meta.Store
 	tags      cache.TagService
 	manifests cache.ManifestService
+	workers   *worker.Pools
 	logger    *slog.Logger
 }
 
@@ -49,7 +54,7 @@ type RunReport struct {
 	PrefetchedRoutes []string
 }
 
-func NewService(metadata meta.Store, tags cache.TagService, manifests cache.ManifestService, logger *slog.Logger) *Service {
+func NewService(metadata meta.Store, tags cache.TagService, manifests cache.ManifestService, logger *slog.Logger, workers *worker.Pools) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -57,6 +62,7 @@ func NewService(metadata meta.Store, tags cache.TagService, manifests cache.Mani
 		metadata:  metadata,
 		tags:      tags,
 		manifests: manifests,
+		workers:   workers,
 		logger:    logger.With("component", prefetchLogGroup),
 	}
 }
@@ -112,38 +118,54 @@ func (s *Service) prefetchRepository(ctx context.Context, route repoKey, records
 	})
 
 	prefetched := make([]string, 0, len(candidates))
-	failed := 0
+	var failed atomic.Int32
+	var mu sync.Mutex
+	tasks := make([]func(context.Context) error, 0, len(candidates))
 	for _, candidate := range candidates {
-		_, err := s.manifests.Get(ctx, cache.ManifestRequest{
-			UpstreamAlias:  candidate.Alias,
-			Repo:           candidate.Repo,
-			Reference:      candidate.Tag,
-			Accept:         opts.Accept,
-			Method:         http.MethodGet,
-			SkipPullRecord: true,
-		})
-		if err != nil {
-			failed++
-			s.logger.WarnContext(ctx, "prefetch manifest failed",
+		candidate := candidate
+		tasks = append(tasks, func(taskCtx context.Context) error {
+			_, err := s.manifests.Get(taskCtx, cache.ManifestRequest{
+				UpstreamAlias:  candidate.Alias,
+				Repo:           candidate.Repo,
+				Reference:      candidate.Tag,
+				Accept:         opts.Accept,
+				Method:         http.MethodGet,
+				SkipPullRecord: true,
+			})
+			if err != nil {
+				failed.Add(1)
+				s.logger.WarnContext(taskCtx, "prefetch manifest failed",
+					"alias", candidate.Alias,
+					"repository", candidate.Repo,
+					"reference", candidate.Tag,
+					"reason", candidate.Reason,
+					"score", candidate.Score,
+					"error", err,
+				)
+				return err
+			}
+			mu.Lock()
+			prefetched = append(prefetched, candidate.Alias+"/"+candidate.Repo+":"+candidate.Tag)
+			mu.Unlock()
+			s.logger.InfoContext(taskCtx, "prefetched manifest",
 				"alias", candidate.Alias,
 				"repository", candidate.Repo,
 				"reference", candidate.Tag,
 				"reason", candidate.Reason,
 				"score", candidate.Score,
-				"error", err,
 			)
-			continue
-		}
-		prefetched = append(prefetched, candidate.Alias+"/"+candidate.Repo+":"+candidate.Tag)
-		s.logger.InfoContext(ctx, "prefetched manifest",
-			"alias", candidate.Alias,
-			"repository", candidate.Repo,
-			"reference", candidate.Tag,
-			"reason", candidate.Reason,
-			"score", candidate.Score,
-		)
+			return nil
+		})
 	}
-	return prefetched, len(candidates), failed
+	_ = worker.RunAll(ctx, s.prefetchPool(), tasks)
+	return prefetched, len(candidates), int(failed.Load())
+}
+
+func (s *Service) prefetchPool() *ants.Pool {
+	if s == nil || s.workers == nil {
+		return nil
+	}
+	return s.workers.PrefetchPool()
 }
 
 func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int) ([]string, error) {

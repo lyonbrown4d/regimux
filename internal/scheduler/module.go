@@ -12,13 +12,14 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
-func Module(configModule, observabilityModule, cacheModule, storeModule, upstreamModule dix.Module) dix.Module {
+func Module(configModule, observabilityModule, cacheModule, storeModule, upstreamModule, workerModule dix.Module) dix.Module {
 	return dix.NewModule("scheduler",
-		dix.Imports(configModule, observabilityModule, cacheModule, storeModule, upstreamModule),
+		dix.Imports(configModule, observabilityModule, cacheModule, storeModule, upstreamModule, workerModule),
 		dix.Providers(
-			dix.Provider4[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger](prefetch.NewService),
+			dix.Provider5[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger, *worker.Pools](prefetch.NewService),
 			dix.Provider5[*Runtime, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client](NewRuntime),
 		),
 		dix.Hooks(

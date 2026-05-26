@@ -56,6 +56,8 @@ func defaultValues() map[string]any {
 		"scheduler.prefetch.max_candidates_per_repo":      3,
 		"scheduler.prefetch.max_version_distance":         5,
 		"scheduler.prefetch.distributed":                  true,
+		"worker.probe_concurrency":                        16,
+		"worker.prefetch_concurrency":                     8,
 		"upstreams.hub.registry":                          "https://registry-1.docker.io",
 		"upstreams.hub.mirror_policy":                     "ordered",
 		"upstreams.hub.default_namespace":                 "library",

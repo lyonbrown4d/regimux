@@ -37,6 +37,9 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	if hub.Probe.Enabled || hub.Probe.Interval != 30*time.Second || hub.Probe.Timeout != 3*time.Second || hub.Probe.Cooldown != 2*time.Minute {
 		t.Fatalf("unexpected upstream probe defaults: %#v", hub.Probe)
 	}
+	if cfg.Worker.ProbeConcurrency != 16 || cfg.Worker.PrefetchConcurrency != 8 {
+		t.Fatalf("unexpected worker defaults: %#v", cfg.Worker)
+	}
 }
 
 func TestValidateStoreRejectsUnsupportedDrivers(t *testing.T) {
@@ -101,6 +104,11 @@ upstreams {
     }
   }
 }
+
+worker {
+  probe_concurrency = 5
+  prefetch_concurrency = 7
+}
 `), 0o600); err != nil {
 		t.Fatalf("write hcl config: %v", err)
 	}
@@ -126,6 +134,9 @@ upstreams {
 	}
 	if got := cfg.Upstreams["local"].Probe; !got.Enabled || got.Interval != 45*time.Second || got.Timeout != 4*time.Second || got.Cooldown != 90*time.Second {
 		t.Fatalf("unexpected probe config: %#v", got)
+	}
+	if got := cfg.Worker; got.ProbeConcurrency != 5 || got.PrefetchConcurrency != 7 {
+		t.Fatalf("unexpected worker config: %#v", got)
 	}
 }
 
@@ -168,42 +179,66 @@ func TestNormalizeLatencyBlobPolicyEnablesProbe(t *testing.T) {
 func TestValidateUpstreamBlobAndProbeRejectsInvalidValues(t *testing.T) {
 	tests := []struct {
 		name   string
-		mutate func(*config.UpstreamConfig)
+		mutate func(*config.Config)
 	}{
 		{
 			name: "blob policy",
-			mutate: func(upstreamCfg *config.UpstreamConfig) {
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Blob.MirrorPolicy = "fastest"
+				cfg.Upstreams["hub"] = upstreamCfg
 			},
 		},
 		{
 			name: "blob top n",
-			mutate: func(upstreamCfg *config.UpstreamConfig) {
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Blob.TopN = -1
+				cfg.Upstreams["hub"] = upstreamCfg
 			},
 		},
 		{
 			name: "blob max concurrency",
-			mutate: func(upstreamCfg *config.UpstreamConfig) {
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Blob.MaxConcurrencyPerEndpoint = -1
+				cfg.Upstreams["hub"] = upstreamCfg
 			},
 		},
 		{
 			name: "probe interval",
-			mutate: func(upstreamCfg *config.UpstreamConfig) {
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Probe.Interval = -time.Second
+				cfg.Upstreams["hub"] = upstreamCfg
 			},
 		},
 		{
 			name: "probe timeout",
-			mutate: func(upstreamCfg *config.UpstreamConfig) {
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Probe.Timeout = -time.Second
+				cfg.Upstreams["hub"] = upstreamCfg
 			},
 		},
 		{
 			name: "probe cooldown",
-			mutate: func(upstreamCfg *config.UpstreamConfig) {
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Probe.Cooldown = -time.Second
+				cfg.Upstreams["hub"] = upstreamCfg
+			},
+		},
+		{
+			name: "worker probe concurrency",
+			mutate: func(cfg *config.Config) {
+				cfg.Worker.ProbeConcurrency = -1
+			},
+		},
+		{
+			name: "worker prefetch concurrency",
+			mutate: func(cfg *config.Config) {
+				cfg.Worker.PrefetchConcurrency = -1
 			},
 		},
 	}
@@ -213,9 +248,7 @@ func TestValidateUpstreamBlobAndProbeRejectsInvalidValues(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load defaults: %v", err)
 			}
-			hub := cfg.Upstreams["hub"]
-			tt.mutate(&hub)
-			cfg.Upstreams["hub"] = hub
+			tt.mutate(&cfg)
 			if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
 				t.Fatal("expected upstream blob/probe validation error")
 			}

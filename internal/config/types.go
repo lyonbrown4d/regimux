@@ -8,6 +8,7 @@ type Config struct {
 	Cache     CacheConfig               `json:"cache"     koanf:"cache"     mapstructure:"cache"     validate:"required"`
 	Store     StoreConfig               `json:"store"     koanf:"store"     mapstructure:"store"     validate:"required"`
 	Scheduler SchedulerConfig           `json:"scheduler" koanf:"scheduler" mapstructure:"scheduler"`
+	Worker    WorkerConfig              `json:"worker"    koanf:"worker"    mapstructure:"worker"`
 	Upstreams map[string]UpstreamConfig `json:"upstreams" koanf:"upstreams" mapstructure:"upstreams" validate:"required,min=1,dive,keys,required,endkeys,required"`
 }
 
@@ -120,6 +121,11 @@ type SchedulerPrefetchConfig struct {
 	MaxVersionDistance   int           `json:"max_version_distance"    koanf:"max_version_distance"    mapstructure:"max_version_distance" validate:"min=0"`
 	Accept               string        `json:"accept"                  koanf:"accept"                  mapstructure:"accept"`
 	Distributed          bool          `json:"distributed"             koanf:"distributed"             mapstructure:"distributed"`
+}
+
+type WorkerConfig struct {
+	ProbeConcurrency    int `json:"probe_concurrency"     koanf:"probe_concurrency"     mapstructure:"probe_concurrency"     validate:"min=0"`
+	PrefetchConcurrency int `json:"prefetch_concurrency"  koanf:"prefetch_concurrency"  mapstructure:"prefetch_concurrency"  validate:"min=0"`
 }
 
 type UpstreamConfig struct {

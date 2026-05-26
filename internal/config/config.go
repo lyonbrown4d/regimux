@@ -78,6 +78,9 @@ func (c *Config) NormalizeAndValidate() error {
 	if err := c.validateScheduler(); err != nil {
 		return err
 	}
+	if err := c.validateWorker(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -344,6 +347,22 @@ func (c *Config) validateScheduler() error {
 		{c.Scheduler.Prefetch.TagsPageSize < 0, oops.In("config").Errorf("scheduler.prefetch.tags_page_size cannot be negative")},
 		{c.Scheduler.Prefetch.MaxCandidatesPerRepo < 0, oops.In("config").Errorf("scheduler.prefetch.max_candidates_per_repo cannot be negative")},
 		{c.Scheduler.Prefetch.MaxVersionDistance < 0, oops.In("config").Errorf("scheduler.prefetch.max_version_distance cannot be negative")},
+	}
+	for _, check := range checks {
+		if check.invalid {
+			return check.err
+		}
+	}
+	return nil
+}
+
+func (c *Config) validateWorker() error {
+	checks := []struct {
+		invalid bool
+		err     error
+	}{
+		{c.Worker.ProbeConcurrency < 0, oops.In("config").Errorf("worker.probe_concurrency cannot be negative")},
+		{c.Worker.PrefetchConcurrency < 0, oops.In("config").Errorf("worker.prefetch_concurrency cannot be negative")},
 	}
 	for _, check := range checks {
 		if check.invalid {
