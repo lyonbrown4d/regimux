@@ -2,8 +2,7 @@
 .env
 .env.*
 !.env.example
-configs/*.local.yaml
-configs/*.local.yml
+configs/*.local.hcl
 
 # Logs
 *.log

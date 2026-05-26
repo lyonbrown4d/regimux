@@ -26,6 +26,8 @@ type RemoteConfig struct {
 type Config struct {
 	Alias            string         `json:"-" koanf:"-" yaml:"-"`
 	Registry         string         `json:"registry" koanf:"registry" yaml:"registry"`
+	Mirrors          []string       `json:"mirrors" koanf:"mirrors" yaml:"mirrors"`
+	MirrorPolicy     string         `json:"mirror_policy" koanf:"mirror_policy" yaml:"mirror_policy"`
 	DefaultNamespace string         `json:"default_namespace" koanf:"default_namespace" yaml:"default_namespace"`
 	TagTTL           string         `json:"tag_ttl" koanf:"tag_ttl" yaml:"tag_ttl"`
 	Auth             AuthConfig     `json:"auth" koanf:"auth" yaml:"auth"`

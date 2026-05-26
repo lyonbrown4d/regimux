@@ -8,6 +8,7 @@ This repository currently contains a runnable skeleton based on the design docum
 - Cobra-based command line with a single config-driven daemon mode.
 - Strongly typed `httpx.Endpoint` routes for health, Registry V2 ping, manifests, blobs, tags, and referrers.
 - Alias-based upstream routing such as `/v2/hub/library/alpine/manifests/latest`.
+- One alias can fan out to multiple Docker Hub mirrors with ordered failover or round-robin starting points.
 - Upstream registry client based on `github.com/arcgolabs/clientx/http` with bearer-token challenge handling.
 - Manifest cache backed by memory/Redis/Valkey plus bboltx metadata and local object storage.
 - Blob cache-then-serve path with local CAS storage, digest verification, range reads, and repo-to-blob access links.
@@ -22,7 +23,7 @@ This repository currently contains a runnable skeleton based on the design docum
 Run locally:
 
 ```bash
-go run ./cmd/regimuxd --config configs/regimux.yaml
+go run ./cmd/regimuxd --config configs/regimux.hcl
 ```
 
 Then try:

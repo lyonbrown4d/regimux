@@ -184,6 +184,106 @@ func TestClientListTagsBuildsRequestURL(t *testing.T) {
 	defer resp.Body.Close()
 }
 
+func TestClientGetManifestFailsOverMirrors(t *testing.T) {
+	t.Parallel()
+
+	var failedMirrorRequests int
+	failedMirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		failedMirrorRequests++
+		w.WriteHeader(http.StatusBadGateway)
+	}))
+	defer failedMirror.Close()
+
+	var healthyMirrorRequests int
+	healthyMirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		healthyMirrorRequests++
+		if got := r.URL.Path; got != "/v2/library/nginx/manifests/latest" {
+			t.Errorf("manifest path = %q, want /v2/library/nginx/manifests/latest", got)
+		}
+		body := `{"schemaVersion":2}`
+		w.Header().Set("Docker-Content-Digest", "sha256:abc")
+		w.Header().Set("Content-Type", distribution.MediaTypeDockerManifest)
+		w.Header().Set("Content-Length", fmt.Sprint(len(body)))
+		_, _ = io.WriteString(w, body)
+	}))
+	defer healthyMirror.Close()
+
+	var primaryRequests int
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		primaryRequests++
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer primary.Close()
+
+	client := NewClient(map[string]Config{
+		"hub": {
+			Registry:     primary.URL,
+			Mirrors:      []string{failedMirror.URL, healthyMirror.URL},
+			MirrorPolicy: "ordered",
+		},
+	}, nil)
+
+	resp, err := client.GetManifest(context.Background(), GetManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/nginx",
+		Reference:     "latest",
+	})
+	if err != nil {
+		t.Fatalf("GetManifest returned error: %v", err)
+	}
+	defer resp.Body.Close()
+	if failedMirrorRequests != 1 {
+		t.Fatalf("failed mirror requests = %d, want 1", failedMirrorRequests)
+	}
+	if healthyMirrorRequests != 1 {
+		t.Fatalf("healthy mirror requests = %d, want 1", healthyMirrorRequests)
+	}
+	if primaryRequests != 0 {
+		t.Fatalf("primary requests = %d, want 0", primaryRequests)
+	}
+}
+
+func TestClientRoundRobinStartsOnNextMirror(t *testing.T) {
+	t.Parallel()
+
+	var firstRequests int
+	first := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		firstRequests++
+		if got := r.URL.Path; got != "/v2/" {
+			t.Errorf("first ping path = %q, want /v2/", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer first.Close()
+
+	var secondRequests int
+	second := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		secondRequests++
+		if got := r.URL.Path; got != "/v2/" {
+			t.Errorf("second ping path = %q, want /v2/", got)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer second.Close()
+
+	client := NewClient(map[string]Config{
+		"hub": {
+			Mirrors:      []string{first.URL, second.URL},
+			MirrorPolicy: "round_robin",
+		},
+	}, nil)
+
+	if err := client.Ping(context.Background(), "hub"); err != nil {
+		t.Fatalf("first Ping returned error: %v", err)
+	}
+	if err := client.Ping(context.Background(), "hub"); err != nil {
+		t.Fatalf("second Ping returned error: %v", err)
+	}
+	if firstRequests != 1 || secondRequests != 1 {
+		t.Fatalf("requests = first:%d second:%d, want 1 each", firstRequests, secondRequests)
+	}
+}
+
 func TestRegistryURL(t *testing.T) {
 	t.Parallel()
 

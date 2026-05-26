@@ -5,152 +5,161 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/configx"
-	"github.com/knadh/koanf/parsers/yaml"
+	formathcl "github.com/arcgolabs/configx/format/hcl"
+	"github.com/go-playground/validator/v10"
 )
 
 const envPrefix = "REGIMUX"
 
 type Config struct {
-	Server    ServerConfig              `json:"server" koanf:"server" mapstructure:"server" yaml:"server"`
-	Log       LogConfig                 `json:"log" koanf:"log" mapstructure:"log" yaml:"log"`
-	Cache     CacheConfig               `json:"cache" koanf:"cache" mapstructure:"cache" yaml:"cache"`
-	Store     StoreConfig               `json:"store" koanf:"store" mapstructure:"store" yaml:"store"`
-	Upstreams map[string]UpstreamConfig `json:"upstreams" koanf:"upstreams" mapstructure:"upstreams" yaml:"upstreams"`
+	Server    ServerConfig              `json:"server" koanf:"server" mapstructure:"server" validate:"required"`
+	Log       LogConfig                 `json:"log" koanf:"log" mapstructure:"log"`
+	Cache     CacheConfig               `json:"cache" koanf:"cache" mapstructure:"cache" validate:"required"`
+	Store     StoreConfig               `json:"store" koanf:"store" mapstructure:"store" validate:"required"`
+	Upstreams map[string]UpstreamConfig `json:"upstreams" koanf:"upstreams" mapstructure:"upstreams" validate:"required,min=1,dive,keys,required,endkeys,required"`
 }
 
 type ServerConfig struct {
-	Listen       string        `json:"listen" koanf:"listen" mapstructure:"listen" yaml:"listen"`
-	PublicURL    string        `json:"public_url" koanf:"public_url" mapstructure:"public_url" yaml:"public_url"`
-	ReadTimeout  time.Duration `json:"read_timeout" koanf:"read_timeout" mapstructure:"read_timeout" yaml:"read_timeout"`
-	WriteTimeout time.Duration `json:"write_timeout" koanf:"write_timeout" mapstructure:"write_timeout" yaml:"write_timeout"`
-	IdleTimeout  time.Duration `json:"idle_timeout" koanf:"idle_timeout" mapstructure:"idle_timeout" yaml:"idle_timeout"`
+	Listen       string        `json:"listen" koanf:"listen" mapstructure:"listen" validate:"required"`
+	PublicURL    string        `json:"public_url" koanf:"public_url" mapstructure:"public_url" validate:"omitempty,url"`
+	ReadTimeout  time.Duration `json:"read_timeout" koanf:"read_timeout" mapstructure:"read_timeout" validate:"min=0"`
+	WriteTimeout time.Duration `json:"write_timeout" koanf:"write_timeout" mapstructure:"write_timeout" validate:"min=0"`
+	IdleTimeout  time.Duration `json:"idle_timeout" koanf:"idle_timeout" mapstructure:"idle_timeout" validate:"min=0"`
 }
 
 type LogConfig struct {
-	Level      string `json:"level" koanf:"level" mapstructure:"level" yaml:"level"`
-	Console    bool   `json:"console" koanf:"console" mapstructure:"console" yaml:"console"`
-	NoColor    bool   `json:"no_color" koanf:"no_color" mapstructure:"no_color" yaml:"no_color"`
-	File       string `json:"file" koanf:"file" mapstructure:"file" yaml:"file"`
-	AddCaller  bool   `json:"add_caller" koanf:"add_caller" mapstructure:"add_caller" yaml:"add_caller"`
-	MaxSizeMB  int    `json:"max_size_mb" koanf:"max_size_mb" mapstructure:"max_size_mb" yaml:"max_size_mb"`
-	MaxAgeDays int    `json:"max_age_days" koanf:"max_age_days" mapstructure:"max_age_days" yaml:"max_age_days"`
-	MaxBackups int    `json:"max_backups" koanf:"max_backups" mapstructure:"max_backups" yaml:"max_backups"`
-	TimeFormat string `json:"time_format" koanf:"time_format" mapstructure:"time_format" yaml:"time_format"`
-	SetDefault bool   `json:"set_default" koanf:"set_default" mapstructure:"set_default" yaml:"set_default"`
-	LocalTime  bool   `json:"local_time" koanf:"local_time" mapstructure:"local_time" yaml:"local_time"`
-	Compress   bool   `json:"compress" koanf:"compress" mapstructure:"compress" yaml:"compress"`
+	Level      string `json:"level" koanf:"level" mapstructure:"level" validate:"omitempty,oneof=trace debug info warn error fatal panic disabled"`
+	Console    bool   `json:"console" koanf:"console" mapstructure:"console"`
+	File       string `json:"file" koanf:"file" mapstructure:"file"`
+	AddCaller  bool   `json:"add_caller" koanf:"add_caller" mapstructure:"add_caller"`
+	MaxSizeMB  int    `json:"max_size_mb" koanf:"max_size_mb" mapstructure:"max_size_mb" validate:"min=0"`
+	MaxAgeDays int    `json:"max_age_days" koanf:"max_age_days" mapstructure:"max_age_days" validate:"min=0"`
+	MaxBackups int    `json:"max_backups" koanf:"max_backups" mapstructure:"max_backups" validate:"min=0"`
+	TimeFormat string `json:"time_format" koanf:"time_format" mapstructure:"time_format"`
+	SetDefault bool   `json:"set_default" koanf:"set_default" mapstructure:"set_default"`
+	LocalTime  bool   `json:"local_time" koanf:"local_time" mapstructure:"local_time"`
+	Compress   bool   `json:"compress" koanf:"compress" mapstructure:"compress"`
 }
 
 type CacheConfig struct {
-	Backend    string              `json:"backend" koanf:"backend" mapstructure:"backend" yaml:"backend"`
-	Prefix     string              `json:"prefix" koanf:"prefix" mapstructure:"prefix" yaml:"prefix"`
-	DefaultTTL time.Duration       `json:"default_ttl" koanf:"default_ttl" mapstructure:"default_ttl" yaml:"default_ttl"`
-	Memory     MemoryCacheConfig   `json:"memory" koanf:"memory" mapstructure:"memory" yaml:"memory"`
-	Redis      ExternalCacheConfig `json:"redis" koanf:"redis" mapstructure:"redis" yaml:"redis"`
-	Valkey     ExternalCacheConfig `json:"valkey" koanf:"valkey" mapstructure:"valkey" yaml:"valkey"`
-	Manifest   ManifestCacheConfig `json:"manifest" koanf:"manifest" mapstructure:"manifest" yaml:"manifest"`
-	Blob       BlobCacheConfig     `json:"blob" koanf:"blob" mapstructure:"blob" yaml:"blob"`
-	Tags       TagsCacheConfig     `json:"tags" koanf:"tags" mapstructure:"tags" yaml:"tags"`
-	Referrers  ReferrersConfig     `json:"referrers" koanf:"referrers" mapstructure:"referrers" yaml:"referrers"`
+	Backend    string              `json:"backend" koanf:"backend" mapstructure:"backend" validate:"omitempty,oneof=memory redis valkey"`
+	Prefix     string              `json:"prefix" koanf:"prefix" mapstructure:"prefix"`
+	DefaultTTL time.Duration       `json:"default_ttl" koanf:"default_ttl" mapstructure:"default_ttl" validate:"min=0"`
+	Memory     MemoryCacheConfig   `json:"memory" koanf:"memory" mapstructure:"memory"`
+	Redis      ExternalCacheConfig `json:"redis" koanf:"redis" mapstructure:"redis"`
+	Valkey     ExternalCacheConfig `json:"valkey" koanf:"valkey" mapstructure:"valkey"`
+	Manifest   ManifestCacheConfig `json:"manifest" koanf:"manifest" mapstructure:"manifest"`
+	Blob       BlobCacheConfig     `json:"blob" koanf:"blob" mapstructure:"blob"`
+	Tags       TagsCacheConfig     `json:"tags" koanf:"tags" mapstructure:"tags"`
+	Referrers  ReferrersConfig     `json:"referrers" koanf:"referrers" mapstructure:"referrers"`
 }
 
 type MemoryCacheConfig struct {
-	MaxItems int `json:"max_items" koanf:"max_items" mapstructure:"max_items" yaml:"max_items"`
+	MaxItems int `json:"max_items" koanf:"max_items" mapstructure:"max_items" validate:"min=0"`
 }
 
 type ExternalCacheConfig struct {
-	Addrs    []string `json:"addrs" koanf:"addrs" mapstructure:"addrs" yaml:"addrs"`
-	Username string   `json:"username" koanf:"username" mapstructure:"username" yaml:"username"`
-	Password string   `json:"password" koanf:"password" mapstructure:"password" yaml:"password"`
-	DB       int      `json:"db" koanf:"db" mapstructure:"db" yaml:"db"`
-	Debug    bool     `json:"debug" koanf:"debug" mapstructure:"debug" yaml:"debug"`
+	Addrs    []string `json:"addrs" koanf:"addrs" mapstructure:"addrs" validate:"dive,required"`
+	Username string   `json:"username" koanf:"username" mapstructure:"username"`
+	Password string   `json:"password" koanf:"password" mapstructure:"password"`
+	DB       int      `json:"db" koanf:"db" mapstructure:"db" validate:"min=0"`
+	Debug    bool     `json:"debug" koanf:"debug" mapstructure:"debug"`
 }
 
 type ManifestCacheConfig struct {
-	TagTTL       time.Duration `json:"tag_ttl" koanf:"tag_ttl" mapstructure:"tag_ttl" yaml:"tag_ttl"`
-	StaleIfError bool          `json:"stale_if_error" koanf:"stale_if_error" mapstructure:"stale_if_error" yaml:"stale_if_error"`
-	MaxStale     time.Duration `json:"max_stale" koanf:"max_stale" mapstructure:"max_stale" yaml:"max_stale"`
+	TagTTL       time.Duration `json:"tag_ttl" koanf:"tag_ttl" mapstructure:"tag_ttl" validate:"min=0"`
+	StaleIfError bool          `json:"stale_if_error" koanf:"stale_if_error" mapstructure:"stale_if_error"`
+	MaxStale     time.Duration `json:"max_stale" koanf:"max_stale" mapstructure:"max_stale" validate:"min=0"`
 }
 
 type BlobCacheConfig struct {
-	StreamAndCache bool `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache" yaml:"stream_and_cache"`
+	StreamAndCache bool `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
 }
 
 type TagsCacheConfig struct {
-	TTL         time.Duration `json:"ttl" koanf:"ttl" mapstructure:"ttl" yaml:"ttl"`
-	MaxPageSize int           `json:"max_page_size" koanf:"max_page_size" mapstructure:"max_page_size" yaml:"max_page_size"`
+	TTL         time.Duration `json:"ttl" koanf:"ttl" mapstructure:"ttl" validate:"min=0"`
+	MaxPageSize int           `json:"max_page_size" koanf:"max_page_size" mapstructure:"max_page_size" validate:"min=0"`
 }
 
 type ReferrersConfig struct {
-	TTL         time.Duration `json:"ttl" koanf:"ttl" mapstructure:"ttl" yaml:"ttl"`
-	FallbackTag bool          `json:"fallback_tag" koanf:"fallback_tag" mapstructure:"fallback_tag" yaml:"fallback_tag"`
+	TTL         time.Duration `json:"ttl" koanf:"ttl" mapstructure:"ttl" validate:"min=0"`
+	FallbackTag bool          `json:"fallback_tag" koanf:"fallback_tag" mapstructure:"fallback_tag"`
 }
 
 type StoreConfig struct {
-	Meta   StoreMetaConfig   `json:"meta" koanf:"meta" mapstructure:"meta" yaml:"meta"`
-	Object StoreObjectConfig `json:"object" koanf:"object" mapstructure:"object" yaml:"object"`
+	Meta   StoreMetaConfig   `json:"meta" koanf:"meta" mapstructure:"meta"`
+	Object StoreObjectConfig `json:"object" koanf:"object" mapstructure:"object"`
 }
 
 type StoreMetaConfig struct {
-	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" yaml:"driver"`
-	Path   string `json:"path" koanf:"path" mapstructure:"path" yaml:"path"`
+	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=bboltx"`
+	Path   string `json:"path" koanf:"path" mapstructure:"path"`
 }
 
 type StoreObjectConfig struct {
-	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" yaml:"driver"`
-	Path   string `json:"path" koanf:"path" mapstructure:"path" yaml:"path"`
+	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local"`
+	Path   string `json:"path" koanf:"path" mapstructure:"path"`
 }
 
 type UpstreamConfig struct {
-	Alias            string        `json:"-" koanf:"-" mapstructure:"-" yaml:"-"`
-	Registry         string        `json:"registry" koanf:"registry" mapstructure:"registry" yaml:"registry"`
-	DefaultNamespace string        `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace" yaml:"default_namespace"`
-	TagTTL           time.Duration `json:"tag_ttl" koanf:"tag_ttl" mapstructure:"tag_ttl" yaml:"tag_ttl"`
-	Auth             AuthConfig    `json:"auth" koanf:"auth" mapstructure:"auth" yaml:"auth"`
-	HTTP             HTTPConfig    `json:"http" koanf:"http" mapstructure:"http" yaml:"http"`
+	Alias            string        `json:"-" koanf:"-" mapstructure:"-"`
+	Registry         string        `json:"registry" koanf:"registry" mapstructure:"registry" validate:"omitempty,url"`
+	Mirrors          []string      `json:"mirrors" koanf:"mirrors" mapstructure:"mirrors" validate:"dive,required,url"`
+	MirrorPolicy     string        `json:"mirror_policy" koanf:"mirror_policy" mapstructure:"mirror_policy" validate:"omitempty,oneof=ordered failover round_robin"`
+	DefaultNamespace string        `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
+	TagTTL           time.Duration `json:"tag_ttl" koanf:"tag_ttl" mapstructure:"tag_ttl" validate:"min=0"`
+	Auth             AuthConfig    `json:"auth" koanf:"auth" mapstructure:"auth"`
+	HTTP             HTTPConfig    `json:"http" koanf:"http" mapstructure:"http"`
 }
 
 type AuthConfig struct {
-	Type     string `json:"type" koanf:"type" mapstructure:"type" yaml:"type"`
-	Username string `json:"username" koanf:"username" mapstructure:"username" yaml:"username"`
-	Password string `json:"password" koanf:"password" mapstructure:"password" yaml:"password"`
-	Token    string `json:"token" koanf:"token" mapstructure:"token" yaml:"token"`
+	Type     string `json:"type" koanf:"type" mapstructure:"type" validate:"omitempty,oneof=anonymous basic bearer dockerhub"`
+	Username string `json:"username" koanf:"username" mapstructure:"username"`
+	Password string `json:"password" koanf:"password" mapstructure:"password"`
+	Token    string `json:"token" koanf:"token" mapstructure:"token"`
 }
 
 type HTTPConfig struct {
-	Timeout time.Duration   `json:"timeout" koanf:"timeout" mapstructure:"timeout" yaml:"timeout"`
-	Retry   HTTPRetryConfig `json:"retry" koanf:"retry" mapstructure:"retry" yaml:"retry"`
-	TLS     HTTPTLSConfig   `json:"tls" koanf:"tls" mapstructure:"tls" yaml:"tls"`
+	Timeout time.Duration   `json:"timeout" koanf:"timeout" mapstructure:"timeout" validate:"min=0"`
+	Retry   HTTPRetryConfig `json:"retry" koanf:"retry" mapstructure:"retry"`
+	TLS     HTTPTLSConfig   `json:"tls" koanf:"tls" mapstructure:"tls"`
 }
 
 type HTTPRetryConfig struct {
-	Enabled    bool          `json:"enabled" koanf:"enabled" mapstructure:"enabled" yaml:"enabled"`
-	MaxRetries int           `json:"max_retries" koanf:"max_retries" mapstructure:"max_retries" yaml:"max_retries"`
-	WaitMin    time.Duration `json:"wait_min" koanf:"wait_min" mapstructure:"wait_min" yaml:"wait_min"`
-	WaitMax    time.Duration `json:"wait_max" koanf:"wait_max" mapstructure:"wait_max" yaml:"wait_max"`
+	Enabled    bool          `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
+	MaxRetries int           `json:"max_retries" koanf:"max_retries" mapstructure:"max_retries" validate:"min=0"`
+	WaitMin    time.Duration `json:"wait_min" koanf:"wait_min" mapstructure:"wait_min" validate:"min=0"`
+	WaitMax    time.Duration `json:"wait_max" koanf:"wait_max" mapstructure:"wait_max" validate:"min=0"`
 }
 
 type HTTPTLSConfig struct {
-	Enabled            bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled" yaml:"enabled"`
-	InsecureSkipVerify bool   `json:"insecure_skip_verify" koanf:"insecure_skip_verify" mapstructure:"insecure_skip_verify" yaml:"insecure_skip_verify"`
-	ServerName         string `json:"server_name" koanf:"server_name" mapstructure:"server_name" yaml:"server_name"`
+	Enabled            bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
+	InsecureSkipVerify bool   `json:"insecure_skip_verify" koanf:"insecure_skip_verify" mapstructure:"insecure_skip_verify"`
+	ServerName         string `json:"server_name" koanf:"server_name" mapstructure:"server_name"`
 }
 
 func Load(ctx context.Context, path string) (Config, error) {
 	opts := []configx.Option{
+		formathcl.WithHCLSupport(),
 		configx.WithDefaults(defaultValues()),
+		configx.WithDotenv(),
+		configx.WithIgnoreDotenvError(true),
 		configx.WithEnvPrefix(envPrefix),
 		configx.WithEnvSeparator("__"),
-		configx.WithFileParser("yaml", yaml.Parser()),
-		configx.WithFileParser("yml", yaml.Parser()),
+		configx.WithValidator(validator.New(validator.WithRequiredStructEnabled())),
+		configx.WithValidateLevel(configx.ValidateLevelStruct),
 	}
 	if strings.TrimSpace(path) != "" {
+		if err := validateConfigPath(path); err != nil {
+			return Config{}, err
+		}
 		opts = append(opts, configx.WithFiles(path))
 	}
 
@@ -162,6 +171,13 @@ func Load(ctx context.Context, path string) (Config, error) {
 		return Config{}, err
 	}
 	return cfg, nil
+}
+
+func validateConfigPath(path string) error {
+	if strings.ToLower(filepath.Ext(strings.TrimSpace(path))) != ".hcl" {
+		return fmt.Errorf("config file must use .hcl extension: %s", path)
+	}
+	return nil
 }
 
 func (c *Config) NormalizeAndValidate() error {
@@ -186,9 +202,32 @@ func (c *Config) NormalizeAndValidate() error {
 		if strings.TrimSpace(alias) == "" {
 			return errors.New("upstream alias cannot be empty")
 		}
-		if err := validateURL("upstreams."+alias+".registry", upstreamCfg.Registry); err != nil {
-			return err
+		upstreamCfg.Registry = strings.TrimSpace(upstreamCfg.Registry)
+		upstreamCfg.MirrorPolicy = strings.ToLower(strings.TrimSpace(upstreamCfg.MirrorPolicy))
+		if upstreamCfg.MirrorPolicy == "" || upstreamCfg.MirrorPolicy == "failover" {
+			upstreamCfg.MirrorPolicy = "ordered"
 		}
+		switch upstreamCfg.MirrorPolicy {
+		case "ordered", "round_robin":
+		default:
+			return fmt.Errorf("upstreams.%s.mirror_policy must be ordered or round_robin", alias)
+		}
+		if upstreamCfg.Registry == "" && len(upstreamCfg.Mirrors) == 0 {
+			return fmt.Errorf("upstreams.%s.registry or upstreams.%s.mirrors is required", alias, alias)
+		}
+		if upstreamCfg.Registry != "" {
+			if err := validateURL("upstreams."+alias+".registry", upstreamCfg.Registry); err != nil {
+				return err
+			}
+		}
+		for i, mirror := range upstreamCfg.Mirrors {
+			mirror = strings.TrimSpace(mirror)
+			if err := validateURL(fmt.Sprintf("upstreams.%s.mirrors[%d]", alias, i), mirror); err != nil {
+				return err
+			}
+			upstreamCfg.Mirrors[i] = mirror
+		}
+		upstreamCfg.Mirrors = uniqueStrings(upstreamCfg.Mirrors)
 		upstreamCfg.Alias = alias
 		if upstreamCfg.Auth.Type == "" {
 			upstreamCfg.Auth.Type = "anonymous"
@@ -295,6 +334,22 @@ func validateURL(name, value string) error {
 	return nil
 }
 
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{}, len(values))
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
 func defaultValues() map[string]any {
 	return map[string]any{
 		"server.listen":                        ":5000",
@@ -304,7 +359,6 @@ func defaultValues() map[string]any {
 		"server.idle_timeout":                  120 * time.Second,
 		"log.level":                            "info",
 		"log.console":                          true,
-		"log.no_color":                         true,
 		"log.add_caller":                       false,
 		"log.max_size_mb":                      100,
 		"log.max_age_days":                     7,
@@ -334,6 +388,7 @@ func defaultValues() map[string]any {
 		"store.object.driver":                  "local",
 		"store.object.path":                    "data/objects",
 		"upstreams.hub.registry":               "https://registry-1.docker.io",
+		"upstreams.hub.mirror_policy":          "ordered",
 		"upstreams.hub.default_namespace":      "library",
 		"upstreams.hub.tag_ttl":                10 * time.Minute,
 		"upstreams.hub.auth.type":              "anonymous",

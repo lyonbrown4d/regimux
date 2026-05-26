@@ -25,9 +25,6 @@ func NewLogger(cfg config.LogConfig) (*slog.Logger, error) {
 		logx.WithLocalTime(cfg.LocalTime),
 		logx.WithCompress(cfg.Compress),
 	)
-	if cfg.NoColor {
-		opts.Add(logx.WithNoColor())
-	}
 	if cfg.File != "" {
 		opts.Add(logx.WithFile(cfg.File))
 	}

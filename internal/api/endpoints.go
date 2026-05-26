@@ -28,7 +28,7 @@ func (e *HealthEndpoint) EndpointSpec() httpx.EndpointSpec {
 
 func (e *HealthEndpoint) Register(registrar httpx.Registrar) {
 	group := registrar.Scope()
-	httpx.MustGroupGet(group, "/healthz", e.health)
+	httpx.MustGroupGet(group, "healthz", e.health)
 }
 
 func (e *HealthEndpoint) health(context.Context, *struct{}) (*healthOutput, error) {
@@ -76,18 +76,20 @@ func (e *RegistryEndpoint) EndpointSpec() httpx.EndpointSpec {
 
 func (e *RegistryEndpoint) Register(registrar httpx.Registrar) {
 	group := registrar.Scope()
-	httpx.MustGroupGet(group, "/v2", e.ping)
-	httpx.MustGroupGet(group, "/v2/", e.ping, operationID("get-v2-slash"))
-	httpx.MustGroupRoute(group, http.MethodHead, "/v2", e.ping)
-	httpx.MustGroupRoute(group, http.MethodHead, "/v2/", e.ping, operationID("head-v2-slash"))
-	httpx.MustGroupGet(group, "/v2/{alias}/{tail...}", e.get, registryOperationDocs()...)
-	httpx.MustGroupRoute(group, http.MethodHead, "/v2/{alias}/{tail...}", e.head, registryOperationDocs()...)
+	httpx.MustGroupGet(group, "v2", e.ping)
+	httpx.MustGroupGet(group, "v2/", e.ping, operationID("get-v2-slash"))
+	httpx.MustGroupRoute(group, http.MethodHead, "v2", e.ping)
+	httpx.MustGroupRoute(group, http.MethodHead, "v2/", e.ping, operationID("head-v2-slash"))
+	httpx.MustGroupGet(group, "v2/{alias}/{tail...}", e.get, registryOperationDocs()...)
+	httpx.MustGroupRoute(group, http.MethodHead, "v2/{alias}/{tail...}", e.head, registryOperationDocs()...)
 }
 
 func (e *RegistryEndpoint) ping(context.Context, *struct{}) (*registryOutput, error) {
 	return &registryOutput{
 		Status:                       http.StatusOK,
+		ContentLength:                "0",
 		DockerDistributionAPIVersion: distribution.APIVersion,
+		Body:                         httpx.StreamBytes(nil),
 	}, nil
 }
 

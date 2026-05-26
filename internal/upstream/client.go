@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"sync/atomic"
 
 	"github.com/arcgolabs/clientx"
 	clienthttp "github.com/arcgolabs/clientx/http"
@@ -20,8 +21,15 @@ import (
 const defaultUserAgent = "regimux/dev"
 
 type Client struct {
-	upstreams *collectionmapping.OrderedMap[string, upstreamRuntime]
+	upstreams *collectionmapping.OrderedMap[string, *upstreamPool]
 	logger    *slog.Logger
+}
+
+type upstreamPool struct {
+	alias    string
+	policy   string
+	runtimes []upstreamRuntime
+	next     atomic.Uint64
 }
 
 type upstreamRuntime struct {
@@ -36,17 +44,10 @@ func NewClient(configs map[string]Config, logger *slog.Logger) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	upstreams := collectionmapping.NewOrderedMapWithCapacity[string, upstreamRuntime](len(configs))
+	upstreams := collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](len(configs))
 	for alias, cfg := range configs {
 		cfg.Alias = alias
-		runtime := upstreamRuntime{config: cfg}
-		if cfgEnabled(cfg) {
-			runtime.client, runtime.err = newHTTPClient(cfg)
-			if runtime.err != nil {
-				logger.Warn("create upstream http client failed", "alias", alias, "error", runtime.err)
-			}
-		}
-		upstreams.Set(alias, runtime)
+		upstreams.Set(alias, newUpstreamPool(cfg, logger))
 	}
 
 	return &Client{
@@ -55,128 +56,212 @@ func NewClient(configs map[string]Config, logger *slog.Logger) *Client {
 	}
 }
 
+func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
+	pool := &upstreamPool{
+		alias:  cfg.Alias,
+		policy: normalizeMirrorPolicy(cfg.MirrorPolicy),
+	}
+	for _, registry := range endpointRegistries(cfg) {
+		runtimeCfg := cfg
+		runtimeCfg.Registry = registry
+		runtime := upstreamRuntime{config: runtimeCfg}
+		runtime.client, runtime.err = newHTTPClient(runtimeCfg)
+		if runtime.err != nil && logger != nil {
+			logger.Warn(
+				"create upstream http client failed",
+				"alias", cfg.Alias,
+				"registry", registry,
+				"error", runtime.err,
+			)
+		}
+		pool.runtimes = append(pool.runtimes, runtime)
+	}
+	return pool
+}
+
+func endpointRegistries(cfg Config) []string {
+	registries := make([]string, 0, len(cfg.Mirrors)+1)
+	seen := make(map[string]struct{}, len(cfg.Mirrors)+1)
+	for _, registry := range cfg.Mirrors {
+		registry = strings.TrimRight(strings.TrimSpace(registry), "/")
+		if registry == "" {
+			continue
+		}
+		if _, ok := seen[registry]; ok {
+			continue
+		}
+		seen[registry] = struct{}{}
+		registries = append(registries, registry)
+	}
+	registry := strings.TrimRight(strings.TrimSpace(cfg.Registry), "/")
+	if registry != "" {
+		if _, ok := seen[registry]; !ok {
+			registries = append(registries, registry)
+		}
+	}
+	return registries
+}
+
+func normalizeMirrorPolicy(policy string) string {
+	switch strings.ToLower(strings.TrimSpace(policy)) {
+	case "round_robin":
+		return "round_robin"
+	default:
+		return "ordered"
+	}
+}
+
+func (p *upstreamPool) runtimesForAttempt() []upstreamRuntime {
+	if p == nil || len(p.runtimes) <= 1 || p.policy != "round_robin" {
+		if p == nil {
+			return nil
+		}
+		return p.runtimes
+	}
+	start := int(p.next.Add(1)-1) % len(p.runtimes)
+	out := make([]upstreamRuntime, 0, len(p.runtimes))
+	for i := range p.runtimes {
+		out = append(out, p.runtimes[(start+i)%len(p.runtimes)])
+	}
+	return out
+}
+
 func (c *Client) Ping(ctx context.Context, alias string) error {
-	runtime, err := c.upstream(alias)
-	if err != nil {
-		return err
-	}
-	requestURL := strings.TrimRight(runtime.config.Registry, "/") + "/v2/"
-	resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, "")
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return mapStatus(resp.StatusCode, "ping")
-	}
-	return nil
+	return c.doWithFailover(ctx, alias, "ping", func(runtime upstreamRuntime) error {
+		requestURL := strings.TrimRight(runtime.config.Registry, "/") + "/v2/"
+		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, "")
+		if err != nil {
+			return err
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return mapStatus(resp.StatusCode, "ping")
+		}
+		return nil
+	})
 }
 
 func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*ManifestResponse, error) {
-	runtime, err := c.upstream(req.UpstreamAlias)
+	var out *ManifestResponse
+	err := c.doWithFailover(ctx, req.UpstreamAlias, "manifest", func(runtime upstreamRuntime) error {
+		method := methodOr(req.Method, http.MethodGet)
+		requestURL := registryURL(runtime.config.Registry, req.Repo, "manifests", req.Reference)
+		var opts []requestOption
+		if req.Accept != "" {
+			opts = append(opts, withHeader("Accept", req.Accept))
+		}
+		resp, err := c.do(ctx, runtime, method, requestURL, repositoryScope(req.Repo, "pull"), opts...)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			defer resp.Body.Close()
+			return mapStatus(resp.StatusCode, "manifest")
+		}
+		out = &ManifestResponse{
+			Body:      resp.Body,
+			Digest:    resp.Header.Get("Docker-Content-Digest"),
+			MediaType: contentType(resp.Header),
+			Size:      contentLength(resp.Header),
+			Headers:   resp.Header.Clone(),
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	method := methodOr(req.Method, http.MethodGet)
-	requestURL := registryURL(runtime.config.Registry, req.Repo, "manifests", req.Reference)
-	var opts []requestOption
-	if req.Accept != "" {
-		opts = append(opts, withHeader("Accept", req.Accept))
-	}
-	resp, err := c.do(ctx, runtime, method, requestURL, repositoryScope(req.Repo, "pull"), opts...)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		return nil, mapStatus(resp.StatusCode, "manifest")
-	}
-	return &ManifestResponse{
-		Body:      resp.Body,
-		Digest:    resp.Header.Get("Docker-Content-Digest"),
-		MediaType: contentType(resp.Header),
-		Size:      contentLength(resp.Header),
-		Headers:   resp.Header.Clone(),
-	}, nil
+	return out, nil
 }
 
 func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse, error) {
-	runtime, err := c.upstream(req.UpstreamAlias)
+	var out *BlobResponse
+	err := c.doWithFailover(ctx, req.UpstreamAlias, "blob", func(runtime upstreamRuntime) error {
+		method := methodOr(req.Method, http.MethodGet)
+		requestURL := registryURL(runtime.config.Registry, req.Repo, "blobs", req.Digest)
+		var opts []requestOption
+		if req.Range != nil {
+			opts = append(opts, withHeader("Range", req.Range.String()))
+		}
+		resp, err := c.do(ctx, runtime, method, requestURL, repositoryScope(req.Repo, "pull"), opts...)
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			defer resp.Body.Close()
+			return mapStatus(resp.StatusCode, "blob")
+		}
+		out = &BlobResponse{
+			Body:       resp.Body,
+			Digest:     firstNonEmpty(resp.Header.Get("Docker-Content-Digest"), req.Digest),
+			Size:       contentLength(resp.Header),
+			StatusCode: resp.StatusCode,
+			Headers:    resp.Header.Clone(),
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	method := methodOr(req.Method, http.MethodGet)
-	requestURL := registryURL(runtime.config.Registry, req.Repo, "blobs", req.Digest)
-	var opts []requestOption
-	if req.Range != nil {
-		opts = append(opts, withHeader("Range", req.Range.String()))
-	}
-	resp, err := c.do(ctx, runtime, method, requestURL, repositoryScope(req.Repo, "pull"), opts...)
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		return nil, mapStatus(resp.StatusCode, "blob")
-	}
-	return &BlobResponse{
-		Body:       resp.Body,
-		Digest:     firstNonEmpty(resp.Header.Get("Docker-Content-Digest"), req.Digest),
-		Size:       contentLength(resp.Header),
-		StatusCode: resp.StatusCode,
-		Headers:    resp.Header.Clone(),
-	}, nil
+	return out, nil
 }
 
 func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsResponse, error) {
-	runtime, err := c.upstream(req.UpstreamAlias)
-	if err != nil {
-		return nil, err
-	}
-	requestURL := registryURL(runtime.config.Registry, req.Repo, "tags/list", "")
-	parsed, err := url.Parse(requestURL)
-	if err != nil {
-		return nil, err
-	}
-	query := parsed.Query()
-	if req.N != "" {
-		query.Set("n", req.N)
-	}
-	if req.Last != "" {
-		query.Set("last", req.Last)
-	}
-	parsed.RawQuery = query.Encode()
+	var out *TagsResponse
+	err := c.doWithFailover(ctx, req.UpstreamAlias, "tags", func(runtime upstreamRuntime) error {
+		requestURL := registryURL(runtime.config.Registry, req.Repo, "tags/list", "")
+		parsed, err := url.Parse(requestURL)
+		if err != nil {
+			return err
+		}
+		query := parsed.Query()
+		if req.N != "" {
+			query.Set("n", req.N)
+		}
+		if req.Last != "" {
+			query.Set("last", req.Last)
+		}
+		parsed.RawQuery = query.Encode()
 
-	resp, err := c.do(ctx, runtime, http.MethodGet, parsed.String(), repositoryScope(req.Repo, "pull"))
+		resp, err := c.do(ctx, runtime, http.MethodGet, parsed.String(), repositoryScope(req.Repo, "pull"))
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			defer resp.Body.Close()
+			return mapStatus(resp.StatusCode, "tags")
+		}
+		out = &TagsResponse{Body: resp.Body, Headers: resp.Header.Clone()}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		return nil, mapStatus(resp.StatusCode, "tags")
-	}
-	return &TagsResponse{Body: resp.Body, Headers: resp.Header.Clone()}, nil
+	return out, nil
 }
 
 func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*ReferrersResponse, error) {
-	runtime, err := c.upstream(req.UpstreamAlias)
+	var out *ReferrersResponse
+	err := c.doWithFailover(ctx, req.UpstreamAlias, "referrers", func(runtime upstreamRuntime) error {
+		requestURL := registryURL(runtime.config.Registry, req.Repo, "referrers", req.Digest)
+		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, repositoryScope(req.Repo, "pull"))
+		if err != nil {
+			return err
+		}
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			defer resp.Body.Close()
+			return mapStatus(resp.StatusCode, "referrers")
+		}
+		out = &ReferrersResponse{
+			Body:      resp.Body,
+			MediaType: contentType(resp.Header),
+			Headers:   resp.Header.Clone(),
+		}
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-	requestURL := registryURL(runtime.config.Registry, req.Repo, "referrers", req.Digest)
-	resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, repositoryScope(req.Repo, "pull"))
-	if err != nil {
-		return nil, err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		defer resp.Body.Close()
-		return nil, mapStatus(resp.StatusCode, "referrers")
-	}
-	return &ReferrersResponse{
-		Body:      resp.Body,
-		MediaType: contentType(resp.Header),
-		Headers:   resp.Header.Clone(),
-	}, nil
+	return out, nil
 }
 
 func (c *Client) do(ctx context.Context, runtime upstreamRuntime, method, endpoint, scope string, opts ...requestOption) (*http.Response, error) {
@@ -269,18 +354,50 @@ func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challe
 	return token, nil
 }
 
-func (c *Client) upstream(alias string) (upstreamRuntime, error) {
+func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn func(upstreamRuntime) error) error {
+	pool, err := c.upstream(alias)
+	if err != nil {
+		return err
+	}
+	runtimes := pool.runtimesForAttempt()
+	var lastErr error
+	for i, runtime := range runtimes {
+		if runtime.err != nil {
+			lastErr = distribution.ErrUpstream.WithDetail(runtime.err.Error())
+		} else {
+			lastErr = fn(runtime)
+		}
+		if lastErr == nil {
+			return nil
+		}
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return ctxErr
+		}
+		if i < len(runtimes)-1 && c.logger != nil {
+			c.logger.Warn(
+				"upstream endpoint failed; trying next endpoint",
+				"alias", alias,
+				"operation", operation,
+				"registry", runtime.config.Registry,
+				"error", lastErr,
+			)
+		}
+	}
+	if lastErr == nil {
+		return distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + alias)
+	}
+	return lastErr
+}
+
+func (c *Client) upstream(alias string) (*upstreamPool, error) {
 	if c == nil || c.upstreams == nil {
-		return upstreamRuntime{}, fmt.Errorf("upstream registry is not configured")
+		return nil, fmt.Errorf("upstream registry is not configured")
 	}
-	runtime, ok := c.upstreams.Get(alias)
-	if !ok || !cfgEnabled(runtime.config) {
-		return upstreamRuntime{}, distribution.ErrNameUnknown.WithDetail("unknown upstream alias: " + alias)
+	pool, ok := c.upstreams.Get(alias)
+	if !ok || pool == nil || len(pool.runtimes) == 0 {
+		return nil, distribution.ErrNameUnknown.WithDetail("unknown upstream alias: " + alias)
 	}
-	if runtime.err != nil {
-		return upstreamRuntime{}, distribution.ErrUpstream.WithDetail(runtime.err.Error())
-	}
-	return runtime, nil
+	return pool, nil
 }
 
 func newHTTPClient(cfg Config) (clienthttp.Client, error) {
@@ -433,8 +550,4 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
-}
-
-func cfgEnabled(cfg Config) bool {
-	return strings.TrimSpace(cfg.Registry) != ""
 }
