@@ -68,6 +68,32 @@ store {
   }
 }
 
+scheduler {
+  enabled = true
+  distributed_lock = true
+  lock_ttl = "5m"
+
+  cleanup {
+    enabled = true
+    interval = "1h"
+    unused_for = "168h"
+    max_deletes = 1000
+    dry_run = false
+    distributed = false
+  }
+
+  prefetch {
+    enabled = false
+    interval = "30m"
+    max_records = 200
+    min_pull_count = 2
+    tags_page_size = 1000
+    max_candidates_per_repo = 3
+    max_version_distance = 5
+    distributed = true
+  }
+}
+
 upstreams {
   hub {
     registry = "https://registry-1.docker.io"

@@ -17,6 +17,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	"github.com/lyonbrown4d/regimux/internal/scheduler"
 	storemodule "github.com/lyonbrown4d/regimux/internal/store"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
@@ -126,6 +127,7 @@ func buildApp(cfg config.Config, logger *slog.Logger, version string) *dix.App {
 	upstreamModule := upstream.Module(configModule, observabilityModule, eventsModule)
 	storeModule := storemodule.Module(configModule, observabilityModule)
 	cacheModule := cache.Module(configModule, observabilityModule, eventsModule, upstreamModule, storeModule)
+	schedulerModule := scheduler.Module(configModule, observabilityModule, cacheModule, storeModule)
 	endpointModule := api.EndpointsModule(configModule, cacheModule, observabilityModule)
 	apiModule := api.Module(configModule, observabilityModule, eventsModule, endpointModule)
 	runtimeModule := newRuntimeModule(version, configModule, observabilityModule, eventsModule, apiModule, cacheModule, storeModule)
@@ -136,7 +138,7 @@ func buildApp(cfg config.Config, logger *slog.Logger, version string) *dix.App {
 		dix.UseLogger(logger),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, observabilityModule, eventsModule, upstreamModule, storeModule, cacheModule, endpointModule, apiModule, runtimeModule),
+		dix.Modules(configModule, observabilityModule, eventsModule, upstreamModule, storeModule, cacheModule, schedulerModule, endpointModule, apiModule, runtimeModule),
 	)
 }
 

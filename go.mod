@@ -22,6 +22,8 @@ require (
 	github.com/arcgolabs/storx/keycodec v0.2.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/distribution/reference v0.6.0
+	github.com/go-co-op/gocron-redis-lock/v2 v2.2.1
+	github.com/go-co-op/gocron/v2 v2.21.1
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/opencontainers/go-digest v1.0.0
@@ -50,10 +52,15 @@ require (
 	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/go-playground/locales v0.14.1 // indirect
 	github.com/go-playground/universal-translator v0.18.1 // indirect
+	github.com/go-redsync/redsync/v4 v4.13.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
+	github.com/hashicorp/errwrap v1.1.0 // indirect
+	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect
 	github.com/joho/godotenv v1.5.1 // indirect
+	github.com/jonboulle/clockwork v0.5.0 // indirect
 	github.com/knadh/koanf/maps v0.1.2 // indirect
 	github.com/knadh/koanf/parsers/hcl v1.0.0 // indirect
 	github.com/knadh/koanf/providers/confmap v1.0.0 // indirect
@@ -67,6 +74,7 @@ require (
 	github.com/mitchellh/reflectwalk v1.0.2 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
 	github.com/panjf2000/ants/v2 v2.12.1 // indirect
+	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect

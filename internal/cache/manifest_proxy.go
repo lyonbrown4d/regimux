@@ -4,7 +4,10 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
@@ -36,6 +39,7 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 	if cached, ok, err := p.lookup(ctx, req, cacheKey); err != nil {
 		return nil, err
 	} else if ok {
+		p.recordManifestPull(ctx, req)
 		p.publishCacheAccess(ctx, req, cached)
 		return cached, nil
 	}
@@ -43,6 +47,7 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 	if result, ok, err := p.revalidate(ctx, req, cacheKey); err != nil {
 		return nil, err
 	} else if ok {
+		p.recordManifestPull(ctx, req)
 		p.publishCacheAccess(ctx, req, result)
 		return result, nil
 	}
@@ -51,7 +56,9 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 	if err != nil {
 		return p.lookupStaleOrError(ctx, req, err)
 	}
+	p.recordManifestUpstreamPull(ctx, req)
 	p.store(ctx, req, cacheKey, result)
+	p.recordManifestPull(ctx, req)
 	p.publishCacheAccess(ctx, req, result)
 	return result, nil
 }
@@ -62,10 +69,34 @@ func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestReque
 		return nil, err
 	}
 	if ok {
+		p.recordManifestPull(ctx, req)
 		p.publishCacheAccess(ctx, req, stale)
 		return stale, nil
 	}
 	return nil, cause
+}
+
+func (p manifestProxy) recordManifestPull(ctx context.Context, req ManifestRequest) {
+	if key, ok := manifestPullKey(req); ok && p.metadata != nil {
+		_, _ = p.metadata.RecordPull(ctx, key, time.Now().UTC())
+	}
+}
+
+func (p manifestProxy) recordManifestUpstreamPull(ctx context.Context, req ManifestRequest) {
+	if key, ok := manifestPullKey(req); ok && p.metadata != nil {
+		_, _ = p.metadata.RecordUpstreamPull(ctx, key, time.Now().UTC())
+	}
+}
+
+func manifestPullKey(req ManifestRequest) (meta.PullKey, bool) {
+	if req.SkipPullRecord || reference.IsDigest(req.Reference) || req.Reference == "" {
+		return meta.PullKey{}, false
+	}
+	return meta.PullKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Reference:  req.Reference,
+	}, true
 }
 
 func (p manifestProxy) fetch(ctx context.Context, req ManifestRequest) (*CachedManifest, error) {

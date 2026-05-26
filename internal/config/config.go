@@ -67,6 +67,9 @@ func (c *Config) NormalizeAndValidate() error {
 	if err := c.validateStore(); err != nil {
 		return err
 	}
+	if err := c.validateScheduler(); err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -239,6 +242,30 @@ func (c *Config) validateStore() error {
 	}
 	if strings.TrimSpace(c.Store.Object.Path) == "" {
 		c.Store.Object.Path = "data/objects"
+	}
+	return nil
+}
+
+func (c *Config) validateScheduler() error {
+	checks := []struct {
+		invalid bool
+		err     error
+	}{
+		{c.Scheduler.LockTTL < 0, oops.In("config").Errorf("scheduler.lock_ttl cannot be negative")},
+		{c.Scheduler.Cleanup.Interval < 0, oops.In("config").Errorf("scheduler.cleanup.interval cannot be negative")},
+		{c.Scheduler.Cleanup.UnusedFor < 0, oops.In("config").Errorf("scheduler.cleanup.unused_for cannot be negative")},
+		{c.Scheduler.Cleanup.MaxDeletes < 0, oops.In("config").Errorf("scheduler.cleanup.max_deletes cannot be negative")},
+		{c.Scheduler.Prefetch.Interval < 0, oops.In("config").Errorf("scheduler.prefetch.interval cannot be negative")},
+		{c.Scheduler.Prefetch.MaxRecords < 0, oops.In("config").Errorf("scheduler.prefetch.max_records cannot be negative")},
+		{c.Scheduler.Prefetch.MinPullCount < 0, oops.In("config").Errorf("scheduler.prefetch.min_pull_count cannot be negative")},
+		{c.Scheduler.Prefetch.TagsPageSize < 0, oops.In("config").Errorf("scheduler.prefetch.tags_page_size cannot be negative")},
+		{c.Scheduler.Prefetch.MaxCandidatesPerRepo < 0, oops.In("config").Errorf("scheduler.prefetch.max_candidates_per_repo cannot be negative")},
+		{c.Scheduler.Prefetch.MaxVersionDistance < 0, oops.In("config").Errorf("scheduler.prefetch.max_version_distance cannot be negative")},
+	}
+	for _, check := range checks {
+		if check.invalid {
+			return check.err
+		}
 	}
 	return nil
 }

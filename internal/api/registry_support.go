@@ -47,12 +47,12 @@ func newRegistryOutput(status int, header http.Header) *registryOutput {
 	if header == nil {
 		return out
 	}
-	out.ContentLength = header.Get("Content-Length")
-	out.ContentRange = header.Get("Content-Range")
-	out.ETag = header.Get("ETag")
-	out.Link = header.Get("Link")
-	out.Location = header.Get("Location")
-	out.Warning = header.Get("Warning")
+	out.ContentLength = header.Get(distribution.HeaderContentLength)
+	out.ContentRange = header.Get(distribution.HeaderContentRange)
+	out.ETag = header.Get(distribution.HeaderETag)
+	out.Link = header.Get(distribution.HeaderLink)
+	out.Location = header.Get(distribution.HeaderLocation)
+	out.Warning = header.Get(distribution.HeaderWarning)
 	return out
 }
 
@@ -96,7 +96,7 @@ func errorOutput(err error) *registryOutput {
 	}
 	return &registryOutput{
 		Status:                       status,
-		ContentType:                  "application/json",
+		ContentType:                  distribution.MediaTypeJSON,
 		DockerDistributionAPIVersion: distribution.APIVersion,
 		Body:                         streamWithStatus(status, httpx.StreamReader(bytes.NewReader(body))),
 	}
@@ -133,8 +133,8 @@ func endpointSpec(tags ...string) httpx.EndpointSpec {
 func registryOperationDocs() []httpx.OperationOption {
 	return []httpx.OperationOption{
 		httpx.OperationBinaryResponse(
-			"application/octet-stream",
-			"application/json",
+			distribution.MediaTypeOctetStream,
+			distribution.MediaTypeJSON,
 			distribution.MediaTypeDockerManifest,
 			distribution.MediaTypeDockerManifestList,
 			distribution.MediaTypeOCIManifest,

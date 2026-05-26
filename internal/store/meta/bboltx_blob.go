@@ -65,6 +65,18 @@ func (s *BboltStore) PutBlob(ctx context.Context, record BlobRecord) error {
 	return nil
 }
 
+func (s *BboltStore) ListBlobs(ctx context.Context) ([]BlobRecord, error) {
+	entries, err := s.blobs.List(ctx)
+	if err != nil {
+		return nil, wrapError(err, "list blob metadata")
+	}
+	records := make([]BlobRecord, 0, len(entries))
+	for _, entry := range entries {
+		records = append(records, entry.Value)
+	}
+	return records, nil
+}
+
 func (s *BboltStore) RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error) {
 	key, err := normalizeRepoBlobKey(key)
 	if err != nil {
@@ -92,11 +104,17 @@ func (s *BboltStore) UpsertRepoBlob(ctx context.Context, record RepoBlobRecord) 
 	}
 	if ok {
 		record.CreatedAt = existing.CreatedAt
+		if record.LastVerifiedAt.IsZero() {
+			record.LastVerifiedAt = existing.LastVerifiedAt
+		}
 	}
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = now
 	}
 	record.UpdatedAt = now
+	if record.LastAccessAt.IsZero() {
+		record.LastAccessAt = now
+	}
 	if record.LastVerifiedAt.IsZero() {
 		record.LastVerifiedAt = now
 	}
@@ -115,4 +133,16 @@ func (s *BboltStore) DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error 
 		return wrapError(err, "delete repository blob metadata")
 	}
 	return nil
+}
+
+func (s *BboltStore) ListRepoBlobs(ctx context.Context) ([]RepoBlobRecord, error) {
+	entries, err := s.repoBlob.List(ctx)
+	if err != nil {
+		return nil, wrapError(err, "list repository blob metadata")
+	}
+	records := make([]RepoBlobRecord, 0, len(entries))
+	for _, entry := range entries {
+		records = append(records, entry.Value)
+	}
+	return records, nil
 }

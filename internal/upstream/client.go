@@ -8,6 +8,7 @@ import (
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 )
 
@@ -67,7 +68,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 		requestURL := registryURL(runtime.config.Registry, req.Repo, "manifests", req.Reference)
 		var opts []requestOption
 		if req.Accept != "" {
-			opts = append(opts, withHeader("Accept", req.Accept))
+			opts = append(opts, withHeader(distribution.HeaderAccept, req.Accept))
 		}
 		resp, err := c.do(ctx, runtime, method, requestURL, pullRepositoryScope(req.Repo), opts...)
 		if err != nil {
@@ -78,7 +79,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 		}
 		out = &ManifestResponse{
 			Body:      resp.Body,
-			Digest:    resp.Header.Get("Docker-Content-Digest"),
+			Digest:    resp.Header.Get(distribution.HeaderDockerContentDigest),
 			MediaType: contentType(resp.Header),
 			Size:      contentLength(resp.Header),
 			Headers:   resp.Header.Clone(),
@@ -98,7 +99,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 		requestURL := registryURL(runtime.config.Registry, req.Repo, "blobs", req.Digest)
 		var opts []requestOption
 		if req.Range != nil {
-			opts = append(opts, withHeader("Range", req.Range.String()))
+			opts = append(opts, withHeader(distribution.HeaderRange, req.Range.String()))
 		}
 		resp, err := c.do(ctx, runtime, method, requestURL, pullRepositoryScope(req.Repo), opts...)
 		if err != nil {
@@ -109,7 +110,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 		}
 		out = &BlobResponse{
 			Body:       resp.Body,
-			Digest:     lo.CoalesceOrEmpty(resp.Header.Get("Docker-Content-Digest"), req.Digest),
+			Digest:     lo.CoalesceOrEmpty(resp.Header.Get(distribution.HeaderDockerContentDigest), req.Digest),
 			Size:       contentLength(resp.Header),
 			StatusCode: resp.StatusCode,
 			Headers:    resp.Header.Clone(),

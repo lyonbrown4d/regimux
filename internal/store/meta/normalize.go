@@ -80,6 +80,41 @@ func normalizeTagKey(key TagKey) (TagKey, error) {
 	return TagKey{Alias: alias, Repository: repo, Reference: ref}, nil
 }
 
+func normalizePullRecord(record PullRecord) (PullKey, PullRecord, error) {
+	key, err := normalizePullKey(PullKey{
+		Alias:      record.Alias,
+		Repository: record.Repository,
+		Reference:  record.Reference,
+	})
+	if err != nil {
+		return PullKey{}, PullRecord{}, err
+	}
+	if record.Count < 0 {
+		record.Count = 0
+	}
+	record.Alias = key.Alias
+	record.Repository = key.Repository
+	record.Reference = key.Reference
+	record.Key = key.String()
+	return key, record, nil
+}
+
+func normalizePullKey(key PullKey) (PullKey, error) {
+	alias, err := required("alias", key.Alias)
+	if err != nil {
+		return PullKey{}, err
+	}
+	repo, err := required("repository", key.Repository)
+	if err != nil {
+		return PullKey{}, err
+	}
+	ref, err := required("reference", key.Reference)
+	if err != nil {
+		return PullKey{}, err
+	}
+	return PullKey{Alias: alias, Repository: repo, Reference: ref}, nil
+}
+
 func normalizeBlobRecord(record BlobRecord) (BlobKey, BlobRecord, error) {
 	key, err := normalizeBlobKey(BlobKey{Digest: record.Digest})
 	if err != nil {

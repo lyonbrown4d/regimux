@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"resty.dev/v3"
 )
 
@@ -63,9 +64,9 @@ func drainAndClose(body io.ReadCloser) error {
 }
 
 func contentType(header http.Header) string {
-	value := header.Get("Content-Type")
+	value := header.Get(distribution.HeaderContentType)
 	if value == "" {
-		return "application/octet-stream"
+		return distribution.MediaTypeOctetStream
 	}
 	mediaType, _, err := mime.ParseMediaType(value)
 	if err == nil && mediaType != "" {
@@ -75,7 +76,7 @@ func contentType(header http.Header) string {
 }
 
 func contentLength(header http.Header) int64 {
-	value := header.Get("Content-Length")
+	value := header.Get(distribution.HeaderContentLength)
 	if value == "" {
 		return -1
 	}

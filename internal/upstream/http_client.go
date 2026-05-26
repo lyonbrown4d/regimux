@@ -7,6 +7,7 @@ import (
 
 	"github.com/arcgolabs/clientx"
 	clienthttp "github.com/arcgolabs/clientx/http"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"resty.dev/v3"
 )
 
@@ -46,7 +47,7 @@ func stripAuthOnCrossHostRedirect(req *http.Request, via []*http.Request) error 
 		return nil
 	}
 	if req.URL.Host != via[0].URL.Host {
-		req.Header.Del("Authorization")
+		req.Header.Del(distribution.HeaderAuthorization)
 	}
 	if len(via) >= 5 {
 		return http.ErrUseLastResponse
@@ -55,11 +56,11 @@ func stripAuthOnCrossHostRedirect(req *http.Request, via []*http.Request) error 
 }
 
 func prepareRequest(req *resty.Request, cfg Config) {
-	req.SetHeader("User-Agent", defaultUserAgent)
+	req.SetHeader(distribution.HeaderUserAgent, defaultUserAgent)
 	switch strings.ToLower(cfg.Auth.Type) {
-	case "bearer":
+	case strings.ToLower(distribution.AuthSchemeBearer):
 		if cfg.Auth.Token != "" {
-			req.SetHeader("Authorization", "Bearer "+cfg.Auth.Token)
+			req.SetHeader(distribution.HeaderAuthorization, distribution.AuthSchemeBearer+" "+cfg.Auth.Token)
 		}
 	case "basic", "dockerhub":
 		if cfg.Auth.Username != "" || cfg.Auth.Password != "" {

@@ -222,12 +222,13 @@ func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info 
 	if p.metadata == nil || info == nil {
 		return nil
 	}
+	now := time.Now().UTC()
 	if _, err := p.metadata.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:       info.Digest,
 		Size:         info.Size,
 		MediaType:    mediaType,
 		ObjectKey:    info.Digest,
-		LastAccessAt: time.Now().UTC(),
+		LastAccessAt: now,
 	}); err != nil {
 		return wrapError(err, "upsert blob record")
 	}
@@ -235,7 +236,8 @@ func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info 
 		Alias:          req.UpstreamAlias,
 		Repository:     req.Repo,
 		Digest:         info.Digest,
-		LastVerifiedAt: time.Now().UTC(),
+		LastAccessAt:   now,
+		LastVerifiedAt: now,
 	})
 	if err != nil {
 		return wrapError(err, "upsert repository blob record")
@@ -248,6 +250,7 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 	if err != nil {
 		return nil, wrapError(err, "stat stored blob object")
 	}
+	storedInfo := *info
 	headers := blobHeaders(info)
 
 	status, size, opts, err := blobReadOptions(req, info.Size, headers)
@@ -262,6 +265,12 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 		}
 		size = info.Size
 	}
+	if err := p.touchStoredBlobAccess(ctx, req, &storedInfo); err != nil {
+		if closeErr := reader.Close(); closeErr != nil {
+			return nil, errors.Join(err, wrapError(closeErr, "close stored blob after access touch failure"))
+		}
+		return nil, err
+	}
 	return &BlobReadResult{
 		Reader:  reader,
 		Digest:  info.Digest,
@@ -271,4 +280,46 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 		Headers: headers,
 		Cache:   cacheStatus,
 	}, nil
+}
+
+func (p blobProxy) touchStoredBlobAccess(ctx context.Context, req BlobRequest, info *object.Info) error {
+	if p.metadata == nil || info == nil {
+		return nil
+	}
+	now := time.Now().UTC()
+	blob, ok, err := p.metadata.Blob(ctx, meta.BlobKey{Digest: info.Digest})
+	if err != nil {
+		return wrapError(err, "lookup blob metadata for access touch")
+	}
+	if ok {
+		blob.LastAccessAt = now
+	} else {
+		blob = &meta.BlobRecord{
+			Digest:       info.Digest,
+			Size:         info.Size,
+			MediaType:    info.ContentType,
+			ObjectKey:    info.Digest,
+			LastAccessAt: now,
+		}
+	}
+	if _, err := p.metadata.UpsertBlob(ctx, *blob); err != nil {
+		return wrapError(err, "touch blob access metadata")
+	}
+
+	repoBlob, ok, err := p.metadata.RepoBlob(ctx, meta.RepoBlobKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Digest:     info.Digest,
+	})
+	if err != nil {
+		return wrapError(err, "lookup repository blob metadata for access touch")
+	}
+	if !ok {
+		return nil
+	}
+	repoBlob.LastAccessAt = now
+	if _, err := p.metadata.UpsertRepoBlob(ctx, *repoBlob); err != nil {
+		return wrapError(err, "touch repository blob access metadata")
+	}
+	return nil
 }

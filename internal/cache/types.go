@@ -36,11 +36,12 @@ type ReferrerService interface {
 }
 
 type ManifestRequest struct {
-	UpstreamAlias string
-	Repo          string
-	Reference     string
-	Accept        string
-	Method        string
+	UpstreamAlias  string
+	Repo           string
+	Reference      string
+	Accept         string
+	Method         string
+	SkipPullRecord bool
 }
 
 type CachedManifest struct {

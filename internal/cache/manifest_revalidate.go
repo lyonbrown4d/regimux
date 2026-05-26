@@ -23,6 +23,7 @@ func (p manifestProxy) revalidate(ctx context.Context, req ManifestRequest, cach
 	if !sameRevalidatedDigest(req, record.Digest, resp.Digest) {
 		return nil, false, nil
 	}
+	p.recordManifestUpstreamPull(ctx, req)
 
 	p.refreshRevalidatedRecord(record, resp)
 	if saveErr := p.saveRevalidatedRecords(ctx, tag, record); saveErr != nil {

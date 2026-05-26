@@ -10,8 +10,8 @@ import (
 
 func blobHeaders(info *object.Info) http.Header {
 	headers := http.Header{}
-	headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))
-	headers.Set("ETag", info.ETag)
+	headers.Set(distribution.HeaderContentLength, strconv.FormatInt(info.Size, 10))
+	headers.Set(distribution.HeaderETag, info.ETag)
 	return headers
 }
 
@@ -29,8 +29,8 @@ func blobReadOptions(req BlobRequest, fullSize int64, headers http.Header) (int,
 	}
 	status = http.StatusPartialContent
 	size = resolved.Length()
-	headers.Set("Content-Length", strconv.FormatInt(size, 10))
-	headers.Set("Content-Range", resolved.ContentRange(fullSize))
+	headers.Set(distribution.HeaderContentLength, strconv.FormatInt(size, 10))
+	headers.Set(distribution.HeaderContentRange, resolved.ContentRange(fullSize))
 	opts.Range = req.Range
 	return status, size, opts, nil
 }

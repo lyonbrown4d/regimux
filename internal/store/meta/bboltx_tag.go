@@ -79,3 +79,15 @@ func (s *BboltStore) PutTag(ctx context.Context, record TagRecord) error {
 	}
 	return nil
 }
+
+func (s *BboltStore) ListTags(ctx context.Context) ([]TagRecord, error) {
+	entries, err := s.tags.List(ctx)
+	if err != nil {
+		return nil, wrapError(err, "list tag metadata")
+	}
+	records := make([]TagRecord, 0, len(entries))
+	for _, entry := range entries {
+		records = append(records, entry.Value)
+	}
+	return records, nil
+}

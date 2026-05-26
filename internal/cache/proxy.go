@@ -14,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"golang.org/x/sync/singleflight"
 )
 
@@ -237,9 +238,9 @@ func closeHTTPBody(body io.Closer, label string) error {
 }
 
 func contentTypeFromHeader(headers http.Header) string {
-	value := headers.Get("Content-Type")
+	value := headers.Get(distribution.HeaderContentType)
 	if value == "" {
-		return "application/octet-stream"
+		return distribution.MediaTypeOctetStream
 	}
 	mediaType, _, err := mime.ParseMediaType(value)
 	if err == nil && mediaType != "" {
@@ -250,11 +251,11 @@ func contentTypeFromHeader(headers http.Header) string {
 
 func rewriteTagsHeaders(headers http.Header, req TagRequest) http.Header {
 	out := headers.Clone()
-	link := out.Get("Link")
+	link := out.Get(distribution.HeaderLink)
 	if link == "" {
 		return out
 	}
-	out.Set("Link", rewriteLinkHeader(link, req.UpstreamAlias, req.Repo))
+	out.Set(distribution.HeaderLink, rewriteLinkHeader(link, req.UpstreamAlias, req.Repo))
 	return out
 }
 

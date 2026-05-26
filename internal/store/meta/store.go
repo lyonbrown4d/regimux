@@ -23,22 +23,31 @@ type Store interface {
 	DeleteManifest(ctx context.Context, key ManifestKey) error
 	GetManifest(ctx context.Context, key string) (*ManifestRecord, bool, error)
 	PutManifest(ctx context.Context, record ManifestRecord) error
+	ListManifests(ctx context.Context) ([]ManifestRecord, error)
 
 	Tag(ctx context.Context, key TagKey) (*TagRecord, bool, error)
 	UpsertTag(ctx context.Context, record TagRecord) (*TagRecord, error)
 	DeleteTag(ctx context.Context, key TagKey) error
 	GetTag(ctx context.Context, key string) (*TagRecord, bool, error)
 	PutTag(ctx context.Context, record TagRecord) error
+	ListTags(ctx context.Context) ([]TagRecord, error)
+
+	Pull(ctx context.Context, key PullKey) (*PullRecord, bool, error)
+	RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
+	RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
+	ListPulls(ctx context.Context) ([]PullRecord, error)
 
 	Blob(ctx context.Context, key BlobKey) (*BlobRecord, bool, error)
 	UpsertBlob(ctx context.Context, record BlobRecord) (*BlobRecord, error)
 	DeleteBlob(ctx context.Context, key BlobKey) error
 	GetBlob(ctx context.Context, digest string) (*BlobRecord, bool, error)
 	PutBlob(ctx context.Context, record BlobRecord) error
+	ListBlobs(ctx context.Context) ([]BlobRecord, error)
 
 	RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error)
 	UpsertRepoBlob(ctx context.Context, record RepoBlobRecord) (*RepoBlobRecord, error)
 	DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
+	ListRepoBlobs(ctx context.Context) ([]RepoBlobRecord, error)
 }
 
 type Upstream struct {
@@ -104,6 +113,24 @@ type TagRecord struct {
 	UpdatedAt  time.Time `json:"updated_at"`
 }
 
+type PullKey struct {
+	Alias      string `json:"alias"`
+	Repository string `json:"repository"`
+	Reference  string `json:"reference"`
+}
+
+type PullRecord struct {
+	Key                string    `json:"key,omitempty"`
+	Alias              string    `json:"alias"`
+	Repository         string    `json:"repository"`
+	Reference          string    `json:"reference"`
+	Count              int64     `json:"count"`
+	LastPullAt         time.Time `json:"last_pull_at,omitzero"`
+	LastUpstreamPullAt time.Time `json:"last_upstream_pull_at,omitzero"`
+	CreatedAt          time.Time `json:"created_at"`
+	UpdatedAt          time.Time `json:"updated_at"`
+}
+
 type BlobKey struct {
 	Digest string `json:"digest"`
 }
@@ -132,6 +159,7 @@ type RepoBlobRecord struct {
 	SourceManifest string    `json:"source_manifest,omitempty"`
 	CreatedAt      time.Time `json:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at"`
+	LastAccessAt   time.Time `json:"last_access_at,omitzero"`
 	LastVerifiedAt time.Time `json:"last_verified_at,omitzero"`
 }
 
@@ -140,6 +168,10 @@ func (k ManifestKey) String() string {
 }
 
 func (k TagKey) String() string {
+	return k.Alias + "/" + k.Repository + ":" + k.Reference
+}
+
+func (k PullKey) String() string {
 	return k.Alias + "/" + k.Repository + ":" + k.Reference
 }
 

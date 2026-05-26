@@ -10,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -60,6 +61,81 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	assertHeadBlobHit(t, head, len(body))
 }
 
+func TestBlobProxyTouchesBlobAccessOnLocalHit(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	proxy := cache.NewProxy(client, cache.WithMetadata(metadata), cache.WithObjects(objects))
+
+	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first blob get: %v", err)
+	}
+	_ = readAndClose(t, first.Reader)
+
+	old := time.Now().UTC().Add(-2 * time.Hour)
+	_, err = metadata.UpsertBlob(ctx, meta.BlobRecord{
+		Digest:       digest,
+		Size:         int64(len(body)),
+		MediaType:    "application/octet-stream",
+		ObjectKey:    digest,
+		LastAccessAt: old,
+	})
+	if err != nil {
+		t.Fatalf("set old blob access: %v", err)
+	}
+	_, err = metadata.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
+		Alias:          "hub",
+		Repository:     "library/alpine",
+		Digest:         digest,
+		LastAccessAt:   old,
+		LastVerifiedAt: old,
+	})
+	if err != nil {
+		t.Fatalf("set old repo blob access: %v", err)
+	}
+
+	hit, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("second blob get: %v", err)
+	}
+	assertFullBlobHit(t, hit, body)
+
+	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
+	if err != nil || !ok {
+		t.Fatalf("blob metadata lookup: ok=%v err=%v", ok, err)
+	}
+	if !blob.LastAccessAt.After(old) {
+		t.Fatalf("blob access was not touched: old=%s got=%s", old, blob.LastAccessAt)
+	}
+	repoBlob, ok, err := metadata.RepoBlob(ctx, meta.RepoBlobKey{
+		Alias:      "hub",
+		Repository: "library/alpine",
+		Digest:     digest,
+	})
+	if err != nil || !ok {
+		t.Fatalf("repo blob metadata lookup: ok=%v err=%v", ok, err)
+	}
+	if !repoBlob.LastAccessAt.After(old) {
+		t.Fatalf("repo blob access was not touched: old=%s got=%s", old, repoBlob.LastAccessAt)
+	}
+	if !repoBlob.LastVerifiedAt.Equal(old) {
+		t.Fatalf("repo blob verification time changed: old=%s got=%s", old, repoBlob.LastVerifiedAt)
+	}
+}
+
 func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
 	ctx := context.Background()
 	body := []byte(`{"schemaVersion":2}`)
@@ -103,6 +179,47 @@ func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
 	}
 	if client.manifestGets != 2 {
 		t.Fatalf("manifest gets = %d, want 2", client.manifestGets)
+	}
+}
+
+func TestManifestProxyRecordsPullAndUpstreamPullTimes(t *testing.T) {
+	ctx := context.Background()
+	body := []byte(`{"schemaVersion":2}`)
+	client := &fakeRegistryClient{
+		manifestBody:  body,
+		manifestMedia: distribution.MediaTypeOCIManifest,
+	}
+	metadata, objects := newTestStores(t)
+	proxy := cache.NewProxy(client, cache.WithMetadata(metadata), cache.WithObjects(objects))
+	req := cache.ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/node",
+		Reference:     "20",
+		Accept:        distribution.MediaTypeOCIManifest,
+		Method:        http.MethodGet,
+	}
+
+	if _, err := proxy.Manifests().Get(ctx, req); err != nil {
+		t.Fatalf("first manifest get: %v", err)
+	}
+	pull, ok, err := metadata.Pull(ctx, meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"})
+	if err != nil || !ok {
+		t.Fatalf("pull lookup after miss: ok=%v err=%v", ok, err)
+	}
+	if pull.Count != 1 || pull.LastPullAt.IsZero() || pull.LastUpstreamPullAt.IsZero() {
+		t.Fatalf("unexpected pull record after miss: %#v", pull)
+	}
+	firstUpstreamPullAt := pull.LastUpstreamPullAt
+
+	if _, err := proxy.Manifests().Get(ctx, req); err != nil {
+		t.Fatalf("second manifest get: %v", err)
+	}
+	pull, ok, err = metadata.Pull(ctx, meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"})
+	if err != nil || !ok {
+		t.Fatalf("pull lookup after hit: ok=%v err=%v", ok, err)
+	}
+	if pull.Count != 2 || !pull.LastUpstreamPullAt.Equal(firstUpstreamPullAt) {
+		t.Fatalf("unexpected pull record after hit: %#v", pull)
 	}
 }
 

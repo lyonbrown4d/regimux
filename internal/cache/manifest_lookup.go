@@ -9,6 +9,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func (p manifestProxy) lookup(ctx context.Context, req ManifestRequest, cacheKey string) (*CachedManifest, bool, error) {
@@ -79,7 +80,7 @@ func (p manifestProxy) lookupStale(ctx context.Context, req ManifestRequest) (*C
 	if err != nil || !ok {
 		return nil, false, err
 	}
-	manifest.Headers.Set("Warning", `110 - "Response is stale"`)
+	manifest.Headers.Set(distribution.HeaderWarning, distribution.WarningResponseIsStale)
 	return manifest, true, nil
 }
 

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 const defaultBearerTokenTTL = 5 * time.Minute
@@ -54,7 +55,7 @@ func parseBearerChallenge(header string) bearerChallenge {
 		return bearerChallenge{}
 	}
 	scheme, params, ok := strings.Cut(header, " ")
-	if !ok || !strings.EqualFold(scheme, "Bearer") {
+	if !ok || !strings.EqualFold(scheme, distribution.AuthSchemeBearer) {
 		return bearerChallenge{}
 	}
 

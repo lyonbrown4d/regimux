@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 	"resty.dev/v3"
 )
@@ -20,7 +21,7 @@ func (c *Client) do(ctx context.Context, runtime upstreamRuntime, method, endpoi
 		return resp, nil
 	}
 
-	challenge := parseBearerChallenge(resp.Header.Get("WWW-Authenticate"))
+	challenge := parseBearerChallenge(resp.Header.Get(distribution.HeaderWWWAuthenticate))
 	if challenge.Realm == "" {
 		return resp, nil
 	}
@@ -33,7 +34,7 @@ func (c *Client) do(ctx context.Context, runtime upstreamRuntime, method, endpoi
 		return upstreamResponse{}, err
 	}
 	retryRuntime := runtime
-	retryRuntime.config.Auth = AuthConfig{Type: "bearer", Token: token}
+	retryRuntime.config.Auth = AuthConfig{Type: distribution.AuthSchemeBearer, Token: token}
 	return c.execute(ctx, retryRuntime, method, endpoint, opts...)
 }
 

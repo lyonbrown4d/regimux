@@ -73,6 +73,20 @@ func (s *BboltStore) PutManifest(ctx context.Context, record ManifestRecord) err
 	return nil
 }
 
+func (s *BboltStore) ListManifests(ctx context.Context) ([]ManifestRecord, error) {
+	entries, err := s.manifest.List(ctx)
+	if err != nil {
+		return nil, wrapError(err, "list manifest metadata")
+	}
+	records := make([]ManifestRecord, 0, len(entries))
+	for _, entry := range entries {
+		record := entry.Value
+		record.Headers = cloneHeaders(record.Headers)
+		records = append(records, record)
+	}
+	return records, nil
+}
+
 func preserveTimes(record ManifestRecord, existing func() (*ManifestRecord, bool, error)) ManifestRecord {
 	now := time.Now().UTC()
 	if existing != nil {

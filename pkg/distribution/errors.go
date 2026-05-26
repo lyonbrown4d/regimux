@@ -170,8 +170,8 @@ func WriteError(w http.ResponseWriter, err error) {
 	}
 
 	header := w.Header()
-	header.Set("Content-Type", "application/json")
-	header.Set("Docker-Distribution-Api-Version", APIVersion)
+	header.Set(HeaderContentType, MediaTypeJSON)
+	header.Set(HeaderDockerDistributionAPIVersion, APIVersion)
 	w.WriteHeader(status)
 
 	if err := json.NewEncoder(w).Encode(ErrorResponse{Errors: list.Errors}); err != nil {

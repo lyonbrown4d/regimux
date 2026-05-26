@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
 
@@ -42,11 +43,12 @@ func rangeSpec(header string) (string, bool, error) {
 	if header == "" {
 		return "", false, nil
 	}
-	if !strings.HasPrefix(strings.ToLower(header), "bytes=") {
+	prefix := distribution.RangeUnitBytes + "="
+	if len(header) < len(prefix) || !strings.EqualFold(header[:len(prefix)], prefix) {
 		return "", false, oops.Wrapf(errRangeInvalid, "only bytes ranges are supported")
 	}
 
-	spec := strings.TrimSpace(header[len("bytes="):])
+	spec := strings.TrimSpace(header[len(prefix):])
 	if spec == "" || strings.Contains(spec, ",") {
 		return "", false, oops.Wrapf(errRangeInvalid, "only a single bytes range is supported")
 	}
@@ -129,11 +131,11 @@ func (r HTTPRange) IsOpenEnded() bool {
 func (r HTTPRange) String() string {
 	switch {
 	case r.IsSuffix():
-		return fmt.Sprintf("bytes=-%d", r.End)
+		return fmt.Sprintf("%s=-%d", distribution.RangeUnitBytes, r.End)
 	case r.IsOpenEnded():
-		return fmt.Sprintf("bytes=%d-", r.Start)
+		return fmt.Sprintf("%s=%d-", distribution.RangeUnitBytes, r.Start)
 	default:
-		return fmt.Sprintf("bytes=%d-%d", r.Start, r.End)
+		return fmt.Sprintf("%s=%d-%d", distribution.RangeUnitBytes, r.Start, r.End)
 	}
 }
 
@@ -193,5 +195,5 @@ func (r HTTPRange) Length() int64 {
 
 // ContentRange returns the HTTP Content-Range header value for a concrete range.
 func (r HTTPRange) ContentRange(size int64) string {
-	return fmt.Sprintf("bytes %d-%d/%d", r.Start, r.End, size)
+	return fmt.Sprintf("%s %d-%d/%d", distribution.RangeUnitBytes, r.Start, r.End, size)
 }

@@ -10,6 +10,7 @@ import (
 )
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+const secondTestDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
 func TestBboltStoreManifestCRUD(t *testing.T) {
 	ctx := context.Background()
@@ -99,6 +100,92 @@ func TestBboltStoreRepoBlobCRUD(t *testing.T) {
 	requireNoError(t, "get repo blob", err)
 	if !ok || got.Digest != testDigest {
 		t.Fatalf("unexpected repo blob lookup: ok=%v record=%#v", ok, got)
+	}
+}
+
+func TestBboltStorePullRecords(t *testing.T) {
+	ctx := context.Background()
+	store := newBboltStore(ctx, t)
+	first := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
+	second := first.Add(time.Hour)
+	key := meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}
+
+	pull, err := store.RecordPull(ctx, key, first)
+	requireNoError(t, "record pull", err)
+	if pull.Key != "hub/library/node:20" || pull.Count != 1 || !pull.LastPullAt.Equal(first) {
+		t.Fatalf("unexpected pull record: %#v", pull)
+	}
+	pull, err = store.RecordPull(ctx, key, second)
+	requireNoError(t, "record second pull", err)
+	if pull.Count != 2 || !pull.LastPullAt.Equal(second) || pull.CreatedAt.IsZero() {
+		t.Fatalf("unexpected second pull record: %#v", pull)
+	}
+	pull, err = store.RecordUpstreamPull(ctx, key, second)
+	requireNoError(t, "record upstream pull", err)
+	if pull.Count != 2 || !pull.LastUpstreamPullAt.Equal(second) {
+		t.Fatalf("unexpected upstream pull record: %#v", pull)
+	}
+
+	got, ok, err := store.Pull(ctx, key)
+	requireNoError(t, "get pull", err)
+	if !ok || got.Count != 2 || !got.LastUpstreamPullAt.Equal(second) {
+		t.Fatalf("unexpected pull lookup: ok=%v record=%#v", ok, got)
+	}
+}
+
+func TestBboltStoreListsRecords(t *testing.T) {
+	ctx := context.Background()
+	store := newBboltStore(ctx, t)
+	expires := time.Now().UTC().Add(time.Hour)
+
+	upsertManifest(ctx, t, store, expires)
+	_, err := store.UpsertTag(ctx, meta.TagRecord{
+		Alias:      "hub",
+		Repository: "library/nginx",
+		Reference:  "latest",
+		Digest:     testDigest,
+		ExpiresAt:  expires,
+	})
+	requireNoError(t, "upsert tag", err)
+	_, err = store.UpsertBlob(ctx, meta.BlobRecord{
+		Digest:       secondTestDigest,
+		Size:         42,
+		LastAccessAt: time.Now().UTC(),
+	})
+	requireNoError(t, "upsert blob", err)
+	_, err = store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
+		Alias:      "hub",
+		Repository: "library/nginx",
+		Digest:     secondTestDigest,
+	})
+	requireNoError(t, "upsert repo blob", err)
+	_, err = store.RecordPull(ctx, meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}, time.Now().UTC())
+	requireNoError(t, "record pull", err)
+
+	manifests, err := store.ListManifests(ctx)
+	requireNoError(t, "list manifests", err)
+	if len(manifests) != 1 || manifests[0].Digest != testDigest {
+		t.Fatalf("unexpected manifests: %#v", manifests)
+	}
+	tags, err := store.ListTags(ctx)
+	requireNoError(t, "list tags", err)
+	if len(tags) != 1 || tags[0].Reference != "latest" {
+		t.Fatalf("unexpected tags: %#v", tags)
+	}
+	pulls, err := store.ListPulls(ctx)
+	requireNoError(t, "list pulls", err)
+	if len(pulls) != 1 || pulls[0].Reference != "20" {
+		t.Fatalf("unexpected pulls: %#v", pulls)
+	}
+	blobs, err := store.ListBlobs(ctx)
+	requireNoError(t, "list blobs", err)
+	if len(blobs) != 1 || blobs[0].Digest != secondTestDigest {
+		t.Fatalf("unexpected blobs: %#v", blobs)
+	}
+	repoBlobs, err := store.ListRepoBlobs(ctx)
+	requireNoError(t, "list repo blobs", err)
+	if len(repoBlobs) != 1 || repoBlobs[0].Digest != secondTestDigest || repoBlobs[0].LastAccessAt.IsZero() {
+		t.Fatalf("unexpected repo blobs: %#v", repoBlobs)
 	}
 }
 

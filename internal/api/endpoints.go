@@ -202,9 +202,9 @@ func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route
 		status = http.StatusOK
 	}
 	out := newRegistryOutput(status, result.Headers)
-	out.ContentType = "application/octet-stream"
+	out.ContentType = distribution.MediaTypeOctetStream
 	out.DockerContentDigest = result.Digest
-	out.AcceptRanges = "bytes"
+	out.AcceptRanges = distribution.RangeUnitBytes
 	out.XMirrorCache = string(result.Cache)
 	if method == http.MethodHead {
 		if err := result.Reader.Close(); err != nil {
@@ -239,7 +239,7 @@ func (e *RegistryEndpoint) tagList(ctx context.Context, input *registryInput, ro
 	}
 
 	out := newRegistryOutput(http.StatusOK, result.Headers)
-	out.ContentType = "application/json"
+	out.ContentType = distribution.MediaTypeJSON
 	out.XMirrorCache = string(result.Cache)
 	out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
 	return out

@@ -36,6 +36,23 @@ func tagKeyCodec() keycodec.Codec[TagKey] {
 	)
 }
 
+func pullKeyCodec() keycodec.Codec[PullKey] {
+	return keycodec.Composite(
+		keycodec.Field(keycodec.String(),
+			func(key PullKey) string { return key.Alias },
+			func(target *PullKey, value string) { target.Alias = value },
+		),
+		keycodec.Field(keycodec.String(),
+			func(key PullKey) string { return key.Repository },
+			func(target *PullKey, value string) { target.Repository = value },
+		),
+		keycodec.Field(keycodec.String(),
+			func(key PullKey) string { return key.Reference },
+			func(target *PullKey, value string) { target.Reference = value },
+		),
+	)
+}
+
 func blobKeyCodec() keycodec.Codec[BlobKey] {
 	return keycodec.Composite(
 		keycodec.Field(keycodec.String(),

@@ -7,6 +7,7 @@ type Config struct {
 	Log       LogConfig                 `json:"log"       koanf:"log"       mapstructure:"log"`
 	Cache     CacheConfig               `json:"cache"     koanf:"cache"     mapstructure:"cache"     validate:"required"`
 	Store     StoreConfig               `json:"store"     koanf:"store"     mapstructure:"store"     validate:"required"`
+	Scheduler SchedulerConfig           `json:"scheduler" koanf:"scheduler" mapstructure:"scheduler"`
 	Upstreams map[string]UpstreamConfig `json:"upstreams" koanf:"upstreams" mapstructure:"upstreams" validate:"required,min=1,dive,keys,required,endkeys,required"`
 }
 
@@ -90,6 +91,35 @@ type StoreMetaConfig struct {
 type StoreObjectConfig struct {
 	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local memory"`
 	Path   string `json:"path"   koanf:"path"   mapstructure:"path"`
+}
+
+type SchedulerConfig struct {
+	Enabled         bool                    `json:"enabled"          koanf:"enabled"          mapstructure:"enabled"`
+	DistributedLock bool                    `json:"distributed_lock" koanf:"distributed_lock" mapstructure:"distributed_lock"`
+	LockTTL         time.Duration           `json:"lock_ttl"         koanf:"lock_ttl"         mapstructure:"lock_ttl" validate:"min=0"`
+	Cleanup         SchedulerCleanupConfig  `json:"cleanup"          koanf:"cleanup"          mapstructure:"cleanup"`
+	Prefetch        SchedulerPrefetchConfig `json:"prefetch"         koanf:"prefetch"         mapstructure:"prefetch"`
+}
+
+type SchedulerCleanupConfig struct {
+	Enabled     bool          `json:"enabled"      koanf:"enabled"      mapstructure:"enabled"`
+	Interval    time.Duration `json:"interval"     koanf:"interval"     mapstructure:"interval" validate:"min=0"`
+	UnusedFor   time.Duration `json:"unused_for"   koanf:"unused_for"   mapstructure:"unused_for" validate:"min=0"`
+	MaxDeletes  int           `json:"max_deletes"  koanf:"max_deletes"  mapstructure:"max_deletes" validate:"min=0"`
+	DryRun      bool          `json:"dry_run"      koanf:"dry_run"      mapstructure:"dry_run"`
+	Distributed bool          `json:"distributed"  koanf:"distributed"  mapstructure:"distributed"`
+}
+
+type SchedulerPrefetchConfig struct {
+	Enabled              bool          `json:"enabled"                 koanf:"enabled"                 mapstructure:"enabled"`
+	Interval             time.Duration `json:"interval"                koanf:"interval"                mapstructure:"interval" validate:"min=0"`
+	MaxRecords           int           `json:"max_records"             koanf:"max_records"             mapstructure:"max_records" validate:"min=0"`
+	MinPullCount         int64         `json:"min_pull_count"          koanf:"min_pull_count"          mapstructure:"min_pull_count" validate:"min=0"`
+	TagsPageSize         int           `json:"tags_page_size"          koanf:"tags_page_size"          mapstructure:"tags_page_size" validate:"min=0"`
+	MaxCandidatesPerRepo int           `json:"max_candidates_per_repo" koanf:"max_candidates_per_repo" mapstructure:"max_candidates_per_repo" validate:"min=0"`
+	MaxVersionDistance   int           `json:"max_version_distance"    koanf:"max_version_distance"    mapstructure:"max_version_distance" validate:"min=0"`
+	Accept               string        `json:"accept"                  koanf:"accept"                  mapstructure:"accept"`
+	Distributed          bool          `json:"distributed"             koanf:"distributed"             mapstructure:"distributed"`
 }
 
 type UpstreamConfig struct {

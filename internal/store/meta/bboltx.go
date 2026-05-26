@@ -19,6 +19,7 @@ import (
 const (
 	bucketManifests = "manifests"
 	bucketTags      = "tags"
+	bucketPulls     = "pulls"
 	bucketBlobs     = "blobs"
 	bucketRepoBlobs = "repo_blobs"
 )
@@ -26,6 +27,7 @@ const (
 var metadataBuckets = collectionlist.NewList(
 	bucketManifests,
 	bucketTags,
+	bucketPulls,
 	bucketBlobs,
 	bucketRepoBlobs,
 )
@@ -39,6 +41,7 @@ type BboltStore struct {
 	db       *bboltx.DB
 	manifest *bboltx.Bucket[ManifestKey, ManifestRecord]
 	tags     *bboltx.Bucket[TagKey, TagRecord]
+	pulls    *bboltx.Bucket[PullKey, PullRecord]
 	blobs    *bboltx.Bucket[BlobKey, BlobRecord]
 	repoBlob *bboltx.Bucket[RepoBlobKey, RepoBlobRecord]
 }
@@ -73,6 +76,7 @@ func OpenBboltWithOptions(ctx context.Context, opts BboltOptions) (*BboltStore, 
 		db:       db,
 		manifest: bboltx.NewBucketWithDB(db, bucketManifests, manifestKeyCodec(), codec.JSON[ManifestRecord]()),
 		tags:     bboltx.NewBucketWithDB(db, bucketTags, tagKeyCodec(), codec.JSON[TagRecord]()),
+		pulls:    bboltx.NewBucketWithDB(db, bucketPulls, pullKeyCodec(), codec.JSON[PullRecord]()),
 		blobs:    bboltx.NewBucketWithDB(db, bucketBlobs, blobKeyCodec(), codec.JSON[BlobRecord]()),
 		repoBlob: bboltx.NewBucketWithDB(db, bucketRepoBlobs, repoBlobKeyCodec(), codec.JSON[RepoBlobRecord]()),
 	}

@@ -19,6 +19,7 @@ func Module(configModule, observabilityModule, eventsModule, upstreamModule, sto
 		dix.Providers(
 			dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
 			dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxy),
+			dix.Provider2[*CleanupService, meta.Store, object.Store](NewCleanupService),
 			dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
 				return proxy.Manifests()
 			}),
