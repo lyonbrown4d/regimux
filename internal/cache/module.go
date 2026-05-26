@@ -6,17 +6,19 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/samber/oops"
 )
 
-func Module(configModule, observabilityModule, upstreamModule, storeModule dix.Module) dix.Module {
+func Module(configModule, observabilityModule, eventsModule, upstreamModule, storeModule dix.Module) dix.Module {
 	return dix.NewModule("cache",
-		dix.Imports(configModule, observabilityModule, upstreamModule, storeModule),
+		dix.Imports(configModule, observabilityModule, eventsModule, upstreamModule, storeModule),
 		dix.Providers(
-			dix.Provider2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
-			dix.Provider5[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config](newProxy),
+			dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
+			dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxy),
 			dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
 				return proxy.Manifests()
 			}),
@@ -33,7 +35,7 @@ func Module(configModule, observabilityModule, upstreamModule, storeModule dix.M
 	)
 }
 
-func newBackend(cfg config.Config, logger *slog.Logger) backend.Backend {
+func newBackend(cfg config.Config, logger *slog.Logger) (backend.Backend, error) {
 	switch cfg.Cache.Backend {
 	case "redis":
 		cache, err := backend.NewRedis(backend.KVOptions{
@@ -46,10 +48,9 @@ func newBackend(cfg config.Config, logger *slog.Logger) backend.Backend {
 			Debug:    cfg.Cache.Redis.Debug,
 		})
 		if err != nil {
-			logger.Error("create redis cache backend failed", "error", err)
-			return backend.Noop{}
+			return nil, oops.Wrapf(err, "create redis cache backend")
 		}
-		return cache
+		return cache, nil
 	case "valkey":
 		cache, err := backend.NewValkey(backend.KVOptions{
 			Addrs:    cfg.Cache.Valkey.Addrs,
@@ -61,24 +62,24 @@ func newBackend(cfg config.Config, logger *slog.Logger) backend.Backend {
 			Debug:    cfg.Cache.Valkey.Debug,
 		})
 		if err != nil {
-			logger.Error("create valkey cache backend failed", "error", err)
-			return backend.Noop{}
+			return nil, oops.Wrapf(err, "create valkey cache backend")
 		}
-		return cache
+		return cache, nil
 	default:
 		return backend.NewMemory(backend.MemoryOptions{
 			MaxItems: cfg.Cache.Memory.MaxItems,
 			Prefix:   cfg.Cache.Prefix,
-		})
+		}), nil
 	}
 }
 
-func newProxy(client upstream.RegistryClient, cacheBackend backend.Backend, metadata meta.Store, objects object.Store, cfg config.Config) *Proxy {
+func newProxy(client upstream.RegistryClient, cacheBackend backend.Backend, metadata meta.Store, objects object.Store, cfg config.Config, bus events.Bus) *Proxy {
 	return NewProxy(
 		client,
 		WithBackend(cacheBackend),
 		WithMetadata(metadata),
 		WithObjects(objects),
+		WithEvents(bus),
 		WithManifestTTL(cfg.Cache.Manifest.TagTTL),
 		WithManifestStaleIfError(cfg.Cache.Manifest.StaleIfError),
 		WithManifestMaxStale(cfg.Cache.Manifest.MaxStale),

@@ -13,6 +13,9 @@ func (p tagProxy) List(ctx context.Context, req TagRequest) (*TagsResult, error)
 
 	cacheKey := tagsCacheKey(req)
 	if cached, ok, err := p.cached(ctx, cacheKey); err != nil || ok {
+		if cached != nil {
+			p.publishCacheAccess(ctx, req, cached.Cache)
+		}
 		return cached, err
 	}
 
@@ -20,7 +23,8 @@ func (p tagProxy) List(ctx context.Context, req TagRequest) (*TagsResult, error)
 	if err != nil {
 		return nil, err
 	}
-	p.setCache(ctx, cacheKey, result)
+	p.setCache(ctx, req, cacheKey, result)
+	p.publishCacheAccess(ctx, req, result.Cache)
 	return result, nil
 }
 
@@ -70,7 +74,7 @@ func (p tagProxy) fetch(ctx context.Context, req TagRequest) (*TagsResult, error
 	}, nil
 }
 
-func (p tagProxy) setCache(ctx context.Context, cacheKey string, result *TagsResult) {
+func (p tagProxy) setCache(ctx context.Context, req TagRequest, cacheKey string, result *TagsResult) {
 	if p.cache == nil || p.ttl <= 0 {
 		return
 	}
@@ -81,4 +85,5 @@ func (p tagProxy) setCache(ctx context.Context, cacheKey string, result *TagsRes
 	if err := p.cache.Set(ctx, cacheKey, data, p.ttl); err != nil {
 		return
 	}
+	p.publishCacheStore(ctx, req, result)
 }

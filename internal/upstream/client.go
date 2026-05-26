@@ -7,16 +7,18 @@ import (
 	"strings"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/samber/lo"
 )
 
 type Client struct {
 	upstreams  *collectionmapping.OrderedMap[string, *upstreamPool]
 	tokenCache *bearerTokenCache
+	events     events.Bus
 	logger     *slog.Logger
 }
 
-func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *slog.Logger) *Client {
+func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *slog.Logger, bus events.Bus) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -25,6 +27,7 @@ func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *sl
 		return &Client{
 			upstreams:  upstreams,
 			tokenCache: newBearerTokenCache(),
+			events:     bus,
 			logger:     logger,
 		}
 	}
@@ -38,6 +41,7 @@ func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *sl
 	return &Client{
 		upstreams:  upstreams,
 		tokenCache: newBearerTokenCache(),
+		events:     bus,
 		logger:     logger,
 	}
 }

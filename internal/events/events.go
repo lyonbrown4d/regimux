@@ -4,6 +4,7 @@ package events
 import (
 	"context"
 	"log/slog"
+	"time"
 
 	"github.com/arcgolabs/eventx"
 	"github.com/samber/oops"
@@ -18,6 +19,16 @@ func NewBus(logger *slog.Logger) Bus {
 	}
 	return eventx.New(
 		eventx.WithAntsPool(4),
+		eventx.WithMiddleware(
+			eventx.RecoverMiddleware(),
+			eventx.ObserveMiddleware(func(ctx context.Context, event Event, duration time.Duration, err error) {
+				if err != nil {
+					logger.ErrorContext(ctx, "event dispatch failed", "event", eventName(event), "duration", duration, "error", err)
+					return
+				}
+				logger.DebugContext(ctx, "event dispatched", "event", eventName(event), "duration", duration)
+			}),
+		),
 		eventx.WithAsyncErrorHandler(func(ctx context.Context, event Event, err error) {
 			logger.ErrorContext(ctx, "async event dispatch failed", "event", eventName(event), "error", err)
 		}),
@@ -79,13 +90,48 @@ type ServerStopped struct {
 func (ServerStopped) Name() string { return "server.stopped" }
 
 type UpstreamRequest struct {
-	Alias  string
-	Method string
-	Path   string
-	Status int
+	Alias     string
+	Operation string
+	Registry  string
+	Method    string
+	Path      string
+	Status    int
+	Error     string
 }
 
 func (UpstreamRequest) Name() string { return "upstream.request" }
+
+type UpstreamFailover struct {
+	Alias     string
+	Operation string
+	Registry  string
+	Error     string
+	HasNext   bool
+}
+
+func (UpstreamFailover) Name() string { return "upstream.failover" }
+
+type CacheAccess struct {
+	Kind       string
+	Alias      string
+	Repository string
+	Reference  string
+	Digest     string
+	Status     string
+}
+
+func (CacheAccess) Name() string { return "cache.access" }
+
+type CacheStore struct {
+	Kind       string
+	Alias      string
+	Repository string
+	Reference  string
+	Digest     string
+	Size       int64
+}
+
+func (CacheStore) Name() string { return "cache.store" }
 
 func eventName(event Event) string {
 	if event == nil {

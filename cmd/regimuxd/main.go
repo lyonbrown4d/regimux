@@ -68,9 +68,31 @@ func run(ctx context.Context, configPath string) error {
 		return oops.Wrapf(err, "create logger")
 	}
 
-	runErr := buildApp(cfg, logger, version).RunContext(ctx)
+	app := buildApp(cfg, logger, version)
+	if err := app.ValidateContext(ctx); err != nil {
+		closeErr := logx.Close(logger)
+		return joinPreRunErrors(oops.Wrapf(err, "validate application"), closeErr)
+	}
+
+	runErr := app.RunContext(ctx)
 	closeErr := logx.Close(logger)
 	return joinLifecycleErrors(runErr, closeErr)
+}
+
+func joinPreRunErrors(preRunErr, closeErr error) error {
+	switch {
+	case preRunErr != nil && closeErr != nil:
+		return errors.Join(
+			preRunErr,
+			oops.Wrapf(closeErr, "close logger"),
+		)
+	case preRunErr != nil:
+		return preRunErr
+	case closeErr != nil:
+		return oops.Wrapf(closeErr, "close logger")
+	default:
+		return nil
+	}
 }
 
 func joinLifecycleErrors(runErr, closeErr error) error {
@@ -101,9 +123,9 @@ func buildApp(cfg config.Config, logger *slog.Logger, version string) *dix.App {
 		),
 	)
 	eventsModule := events.Module(observabilityModule)
-	upstreamModule := upstream.Module(configModule, observabilityModule)
+	upstreamModule := upstream.Module(configModule, observabilityModule, eventsModule)
 	storeModule := storemodule.Module(configModule, observabilityModule)
-	cacheModule := cache.Module(configModule, observabilityModule, upstreamModule, storeModule)
+	cacheModule := cache.Module(configModule, observabilityModule, eventsModule, upstreamModule, storeModule)
 	endpointModule := api.EndpointsModule(configModule, cacheModule, observabilityModule)
 	apiModule := api.Module(configModule, observabilityModule, eventsModule, endpointModule)
 	runtimeModule := newRuntimeModule(version, configModule, observabilityModule, eventsModule, apiModule, cacheModule, storeModule)

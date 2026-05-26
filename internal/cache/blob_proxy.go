@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -20,12 +19,23 @@ func (p blobProxy) Get(ctx context.Context, req BlobRequest) (*BlobReadResult, e
 		return nil, err
 	}
 	if cached, ok, err := p.lookup(ctx, req); err != nil || ok {
+		if cached != nil {
+			p.publishCacheAccess(ctx, req, cached.Cache)
+		}
 		return cached, err
 	}
 	if p.shouldBypassStore(req) {
-		return p.fetchPassthrough(ctx, req)
+		result, err := p.fetchPassthrough(ctx, req)
+		if result != nil {
+			p.publishCacheAccess(ctx, req, result.Cache)
+		}
+		return result, err
 	}
-	return p.fetchStored(ctx, req)
+	result, err := p.fetchStored(ctx, req)
+	if result != nil {
+		p.publishCacheAccess(ctx, req, result.Cache)
+	}
+	return result, err
 }
 
 func (p blobProxy) shouldBypassStore(req BlobRequest) bool {
@@ -201,7 +211,11 @@ func (p blobProxy) fetchAndStore(ctx context.Context, req BlobRequest) error {
 	if closeErr != nil {
 		return closeErr
 	}
-	return p.upsertBlobRecords(ctx, req, info, contentTypeFromHeader(resp.Headers))
+	if err := p.upsertBlobRecords(ctx, req, info, contentTypeFromHeader(resp.Headers)); err != nil {
+		return err
+	}
+	p.publishCacheStore(ctx, req, info.Size, info.Digest)
+	return nil
 }
 
 func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info *object.Info, mediaType string) error {
@@ -257,31 +271,4 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 		Headers: headers,
 		Cache:   cacheStatus,
 	}, nil
-}
-
-func blobHeaders(info *object.Info) http.Header {
-	headers := http.Header{}
-	headers.Set("Content-Length", strconv.FormatInt(info.Size, 10))
-	headers.Set("ETag", info.ETag)
-	return headers
-}
-
-func blobReadOptions(req BlobRequest, fullSize int64, headers http.Header) (int, int64, object.GetOptions, error) {
-	status := http.StatusOK
-	size := fullSize
-	opts := object.GetOptions{}
-	if req.Range == nil {
-		return status, size, opts, nil
-	}
-
-	resolved, err := req.Range.Resolve(fullSize)
-	if err != nil {
-		return 0, 0, object.GetOptions{}, distribution.ErrRangeInvalid.WithDetail(err.Error())
-	}
-	status = http.StatusPartialContent
-	size = resolved.Length()
-	headers.Set("Content-Length", strconv.FormatInt(size, 10))
-	headers.Set("Content-Range", resolved.ContentRange(fullSize))
-	opts.Range = req.Range
-	return status, size, opts, nil
 }

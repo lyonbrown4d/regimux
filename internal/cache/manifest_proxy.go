@@ -36,12 +36,14 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 	if cached, ok, err := p.lookup(ctx, req, cacheKey); err != nil {
 		return nil, err
 	} else if ok {
+		p.publishCacheAccess(ctx, req, cached)
 		return cached, nil
 	}
 
 	if result, ok, err := p.revalidate(ctx, req, cacheKey); err != nil {
 		return nil, err
 	} else if ok {
+		p.publishCacheAccess(ctx, req, result)
 		return result, nil
 	}
 
@@ -50,6 +52,7 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 		return p.lookupStaleOrError(ctx, req, err)
 	}
 	p.store(ctx, req, cacheKey, result)
+	p.publishCacheAccess(ctx, req, result)
 	return result, nil
 }
 
@@ -59,6 +62,7 @@ func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestReque
 		return nil, err
 	}
 	if ok {
+		p.publishCacheAccess(ctx, req, stale)
 		return stale, nil
 	}
 	return nil, cause

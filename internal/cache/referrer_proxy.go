@@ -17,6 +17,9 @@ func (p referrerProxy) Get(ctx context.Context, req ReferrerRequest) (*Referrers
 
 	cacheKey := referrersCacheKey(req)
 	if cached, ok, err := p.cached(ctx, cacheKey); err != nil || ok {
+		if cached != nil {
+			p.publishCacheAccess(ctx, req, cached.Cache)
+		}
 		return cached, err
 	}
 
@@ -24,7 +27,8 @@ func (p referrerProxy) Get(ctx context.Context, req ReferrerRequest) (*Referrers
 	if err != nil {
 		return nil, err
 	}
-	p.setCache(ctx, cacheKey, result)
+	p.setCache(ctx, req, cacheKey, result)
+	p.publishCacheAccess(ctx, req, result.Cache)
 	return result, nil
 }
 
@@ -105,7 +109,7 @@ func (p referrerProxy) fetchFallbackTag(ctx context.Context, req ReferrerRequest
 	}, nil
 }
 
-func (p referrerProxy) setCache(ctx context.Context, cacheKey string, result *ReferrersResult) {
+func (p referrerProxy) setCache(ctx context.Context, req ReferrerRequest, cacheKey string, result *ReferrersResult) {
 	if p.cache == nil || p.ttl <= 0 {
 		return
 	}
@@ -116,6 +120,7 @@ func (p referrerProxy) setCache(ctx context.Context, cacheKey string, result *Re
 	if err := p.cache.Set(ctx, cacheKey, data, p.ttl); err != nil {
 		return
 	}
+	p.publishCacheStore(ctx, req, result)
 }
 
 func isManifestUnknown(err error) bool {

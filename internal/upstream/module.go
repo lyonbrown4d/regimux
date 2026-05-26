@@ -6,19 +6,20 @@ import (
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/events"
 )
 
-func Module(configModule, observabilityModule dix.Module) dix.Module {
+func Module(configModule, observabilityModule, eventsModule dix.Module) dix.Module {
 	return dix.NewModule("upstream",
-		dix.Imports(configModule, observabilityModule),
+		dix.Imports(configModule, observabilityModule, eventsModule),
 		dix.Providers(
-			dix.Provider2[*Client, config.Config, *slog.Logger](newClient, dix.As[RegistryClient]()),
+			dix.Provider3[*Client, config.Config, *slog.Logger, events.Bus](newClient, dix.As[RegistryClient]()),
 		),
 	)
 }
 
-func newClient(cfg config.Config, logger *slog.Logger) *Client {
-	return NewClient(toUpstreamConfigs(cfg.OrderedUpstreams()), logger)
+func newClient(cfg config.Config, logger *slog.Logger, bus events.Bus) *Client {
+	return NewClient(toUpstreamConfigs(cfg.OrderedUpstreams()), logger, bus)
 }
 
 func toUpstreamConfigs(configs *collectionmapping.OrderedMap[string, config.UpstreamConfig]) *collectionmapping.OrderedMap[string, Config] {

@@ -27,7 +27,7 @@ func newTestClient(configs map[string]upstream.Config) *upstream.Client {
 	for _, alias := range aliases {
 		ordered.Set(alias, configs[alias])
 	}
-	return upstream.NewClient(ordered, nil)
+	return upstream.NewClient(ordered, nil, nil)
 }
 
 func requireEqual[T comparable](t *testing.T, got, want T, label string) {

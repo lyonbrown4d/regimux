@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
@@ -27,6 +28,7 @@ type Proxy struct {
 	tagsTTL              time.Duration
 	referrersTTL         time.Duration
 	referrersFallbackTag bool
+	events               events.Bus
 	manifestGroup        singleflight.Group
 	blobGroup            singleflight.Group
 }
@@ -41,6 +43,7 @@ type Options struct {
 	TagsTTL              time.Duration
 	ReferrersTTL         time.Duration
 	ReferrersFallbackTag bool
+	Events               events.Bus
 }
 
 type Option func(*Proxy)
@@ -99,6 +102,12 @@ func WithReferrersFallbackTag(enabled bool) Option {
 	}
 }
 
+func WithEvents(bus events.Bus) Option {
+	return func(p *Proxy) {
+		p.events = bus
+	}
+}
+
 func NewProxy(client upstream.RegistryClient, opts ...Option) *Proxy {
 	p := &Proxy{
 		client:           client,
@@ -125,6 +134,7 @@ func (p *Proxy) Manifests() ManifestService {
 		cache:        p.cache,
 		metadata:     p.metadata,
 		objects:      p.objects,
+		events:       p.events,
 		ttl:          p.manifestTTL,
 		staleIfError: p.manifestStaleIfError,
 		maxStale:     p.manifestMaxStale,
@@ -137,6 +147,7 @@ func (p *Proxy) Blobs() BlobService {
 		client:   p.client,
 		metadata: p.metadata,
 		objects:  p.objects,
+		events:   p.events,
 		group:    &p.blobGroup,
 	}
 }
@@ -145,6 +156,7 @@ func (p *Proxy) Tags() TagService {
 	return tagProxy{
 		client: p.client,
 		cache:  p.cache,
+		events: p.events,
 		ttl:    p.tagsTTL,
 	}
 }
@@ -153,6 +165,7 @@ func (p *Proxy) Referrers() ReferrerService {
 	return referrerProxy{
 		client:      p.client,
 		cache:       p.cache,
+		events:      p.events,
 		ttl:         p.referrersTTL,
 		fallbackTag: p.referrersFallbackTag,
 	}
@@ -163,6 +176,7 @@ type manifestProxy struct {
 	cache        backend.Backend
 	metadata     meta.Store
 	objects      object.Store
+	events       events.Bus
 	ttl          time.Duration
 	staleIfError bool
 	maxStale     time.Duration
@@ -173,18 +187,21 @@ type blobProxy struct {
 	client   upstream.RegistryClient
 	metadata meta.Store
 	objects  object.Store
+	events   events.Bus
 	group    *singleflight.Group
 }
 
 type tagProxy struct {
 	client upstream.RegistryClient
 	cache  backend.Backend
+	events events.Bus
 	ttl    time.Duration
 }
 
 type referrerProxy struct {
 	client      upstream.RegistryClient
 	cache       backend.Backend
+	events      events.Bus
 	ttl         time.Duration
 	fallbackTag bool
 }

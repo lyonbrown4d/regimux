@@ -26,6 +26,7 @@ func (p manifestProxy) store(ctx context.Context, req ManifestRequest, cacheKey 
 		p.storeManifestMetadata(ctx, req, record)
 	}
 	p.setManifestCache(ctx, cacheKey, record, manifest.Body, ttl)
+	p.publishCacheStore(ctx, req, manifest)
 }
 
 func newManifestRecord(req ManifestRequest, cacheKey string, manifest *CachedManifest, ttl time.Duration) meta.ManifestRecord {

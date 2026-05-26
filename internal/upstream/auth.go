@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/url"
 	"strings"
-	"sync"
 	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
@@ -39,8 +38,7 @@ type bearerTokenCacheEntry struct {
 }
 
 type bearerTokenCache struct {
-	mu      sync.Mutex
-	entries *collectionmapping.Map[bearerTokenCacheKey, bearerTokenCacheEntry]
+	entries *collectionmapping.ConcurrentMap[bearerTokenCacheKey, bearerTokenCacheEntry]
 }
 
 type bearerTokenResponse struct {
@@ -81,7 +79,7 @@ func parseBearerChallenge(header string) bearerChallenge {
 
 func newBearerTokenCache() *bearerTokenCache {
 	return &bearerTokenCache{
-		entries: collectionmapping.NewMap[bearerTokenCacheKey, bearerTokenCacheEntry](),
+		entries: collectionmapping.NewConcurrentMap[bearerTokenCacheKey, bearerTokenCacheEntry](),
 	}
 }
 
@@ -90,15 +88,18 @@ func (c *bearerTokenCache) get(key bearerTokenCacheKey) (string, bool) {
 		return "", false
 	}
 	now := time.Now()
-	c.mu.Lock()
-	defer c.mu.Unlock()
-
 	entry, ok := c.entries.Get(key)
 	if !ok {
 		return "", false
 	}
 	if !entry.ExpiresAt.After(now) {
-		c.entries.Delete(key)
+		deleted, deletedOK := c.entries.LoadAndDelete(key)
+		if deletedOK && deleted != entry && deleted.ExpiresAt.After(now) {
+			actual, _ := c.entries.GetOrStore(key, deleted)
+			if actual.ExpiresAt.After(now) {
+				return actual.Token, true
+			}
+		}
 		return "", false
 	}
 	return entry.Token, true
@@ -108,8 +109,6 @@ func (c *bearerTokenCache) set(key bearerTokenCacheKey, token string, expiresAt 
 	if c == nil || token == "" || !expiresAt.After(time.Now()) {
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
 	c.entries.Set(key, bearerTokenCacheEntry{Token: token, ExpiresAt: expiresAt})
 }
 

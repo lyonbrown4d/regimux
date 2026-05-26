@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -32,6 +33,7 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 			return lastErr
 		}
 		c.logFailover(alias, operation, runtime, lastErr, i < len(runtimes)-1)
+		c.publishFailover(ctx, alias, operation, runtime, lastErr, i < len(runtimes)-1)
 	}
 	return lastErr
 }
@@ -41,6 +43,25 @@ func runAgainstRuntime(runtime upstreamRuntime, fn func(upstreamRuntime) error) 
 		return distribution.ErrUpstream.WithDetail(runtime.err.Error())
 	}
 	return fn(runtime)
+}
+
+func (c *Client) publishFailover(ctx context.Context, alias, operation string, runtime upstreamRuntime, err error, hasNext bool) {
+	if c == nil || c.events == nil {
+		return
+	}
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
+	if publishErr := events.Publish(ctx, c.events, events.UpstreamFailover{
+		Alias:     alias,
+		Operation: operation,
+		Registry:  runtime.config.Registry,
+		Error:     message,
+		HasNext:   hasNext,
+	}); publishErr != nil {
+		return
+	}
 }
 
 func (c *Client) logFailover(alias, operation string, runtime upstreamRuntime, err error, hasNext bool) {
@@ -61,8 +82,7 @@ func shouldFailover(err error) bool {
 		return false
 	}
 
-	var statusErr *upstreamHTTPStatusError
-	if errors.As(err, &statusErr) {
+	if statusErr, ok := errors.AsType[*upstreamHTTPStatusError](err); ok {
 		return statusErr.status == http.StatusTooManyRequests || statusErr.status >= http.StatusInternalServerError
 	}
 
