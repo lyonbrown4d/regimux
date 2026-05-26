@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -98,6 +99,124 @@ func TestClientGetManifestBearerChallenge(t *testing.T) {
 	}
 	if manifestRequests != 2 {
 		t.Fatalf("manifest requests = %d, want 2", manifestRequests)
+	}
+}
+
+func TestClientGetManifestCachesBearerTokenForSameScope(t *testing.T) {
+	t.Parallel()
+
+	var tokenRequests int
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenRequests++
+		if got := r.URL.Query().Get("scope"); got != "repository:library/nginx:pull" {
+			t.Errorf("token scope = %q, want repository:library/nginx:pull", got)
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token":      "cached-token",
+			"expires_in": 3600,
+			"issued_at":  time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}))
+	defer authServer.Close()
+
+	registryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Path; got != "/v2/library/nginx/manifests/latest" {
+			t.Errorf("manifest path = %q, want /v2/library/nginx/manifests/latest", got)
+		}
+		if got := r.Header.Get("Authorization"); got == "" {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authServer.URL))
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		} else if got != "Bearer cached-token" {
+			t.Errorf("manifest authorization = %q, want cached token", got)
+		}
+		_, _ = io.WriteString(w, `{"schemaVersion":2}`)
+	}))
+	defer registryServer.Close()
+
+	client := NewClient(map[string]Config{
+		"hub": {Registry: registryServer.URL},
+	}, nil)
+
+	for i := 0; i < 2; i++ {
+		resp, err := client.GetManifest(context.Background(), GetManifestRequest{
+			UpstreamAlias: "hub",
+			Repo:          "library/nginx",
+			Reference:     "latest",
+		})
+		if err != nil {
+			t.Fatalf("GetManifest #%d returned error: %v", i+1, err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	if tokenRequests != 1 {
+		t.Fatalf("token requests = %d, want 1", tokenRequests)
+	}
+}
+
+func TestClientGetManifestDoesNotShareBearerTokenAcrossScopes(t *testing.T) {
+	t.Parallel()
+
+	var tokenRequests int
+	authServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tokenRequests++
+		var token string
+		switch got := r.URL.Query().Get("scope"); got {
+		case "repository:library/nginx:pull":
+			token = "nginx-token"
+		case "repository:library/redis:pull":
+			token = "redis-token"
+		default:
+			t.Errorf("token scope = %q, want nginx or redis repository scope", got)
+			token = "unexpected-token"
+		}
+		_ = json.NewEncoder(w).Encode(map[string]any{
+			"token":      token,
+			"expires_in": 3600,
+			"issued_at":  time.Now().UTC().Format(time.RFC3339Nano),
+		})
+	}))
+	defer authServer.Close()
+
+	expectedAuth := map[string]string{
+		"/v2/library/nginx/manifests/latest": "Bearer nginx-token",
+		"/v2/library/redis/manifests/latest": "Bearer redis-token",
+	}
+	registryServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wantAuth, ok := expectedAuth[r.URL.Path]
+		if !ok {
+			t.Errorf("manifest path = %q, want nginx or redis manifest", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got == "" {
+			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authServer.URL))
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		} else if got != wantAuth {
+			t.Errorf("manifest authorization = %q, want %q", got, wantAuth)
+		}
+		_, _ = io.WriteString(w, `{"schemaVersion":2}`)
+	}))
+	defer registryServer.Close()
+
+	client := NewClient(map[string]Config{
+		"hub": {Registry: registryServer.URL},
+	}, nil)
+
+	for _, repo := range []string{"library/nginx", "library/redis"} {
+		resp, err := client.GetManifest(context.Background(), GetManifestRequest{
+			UpstreamAlias: "hub",
+			Repo:          repo,
+			Reference:     "latest",
+		})
+		if err != nil {
+			t.Fatalf("GetManifest %s returned error: %v", repo, err)
+		}
+		_ = resp.Body.Close()
+	}
+
+	if tokenRequests != 2 {
+		t.Fatalf("token requests = %d, want 2", tokenRequests)
 	}
 }
 
@@ -243,6 +362,60 @@ func TestClientGetManifestFailsOverMirrors(t *testing.T) {
 	}
 }
 
+func TestClientGetManifestDoesNotFailOverUnauthorizedMirror(t *testing.T) {
+	t.Parallel()
+
+	var unauthorizedMirrorRequests int
+	unauthorizedMirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		unauthorizedMirrorRequests++
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer unauthorizedMirror.Close()
+
+	var secondMirrorRequests int
+	secondMirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		secondMirrorRequests++
+		_, _ = io.WriteString(w, `{"schemaVersion":2}`)
+	}))
+	defer secondMirror.Close()
+
+	var primaryRequests int
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		primaryRequests++
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer primary.Close()
+
+	client := NewClient(map[string]Config{
+		"hub": {
+			Registry:     primary.URL,
+			Mirrors:      []string{unauthorizedMirror.URL, secondMirror.URL},
+			MirrorPolicy: "ordered",
+		},
+	}, nil)
+
+	_, err := client.GetManifest(context.Background(), GetManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/nginx",
+		Reference:     "latest",
+	})
+	if err == nil {
+		t.Fatal("GetManifest returned nil error, want unauthorized")
+	}
+	if list := distribution.FromError(err); list.Status != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want 401", list.Status)
+	}
+	if unauthorizedMirrorRequests != 1 {
+		t.Fatalf("unauthorized mirror requests = %d, want 1", unauthorizedMirrorRequests)
+	}
+	if secondMirrorRequests != 0 {
+		t.Fatalf("second mirror requests = %d, want 0", secondMirrorRequests)
+	}
+	if primaryRequests != 0 {
+		t.Fatalf("primary requests = %d, want 0", primaryRequests)
+	}
+}
+
 func TestClientRoundRobinStartsOnNextMirror(t *testing.T) {
 	t.Parallel()
 
@@ -316,6 +489,68 @@ func TestRegistryURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			if got := registryURL(tt.registry, tt.repo, tt.operation, tt.value); got != tt.want {
 				t.Fatalf("registryURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestShouldFailover(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{
+			name: "network error",
+			err:  fmt.Errorf("dial tcp: connection refused"),
+			want: true,
+		},
+		{
+			name: "client creation error",
+			err:  distribution.ErrUpstream.WithDetail("invalid registry URL"),
+			want: true,
+		},
+		{
+			name: "bad request",
+			err:  mapStatus(http.StatusBadRequest, "manifest"),
+			want: false,
+		},
+		{
+			name: "unauthorized",
+			err:  mapStatus(http.StatusUnauthorized, "manifest"),
+			want: false,
+		},
+		{
+			name: "forbidden",
+			err:  mapStatus(http.StatusForbidden, "manifest"),
+			want: false,
+		},
+		{
+			name: "not found",
+			err:  mapStatus(http.StatusNotFound, "manifest"),
+			want: false,
+		},
+		{
+			name: "rate limited",
+			err:  mapStatus(http.StatusTooManyRequests, "manifest"),
+			want: true,
+		},
+		{
+			name: "server error",
+			err:  mapStatus(http.StatusBadGateway, "manifest"),
+			want: true,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			if got := shouldFailover(tt.err); got != tt.want {
+				t.Fatalf("shouldFailover() = %t, want %t", got, tt.want)
 			}
 		})
 	}

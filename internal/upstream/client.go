@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -21,8 +22,9 @@ import (
 const defaultUserAgent = "regimux/dev"
 
 type Client struct {
-	upstreams *collectionmapping.OrderedMap[string, *upstreamPool]
-	logger    *slog.Logger
+	upstreams  *collectionmapping.OrderedMap[string, *upstreamPool]
+	tokenCache *bearerTokenCache
+	logger     *slog.Logger
 }
 
 type upstreamPool struct {
@@ -38,6 +40,25 @@ type upstreamRuntime struct {
 	err    error
 }
 
+type upstreamHTTPStatusError struct {
+	status int
+	err    error
+}
+
+func (e *upstreamHTTPStatusError) Error() string {
+	if e == nil || e.err == nil {
+		return "upstream returned an unsuccessful status"
+	}
+	return e.err.Error()
+}
+
+func (e *upstreamHTTPStatusError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
 type requestOption func(*resty.Request)
 
 func NewClient(configs map[string]Config, logger *slog.Logger) *Client {
@@ -51,8 +72,9 @@ func NewClient(configs map[string]Config, logger *slog.Logger) *Client {
 	}
 
 	return &Client{
-		upstreams: upstreams,
-		logger:    logger,
+		upstreams:  upstreams,
+		tokenCache: newBearerTokenCache(),
+		logger:     logger,
 	}
 }
 
@@ -307,26 +329,19 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, method, e
 }
 
 func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challenge bearerChallenge, fallbackScope string) (string, error) {
-	realm, err := url.Parse(challenge.Realm)
+	tokenReq, err := newBearerTokenRequest(runtime.config, challenge, fallbackScope)
 	if err != nil {
 		return "", err
 	}
-	query := realm.Query()
-	if challenge.Service != "" {
-		query.Set("service", challenge.Service)
+	if token, ok := c.tokenCache.get(tokenReq.CacheKey); ok {
+		return token, nil
 	}
-	if challenge.Scope != "" {
-		query.Set("scope", challenge.Scope)
-	} else if fallbackScope != "" {
-		query.Set("scope", fallbackScope)
-	}
-	realm.RawQuery = query.Encode()
 
 	req := runtime.client.R().SetDoNotParseResponse(true)
 	if runtime.config.Auth.Username != "" || runtime.config.Auth.Password != "" {
 		req.SetBasicAuth(runtime.config.Auth.Username, runtime.config.Auth.Password)
 	}
-	resp, err := runtime.client.Execute(ctx, req, http.MethodGet, realm.String())
+	resp, err := runtime.client.Execute(ctx, req, http.MethodGet, tokenReq.URL)
 	if err != nil {
 		return "", err
 	}
@@ -338,12 +353,7 @@ func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challe
 	if raw.StatusCode < 200 || raw.StatusCode >= 300 {
 		return "", mapStatus(raw.StatusCode, "token")
 	}
-	var tokenResp struct {
-		Token       string `json:"token"`
-		AccessToken string `json:"access_token"`
-		ExpiresIn   int    `json:"expires_in"`
-		IssuedAt    string `json:"issued_at"`
-	}
+	var tokenResp bearerTokenResponse
 	if err := decodeJSON(raw.Body, &tokenResp); err != nil {
 		return "", err
 	}
@@ -351,6 +361,7 @@ func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challe
 	if token == "" {
 		return "", fmt.Errorf("upstream token response did not include a token")
 	}
+	c.tokenCache.set(tokenReq.CacheKey, token, bearerTokenExpiresAt(tokenResp))
 	return token, nil
 }
 
@@ -373,6 +384,9 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return ctxErr
 		}
+		if !shouldFailover(lastErr) {
+			return lastErr
+		}
 		if i < len(runtimes)-1 && c.logger != nil {
 			c.logger.Warn(
 				"upstream endpoint failed; trying next endpoint",
@@ -387,6 +401,30 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 		return distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + alias)
 	}
 	return lastErr
+}
+
+func shouldFailover(err error) bool {
+	if err == nil {
+		return false
+	}
+
+	var statusErr *upstreamHTTPStatusError
+	if errors.As(err, &statusErr) {
+		return statusErr.status == http.StatusTooManyRequests || statusErr.status >= http.StatusInternalServerError
+	}
+
+	list := distribution.FromError(err)
+	if list == nil {
+		return false
+	}
+	switch list.Status {
+	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
+		return false
+	case http.StatusTooManyRequests:
+		return true
+	default:
+		return list.Status >= http.StatusInternalServerError
+	}
 }
 
 func (c *Client) upstream(alias string) (*upstreamPool, error) {
@@ -495,22 +533,26 @@ func repositoryScope(repo, action string) string {
 func mapStatus(status int, kind string) error {
 	switch status {
 	case http.StatusUnauthorized:
-		return distribution.ErrUnauthorized
+		return withUpstreamStatus(status, distribution.ErrUnauthorized)
 	case http.StatusForbidden:
-		return distribution.ErrDenied
+		return withUpstreamStatus(status, distribution.ErrDenied)
 	case http.StatusNotFound:
 		if kind == "blob" {
-			return distribution.ErrBlobUnknown
+			return withUpstreamStatus(status, distribution.ErrBlobUnknown)
 		}
-		return distribution.ErrManifestUnknown
+		return withUpstreamStatus(status, distribution.ErrManifestUnknown)
 	case http.StatusTooManyRequests:
-		return distribution.ErrTooManyRequests
+		return withUpstreamStatus(status, distribution.ErrTooManyRequests)
 	default:
 		if status >= 500 {
-			return distribution.ErrUpstream.WithDetail(status)
+			return withUpstreamStatus(status, distribution.ErrUpstream.WithDetail(status))
 		}
-		return distribution.ErrUpstream.WithDetail(map[string]any{"status": status, "kind": kind})
+		return withUpstreamStatus(status, distribution.ErrUpstream.WithDetail(map[string]any{"status": status, "kind": kind}))
 	}
+}
+
+func withUpstreamStatus(status int, err error) error {
+	return &upstreamHTTPStatusError{status: status, err: err}
 }
 
 func methodOr(method, fallback string) string {

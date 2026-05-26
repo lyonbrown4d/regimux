@@ -82,6 +82,148 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	}
 }
 
+func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
+	ctx := context.Background()
+	body := []byte(`{"schemaVersion":2}`)
+	client := &fakeRegistryClient{
+		manifestBody:  body,
+		manifestMedia: distribution.MediaTypeDockerManifest,
+	}
+	metadata, objects := newTestStores(t)
+	proxy := NewProxy(
+		client,
+		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		WithMetadata(metadata),
+		WithObjects(objects),
+		WithManifestTTL(time.Minute),
+	)
+
+	head, err := proxy.Manifests().Get(ctx, ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodHead,
+	})
+	if err != nil {
+		t.Fatalf("head manifest get: %v", err)
+	}
+	if head.Cache != CacheBypass || len(head.Body) != 0 {
+		t.Fatalf("unexpected head result: cache=%s body=%q", head.Cache, head.Body)
+	}
+
+	get, err := proxy.Manifests().Get(ctx, ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("get manifest after head: %v", err)
+	}
+	if get.Cache != CacheBypass || !bytes.Equal(get.Body, body) {
+		t.Fatalf("unexpected get result: cache=%s body=%q", get.Cache, get.Body)
+	}
+	if client.manifestGets != 2 {
+		t.Fatalf("manifest gets = %d, want 2", client.manifestGets)
+	}
+}
+
+func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
+	ctx := context.Background()
+	body := []byte(`{"schemaVersion":2}`)
+	client := &fakeRegistryClient{
+		manifestBody:  body,
+		manifestMedia: distribution.MediaTypeDockerManifest,
+	}
+	metadata, objects := newTestStores(t)
+	proxy := NewProxy(
+		client,
+		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		WithMetadata(metadata),
+		WithObjects(objects),
+		WithManifestTTL(time.Nanosecond),
+		WithManifestStaleIfError(true),
+		WithManifestMaxStale(time.Hour),
+	)
+
+	first, err := proxy.Manifests().Get(ctx, ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first manifest get: %v", err)
+	}
+	if first.Cache != CacheBypass {
+		t.Fatalf("first cache status = %s, want bypass", first.Cache)
+	}
+
+	time.Sleep(5 * time.Millisecond)
+	client.manifestErr = distribution.ErrUpstream.WithDetail("registry unavailable")
+	stale, err := proxy.Manifests().Get(ctx, ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("stale manifest get: %v", err)
+	}
+	if stale.Cache != CacheStale || !bytes.Equal(stale.Body, body) {
+		t.Fatalf("unexpected stale result: cache=%s body=%q", stale.Cache, stale.Body)
+	}
+	if got := stale.Headers.Get("Warning"); got != `110 - "Response is stale"` {
+		t.Fatalf("warning = %q", got)
+	}
+}
+
+func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
+	ctx := context.Background()
+	body := []byte(`{"schemaVersion":2}`)
+	client := &fakeRegistryClient{
+		manifestBody:  body,
+		manifestMedia: distribution.MediaTypeDockerManifest,
+	}
+	metadata, objects := newTestStores(t)
+	proxy := NewProxy(
+		client,
+		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		WithMetadata(metadata),
+		WithObjects(objects),
+		WithManifestTTL(time.Nanosecond),
+	)
+
+	first, err := proxy.Manifests().Get(ctx, ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first manifest get: %v", err)
+	}
+	time.Sleep(5 * time.Millisecond)
+	second, err := proxy.Manifests().Get(ctx, ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("revalidated manifest get: %v", err)
+	}
+	if second.Cache != CacheHit || !bytes.Equal(second.Body, body) {
+		t.Fatalf("unexpected revalidated result: cache=%s body=%q", second.Cache, second.Body)
+	}
+	if client.manifestGets != 2 || client.manifestHeads != 1 {
+		t.Fatalf("manifest calls = gets:%d heads:%d, want gets:2 heads:1", client.manifestGets, client.manifestHeads)
+	}
+	if first.Digest != second.Digest {
+		t.Fatalf("digest changed: first=%s second=%s", first.Digest, second.Digest)
+	}
+}
+
 func TestTagProxyCachesAndRewritesLink(t *testing.T) {
 	ctx := context.Background()
 	client := &fakeRegistryClient{
@@ -207,6 +349,8 @@ type fakeRegistryClient struct {
 	manifestMedia     string
 	manifestReference string
 	manifestGets      int
+	manifestHeads     int
+	manifestErr       error
 }
 
 func (c *fakeRegistryClient) Ping(context.Context, string) error {
@@ -216,8 +360,18 @@ func (c *fakeRegistryClient) Ping(context.Context, string) error {
 func (c *fakeRegistryClient) GetManifest(_ context.Context, req upstream.GetManifestRequest) (*upstream.ManifestResponse, error) {
 	c.manifestGets++
 	c.manifestReference = req.Reference
+	if req.Method == http.MethodHead {
+		c.manifestHeads++
+	}
+	if c.manifestErr != nil {
+		return nil, c.manifestErr
+	}
+	body := c.manifestBody
+	if req.Method == http.MethodHead {
+		body = nil
+	}
 	return &upstream.ManifestResponse{
-		Body:      io.NopCloser(bytes.NewReader(c.manifestBody)),
+		Body:      io.NopCloser(bytes.NewReader(body)),
 		Digest:    testDigestFor(c.manifestBody),
 		MediaType: c.manifestMedia,
 		Size:      int64(len(c.manifestBody)),

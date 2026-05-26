@@ -80,6 +80,8 @@ func newProxy(client upstream.RegistryClient, cacheBackend backend.Backend, meta
 		WithMetadata(metadata),
 		WithObjects(objects),
 		WithManifestTTL(cfg.Cache.Manifest.TagTTL),
+		WithManifestStaleIfError(cfg.Cache.Manifest.StaleIfError),
+		WithManifestMaxStale(cfg.Cache.Manifest.MaxStale),
 		WithTagsTTL(cfg.Cache.Tags.TTL),
 		WithReferrersTTL(cfg.Cache.Referrers.TTL),
 		WithReferrersFallbackTag(cfg.Cache.Referrers.FallbackTag),

@@ -21,6 +21,7 @@ func TestNewServerRegistersEndpoints(t *testing.T) {
 	assertRoute(t, server, http.MethodHead, "/v2")
 	assertRoute(t, server, http.MethodGet, "/v2/hub/library/alpine/manifests/latest")
 	assertRoute(t, server, http.MethodHead, "/v2/hub/library/alpine/blobs/sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	assertRoute(t, server, http.MethodPost, "/v2/hub/library/alpine/blobs/uploads/")
 }
 
 func assertRoute(t *testing.T, server *Server, method, path string) {

@@ -3,6 +3,9 @@ package cache
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -27,6 +30,8 @@ type Proxy struct {
 	metadata             meta.Store
 	objects              object.Store
 	manifestTTL          time.Duration
+	manifestStaleIfError bool
+	manifestMaxStale     time.Duration
 	tagsTTL              time.Duration
 	referrersTTL         time.Duration
 	referrersFallbackTag bool
@@ -39,6 +44,8 @@ type Options struct {
 	Metadata             meta.Store
 	Objects              object.Store
 	ManifestTTL          time.Duration
+	ManifestStaleIfError bool
+	ManifestMaxStale     time.Duration
 	TagsTTL              time.Duration
 	ReferrersTTL         time.Duration
 	ReferrersFallbackTag bool
@@ -70,6 +77,18 @@ func WithManifestTTL(ttl time.Duration) Option {
 	}
 }
 
+func WithManifestStaleIfError(enabled bool) Option {
+	return func(p *Proxy) {
+		p.manifestStaleIfError = enabled
+	}
+}
+
+func WithManifestMaxStale(ttl time.Duration) Option {
+	return func(p *Proxy) {
+		p.manifestMaxStale = ttl
+	}
+}
+
 func WithTagsTTL(ttl time.Duration) Option {
 	return func(p *Proxy) {
 		p.tagsTTL = ttl
@@ -90,11 +109,12 @@ func WithReferrersFallbackTag(enabled bool) Option {
 
 func NewProxy(client upstream.RegistryClient, opts ...Option) *Proxy {
 	p := &Proxy{
-		client:       client,
-		cache:        backend.Noop{},
-		manifestTTL:  10 * time.Minute,
-		tagsTTL:      5 * time.Minute,
-		referrersTTL: 5 * time.Minute,
+		client:           client,
+		cache:            backend.Noop{},
+		manifestTTL:      10 * time.Minute,
+		manifestMaxStale: 168 * time.Hour,
+		tagsTTL:          5 * time.Minute,
+		referrersTTL:     5 * time.Minute,
 	}
 	for _, opt := range opts {
 		if opt != nil {
@@ -109,12 +129,14 @@ func NewProxy(client upstream.RegistryClient, opts ...Option) *Proxy {
 
 func (p *Proxy) Manifests() ManifestService {
 	return manifestProxy{
-		client:   p.client,
-		cache:    p.cache,
-		metadata: p.metadata,
-		objects:  p.objects,
-		ttl:      p.manifestTTL,
-		group:    &p.manifestGroup,
+		client:       p.client,
+		cache:        p.cache,
+		metadata:     p.metadata,
+		objects:      p.objects,
+		ttl:          p.manifestTTL,
+		staleIfError: p.manifestStaleIfError,
+		maxStale:     p.manifestMaxStale,
+		group:        &p.manifestGroup,
 	}
 }
 
@@ -145,12 +167,14 @@ func (p *Proxy) Referrers() ReferrerService {
 }
 
 type manifestProxy struct {
-	client   upstream.RegistryClient
-	cache    backend.Backend
-	metadata meta.Store
-	objects  object.Store
-	ttl      time.Duration
-	group    *singleflight.Group
+	client       upstream.RegistryClient
+	cache        backend.Backend
+	metadata     meta.Store
+	objects      object.Store
+	ttl          time.Duration
+	staleIfError bool
+	maxStale     time.Duration
+	group        *singleflight.Group
 }
 
 func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedManifest, error) {
@@ -168,8 +192,18 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 
 	cacheKey := manifestCacheKey(req)
 	if p.group == nil {
+		if result, ok, err := p.revalidate(ctx, req, cacheKey); err != nil {
+			return nil, err
+		} else if ok {
+			return result, nil
+		}
 		result, err := p.fetch(ctx, req)
 		if err != nil {
+			if stale, ok, staleErr := p.lookupStale(ctx, req); staleErr != nil {
+				return nil, staleErr
+			} else if ok {
+				return stale, nil
+			}
 			return nil, err
 		}
 		p.store(ctx, req, cacheKey, result)
@@ -184,8 +218,18 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 			}
 			return cached, nil
 		}
+		if result, ok, err := p.revalidate(ctx, req, cacheKey); err != nil {
+			return nil, err
+		} else if ok {
+			return result, nil
+		}
 		result, err := p.fetch(ctx, req)
 		if err != nil {
+			if stale, ok, staleErr := p.lookupStale(ctx, req); staleErr != nil {
+				return nil, staleErr
+			} else if ok {
+				return stale, nil
+			}
 			return nil, err
 		}
 		p.store(ctx, req, cacheKey, result)
@@ -221,15 +265,86 @@ func (p manifestProxy) fetch(ctx context.Context, req ManifestRequest) (*CachedM
 			return nil, fmt.Errorf("read manifest body: %w", err)
 		}
 	}
+	digest, err := manifestDigest(req, resp.Digest, body)
+	if err != nil {
+		return nil, err
+	}
+	size := resp.Size
+	if size < 0 && body != nil {
+		size = int64(len(body))
+	}
 
 	return &CachedManifest{
-		Digest:    resp.Digest,
+		Digest:    digest,
 		MediaType: resp.MediaType,
-		Size:      resp.Size,
+		Size:      size,
 		Body:      body,
 		Headers:   resp.Headers,
 		Cache:     CacheBypass,
 	}, nil
+}
+
+func manifestDigest(req ManifestRequest, upstreamDigest string, body []byte) (string, error) {
+	if normalized, err := reference.NormalizeDigest(upstreamDigest); err == nil {
+		if body != nil {
+			actual, err := digestForBody(normalized, body)
+			if err != nil {
+				return "", err
+			}
+			if actual != normalized {
+				return "", distribution.ErrDigestMismatch.WithDetail(map[string]string{
+					"expected": normalized,
+					"actual":   actual,
+				})
+			}
+		}
+		return normalized, nil
+	}
+	if reference.IsDigest(req.Reference) {
+		digest, _ := reference.NormalizeDigest(req.Reference)
+		if body != nil {
+			actual, err := digestForBody(digest, body)
+			if err != nil {
+				return "", err
+			}
+			if actual != digest {
+				return "", distribution.ErrDigestMismatch.WithDetail(map[string]string{
+					"expected": digest,
+					"actual":   actual,
+				})
+			}
+		}
+		return digest, nil
+	}
+	if body == nil {
+		return "", nil
+	}
+	return "sha256:" + digestHex("sha256", body), nil
+}
+
+func digestForBody(expectedDigest string, body []byte) (string, error) {
+	algorithm, _, _ := strings.Cut(expectedDigest, ":")
+	encoded := digestHex(algorithm, body)
+	if encoded == "" {
+		return "", distribution.ErrDigestInvalid.WithDetail("unsupported digest algorithm: " + algorithm)
+	}
+	return algorithm + ":" + encoded, nil
+}
+
+func digestHex(algorithm string, body []byte) string {
+	switch algorithm {
+	case "sha256":
+		sum := sha256.Sum256(body)
+		return hex.EncodeToString(sum[:])
+	case "sha384":
+		sum := sha512.Sum384(body)
+		return hex.EncodeToString(sum[:])
+	case "sha512":
+		sum := sha512.Sum512(body)
+		return hex.EncodeToString(sum[:])
+	default:
+		return ""
+	}
 }
 
 func (p manifestProxy) lookup(ctx context.Context, req ManifestRequest) (*CachedManifest, bool, error) {
@@ -287,6 +402,98 @@ func (p manifestProxy) lookup(ctx context.Context, req ManifestRequest) (*Cached
 	return manifest, true, nil
 }
 
+func (p manifestProxy) lookupStale(ctx context.Context, req ManifestRequest) (*CachedManifest, bool, error) {
+	if !p.staleIfError || p.maxStale <= 0 || p.metadata == nil || p.objects == nil {
+		return nil, false, nil
+	}
+	record, ok, err := p.lookupStaleRecord(ctx, req, time.Now())
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	manifest, ok, err := p.manifestFromRecord(ctx, req, record, CacheStale)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	manifest.Headers.Set("Warning", `110 - "Response is stale"`)
+	return manifest, true, nil
+}
+
+func (p manifestProxy) lookupStaleRecord(ctx context.Context, req ManifestRequest, now time.Time) (*meta.ManifestRecord, bool, error) {
+	acceptKey := reference.AcceptKey(req.Accept)
+	if reference.IsDigest(req.Reference) {
+		digest, _ := reference.NormalizeDigest(req.Reference)
+		record, ok, err := p.metadata.Manifest(ctx, meta.ManifestKey{
+			Alias:      req.UpstreamAlias,
+			Repository: req.Repo,
+			Digest:     digest,
+		})
+		if err != nil || !ok || !p.withinStaleWindow(record.ExpiresAt, now) {
+			return nil, false, err
+		}
+		if record.AcceptKey != "" && record.AcceptKey != acceptKey {
+			return nil, false, nil
+		}
+		return record, true, nil
+	}
+
+	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Reference:  req.Reference,
+	})
+	if err != nil || !ok || !p.withinStaleWindow(tag.ExpiresAt, now) {
+		return nil, false, err
+	}
+	record, ok, err := p.metadata.Manifest(ctx, meta.ManifestKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Digest:     tag.Digest,
+	})
+	if err != nil || !ok || !p.withinStaleWindow(record.ExpiresAt, now) {
+		return nil, false, err
+	}
+	if record.AcceptKey != "" && record.AcceptKey != acceptKey {
+		return nil, false, nil
+	}
+	return record, true, nil
+}
+
+func (p manifestProxy) withinStaleWindow(expiresAt time.Time, now time.Time) bool {
+	if expiresAt.IsZero() || now.Before(expiresAt) {
+		return false
+	}
+	return now.Before(expiresAt.Add(p.maxStale))
+}
+
+func (p manifestProxy) manifestFromRecord(ctx context.Context, req ManifestRequest, record *meta.ManifestRecord, status CacheStatus) (*CachedManifest, bool, error) {
+	if record == nil {
+		return nil, false, nil
+	}
+	var body []byte
+	if req.Method != http.MethodHead {
+		reader, _, err := p.objects.Get(ctx, record.Digest, object.GetOptions{})
+		if err != nil {
+			if errors.Is(err, object.ErrNotFound) {
+				return nil, false, nil
+			}
+			return nil, false, err
+		}
+		defer reader.Close()
+		body, err = io.ReadAll(reader)
+		if err != nil {
+			return nil, false, err
+		}
+	}
+	return &CachedManifest{
+		Digest:    record.Digest,
+		MediaType: record.MediaType,
+		Size:      record.Size,
+		Body:      body,
+		Headers:   http.Header(record.Headers).Clone(),
+		Cache:     status,
+	}, true, nil
+}
+
 func (p manifestProxy) lookupMetadata(ctx context.Context, req ManifestRequest) (*meta.ManifestRecord, bool, error) {
 	now := time.Now()
 	acceptKey := reference.AcceptKey(req.Accept)
@@ -332,6 +539,90 @@ func (p manifestProxy) lookupManifestRecord(ctx context.Context, key meta.Manife
 	return record, true, nil
 }
 
+func (p manifestProxy) revalidate(ctx context.Context, req ManifestRequest, cacheKey string) (*CachedManifest, bool, error) {
+	if reference.IsDigest(req.Reference) || p.metadata == nil || p.objects == nil {
+		return nil, false, nil
+	}
+	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Reference:  req.Reference,
+	})
+	if err != nil || !ok || tag.ExpiresAt.IsZero() || time.Now().Before(tag.ExpiresAt) {
+		return nil, false, err
+	}
+	record, ok, err := p.metadata.Manifest(ctx, meta.ManifestKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Digest:     tag.Digest,
+	})
+	if err != nil || !ok || (record.AcceptKey != "" && record.AcceptKey != reference.AcceptKey(req.Accept)) {
+		return nil, false, err
+	}
+	if exists, err := p.objects.Exists(ctx, record.Digest); err != nil || !exists {
+		return nil, false, err
+	}
+
+	resp, err := p.client.GetManifest(ctx, upstream.GetManifestRequest{
+		UpstreamAlias: req.UpstreamAlias,
+		Repo:          req.Repo,
+		Reference:     req.Reference,
+		Accept:        req.Accept,
+		Method:        http.MethodHead,
+	})
+	if err != nil {
+		return nil, false, nil
+	}
+	if resp.Body != nil {
+		_ = resp.Body.Close()
+	}
+	digest, err := manifestDigest(ManifestRequest{
+		UpstreamAlias: req.UpstreamAlias,
+		Repo:          req.Repo,
+		Reference:     req.Reference,
+		Accept:        req.Accept,
+		Method:        http.MethodHead,
+	}, resp.Digest, nil)
+	if err != nil || digest == "" || digest != record.Digest {
+		return nil, false, nil
+	}
+
+	now := time.Now().UTC()
+	ttl := p.ttl
+	if ttl <= 0 {
+		ttl = 10 * time.Minute
+	}
+	expiresAt := now.Add(ttl)
+	record.ExpiresAt = expiresAt
+	record.UpdatedAt = now
+	if resp.MediaType != "" {
+		record.MediaType = resp.MediaType
+	}
+	if resp.Size >= 0 {
+		record.Size = resp.Size
+	}
+	if resp.Headers != nil {
+		record.Headers = map[string][]string(resp.Headers.Clone())
+	}
+	if _, err := p.metadata.UpsertManifest(ctx, *record); err != nil {
+		return nil, false, err
+	}
+	tag.ExpiresAt = expiresAt
+	if _, err := p.metadata.UpsertTag(ctx, *tag); err != nil {
+		return nil, false, err
+	}
+	result, ok, err := p.manifestFromRecord(ctx, req, record, CacheHit)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	if p.cache != nil && len(result.Body) > 0 {
+		if data, err := manifestEnvelopeFromRecord(*record, result.Body); err == nil {
+			_ = p.cache.Set(ctx, cacheKey, data, ttl)
+		}
+	}
+	return result, true, nil
+}
+
 func (p manifestProxy) store(ctx context.Context, req ManifestRequest, cacheKey string, manifest *CachedManifest) {
 	if manifest == nil {
 		return
@@ -354,7 +645,7 @@ func (p manifestProxy) store(ctx context.Context, req ManifestRequest, cacheKey 
 		Headers:    map[string][]string(manifest.Headers.Clone()),
 		ExpiresAt:  expiresAt,
 	}
-	objectStored := len(manifest.Body) == 0
+	objectStored := req.Method == http.MethodHead
 	if p.objects != nil && manifest.Digest != "" && len(manifest.Body) > 0 {
 		if info, err := p.objects.Put(ctx, manifest.Digest, bytes.NewReader(manifest.Body), object.PutOptions{ContentType: manifest.MediaType}); err == nil {
 			record.ObjectKey = info.Digest
@@ -375,7 +666,7 @@ func (p manifestProxy) store(ctx context.Context, req ManifestRequest, cacheKey 
 			})
 		}
 	}
-	if p.cache != nil {
+	if p.cache != nil && len(manifest.Body) > 0 {
 		if data, err := manifestEnvelopeFromRecord(record, manifest.Body); err == nil {
 			_ = p.cache.Set(ctx, cacheKey, data, ttl)
 		}

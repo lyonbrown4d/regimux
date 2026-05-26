@@ -11,15 +11,15 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/events"
 )
 
-func EndpointsModule(cacheModule, observabilityModule dix.Module) dix.Module {
+func EndpointsModule(configModule, cacheModule, observabilityModule dix.Module) dix.Module {
 	return dix.NewModule("api-endpoints",
-		dix.Imports(cacheModule, observabilityModule),
+		dix.Imports(configModule, cacheModule, observabilityModule),
 		dix.Providers(
 			dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
 				dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
 			),
-			dix.Provider5[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger](
-				NewRegistryEndpoint,
+			dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, config.Config](
+				NewRegistryEndpointFromConfig,
 				dix.Into[httpx.Endpoint](dix.Key("registry"), dix.Order(10)),
 			),
 		),

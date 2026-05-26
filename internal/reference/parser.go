@@ -1,5 +1,7 @@
 package reference
 
+import "strings"
+
 type RouteKind string
 
 const (
@@ -26,6 +28,15 @@ func (r Route) MirrorRepo() string {
 		return r.Alias
 	}
 	return r.Alias + "/" + r.Repo
+}
+
+func (r Route) WithDefaultNamespace(namespace string) Route {
+	namespace = strings.Trim(strings.TrimSpace(namespace), "/")
+	if namespace == "" || r.Repo == "" || strings.Contains(r.Repo, "/") {
+		return r
+	}
+	r.Repo = namespace + "/" + r.Repo
+	return r
 }
 
 func Parse(path string) (Route, error) {

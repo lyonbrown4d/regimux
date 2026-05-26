@@ -33,6 +33,22 @@ func TestParsePathManifest(t *testing.T) {
 	}
 }
 
+func TestRouteWithDefaultNamespace(t *testing.T) {
+	t.Parallel()
+
+	official := Route{Kind: RouteManifest, Alias: "hub", Repo: "hello-world", Reference: "latest"}.
+		WithDefaultNamespace("library")
+	if official.Repo != "library/hello-world" {
+		t.Fatalf("official repo = %q, want library/hello-world", official.Repo)
+	}
+
+	nested := Route{Kind: RouteManifest, Alias: "hub", Repo: "library/hello-world", Reference: "latest"}.
+		WithDefaultNamespace("library")
+	if nested.Repo != "library/hello-world" {
+		t.Fatalf("nested repo = %q, want library/hello-world", nested.Repo)
+	}
+}
+
 func TestParsePathManifestDigestReference(t *testing.T) {
 	t.Parallel()
 

@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"context"
+	"errors"
 	"io"
 	"log/slog"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -49,6 +51,8 @@ type RegistryEndpoint struct {
 	tags      cache.TagService
 	referrers cache.ReferrerService
 	logger    *slog.Logger
+
+	defaultNamespaces map[string]string
 }
 
 func NewRegistryEndpoint(
@@ -62,12 +66,26 @@ func NewRegistryEndpoint(
 		logger = slog.Default()
 	}
 	return &RegistryEndpoint{
-		manifests: manifests,
-		blobs:     blobs,
-		tags:      tags,
-		referrers: referrers,
-		logger:    logger,
+		manifests:         manifests,
+		blobs:             blobs,
+		tags:              tags,
+		referrers:         referrers,
+		logger:            logger,
+		defaultNamespaces: defaultNamespacesFromConfig(config.Config{}),
 	}
+}
+
+func NewRegistryEndpointFromConfig(
+	manifests cache.ManifestService,
+	blobs cache.BlobService,
+	tags cache.TagService,
+	referrers cache.ReferrerService,
+	logger *slog.Logger,
+	cfg config.Config,
+) *RegistryEndpoint {
+	endpoint := NewRegistryEndpoint(manifests, blobs, tags, referrers, logger)
+	endpoint.defaultNamespaces = defaultNamespacesFromConfig(cfg)
+	return endpoint
 }
 
 func (e *RegistryEndpoint) EndpointSpec() httpx.EndpointSpec {
@@ -82,6 +100,12 @@ func (e *RegistryEndpoint) Register(registrar httpx.Registrar) {
 	httpx.MustGroupRoute(group, http.MethodHead, "v2/", e.ping, operationID("head-v2-slash"))
 	httpx.MustGroupGet(group, "v2/{alias}/{tail...}", e.get, registryOperationDocs()...)
 	httpx.MustGroupRoute(group, http.MethodHead, "v2/{alias}/{tail...}", e.head, registryOperationDocs()...)
+	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodPatch, http.MethodDelete} {
+		method := method
+		httpx.MustGroupRoute(group, method, "v2/{alias}/{tail...}", func(_ context.Context, input *registryInput) (*registryOutput, error) {
+			return errorOutput(unsupported(method, input.path())), nil
+		}, registryOperationDocs()...)
+	}
 }
 
 func (e *RegistryEndpoint) ping(context.Context, *struct{}) (*registryOutput, error) {
@@ -104,8 +128,12 @@ func (e *RegistryEndpoint) head(ctx context.Context, input *registryInput) (*reg
 func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, method string) (*registryOutput, error) {
 	route, err := routeFromInput(input)
 	if err != nil {
+		if errors.Is(err, reference.ErrDigestInvalid) {
+			return errorOutput(distribution.ErrDigestInvalid.WithDetail(err.Error())), nil
+		}
 		return errorOutput(distribution.ErrNameInvalid.WithDetail(err.Error())), nil
 	}
+	route = route.WithDefaultNamespace(e.defaultNamespaces[route.Alias])
 
 	switch route.Kind {
 	case reference.RouteManifest:
@@ -251,6 +279,7 @@ type registryOutput struct {
 	ETag                         string `header:"ETag"`
 	Link                         string `header:"Link"`
 	Location                     string `header:"Location"`
+	Warning                      string `header:"Warning"`
 	XMirrorCache                 string `header:"X-Mirror-Cache"`
 	Body                         httpx.ResponseStream
 }
@@ -268,6 +297,7 @@ func newRegistryOutput(status int, header http.Header) *registryOutput {
 	out.ETag = header.Get("ETag")
 	out.Link = header.Get("Link")
 	out.Location = header.Get("Location")
+	out.Warning = header.Get("Warning")
 	return out
 }
 
@@ -276,6 +306,18 @@ func routeFromInput(input *registryInput) (reference.Route, error) {
 		return reference.Route{}, distribution.ErrNameInvalid.WithDetail("registry input is nil")
 	}
 	return reference.Parse(input.path())
+}
+
+func defaultNamespacesFromConfig(cfg config.Config) map[string]string {
+	out := make(map[string]string, len(cfg.Upstreams))
+	for alias, upstreamCfg := range cfg.Upstreams {
+		namespace := strings.Trim(strings.TrimSpace(upstreamCfg.DefaultNamespace), "/")
+		if strings.TrimSpace(alias) == "" || namespace == "" {
+			continue
+		}
+		out[alias] = namespace
+	}
+	return out
 }
 
 func errorOutput(err error) *registryOutput {

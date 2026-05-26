@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	errDigestInvalid = errors.New("invalid digest")
+	ErrDigestInvalid = errors.New("invalid digest")
 	digestRegexp     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*(?:[+._-][A-Za-z][A-Za-z0-9]*)*:[A-Fa-f0-9]+$`)
 )
 
@@ -16,13 +16,13 @@ var (
 func NormalizeDigest(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", errDigestInvalid
+		return "", ErrDigestInvalid
 	}
 	if strings.ContainsAny(value, "/?#") {
-		return "", fmt.Errorf("%w: %q", errDigestInvalid, value)
+		return "", fmt.Errorf("%w: %q", ErrDigestInvalid, value)
 	}
 	if !digestRegexp.MatchString(value) {
-		return "", fmt.Errorf("%w: %q", errDigestInvalid, value)
+		return "", fmt.Errorf("%w: %q", ErrDigestInvalid, value)
 	}
 
 	algorithm, encoded, _ := strings.Cut(value, ":")
@@ -32,18 +32,18 @@ func NormalizeDigest(value string) (string, error) {
 	switch algorithm {
 	case "sha256":
 		if len(encoded) != 64 {
-			return "", fmt.Errorf("%w: sha256 digest must be 64 hex characters", errDigestInvalid)
+			return "", fmt.Errorf("%w: sha256 digest must be 64 hex characters", ErrDigestInvalid)
 		}
 	case "sha384":
 		if len(encoded) != 96 {
-			return "", fmt.Errorf("%w: sha384 digest must be 96 hex characters", errDigestInvalid)
+			return "", fmt.Errorf("%w: sha384 digest must be 96 hex characters", ErrDigestInvalid)
 		}
 	case "sha512":
 		if len(encoded) != 128 {
-			return "", fmt.Errorf("%w: sha512 digest must be 128 hex characters", errDigestInvalid)
+			return "", fmt.Errorf("%w: sha512 digest must be 128 hex characters", ErrDigestInvalid)
 		}
 	default:
-		return "", fmt.Errorf("%w: unsupported digest algorithm %q", errDigestInvalid, algorithm)
+		return "", fmt.Errorf("%w: unsupported digest algorithm %q", ErrDigestInvalid, algorithm)
 	}
 
 	return algorithm + ":" + encoded, nil
