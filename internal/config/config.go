@@ -233,9 +233,9 @@ func (c *Config) validateStore() error {
 	}
 	c.Store.Object.Driver = objectDriver
 	switch objectDriver {
-	case "local":
+	case "local", "memory":
 	default:
-		return oops.In("config").Errorf("store.object.driver must be local")
+		return oops.In("config").Errorf("store.object.driver must be local or memory")
 	}
 	if strings.TrimSpace(c.Store.Object.Path) == "" {
 		c.Store.Object.Path = "data/objects"

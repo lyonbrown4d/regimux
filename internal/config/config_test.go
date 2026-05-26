@@ -44,6 +44,21 @@ func TestValidateStoreRejectsUnsupportedDrivers(t *testing.T) {
 	}
 }
 
+func TestValidateStoreAcceptsMemoryObjectDriver(t *testing.T) {
+	cfg, err := config.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+	cfg.Store.Object.Driver = "MEMORY"
+	cfg.Store.Object.Path = ""
+	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr != nil {
+		t.Fatalf("normalize memory object store: %v", normalizeErr)
+	}
+	if cfg.Store.Object.Driver != "memory" || cfg.Store.Object.Path != "data/objects" {
+		t.Fatalf("unexpected object store config: %#v", cfg.Store.Object)
+	}
+}
+
 func TestLoadHCLFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "regimux.hcl")
 	if err := os.WriteFile(path, []byte(`

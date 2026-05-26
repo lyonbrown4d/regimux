@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"io"
+	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 )
@@ -19,6 +20,17 @@ type Store interface {
 	Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error)
 	Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error)
 	Delete(ctx context.Context, digest string) error
+}
+
+func New(driver, path string) (Store, error) {
+	switch strings.ToLower(strings.TrimSpace(driver)) {
+	case "", "local":
+		return NewLocal(path)
+	case "memory":
+		return NewMemory(path)
+	default:
+		return nil, errorf("unsupported object store driver: %s", driver)
+	}
 }
 
 type Info struct {

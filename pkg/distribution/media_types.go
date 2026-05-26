@@ -1,8 +1,10 @@
 package distribution
 
+import ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+
 const (
-	MediaTypeOCIManifest        = "application/vnd.oci.image.manifest.v1+json"
-	MediaTypeOCIIndex           = "application/vnd.oci.image.index.v1+json"
+	MediaTypeOCIManifest        = ocispec.MediaTypeImageManifest
+	MediaTypeOCIIndex           = ocispec.MediaTypeImageIndex
 	MediaTypeDockerManifest     = "application/vnd.docker.distribution.manifest.v2+json"
 	MediaTypeDockerManifestList = "application/vnd.docker.distribution.manifest.list.v2+json"
 )

@@ -121,6 +121,7 @@ func TestParsePathRejectsInvalid(t *testing.T) {
 		"/v1/hub/library/nginx/manifests/latest",
 		"/v2/hub/manifests/latest",
 		"/v2/hub/library//nginx/manifests/latest",
+		"/v2/hub/localhost:5000/nginx/manifests/latest",
 		"/v2/hub/library/nginx/blobs/not-a-digest",
 		"/v2/hub/library/nginx/tags",
 		"/v2/hub/library/nginx/referrers/not-a-digest",

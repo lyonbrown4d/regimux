@@ -4,6 +4,7 @@ package reference
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"mime"
 	"sort"
 	"strings"
 )
@@ -47,7 +48,12 @@ func normalizeAcceptItem(item string) string {
 }
 
 func normalizeMediaType(value string) string {
-	return strings.ToLower(strings.TrimSpace(value))
+	value = strings.TrimSpace(value)
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err == nil && mediaType != "" {
+		return mediaType
+	}
+	return strings.ToLower(value)
 }
 
 func normalizeAcceptParams(rawParams []string) []string {

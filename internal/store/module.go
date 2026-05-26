@@ -30,7 +30,7 @@ func newMetadataStore(cfg config.Config, logger *slog.Logger) meta.Store {
 }
 
 func newObjectStore(cfg config.Config) object.Store {
-	store, err := object.NewLocal(cfg.Store.Object.Path)
+	store, err := object.New(cfg.Store.Object.Driver, cfg.Store.Object.Path)
 	if err != nil {
 		return nil
 	}

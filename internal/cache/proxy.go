@@ -3,6 +3,7 @@ package cache
 
 import (
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"strings"
@@ -223,8 +224,9 @@ func contentTypeFromHeader(headers http.Header) string {
 	if value == "" {
 		return "application/octet-stream"
 	}
-	if before, _, ok := strings.Cut(value, ";"); ok {
-		return strings.TrimSpace(before)
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err == nil && mediaType != "" {
+		return mediaType
 	}
 	return value
 }

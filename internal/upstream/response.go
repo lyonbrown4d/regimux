@@ -3,9 +3,9 @@ package upstream
 import (
 	"errors"
 	"io"
+	"mime"
 	"net/http"
 	"strconv"
-	"strings"
 
 	"resty.dev/v3"
 )
@@ -67,8 +67,9 @@ func contentType(header http.Header) string {
 	if value == "" {
 		return "application/octet-stream"
 	}
-	if before, _, ok := strings.Cut(value, ";"); ok {
-		return strings.TrimSpace(before)
+	mediaType, _, err := mime.ParseMediaType(value)
+	if err == nil && mediaType != "" {
+		return mediaType
 	}
 	return value
 }

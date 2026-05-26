@@ -9,6 +9,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/spf13/afero"
 )
 
 type putSession struct {
@@ -18,7 +20,7 @@ type putSession struct {
 	algorithm  string
 	expected   string
 	hasher     hash.Hash
-	tmp        *os.File
+	tmp        afero.File
 	tmpName    string
 	keepTemp   bool
 }
@@ -29,10 +31,10 @@ func newPutSession(store *LocalStore, normalized, target string) (*putSession, e
 	if err != nil {
 		return nil, err
 	}
-	if mkdirErr := os.MkdirAll(filepath.Dir(target), 0o750); mkdirErr != nil {
+	if mkdirErr := store.fs.MkdirAll(filepath.Dir(target), 0o750); mkdirErr != nil {
 		return nil, wrapError(mkdirErr, "create object digest directory")
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(target), "."+expected+".tmp-*")
+	tmp, err := afero.TempFile(store.fs, filepath.Dir(target), "."+expected+".tmp-*")
 	if err != nil {
 		return nil, wrapError(err, "create object temp file")
 	}
@@ -53,7 +55,7 @@ func (s *putSession) commit(ctx context.Context, r io.Reader, opts PutOptions) (
 		if s.keepTemp {
 			return
 		}
-		if cleanupErr := removeTempObject(s.tmpName); cleanupErr != nil {
+		if cleanupErr := removeTempObject(s.store.fs, s.tmpName); cleanupErr != nil {
 			err = errors.Join(err, cleanupErr)
 		}
 	}()
@@ -91,7 +93,7 @@ func (s *putSession) validateDigest() error {
 }
 
 func (s *putSession) rename(ctx context.Context, size int64, opts PutOptions) (*Info, error) {
-	if err := os.Rename(s.tmpName, s.target); err != nil {
+	if err := s.store.fs.Rename(s.tmpName, s.target); err != nil {
 		return s.handleRenameError(ctx, err)
 	}
 	s.keepTemp = true
@@ -128,8 +130,8 @@ func (s *putSession) closeWithError(err error) error {
 	return err
 }
 
-func removeTempObject(path string) error {
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+func removeTempObject(fs afero.Fs, path string) error {
+	if err := fs.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return wrapError(err, "remove object temp file")
 	}
 	return nil

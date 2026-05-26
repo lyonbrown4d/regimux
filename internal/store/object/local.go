@@ -3,8 +3,6 @@ package object
 
 import (
 	"context"
-	"crypto/sha256"
-	"crypto/sha512"
 	"errors"
 	"hash"
 	"io"
@@ -14,9 +12,12 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	ocidigest "github.com/opencontainers/go-digest"
+	"github.com/spf13/afero"
 )
 
 type LocalStore struct {
+	fs   afero.Fs
 	root string
 }
 
@@ -29,10 +30,26 @@ func NewLocal(root string) (*LocalStore, error) {
 	if err != nil {
 		return nil, wrapError(err, "resolve object store root")
 	}
-	if err := os.MkdirAll(abs, 0o750); err != nil {
+	return newLocalWithFS(afero.NewOsFs(), abs)
+}
+
+func NewMemory(root string) (*LocalStore, error) {
+	root = strings.TrimSpace(root)
+	if root == "" {
+		root = filepath.Join("data", "objects")
+	}
+	return newLocalWithFS(afero.NewMemMapFs(), root)
+}
+
+func newLocalWithFS(fs afero.Fs, root string) (*LocalStore, error) {
+	if fs == nil {
+		return nil, errorf("object store filesystem is not configured")
+	}
+	root = filepath.Clean(root)
+	if err := fs.MkdirAll(root, 0o750); err != nil {
 		return nil, wrapError(err, "create object store root")
 	}
-	return &LocalStore{root: abs}, nil
+	return &LocalStore{fs: fs, root: root}, nil
 }
 
 func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
@@ -44,7 +61,7 @@ func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
 	if err != nil {
 		return nil, err
 	}
-	stat, err := os.Stat(target)
+	stat, err := s.fs.Stat(target)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNotFound
@@ -74,7 +91,7 @@ func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (i
 	if err != nil {
 		return nil, nil, err
 	}
-	file, err := os.Open(info.Path)
+	file, err := s.fs.Open(info.Path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, ErrNotFound
@@ -130,7 +147,7 @@ func (s *LocalStore) Delete(ctx context.Context, digest string) error {
 	if err != nil {
 		return err
 	}
-	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
+	if err := s.fs.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return wrapError(err, "delete object")
 	}
 	return nil
@@ -149,7 +166,7 @@ func (s *LocalStore) findExisting(ctx context.Context, digest string, opts PutOp
 }
 
 func (s *LocalStore) path(digest string) (string, string, error) {
-	if s == nil || s.root == "" {
+	if s == nil || s.fs == nil || s.root == "" {
 		return "", "", errorf("local object store is not configured")
 	}
 	normalized, err := reference.NormalizeDigest(digest)
@@ -169,16 +186,11 @@ func (s *LocalStore) path(digest string) (string, string, error) {
 }
 
 func newDigestHash(algorithm string) (hash.Hash, error) {
-	switch algorithm {
-	case "sha256":
-		return sha256.New(), nil
-	case "sha384":
-		return sha512.New384(), nil
-	case "sha512":
-		return sha512.New(), nil
-	default:
+	alg := ocidigest.Algorithm(algorithm)
+	if !alg.Available() {
 		return nil, errorf("unsupported digest hash: %s", algorithm)
 	}
+	return alg.Hash(), nil
 }
 
 func normalizeContext(ctx context.Context) context.Context {
@@ -195,7 +207,7 @@ func checkContext(ctx context.Context, operation string) error {
 	return nil
 }
 
-func closeFileAfterError(file *os.File, err error) error {
+func closeFileAfterError(file afero.File, err error) error {
 	if closeErr := file.Close(); closeErr != nil {
 		return errors.Join(err, wrapError(closeErr, "close object file"))
 	}

@@ -5,14 +5,13 @@ import (
 	"regexp"
 	"strings"
 
+	distributionreference "github.com/distribution/reference"
 	"github.com/samber/oops"
 )
 
 var (
-	errPathInvalid   = errors.New("invalid registry path")
-	aliasRegexp      = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
-	repoSegmentRegex = regexp.MustCompile(`^[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*$`)
-	tagRegexp        = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$`)
+	errPathInvalid = errors.New("invalid registry path")
+	aliasRegexp    = regexp.MustCompile(`^[a-z0-9][a-z0-9._-]*$`)
 )
 
 // UpstreamRepo returns the repository name used against the upstream registry.
@@ -254,10 +253,11 @@ func validateRepo(repo string) error {
 	if repo == "" {
 		return oops.Wrapf(errPathInvalid, "empty repository")
 	}
-	for segment := range strings.SplitSeq(repo, "/") {
-		if !repoSegmentRegex.MatchString(segment) {
-			return oops.Wrapf(errPathInvalid, "invalid repository segment %q", segment)
-		}
+	if strings.Contains(repo, ":") {
+		return oops.Wrapf(errPathInvalid, "invalid repository %q", repo)
+	}
+	if _, err := distributionreference.WithName(repo); err != nil {
+		return oops.Wrapf(errPathInvalid, "invalid repository %q", repo)
 	}
 	return nil
 }
@@ -269,7 +269,7 @@ func normalizeReference(reference string) (string, error) {
 	if digest, err := NormalizeDigest(reference); err == nil {
 		return digest, nil
 	}
-	if tagRegexp.MatchString(reference) {
+	if distributionreference.TagRegexp.MatchString(reference) {
 		return reference, nil
 	}
 	return "", oops.Wrapf(errPathInvalid, "invalid manifest reference %q", reference)

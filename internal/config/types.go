@@ -88,7 +88,7 @@ type StoreMetaConfig struct {
 }
 
 type StoreObjectConfig struct {
-	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local"`
+	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local memory"`
 	Path   string `json:"path"   koanf:"path"   mapstructure:"path"`
 }
 

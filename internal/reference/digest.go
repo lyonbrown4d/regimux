@@ -2,15 +2,14 @@ package reference
 
 import (
 	"errors"
-	"regexp"
 	"strings"
 
+	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/samber/oops"
 )
 
 var (
 	ErrDigestInvalid = errors.New("invalid digest")
-	digestRegexp     = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*(?:[+._-][A-Za-z][A-Za-z0-9]*)*:[A-Fa-f0-9]+$`)
 )
 
 // NormalizeDigest validates digest syntax and returns the canonical form.
@@ -23,12 +22,16 @@ func NormalizeDigest(value string) (string, error) {
 	algorithm, encoded, _ := strings.Cut(value, ":")
 	algorithm = strings.ToLower(algorithm)
 	encoded = strings.ToLower(encoded)
+	digest, err := ocidigest.Parse(algorithm + ":" + encoded)
+	if err != nil {
+		return "", oops.Wrapf(ErrDigestInvalid, "%q", value)
+	}
 
-	if err := validateDigestLength(algorithm, encoded); err != nil {
+	if err := validateDigestAlgorithm(digest.Algorithm()); err != nil {
 		return "", err
 	}
 
-	return algorithm + ":" + encoded, nil
+	return digest.String(), nil
 }
 
 func cleanDigestValue(value string) (string, error) {
@@ -39,33 +42,18 @@ func cleanDigestValue(value string) (string, error) {
 	if strings.ContainsAny(value, "/?#") {
 		return "", oops.Wrapf(ErrDigestInvalid, "%q", value)
 	}
-	if !digestRegexp.MatchString(value) {
+	if !strings.Contains(value, ":") {
 		return "", oops.Wrapf(ErrDigestInvalid, "%q", value)
 	}
 	return value, nil
 }
 
-func validateDigestLength(algorithm, encoded string) error {
-	length, ok := digestLength(algorithm)
-	if !ok {
-		return oops.Wrapf(ErrDigestInvalid, "unsupported digest algorithm %q", algorithm)
-	}
-	if len(encoded) != length {
-		return oops.Wrapf(ErrDigestInvalid, "%s digest must be %d hex characters", algorithm, length)
-	}
-	return nil
-}
-
-func digestLength(algorithm string) (int, bool) {
+func validateDigestAlgorithm(algorithm ocidigest.Algorithm) error {
 	switch algorithm {
-	case "sha256":
-		return 64, true
-	case "sha384":
-		return 96, true
-	case "sha512":
-		return 128, true
+	case ocidigest.SHA256, ocidigest.SHA384, ocidigest.SHA512:
+		return nil
 	default:
-		return 0, false
+		return oops.Wrapf(ErrDigestInvalid, "unsupported digest algorithm %q", algorithm)
 	}
 }
 

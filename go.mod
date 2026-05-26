@@ -21,12 +21,16 @@ require (
 	github.com/arcgolabs/storx/codec v0.1.0
 	github.com/arcgolabs/storx/keycodec v0.2.0
 	github.com/danielgtaylor/huma/v2 v2.38.0
+	github.com/distribution/reference v0.6.0
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/jellydator/ttlcache/v3 v3.4.0
+	github.com/opencontainers/go-digest v1.0.0
+	github.com/opencontainers/image-spec v1.1.1
 	github.com/redis/go-redis/v9 v9.19.0
 	github.com/samber/lo v1.53.0
 	github.com/samber/mo v1.16.0
 	github.com/samber/oops v1.21.0
+	github.com/spf13/afero v1.15.0
 	github.com/spf13/cobra v1.10.2
 	github.com/valkey-io/valkey-go v1.0.75
 	go.etcd.io/bbolt v1.4.3

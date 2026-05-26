@@ -89,6 +89,29 @@ func TestLocalStoreRejectsDigestMismatch(t *testing.T) {
 	}
 }
 
+func TestMemoryStorePutGetDelete(t *testing.T) {
+	ctx := context.Background()
+	store, err := object.NewMemory("memory-objects")
+	requireNoError(t, "new memory store", err)
+	body := []byte("registry memory object body")
+	digest, info := putTestObject(ctx, t, store, body)
+
+	reader, got, err := store.Get(ctx, digest, object.GetOptions{})
+	requireNoError(t, "memory get", err)
+	data := readAllAndClose(t, reader)
+	if !bytes.Equal(data, body) || got.Size != info.Size {
+		t.Fatalf("unexpected memory read: body=%q info=%#v", data, got)
+	}
+
+	err = store.Delete(ctx, digest)
+	requireNoError(t, "memory delete", err)
+	ok, err := store.Exists(ctx, digest)
+	requireNoError(t, "memory exists after delete", err)
+	if ok {
+		t.Fatal("expected memory object to be deleted")
+	}
+}
+
 func newLocalStore(t *testing.T) (*object.LocalStore, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -97,7 +120,7 @@ func newLocalStore(t *testing.T) (*object.LocalStore, string) {
 	return store, root
 }
 
-func putTestObject(ctx context.Context, t *testing.T, store *object.LocalStore, body []byte) (string, *object.Info) {
+func putTestObject(ctx context.Context, t *testing.T, store object.Store, body []byte) (string, *object.Info) {
 	t.Helper()
 	digest := digestFor(body)
 	info, err := store.Put(ctx, digest, bytes.NewReader(body), object.PutOptions{
