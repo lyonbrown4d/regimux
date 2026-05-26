@@ -2,7 +2,6 @@
 package cache
 
 import (
-	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -201,10 +200,10 @@ func readHTTPBody(body io.ReadCloser, label string) ([]byte, error) {
 	data, readErr := io.ReadAll(body)
 	closeErr := body.Close()
 	if readErr != nil {
-		return nil, fmt.Errorf("read %s: %w", label, readErr)
+		return nil, wrapError(readErr, "read %s", label)
 	}
 	if closeErr != nil {
-		return nil, fmt.Errorf("close %s: %w", label, closeErr)
+		return nil, wrapError(closeErr, "close %s", label)
 	}
 	return data, nil
 }
@@ -214,7 +213,7 @@ func closeHTTPBody(body io.Closer, label string) error {
 		return nil
 	}
 	if err := body.Close(); err != nil {
-		return fmt.Errorf("close %s: %w", label, err)
+		return wrapError(err, "close %s", label)
 	}
 	return nil
 }

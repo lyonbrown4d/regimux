@@ -9,11 +9,13 @@ import (
 	"net/http"
 	"strconv"
 
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/mo"
 )
 
 type HealthEndpoint struct{}
@@ -50,7 +52,7 @@ type RegistryEndpoint struct {
 	referrers cache.ReferrerService
 	logger    *slog.Logger
 
-	defaultNamespaces map[string]string
+	defaultNamespaces *collectionmapping.Map[string, string]
 }
 
 func NewRegistryEndpoint(
@@ -130,7 +132,7 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 		}
 		return errorOutput(distribution.ErrNameInvalid.WithDetail(err.Error())), nil
 	}
-	route = route.WithDefaultNamespace(e.defaultNamespaces[route.Alias])
+	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
 
 	switch route.Kind {
 	case reference.RoutePing:
@@ -145,6 +147,13 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 		return e.referrersRoute(ctx, input, route, method), nil
 	}
 	return errorOutput(distribution.ErrNameInvalid.WithDetail("unknown registry route")), nil
+}
+
+func (e *RegistryEndpoint) defaultNamespace(alias string) mo.Option[string] {
+	if e == nil || e.defaultNamespaces == nil {
+		return mo.None[string]()
+	}
+	return e.defaultNamespaces.GetOption(alias)
 }
 
 func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {

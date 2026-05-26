@@ -4,8 +4,9 @@ package distribution
 import (
 	"encoding/json"
 	"errors"
-	"fmt"
 	"net/http"
+
+	"github.com/samber/oops"
 )
 
 const APIVersion = "registry/2.0"
@@ -189,7 +190,7 @@ func MarshalError(err error) ([]byte, error) {
 	}
 	body, err := json.Marshal(ErrorResponse{Errors: list.Errors})
 	if err != nil {
-		return nil, fmt.Errorf("marshal distribution error response: %w", err)
+		return nil, oops.Wrapf(err, "marshal distribution error response")
 	}
 	return body, nil
 }

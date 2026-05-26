@@ -3,10 +3,10 @@ package events
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"github.com/arcgolabs/eventx"
+	"github.com/samber/oops"
 )
 
 type Event = eventx.Event
@@ -29,7 +29,7 @@ func Publish(ctx context.Context, bus Bus, event Event) error {
 		return nil
 	}
 	if err := bus.Publish(ctx, event); err != nil {
-		return fmt.Errorf("publish event %s: %w", eventName(event), err)
+		return oops.Wrapf(err, "publish event %s", eventName(event))
 	}
 	return nil
 }

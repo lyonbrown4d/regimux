@@ -2,11 +2,10 @@ package upstream
 
 import (
 	"context"
-	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
+	"github.com/samber/lo"
 	"resty.dev/v3"
 )
 
@@ -40,7 +39,7 @@ func (c *Client) do(ctx context.Context, runtime upstreamRuntime, method, endpoi
 
 func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
 	if runtime.client == nil {
-		return upstreamResponse{}, errors.New("upstream http client is not configured")
+		return upstreamResponse{}, newError("upstream http client is not configured")
 	}
 	req := runtime.client.R().SetDoNotParseResponse(true)
 	prepareRequest(req, runtime.config)
@@ -51,7 +50,7 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, method, e
 	}
 	resp, err := runtime.client.Execute(ctx, req, method, endpoint)
 	if err != nil {
-		return upstreamResponse{}, fmt.Errorf("execute upstream request %s %s: %w", method, endpoint, err)
+		return upstreamResponse{}, wrapError(err, "execute upstream request %s %s", method, endpoint)
 	}
 	return rawUpstreamResponse(resp)
 }
@@ -84,7 +83,7 @@ func fetchTokenResponse(ctx context.Context, runtime upstreamRuntime, endpoint s
 	}
 	resp, err := runtime.client.Execute(ctx, req, http.MethodGet, endpoint)
 	if err != nil {
-		return upstreamResponse{}, fmt.Errorf("fetch upstream bearer token: %w", err)
+		return upstreamResponse{}, wrapError(err, "fetch upstream bearer token")
 	}
 	return rawUpstreamResponse(resp)
 }
@@ -102,9 +101,9 @@ func readTokenResponse(raw upstreamResponse) (string, time.Time, error) {
 		return "", time.Time{}, err
 	}
 
-	token := firstNonEmpty(tokenResp.Token, tokenResp.AccessToken)
+	token := lo.CoalesceOrEmpty(tokenResp.Token, tokenResp.AccessToken)
 	if token == "" {
-		return "", time.Time{}, errors.New("upstream token response did not include a token")
+		return "", time.Time{}, newError("upstream token response did not include a token")
 	}
 	return token, bearerTokenExpiresAt(tokenResp), nil
 }

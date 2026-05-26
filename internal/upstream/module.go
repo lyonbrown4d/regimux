@@ -3,6 +3,7 @@ package upstream
 import (
 	"log/slog"
 
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
@@ -17,14 +18,18 @@ func Module(configModule, observabilityModule dix.Module) dix.Module {
 }
 
 func newClient(cfg config.Config, logger *slog.Logger) *Client {
-	return NewClient(toUpstreamConfigs(cfg.Upstreams), logger)
+	return NewClient(toUpstreamConfigs(cfg.OrderedUpstreams()), logger)
 }
 
-func toUpstreamConfigs(configs map[string]config.UpstreamConfig) map[string]Config {
-	out := make(map[string]Config, len(configs))
-	for alias := range configs {
-		out[alias] = toUpstreamConfig(alias, configs[alias])
+func toUpstreamConfigs(configs *collectionmapping.OrderedMap[string, config.UpstreamConfig]) *collectionmapping.OrderedMap[string, Config] {
+	if configs == nil {
+		return collectionmapping.NewOrderedMap[string, Config]()
 	}
+	out := collectionmapping.NewOrderedMapWithCapacity[string, Config](configs.Len())
+	configs.Range(func(alias string, cfg config.UpstreamConfig) bool {
+		out.Set(alias, toUpstreamConfig(alias, cfg))
+		return true
+	})
 	return out
 }
 

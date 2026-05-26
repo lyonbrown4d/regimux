@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -43,7 +42,7 @@ func (p blobProxy) fetchStored(ctx context.Context, req BlobRequest) (*BlobReadR
 		return nil, p.ensureStored(ctx, req)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("coalesce blob request: %w", err)
+		return nil, wrapError(err, "coalesce blob request")
 	}
 	return p.openStored(ctx, req, CacheMiss)
 }
@@ -76,7 +75,7 @@ func (p blobProxy) fetchPassthrough(ctx context.Context, req BlobRequest) (*Blob
 		Method:        req.Method,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("fetch blob from upstream: %w", err)
+		return nil, wrapError(err, "fetch blob from upstream")
 	}
 
 	reader := resp.Body
@@ -114,7 +113,7 @@ func (p blobProxy) lookupRepoBlob(ctx context.Context, req BlobRequest) (*BlobRe
 		Digest:     req.Digest,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup repository blob record: %w", err)
+		return nil, false, wrapError(err, "lookup repository blob record")
 	}
 	if !ok {
 		return nil, false, nil
@@ -125,7 +124,7 @@ func (p blobProxy) lookupRepoBlob(ctx context.Context, req BlobRequest) (*BlobRe
 func (p blobProxy) lookupSharedBlob(ctx context.Context, req BlobRequest) (*BlobReadResult, bool, error) {
 	exists, err := p.objects.Exists(ctx, req.Digest)
 	if err != nil {
-		return nil, false, fmt.Errorf("check blob object: %w", err)
+		return nil, false, wrapError(err, "check blob object")
 	}
 	if !exists {
 		return nil, false, nil
@@ -152,7 +151,7 @@ func (p blobProxy) verifyRepoBlob(ctx context.Context, req BlobRequest) error {
 		Method:        http.MethodHead,
 	})
 	if err != nil {
-		return fmt.Errorf("verify blob upstream membership: %w", err)
+		return wrapError(err, "verify blob upstream membership")
 	}
 	if closeErr := closeHTTPBody(resp.Body, "blob verification body"); closeErr != nil {
 		return closeErr
@@ -166,7 +165,7 @@ func (p blobProxy) verifyRepoBlob(ctx context.Context, req BlobRequest) error {
 
 	stat, err := p.objects.Stat(ctx, req.Digest)
 	if err != nil {
-		return fmt.Errorf("stat verified blob object: %w", err)
+		return wrapError(err, "stat verified blob object")
 	}
 	return p.upsertBlobRecords(ctx, req, stat, contentTypeFromHeader(resp.Headers))
 }
@@ -179,7 +178,7 @@ func (p blobProxy) fetchAndStore(ctx context.Context, req BlobRequest) error {
 		Method:        http.MethodGet,
 	})
 	if err != nil {
-		return fmt.Errorf("fetch blob for storage: %w", err)
+		return wrapError(err, "fetch blob for storage")
 	}
 	if resp.Digest != "" && resp.Digest != req.Digest {
 		if closeErr := closeHTTPBody(resp.Body, "blob storage body"); closeErr != nil {
@@ -197,7 +196,7 @@ func (p blobProxy) fetchAndStore(ctx context.Context, req BlobRequest) error {
 		if errors.Is(putErr, object.ErrDigestMismatch) {
 			return distribution.ErrDigestMismatch.WithDetail(putErr.Error())
 		}
-		return fmt.Errorf("store blob object: %w", putErr)
+		return wrapError(putErr, "store blob object")
 	}
 	if closeErr != nil {
 		return closeErr
@@ -216,7 +215,7 @@ func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info 
 		ObjectKey:    info.Digest,
 		LastAccessAt: time.Now().UTC(),
 	}); err != nil {
-		return fmt.Errorf("upsert blob record: %w", err)
+		return wrapError(err, "upsert blob record")
 	}
 	_, err := p.metadata.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
 		Alias:          req.UpstreamAlias,
@@ -225,7 +224,7 @@ func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info 
 		LastVerifiedAt: time.Now().UTC(),
 	})
 	if err != nil {
-		return fmt.Errorf("upsert repository blob record: %w", err)
+		return wrapError(err, "upsert repository blob record")
 	}
 	return nil
 }
@@ -233,7 +232,7 @@ func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info 
 func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus CacheStatus) (*BlobReadResult, error) {
 	info, err := p.objects.Stat(ctx, req.Digest)
 	if err != nil {
-		return nil, fmt.Errorf("stat stored blob object: %w", err)
+		return nil, wrapError(err, "stat stored blob object")
 	}
 	headers := blobHeaders(info)
 
@@ -245,7 +244,7 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 	if req.Method != http.MethodHead {
 		reader, info, err = p.objects.Get(ctx, req.Digest, opts)
 		if err != nil {
-			return nil, fmt.Errorf("open stored blob object: %w", err)
+			return nil, wrapError(err, "open stored blob object")
 		}
 		size = info.Size
 	}

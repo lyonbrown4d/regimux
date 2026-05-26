@@ -1,7 +1,6 @@
 package upstream
 
 import (
-	"fmt"
 	"net/http"
 	"net/url"
 	"strings"
@@ -31,7 +30,7 @@ func newHTTPClient(cfg Config) (clienthttp.Client, error) {
 		},
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create upstream http client: %w", err)
+		return nil, wrapError(err, "create upstream http client")
 	}
 	if cfg.HTTP.Timeout == 0 {
 		// Preserve RegiMux's previous no-client-timeout behavior. Per-request
@@ -98,7 +97,7 @@ func tagsURL(registry string, req ListTagsRequest) (string, error) {
 	requestURL := registryURL(registry, req.Repo, "tags/list", "")
 	parsed, err := url.Parse(requestURL)
 	if err != nil {
-		return "", fmt.Errorf("parse upstream tags URL: %w", err)
+		return "", wrapError(err, "parse upstream tags URL")
 	}
 	query := parsed.Query()
 	if req.N != "" {

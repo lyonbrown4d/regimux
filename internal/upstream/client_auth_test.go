@@ -25,7 +25,7 @@ func TestClientGetManifestBearerChallenge(t *testing.T) {
 	registryServer := httptest.NewServer(challengeManifestHandler(t, authServer.URL, &manifestRequests))
 	defer registryServer.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {
 			Registry: registryServer.URL,
 			Auth: upstream.AuthConfig{
@@ -34,7 +34,7 @@ func TestClientGetManifestBearerChallenge(t *testing.T) {
 				Password: "pass",
 			},
 		},
-	}, nil)
+	})
 
 	resp, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{
 		UpstreamAlias: "hub",
@@ -59,9 +59,9 @@ func TestClientGetManifestCachesBearerTokenForSameScope(t *testing.T) {
 	registryServer := httptest.NewServer(cachedManifestHandler(t, authServer.URL))
 	defer registryServer.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {Registry: registryServer.URL},
-	}, nil)
+	})
 
 	for i := range 2 {
 		resp, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{
@@ -86,9 +86,9 @@ func TestClientGetManifestDoesNotShareBearerTokenAcrossScopes(t *testing.T) {
 	registryServer := httptest.NewServer(scopedManifestHandler(t, authServer.URL))
 	defer registryServer.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {Registry: registryServer.URL},
-	}, nil)
+	})
 
 	for _, repo := range []string{"library/nginx", "library/redis"} {
 		resp, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{

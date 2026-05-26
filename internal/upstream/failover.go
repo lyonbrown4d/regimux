@@ -3,7 +3,6 @@ package upstream
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -27,7 +26,7 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 			return nil
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return fmt.Errorf("upstream %s context: %w", operation, ctxErr)
+			return wrapError(ctxErr, "upstream %s context", operation)
 		}
 		if !shouldFailover(lastErr) {
 			return lastErr
@@ -83,7 +82,7 @@ func shouldFailover(err error) bool {
 
 func (c *Client) upstream(alias string) (*upstreamPool, error) {
 	if c == nil || c.upstreams == nil {
-		return nil, errors.New("upstream registry is not configured")
+		return nil, newError("upstream registry is not configured")
 	}
 	pool, ok := c.upstreams.Get(alias)
 	if !ok || pool == nil || len(pool.runtimes) == 0 {

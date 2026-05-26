@@ -1,9 +1,9 @@
 package meta
 
 import (
-	"fmt"
 	"strings"
 
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 )
 
@@ -17,7 +17,7 @@ func normalizeManifestRecord(record ManifestRecord) (ManifestKey, ManifestRecord
 		return ManifestKey{}, ManifestRecord{}, err
 	}
 	if record.Size < 0 {
-		return ManifestKey{}, ManifestRecord{}, fmt.Errorf("%w: manifest size cannot be negative", ErrInvalidValue)
+		return ManifestKey{}, ManifestRecord{}, errorf("%w: manifest size cannot be negative", ErrInvalidValue)
 	}
 	record.Alias = key.Alias
 	record.Repository = key.Repository
@@ -86,7 +86,7 @@ func normalizeBlobRecord(record BlobRecord) (BlobKey, BlobRecord, error) {
 		return BlobKey{}, BlobRecord{}, err
 	}
 	if record.Size < 0 {
-		return BlobKey{}, BlobRecord{}, fmt.Errorf("%w: blob size cannot be negative", ErrInvalidValue)
+		return BlobKey{}, BlobRecord{}, errorf("%w: blob size cannot be negative", ErrInvalidValue)
 	}
 	record.Digest = key.Digest
 	return key, record, nil
@@ -135,7 +135,7 @@ func normalizeBlobKey(key BlobKey) (BlobKey, error) {
 func required(name, value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", fmt.Errorf("%w: %s is required", ErrInvalidKey, name)
+		return "", errorf("%w: %s is required", ErrInvalidKey, name)
 	}
 	return value, nil
 }
@@ -143,7 +143,7 @@ func required(name, value string) (string, error) {
 func normalizeDigest(value string) (string, error) {
 	digest, err := reference.NormalizeDigest(value)
 	if err != nil {
-		return "", fmt.Errorf("%w: %w", ErrInvalidKey, err)
+		return "", errorf("%w: %w", ErrInvalidKey, err)
 	}
 	return digest, nil
 }
@@ -152,9 +152,10 @@ func cloneHeaders(headers map[string][]string) map[string][]string {
 	if len(headers) == 0 {
 		return nil
 	}
-	out := make(map[string][]string, len(headers))
-	for key, values := range headers {
-		out[key] = append([]string(nil), values...)
-	}
-	return out
+	out := collectionmapping.NewMapWithCapacity[string, []string](len(headers))
+	collectionmapping.NewMapFrom(headers).Range(func(key string, values []string) bool {
+		out.Set(key, append([]string(nil), values...))
+		return true
+	})
+	return out.All()
 }

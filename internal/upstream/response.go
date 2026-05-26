@@ -2,7 +2,6 @@ package upstream
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -19,7 +18,7 @@ type upstreamResponse struct {
 
 func rawUpstreamResponse(resp *resty.Response) (upstreamResponse, error) {
 	if resp == nil || resp.RawResponse == nil {
-		return upstreamResponse{}, errors.New("upstream response is empty")
+		return upstreamResponse{}, newError("upstream response is empty")
 	}
 	body := resp.RawResponse.Body
 	if resp.Body != nil {
@@ -37,7 +36,7 @@ func closeBody(body io.Closer) error {
 		return nil
 	}
 	if err := body.Close(); err != nil {
-		return fmt.Errorf("close upstream response body: %w", err)
+		return wrapError(err, "close upstream response body")
 	}
 	return nil
 }
@@ -55,8 +54,8 @@ func drainAndClose(body io.ReadCloser) error {
 		return nil
 	}
 	if _, err := io.Copy(io.Discard, body); err != nil {
-		return errors.Join(
-			fmt.Errorf("drain upstream response body: %w", err),
+		return joinError(
+			wrapError(err, "drain upstream response body"),
 			closeBody(body),
 		)
 	}
@@ -84,13 +83,4 @@ func contentLength(header http.Header) int64 {
 		return -1
 	}
 	return n
-}
-
-func firstNonEmpty(values ...string) string {
-	for _, value := range values {
-		if strings.TrimSpace(value) != "" {
-			return value
-		}
-	}
-	return ""
 }

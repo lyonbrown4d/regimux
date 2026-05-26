@@ -2,7 +2,6 @@ package meta
 
 import (
 	"context"
-	"fmt"
 	"strings"
 	"time"
 )
@@ -14,7 +13,7 @@ func (s *BboltStore) Manifest(ctx context.Context, key ManifestKey) (*ManifestRe
 	}
 	record, ok, err := s.manifest.Get(ctx, key)
 	if err != nil {
-		return nil, false, fmt.Errorf("get manifest metadata: %w", err)
+		return nil, false, wrapError(err, "get manifest metadata")
 	}
 	if !ok {
 		return nil, false, nil
@@ -32,7 +31,7 @@ func (s *BboltStore) UpsertManifest(ctx context.Context, record ManifestRecord) 
 		return s.Manifest(ctx, key)
 	})
 	if err := s.manifest.Put(ctx, key, record); err != nil {
-		return nil, fmt.Errorf("put manifest metadata: %w", err)
+		return nil, wrapError(err, "put manifest metadata")
 	}
 	return &record, nil
 }
@@ -43,7 +42,7 @@ func (s *BboltStore) DeleteManifest(ctx context.Context, key ManifestKey) error 
 		return err
 	}
 	if err := s.manifest.Delete(ctx, key); err != nil {
-		return fmt.Errorf("delete manifest metadata: %w", err)
+		return wrapError(err, "delete manifest metadata")
 	}
 	return nil
 }
@@ -51,11 +50,11 @@ func (s *BboltStore) DeleteManifest(ctx context.Context, key ManifestKey) error 
 func (s *BboltStore) GetManifest(ctx context.Context, key string) (*ManifestRecord, bool, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
-		return nil, false, fmt.Errorf("%w: manifest key is required", ErrInvalidKey)
+		return nil, false, errorf("%w: manifest key is required", ErrInvalidKey)
 	}
 	entries, err := s.manifest.List(ctx)
 	if err != nil {
-		return nil, false, fmt.Errorf("list manifest metadata: %w", err)
+		return nil, false, wrapError(err, "list manifest metadata")
 	}
 	for _, entry := range entries {
 		if entry.Value.Key == key {
@@ -69,7 +68,7 @@ func (s *BboltStore) GetManifest(ctx context.Context, key string) (*ManifestReco
 
 func (s *BboltStore) PutManifest(ctx context.Context, record ManifestRecord) error {
 	if _, err := s.UpsertManifest(ctx, record); err != nil {
-		return fmt.Errorf("upsert manifest metadata: %w", err)
+		return wrapError(err, "upsert manifest metadata")
 	}
 	return nil
 }

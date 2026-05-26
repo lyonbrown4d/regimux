@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/samber/lo"
 )
 
 type Client struct {
@@ -15,16 +16,24 @@ type Client struct {
 	logger     *slog.Logger
 }
 
-func NewClient(configs map[string]Config, logger *slog.Logger) *Client {
+func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *slog.Logger) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	upstreams := collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](len(configs))
-	for alias := range configs {
-		cfg := configs[alias]
+	upstreams := collectionmapping.NewOrderedMap[string, *upstreamPool]()
+	if configs == nil {
+		return &Client{
+			upstreams:  upstreams,
+			tokenCache: newBearerTokenCache(),
+			logger:     logger,
+		}
+	}
+	upstreams = collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](configs.Len())
+	configs.Range(func(alias string, cfg Config) bool {
 		cfg.Alias = alias
 		upstreams.Set(alias, newUpstreamPool(cfg, logger))
-	}
+		return true
+	})
 
 	return &Client{
 		upstreams:  upstreams,
@@ -96,7 +105,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 		}
 		out = &BlobResponse{
 			Body:       resp.Body,
-			Digest:     firstNonEmpty(resp.Header.Get("Docker-Content-Digest"), req.Digest),
+			Digest:     lo.CoalesceOrEmpty(resp.Header.Get("Docker-Content-Digest"), req.Digest),
 			Size:       contentLength(resp.Header),
 			StatusCode: resp.StatusCode,
 			Headers:    resp.Header.Clone(),

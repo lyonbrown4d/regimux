@@ -3,17 +3,18 @@ package config
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"path/filepath"
-	"sort"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/arcgolabs/configx"
 	formathcl "github.com/arcgolabs/configx/format/hcl"
 	"github.com/go-playground/validator/v10"
+	"github.com/samber/oops"
 )
 
 const envPrefix = "REGIMUX"
@@ -38,7 +39,7 @@ func Load(ctx context.Context, path string) (Config, error) {
 
 	var cfg Config
 	if err := configx.LoadContext(ctx, &cfg, opts...); err != nil {
-		return Config{}, fmt.Errorf("load config: %w", err)
+		return Config{}, oops.In("config").Wrapf(err, "load config")
 	}
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		return Config{}, err
@@ -48,7 +49,7 @@ func Load(ctx context.Context, path string) (Config, error) {
 
 func validateConfigPath(path string) error {
 	if strings.ToLower(filepath.Ext(strings.TrimSpace(path))) != ".hcl" {
-		return fmt.Errorf("config file must use .hcl extension: %s", path)
+		return oops.In("config").With("path", path).Errorf("config file must use .hcl extension: %s", path)
 	}
 	return nil
 }
@@ -71,10 +72,10 @@ func (c *Config) NormalizeAndValidate() error {
 
 func (c *Config) validateRoot() error {
 	if c == nil {
-		return errors.New("config is nil")
+		return oops.In("config").Errorf("config is nil")
 	}
 	if strings.TrimSpace(c.Server.Listen) == "" {
-		return errors.New("server.listen is required")
+		return oops.In("config").Errorf("server.listen is required")
 	}
 	if strings.TrimSpace(c.Server.PublicURL) == "" {
 		return nil
@@ -99,14 +100,14 @@ func (c *Config) normalizeCacheBackend() error {
 		c.Cache.Backend = "memory"
 	case "redis":
 		if len(c.Cache.Redis.Addrs) == 0 {
-			return errors.New("cache.redis.addrs is required when cache.backend is redis")
+			return oops.In("config").Errorf("cache.redis.addrs is required when cache.backend is redis")
 		}
 	case "valkey":
 		if len(c.Cache.Valkey.Addrs) == 0 {
-			return errors.New("cache.valkey.addrs is required when cache.backend is valkey")
+			return oops.In("config").Errorf("cache.valkey.addrs is required when cache.backend is valkey")
 		}
 	default:
-		return fmt.Errorf("unsupported cache.backend %q", c.Cache.Backend)
+		return oops.In("config").With("backend", c.Cache.Backend).Errorf("unsupported cache.backend %q", c.Cache.Backend)
 	}
 	return nil
 }
@@ -116,11 +117,11 @@ func validateCacheLimits(cache CacheConfig) error {
 		invalid bool
 		err     error
 	}{
-		{cache.Memory.MaxItems < 0, errors.New("cache.memory.max_items cannot be negative")},
-		{cache.DefaultTTL < 0, errors.New("cache.default_ttl cannot be negative")},
-		{cache.Redis.DB < 0, errors.New("cache.redis.db cannot be negative")},
-		{cache.Valkey.DB < 0, errors.New("cache.valkey.db cannot be negative")},
-		{cache.Tags.MaxPageSize < 0, errors.New("cache.tags.max_page_size cannot be negative")},
+		{cache.Memory.MaxItems < 0, oops.In("config").Errorf("cache.memory.max_items cannot be negative")},
+		{cache.DefaultTTL < 0, oops.In("config").Errorf("cache.default_ttl cannot be negative")},
+		{cache.Redis.DB < 0, oops.In("config").Errorf("cache.redis.db cannot be negative")},
+		{cache.Valkey.DB < 0, oops.In("config").Errorf("cache.valkey.db cannot be negative")},
+		{cache.Tags.MaxPageSize < 0, oops.In("config").Errorf("cache.tags.max_page_size cannot be negative")},
 	}
 	for _, check := range checks {
 		if check.invalid {
@@ -132,21 +133,27 @@ func validateCacheLimits(cache CacheConfig) error {
 
 func (c *Config) normalizeUpstreams() error {
 	if len(c.Upstreams) == 0 {
-		return errors.New("at least one upstream is required")
+		return oops.In("config").Errorf("at least one upstream is required")
 	}
-	for _, alias := range c.UpstreamAliases() {
+	var normalizeErr error
+	c.UpstreamAliases().Range(func(_ int, alias string) bool {
 		upstreamCfg, err := normalizeUpstreamConfig(alias, c.Upstreams[alias])
 		if err != nil {
-			return err
+			normalizeErr = err
+			return false
 		}
 		c.Upstreams[alias] = upstreamCfg
+		return true
+	})
+	if normalizeErr != nil {
+		return normalizeErr
 	}
 	return nil
 }
 
 func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (UpstreamConfig, error) {
 	if strings.TrimSpace(alias) == "" {
-		return UpstreamConfig{}, errors.New("upstream alias cannot be empty")
+		return UpstreamConfig{}, oops.In("config").Errorf("upstream alias cannot be empty")
 	}
 	upstreamCfg.Alias = alias
 	upstreamCfg.Registry = strings.TrimSpace(upstreamCfg.Registry)
@@ -180,13 +187,13 @@ func normalizeMirrorPolicy(alias, policy string) (string, error) {
 	case "ordered", "round_robin":
 		return policy, nil
 	default:
-		return "", fmt.Errorf("upstreams.%s.mirror_policy must be ordered or round_robin", alias)
+		return "", oops.In("config").With("alias", alias, "mirror_policy", policy).Errorf("upstreams.%s.mirror_policy must be ordered or round_robin", alias)
 	}
 }
 
 func validateUpstreamSource(alias string, upstreamCfg UpstreamConfig) error {
 	if upstreamCfg.Registry == "" && len(upstreamCfg.Mirrors) == 0 {
-		return fmt.Errorf("upstreams.%s.registry or upstreams.%s.mirrors is required", alias, alias)
+		return oops.In("config").With("alias", alias).Errorf("upstreams.%s.registry or upstreams.%s.mirrors is required", alias, alias)
 	}
 	if upstreamCfg.Registry == "" {
 		return nil
@@ -214,7 +221,7 @@ func (c *Config) validateStore() error {
 	switch metaDriver {
 	case "bboltx":
 	default:
-		return errors.New("store.meta.driver must be bboltx")
+		return oops.In("config").Errorf("store.meta.driver must be bboltx")
 	}
 	if strings.TrimSpace(c.Store.Meta.Path) == "" {
 		c.Store.Meta.Path = "data/regimux.db"
@@ -228,7 +235,7 @@ func (c *Config) validateStore() error {
 	switch objectDriver {
 	case "local":
 	default:
-		return errors.New("store.object.driver must be local")
+		return oops.In("config").Errorf("store.object.driver must be local")
 	}
 	if strings.TrimSpace(c.Store.Object.Path) == "" {
 		c.Store.Object.Path = "data/objects"
@@ -238,45 +245,37 @@ func (c *Config) validateStore() error {
 
 func (c Config) OrderedUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
 	aliases := c.UpstreamAliases()
-	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](len(aliases))
-	for _, alias := range aliases {
+	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](aliases.Len())
+	aliases.Range(func(_ int, alias string) bool {
 		out.Set(alias, c.Upstreams[alias])
-	}
+		return true
+	})
 	return out
 }
 
-func (c Config) UpstreamAliases() []string {
-	aliases := make([]string, 0, len(c.Upstreams))
-	for alias := range c.Upstreams {
-		aliases = append(aliases, alias)
-	}
-	sort.Strings(aliases)
-	return aliases
+func (c Config) UpstreamAliases() *collectionlist.List[string] {
+	return collectionlist.NewList(collectionmapping.NewMapFrom(c.Upstreams).Keys()...).
+		Sort(strings.Compare)
 }
 
 func validateURL(name, value string) error {
 	parsed, err := url.Parse(strings.TrimSpace(value))
 	if err != nil {
-		return fmt.Errorf("%s is invalid: %w", name, err)
+		return oops.In("config").With("name", name, "value", value).Wrapf(err, "%s is invalid", name)
 	}
 	if parsed.Scheme == "" || parsed.Host == "" {
-		return fmt.Errorf("%s must be an absolute URL", name)
+		return oops.In("config").With("name", name, "value", value).Errorf("%s must be an absolute URL", name)
 	}
 	return nil
 }
 
 func uniqueStrings(values []string) []string {
-	seen := make(map[string]struct{}, len(values))
-	out := make([]string, 0, len(values))
+	out := collectionset.NewOrderedSetWithCapacity[string](len(values))
 	for _, value := range values {
 		if value == "" {
 			continue
 		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
+		out.Add(value)
 	}
-	return out
+	return out.Values()
 }

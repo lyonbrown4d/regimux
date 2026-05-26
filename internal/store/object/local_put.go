@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"hash"
 	"io"
 	"os"
@@ -31,11 +30,11 @@ func newPutSession(store *LocalStore, normalized, target string) (*putSession, e
 		return nil, err
 	}
 	if mkdirErr := os.MkdirAll(filepath.Dir(target), 0o750); mkdirErr != nil {
-		return nil, fmt.Errorf("create object digest directory: %w", mkdirErr)
+		return nil, wrapError(mkdirErr, "create object digest directory")
 	}
 	tmp, err := os.CreateTemp(filepath.Dir(target), "."+expected+".tmp-*")
 	if err != nil {
-		return nil, fmt.Errorf("create object temp file: %w", err)
+		return nil, wrapError(err, "create object temp file")
 	}
 	return &putSession{
 		store:      store,
@@ -72,13 +71,13 @@ func (s *putSession) commit(ctx context.Context, r io.Reader, opts PutOptions) (
 func (s *putSession) write(r io.Reader) (int64, error) {
 	size, err := io.Copy(io.MultiWriter(s.tmp, s.hasher), r)
 	if err != nil {
-		return 0, s.closeWithError(fmt.Errorf("write object temp file: %w", err))
+		return 0, s.closeWithError(wrapError(err, "write object temp file"))
 	}
 	if err := s.tmp.Sync(); err != nil {
-		return 0, s.closeWithError(fmt.Errorf("sync object temp file: %w", err))
+		return 0, s.closeWithError(wrapError(err, "sync object temp file"))
 	}
 	if err := s.tmp.Close(); err != nil {
-		return 0, fmt.Errorf("close object temp file: %w", err)
+		return 0, wrapError(err, "close object temp file")
 	}
 	return size, nil
 }
@@ -88,7 +87,7 @@ func (s *putSession) validateDigest() error {
 	if actual == s.expected {
 		return nil
 	}
-	return fmt.Errorf("%w: expected %s got %s:%s", ErrDigestMismatch, s.normalized, s.algorithm, actual)
+	return errorf("%w: expected %s got %s:%s", ErrDigestMismatch, s.normalized, s.algorithm, actual)
 }
 
 func (s *putSession) rename(ctx context.Context, size int64, opts PutOptions) (*Info, error) {
@@ -114,24 +113,24 @@ func (s *putSession) handleRenameError(ctx context.Context, err error) (*Info, e
 		return existing, nil
 	}
 	if errors.Is(statErr, ErrNotFound) {
-		return nil, fmt.Errorf("commit object file: %w", err)
+		return nil, wrapError(err, "commit object file")
 	}
 	return nil, errors.Join(
-		fmt.Errorf("commit object file: %w", err),
-		fmt.Errorf("stat existing object after commit failure: %w", statErr),
+		wrapError(err, "commit object file"),
+		wrapError(statErr, "stat existing object after commit failure"),
 	)
 }
 
 func (s *putSession) closeWithError(err error) error {
 	if closeErr := s.tmp.Close(); closeErr != nil {
-		return errors.Join(err, fmt.Errorf("close object temp file: %w", closeErr))
+		return errors.Join(err, wrapError(closeErr, "close object temp file"))
 	}
 	return err
 }
 
 func removeTempObject(path string) error {
 	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("remove object temp file: %w", err)
+		return wrapError(err, "remove object temp file")
 	}
 	return nil
 }

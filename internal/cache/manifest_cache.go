@@ -2,7 +2,6 @@ package cache
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"time"
@@ -57,7 +56,7 @@ func manifestEnvelopeFromRecord(record meta.ManifestRecord, body []byte) ([]byte
 		Body:   body,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("marshal manifest cache envelope: %w", err)
+		return nil, wrapError(err, "marshal manifest cache envelope")
 	}
 	return data, nil
 }
@@ -65,7 +64,7 @@ func manifestEnvelopeFromRecord(record meta.ManifestRecord, body []byte) ([]byte
 func manifestFromEnvelope(data []byte) (*CachedManifest, error) {
 	var envelope manifestEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, fmt.Errorf("unmarshal manifest cache envelope: %w", err)
+		return nil, wrapError(err, "unmarshal manifest cache envelope")
 	}
 	return &CachedManifest{
 		Digest:    envelope.Record.Digest,
@@ -90,7 +89,7 @@ func tagsEnvelopeFromResult(result *TagsResult) ([]byte, error) {
 func tagsFromEnvelope(data []byte) (*TagsResult, error) {
 	var envelope responseEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, fmt.Errorf("unmarshal tags cache envelope: %w", err)
+		return nil, wrapError(err, "unmarshal tags cache envelope")
 	}
 	return &TagsResult{
 		Body:    envelope.Body,
@@ -113,7 +112,7 @@ func referrersEnvelopeFromResult(result *ReferrersResult) ([]byte, error) {
 func referrersFromEnvelope(data []byte) (*ReferrersResult, error) {
 	var envelope responseEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
-		return nil, fmt.Errorf("unmarshal referrers cache envelope: %w", err)
+		return nil, wrapError(err, "unmarshal referrers cache envelope")
 	}
 	return &ReferrersResult{
 		Body:      envelope.Body,
@@ -126,7 +125,7 @@ func referrersFromEnvelope(data []byte) (*ReferrersResult, error) {
 func marshalResponseEnvelope(envelope responseEnvelope, label string) ([]byte, error) {
 	data, err := json.Marshal(envelope)
 	if err != nil {
-		return nil, fmt.Errorf("marshal %s cache envelope: %w", label, err)
+		return nil, wrapError(err, "marshal %s cache envelope", label)
 	}
 	return data, nil
 }

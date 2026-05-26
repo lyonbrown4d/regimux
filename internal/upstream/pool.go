@@ -6,6 +6,8 @@ import (
 	"sync"
 
 	clienthttp "github.com/arcgolabs/clientx/http"
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 type upstreamPool struct {
@@ -46,26 +48,19 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 }
 
 func endpointRegistries(cfg Config) []string {
-	registries := make([]string, 0, len(cfg.Mirrors)+1)
-	seen := make(map[string]struct{}, len(cfg.Mirrors)+1)
+	registries := collectionset.NewOrderedSetWithCapacity[string](len(cfg.Mirrors) + 1)
 	for _, registry := range cfg.Mirrors {
 		registry = strings.TrimRight(strings.TrimSpace(registry), "/")
 		if registry == "" {
 			continue
 		}
-		if _, ok := seen[registry]; ok {
-			continue
-		}
-		seen[registry] = struct{}{}
-		registries = append(registries, registry)
+		registries.Add(registry)
 	}
 	registry := strings.TrimRight(strings.TrimSpace(cfg.Registry), "/")
 	if registry != "" {
-		if _, ok := seen[registry]; !ok {
-			registries = append(registries, registry)
-		}
+		registries.Add(registry)
 	}
-	return registries
+	return registries.Values()
 }
 
 func normalizeMirrorPolicy(policy string) string {
@@ -86,11 +81,11 @@ func (p *upstreamPool) runtimesForAttempt() []upstreamRuntime {
 	}
 
 	start := p.nextOffset()
-	out := make([]upstreamRuntime, 0, len(p.runtimes))
+	out := collectionlist.NewListWithCapacity[upstreamRuntime](len(p.runtimes))
 	for i := range p.runtimes {
-		out = append(out, p.runtimes[(start+i)%len(p.runtimes)])
+		out.Add(p.runtimes[(start+i)%len(p.runtimes)])
 	}
-	return out
+	return out.Values()
 }
 
 func (p *upstreamPool) nextOffset() int {

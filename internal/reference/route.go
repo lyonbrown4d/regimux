@@ -2,9 +2,10 @@ package reference
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/samber/oops"
 )
 
 var (
@@ -37,13 +38,13 @@ func isPingPath(path string) bool {
 
 func validateRegistryPath(path string) error {
 	if !strings.HasPrefix(path, "/v2/") {
-		return fmt.Errorf("%w: path must start with /v2/", errPathInvalid)
+		return oops.Wrapf(errPathInvalid, "path must start with /v2/")
 	}
 	if strings.Contains(path, "?") || strings.Contains(path, "#") {
-		return fmt.Errorf("%w: path must not include query or fragment", errPathInvalid)
+		return oops.Wrapf(errPathInvalid, "path must not include query or fragment")
 	}
 	if hasEmptyDotOrDotDotSegment(path) {
-		return fmt.Errorf("%w: empty, dot, and dot-dot path segments are not allowed", errPathInvalid)
+		return oops.Wrapf(errPathInvalid, "empty, dot, and dot-dot path segments are not allowed")
 	}
 	return nil
 }
@@ -51,7 +52,7 @@ func validateRegistryPath(path string) error {
 func parseOperationPath(path string) (*Route, error) {
 	switch detectOperation(path) {
 	case RoutePing:
-		return nil, fmt.Errorf("%w: unsupported registry operation", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "unsupported registry operation")
 	case RouteReferrers:
 		return parseReferrersPath(path)
 	case RouteTags:
@@ -61,7 +62,7 @@ func parseOperationPath(path string) (*Route, error) {
 	case RouteBlob:
 		return parseBlobPath(path)
 	}
-	return nil, fmt.Errorf("%w: unsupported registry operation", errPathInvalid)
+	return nil, oops.Wrapf(errPathInvalid, "unsupported registry operation")
 }
 
 func ParseManifestPath(path string) (*Route, error) {
@@ -99,7 +100,7 @@ func ParseReferrersPath(path string) (*Route, error) {
 func ParsePingPath(path string) (*Route, error) {
 	path = strings.TrimSpace(path)
 	if path != "/v2" && path != "/v2/" {
-		return nil, fmt.Errorf("%w: not a ping path", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "not a ping path")
 	}
 	return &Route{Kind: RoutePing}, nil
 }
@@ -107,7 +108,7 @@ func ParsePingPath(path string) (*Route, error) {
 func parseManifestPath(path string) (*Route, error) {
 	name, reference, ok := splitOperationPath(path, "/manifests/")
 	if !ok {
-		return nil, fmt.Errorf("%w: not a manifest path", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "not a manifest path")
 	}
 	normalized, err := normalizeReference(reference)
 	if err != nil {
@@ -124,7 +125,7 @@ func parseManifestPath(path string) (*Route, error) {
 func parseBlobPath(path string) (*Route, error) {
 	name, digest, ok := splitOperationPath(path, "/blobs/")
 	if !ok {
-		return nil, fmt.Errorf("%w: not a blob path", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "not a blob path")
 	}
 	digest, err := NormalizeDigest(digest)
 	if err != nil {
@@ -141,7 +142,7 @@ func parseBlobPath(path string) (*Route, error) {
 func parseTagsPath(path string) (*Route, error) {
 	const marker = "/tags/list"
 	if !strings.HasSuffix(path, marker) {
-		return nil, fmt.Errorf("%w: not a tags path", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "not a tags path")
 	}
 	name := strings.TrimSuffix(strings.TrimPrefix(path, "/v2/"), marker)
 	route, err := routeFromName(RouteTags, name)
@@ -154,7 +155,7 @@ func parseTagsPath(path string) (*Route, error) {
 func parseReferrersPath(path string) (*Route, error) {
 	name, digest, ok := splitOperationPath(path, "/referrers/")
 	if !ok {
-		return nil, fmt.Errorf("%w: not a referrers path", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "not a referrers path")
 	}
 	digest, err := NormalizeDigest(digest)
 	if err != nil {
@@ -238,10 +239,10 @@ func hasValidOperationTail(path string, idx int, marker string) bool {
 func routeFromName(kind RouteKind, name string) (*Route, error) {
 	alias, repo, ok := strings.Cut(name, "/")
 	if !ok || alias == "" || repo == "" {
-		return nil, fmt.Errorf("%w: path must include alias and repository", errPathInvalid)
+		return nil, oops.Wrapf(errPathInvalid, "path must include alias and repository")
 	}
 	if !aliasRegexp.MatchString(alias) {
-		return nil, fmt.Errorf("%w: invalid upstream alias %q", errPathInvalid, alias)
+		return nil, oops.Wrapf(errPathInvalid, "invalid upstream alias %q", alias)
 	}
 	if err := validateRepo(repo); err != nil {
 		return nil, err
@@ -251,11 +252,11 @@ func routeFromName(kind RouteKind, name string) (*Route, error) {
 
 func validateRepo(repo string) error {
 	if repo == "" {
-		return fmt.Errorf("%w: empty repository", errPathInvalid)
+		return oops.Wrapf(errPathInvalid, "empty repository")
 	}
 	for segment := range strings.SplitSeq(repo, "/") {
 		if !repoSegmentRegex.MatchString(segment) {
-			return fmt.Errorf("%w: invalid repository segment %q", errPathInvalid, segment)
+			return oops.Wrapf(errPathInvalid, "invalid repository segment %q", segment)
 		}
 	}
 	return nil
@@ -263,7 +264,7 @@ func validateRepo(repo string) error {
 
 func normalizeReference(reference string) (string, error) {
 	if reference == "" || strings.Contains(reference, "/") {
-		return "", fmt.Errorf("%w: invalid manifest reference", errPathInvalid)
+		return "", oops.Wrapf(errPathInvalid, "invalid manifest reference")
 	}
 	if digest, err := NormalizeDigest(reference); err == nil {
 		return digest, nil
@@ -271,7 +272,7 @@ func normalizeReference(reference string) (string, error) {
 	if tagRegexp.MatchString(reference) {
 		return reference, nil
 	}
-	return "", fmt.Errorf("%w: invalid manifest reference %q", errPathInvalid, reference)
+	return "", oops.Wrapf(errPathInvalid, "invalid manifest reference %q", reference)
 }
 
 func hasEmptyDotOrDotDotSegment(path string) bool {

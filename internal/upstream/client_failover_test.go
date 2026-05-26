@@ -27,13 +27,13 @@ func TestClientGetManifestFailsOverMirrors(t *testing.T) {
 	primary := httptest.NewServer(statusHandler(http.StatusInternalServerError, &primaryRequests))
 	defer primary.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {
 			Registry:     primary.URL,
 			Mirrors:      []string{failedMirror.URL, healthyMirror.URL},
 			MirrorPolicy: "ordered",
 		},
-	}, nil)
+	})
 
 	resp, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{
 		UpstreamAlias: "hub",
@@ -62,13 +62,13 @@ func TestClientGetManifestDoesNotFailOverUnauthorizedMirror(t *testing.T) {
 	primary := httptest.NewServer(statusHandler(http.StatusOK, &primaryRequests))
 	defer primary.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {
 			Registry:     primary.URL,
 			Mirrors:      []string{unauthorizedMirror.URL, secondMirror.URL},
 			MirrorPolicy: "ordered",
 		},
-	}, nil)
+	})
 
 	_, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{
 		UpstreamAlias: "hub",
@@ -92,12 +92,12 @@ func TestClientRoundRobinStartsOnNextMirror(t *testing.T) {
 	second := httptest.NewServer(pingHandler(t, "second", &secondRequests))
 	defer second.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {
 			Mirrors:      []string{first.URL, second.URL},
 			MirrorPolicy: "round_robin",
 		},
-	}, nil)
+	})
 
 	requireNoError(t, client.Ping(context.Background(), "hub"), "first Ping")
 	requireNoError(t, client.Ping(context.Background(), "hub"), "second Ping")

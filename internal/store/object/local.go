@@ -6,7 +6,6 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"errors"
-	"fmt"
 	"hash"
 	"io"
 	"net/http"
@@ -28,10 +27,10 @@ func NewLocal(root string) (*LocalStore, error) {
 	}
 	abs, err := filepath.Abs(root)
 	if err != nil {
-		return nil, fmt.Errorf("resolve object store root: %w", err)
+		return nil, wrapError(err, "resolve object store root")
 	}
 	if err := os.MkdirAll(abs, 0o750); err != nil {
-		return nil, fmt.Errorf("create object store root: %w", err)
+		return nil, wrapError(err, "create object store root")
 	}
 	return &LocalStore{root: abs}, nil
 }
@@ -50,7 +49,7 @@ func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNotFound
 		}
-		return nil, fmt.Errorf("stat object %s: %w", normalized, err)
+		return nil, wrapError(err, "stat object %s", normalized)
 	}
 	return &Info{Digest: normalized, Size: stat.Size(), ETag: normalized, Path: target}, nil
 }
@@ -80,17 +79,17 @@ func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (i
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, ErrNotFound
 		}
-		return nil, nil, fmt.Errorf("open object %s: %w", info.Digest, err)
+		return nil, nil, wrapError(err, "open object %s", info.Digest)
 	}
 	if opts.Range == nil {
 		return file, info, nil
 	}
 	resolved, err := opts.Range.Resolve(info.Size)
 	if err != nil {
-		return nil, nil, closeFileAfterError(file, fmt.Errorf("resolve object range: %w", err))
+		return nil, nil, closeFileAfterError(file, wrapError(err, "resolve object range"))
 	}
 	if _, err := file.Seek(resolved.Start, io.SeekStart); err != nil {
-		return nil, nil, closeFileAfterError(file, fmt.Errorf("seek object range: %w", err))
+		return nil, nil, closeFileAfterError(file, wrapError(err, "seek object range"))
 	}
 	ranged := *info
 	ranged.Size = resolved.Length()
@@ -132,7 +131,7 @@ func (s *LocalStore) Delete(ctx context.Context, digest string) error {
 		return err
 	}
 	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("delete object: %w", err)
+		return wrapError(err, "delete object")
 	}
 	return nil
 }
@@ -151,20 +150,20 @@ func (s *LocalStore) findExisting(ctx context.Context, digest string, opts PutOp
 
 func (s *LocalStore) path(digest string) (string, string, error) {
 	if s == nil || s.root == "" {
-		return "", "", errors.New("local object store is not configured")
+		return "", "", errorf("local object store is not configured")
 	}
 	normalized, err := reference.NormalizeDigest(digest)
 	if err != nil {
-		return "", "", fmt.Errorf("normalize object digest: %w", err)
+		return "", "", wrapError(err, "normalize object digest")
 	}
 	algorithm, encoded, _ := strings.Cut(normalized, ":")
 	target := filepath.Join(s.root, "blobs", algorithm, encoded[:2], encoded)
 	rel, err := filepath.Rel(s.root, target)
 	if err != nil {
-		return "", "", fmt.Errorf("resolve object path relative to root: %w", err)
+		return "", "", wrapError(err, "resolve object path relative to root")
 	}
 	if strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
-		return "", "", fmt.Errorf("object digest escapes root: %s", digest)
+		return "", "", errorf("object digest escapes root: %s", digest)
 	}
 	return normalized, target, nil
 }
@@ -178,7 +177,7 @@ func newDigestHash(algorithm string) (hash.Hash, error) {
 	case "sha512":
 		return sha512.New(), nil
 	default:
-		return nil, fmt.Errorf("unsupported digest hash: %s", algorithm)
+		return nil, errorf("unsupported digest hash: %s", algorithm)
 	}
 }
 
@@ -191,14 +190,14 @@ func normalizeContext(ctx context.Context) context.Context {
 
 func checkContext(ctx context.Context, operation string) error {
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%s context: %w", operation, err)
+		return wrapError(err, "%s context", operation)
 	}
 	return nil
 }
 
 func closeFileAfterError(file *os.File, err error) error {
 	if closeErr := file.Close(); closeErr != nil {
-		return errors.Join(err, fmt.Errorf("close object file: %w", closeErr))
+		return errors.Join(err, wrapError(closeErr, "close object file"))
 	}
 	return err
 }
@@ -210,7 +209,7 @@ type readCloser struct {
 
 func (r readCloser) Close() error {
 	if err := r.closer.Close(); err != nil {
-		return fmt.Errorf("close object reader: %w", err)
+		return wrapError(err, "close object reader")
 	}
 	return nil
 }

@@ -20,6 +20,7 @@ import (
 	storemodule "github.com/lyonbrown4d/regimux/internal/store"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/samber/oops"
 	"github.com/spf13/cobra"
 )
 
@@ -44,7 +45,7 @@ func newRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion {
 				if _, err := fmt.Fprintln(cmd.OutOrStdout(), version); err != nil {
-					return fmt.Errorf("write version: %w", err)
+					return oops.Wrapf(err, "write version")
 				}
 				return nil
 			}
@@ -59,12 +60,12 @@ func newRootCommand() *cobra.Command {
 func run(ctx context.Context, configPath string) error {
 	cfg, err := config.Load(ctx, configPath)
 	if err != nil {
-		return fmt.Errorf("load config: %w", err)
+		return oops.Wrapf(err, "load config")
 	}
 
 	logger, err := observability.NewLogger(cfg.Log)
 	if err != nil {
-		return fmt.Errorf("create logger: %w", err)
+		return oops.Wrapf(err, "create logger")
 	}
 
 	runErr := buildApp(cfg, logger, version).RunContext(ctx)
@@ -76,13 +77,13 @@ func joinLifecycleErrors(runErr, closeErr error) error {
 	switch {
 	case runErr != nil && closeErr != nil:
 		return errors.Join(
-			fmt.Errorf("run application: %w", runErr),
-			fmt.Errorf("close logger: %w", closeErr),
+			oops.Wrapf(runErr, "run application"),
+			oops.Wrapf(closeErr, "close logger"),
 		)
 	case runErr != nil:
-		return fmt.Errorf("run application: %w", runErr)
+		return oops.Wrapf(runErr, "run application")
 	case closeErr != nil:
-		return fmt.Errorf("close logger: %w", closeErr)
+		return oops.Wrapf(closeErr, "close logger")
 	default:
 		return nil
 	}
@@ -185,7 +186,7 @@ func startServer(ctx context.Context, server *api.Server) error {
 		return nil
 	}
 	if err := server.Start(ctx); err != nil {
-		return fmt.Errorf("start api server: %w", err)
+		return oops.Wrapf(err, "start api server")
 	}
 	return nil
 }
@@ -195,7 +196,7 @@ func stopServer(ctx context.Context, server *api.Server) error {
 		return nil
 	}
 	if err := server.Stop(ctx); err != nil {
-		return fmt.Errorf("stop api server: %w", err)
+		return oops.Wrapf(err, "stop api server")
 	}
 	return nil
 }
@@ -205,7 +206,7 @@ func closeCacheBackend(_ context.Context, cacheBackend backend.Backend) error {
 		return nil
 	}
 	if err := cacheBackend.Close(); err != nil {
-		return fmt.Errorf("close cache backend: %w", err)
+		return oops.Wrapf(err, "close cache backend")
 	}
 	return nil
 }
@@ -215,7 +216,7 @@ func closeMetadataStore(_ context.Context, store meta.Store) error {
 		return nil
 	}
 	if err := store.Close(); err != nil {
-		return fmt.Errorf("close metadata store: %w", err)
+		return oops.Wrapf(err, "close metadata store")
 	}
 	return nil
 }
@@ -225,7 +226,7 @@ func closeBus(_ context.Context, bus events.Bus) error {
 		return nil
 	}
 	if err := bus.Close(); err != nil {
-		return fmt.Errorf("close event bus: %w", err)
+		return oops.Wrapf(err, "close event bus")
 	}
 	return nil
 }

@@ -2,15 +2,16 @@ package api
 
 import (
 	"bytes"
-	"fmt"
 	"net/http"
 	"strings"
 
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/oops"
 )
 
 func (i registryInput) path() string {
@@ -61,21 +62,22 @@ func routeFromInput(input *registryInput) (reference.Route, error) {
 	}
 	route, err := reference.Parse(input.path())
 	if err != nil {
-		return reference.Route{}, fmt.Errorf("parse registry route: %w", err)
+		return reference.Route{}, oops.Wrapf(err, "parse registry route")
 	}
 	return route, nil
 }
 
-func defaultNamespacesFromConfig(cfg config.Config) map[string]string {
-	out := make(map[string]string, len(cfg.Upstreams))
-	for alias := range cfg.Upstreams {
-		upstreamCfg := cfg.Upstreams[alias]
+func defaultNamespacesFromConfig(cfg config.Config) *collectionmapping.Map[string, string] {
+	upstreams := cfg.OrderedUpstreams()
+	out := collectionmapping.NewMapWithCapacity[string, string](upstreams.Len())
+	upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		namespace := strings.Trim(strings.TrimSpace(upstreamCfg.DefaultNamespace), "/")
 		if strings.TrimSpace(alias) == "" || namespace == "" {
-			continue
+			return true
 		}
-		out[alias] = namespace
-	}
+		out.Set(alias, namespace)
+		return true
+	})
 	return out
 }
 

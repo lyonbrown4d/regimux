@@ -4,7 +4,6 @@ import (
 	"crypto/sha256"
 	"crypto/sha512"
 	"encoding/hex"
-	"fmt"
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
@@ -30,7 +29,7 @@ func digestFromUpstreamHeader(upstreamDigest string, body []byte) (string, bool,
 	}
 	normalized, normalizeErr := reference.NormalizeDigest(upstreamDigest)
 	if normalizeErr != nil {
-		return "", false, fmt.Errorf("normalize upstream manifest digest: %w", normalizeErr)
+		return "", false, wrapError(normalizeErr, "normalize upstream manifest digest")
 	}
 	if err := verifyDigestBody(normalized, body); err != nil {
 		return "", true, err
@@ -41,7 +40,7 @@ func digestFromUpstreamHeader(upstreamDigest string, body []byte) (string, bool,
 func digestFromReference(raw string, body []byte) (string, error) {
 	digest, err := reference.NormalizeDigest(raw)
 	if err != nil {
-		return "", fmt.Errorf("normalize manifest reference digest: %w", err)
+		return "", wrapError(err, "normalize manifest reference digest")
 	}
 	if err := verifyDigestBody(digest, body); err != nil {
 		return "", err

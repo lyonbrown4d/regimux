@@ -3,7 +3,6 @@ package api
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"sync"
@@ -11,6 +10,7 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/arcgolabs/httpx/adapter"
 	"github.com/arcgolabs/httpx/adapter/std"
+	"github.com/samber/oops"
 )
 
 type Server struct {
@@ -68,12 +68,12 @@ func NewServer(opts Options) *Server {
 
 func (s *Server) Start(ctx context.Context) error {
 	if s == nil {
-		return errors.New("api server is nil")
+		return oops.Errorf("api server is nil")
 	}
 	s.logger.Info("starting http server", "listen", s.listen)
 	go func() {
 		if err := s.runtime.Listen(s.listen); err != nil {
-			s.errCh <- fmt.Errorf("listen http server: %w", err)
+			s.errCh <- oops.Wrapf(err, "listen http server")
 			return
 		}
 		s.errCh <- nil
@@ -92,16 +92,16 @@ func (s *Server) Stop(ctx context.Context) error {
 		shutdownErr = s.runtime.Shutdown()
 	})
 	if shutdownErr != nil {
-		return fmt.Errorf("shutdown http server: %w", shutdownErr)
+		return oops.Wrapf(shutdownErr, "shutdown http server")
 	}
 
 	select {
 	case err := <-s.errCh:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {
-			return fmt.Errorf("http server stopped: %w", err)
+			return oops.Wrapf(err, "http server stopped")
 		}
 	case <-ctx.Done():
-		return fmt.Errorf("wait for http server shutdown: %w", ctx.Err())
+		return oops.Wrapf(ctx.Err(), "wait for http server shutdown")
 	}
 	return nil
 }

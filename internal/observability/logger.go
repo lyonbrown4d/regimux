@@ -2,11 +2,11 @@
 package observability
 
 import (
-	"fmt"
 	"log/slog"
 
 	"github.com/arcgolabs/logx"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/oops"
 )
 
 func NewLogger(cfg config.LogConfig) (*slog.Logger, error) {
@@ -16,7 +16,7 @@ func NewLogger(cfg config.LogConfig) (*slog.Logger, error) {
 	}
 	logger, err := logx.New(opts...)
 	if err != nil {
-		return nil, fmt.Errorf("create logx logger: %w", err)
+		return nil, oops.Wrapf(err, "create logx logger")
 	}
 	if cfg.SetDefault {
 		logx.SetDefault(logger)
@@ -52,7 +52,7 @@ func levelOption(levelName string) ([]logx.Option, error) {
 	}
 	level, err := logx.ParseLevel(levelName)
 	if err != nil {
-		return nil, fmt.Errorf("parse log level %q: %w", levelName, err)
+		return nil, oops.Wrapf(err, "parse log level %q", levelName)
 	}
 	return []logx.Option{logx.WithLevel(level)}, nil
 }

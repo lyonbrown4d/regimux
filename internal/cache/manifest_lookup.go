@@ -3,7 +3,6 @@ package cache
 import (
 	"context"
 	"errors"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -26,7 +25,7 @@ func (p manifestProxy) lookupEnvelope(ctx context.Context, req ManifestRequest, 
 
 	data, ok, err := p.cache.Get(ctx, cacheKey)
 	if err != nil {
-		return nil, false, fmt.Errorf("get manifest cache entry: %w", err)
+		return nil, false, wrapError(err, "get manifest cache entry")
 	}
 	if !ok {
 		return nil, false, nil
@@ -35,7 +34,7 @@ func (p manifestProxy) lookupEnvelope(ctx context.Context, req ManifestRequest, 
 	manifest, err := manifestFromEnvelope(data)
 	if err != nil {
 		if deleteErr := p.cache.Delete(ctx, cacheKey); deleteErr != nil {
-			return nil, false, fmt.Errorf("delete invalid manifest cache entry: %w", deleteErr)
+			return nil, false, wrapError(deleteErr, "delete invalid manifest cache entry")
 		}
 		return nil, false, nil
 	}
@@ -107,7 +106,7 @@ func (p manifestProxy) lookupStaleDigestRecord(ctx context.Context, req Manifest
 		Digest:     digest,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup stale manifest by digest: %w", err)
+		return nil, false, wrapError(err, "lookup stale manifest by digest")
 	}
 	if !ok || !p.validStaleManifest(record, acceptKey, now) {
 		return nil, false, nil
@@ -122,7 +121,7 @@ func (p manifestProxy) lookupStaleTagRecord(ctx context.Context, req ManifestReq
 		Reference:  req.Reference,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup stale manifest tag: %w", err)
+		return nil, false, wrapError(err, "lookup stale manifest tag")
 	}
 	if !ok || !p.withinStaleWindow(tag.ExpiresAt, now) {
 		return nil, false, nil
@@ -134,7 +133,7 @@ func (p manifestProxy) lookupStaleTagRecord(ctx context.Context, req ManifestReq
 		Digest:     tag.Digest,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup stale tagged manifest: %w", err)
+		return nil, false, wrapError(err, "lookup stale tagged manifest")
 	}
 	if !ok || !p.validStaleManifest(record, acceptKey, now) {
 		return nil, false, nil
@@ -185,7 +184,7 @@ func (p manifestProxy) storedManifestBody(ctx context.Context, req ManifestReque
 		return nil, false, nil
 	}
 	if err != nil {
-		return nil, false, fmt.Errorf("open stored manifest object: %w", err)
+		return nil, false, wrapError(err, "open stored manifest object")
 	}
 	body, err := readHTTPBody(reader, "stored manifest object")
 	if err != nil {
@@ -215,7 +214,7 @@ func (p manifestProxy) lookupMetadata(ctx context.Context, req ManifestRequest) 
 		Reference:  req.Reference,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup manifest tag: %w", err)
+		return nil, false, wrapError(err, "lookup manifest tag")
 	}
 	if !ok || tagExpired(tag, now) {
 		return nil, false, nil
@@ -234,7 +233,7 @@ func tagExpired(tag *meta.TagRecord, now time.Time) bool {
 func (p manifestProxy) lookupManifestRecord(ctx context.Context, key meta.ManifestKey, acceptKey string, now time.Time) (*meta.ManifestRecord, bool, error) {
 	record, ok, err := p.metadata.Manifest(ctx, key)
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup manifest record: %w", err)
+		return nil, false, wrapError(err, "lookup manifest record")
 	}
 	if !ok || record.Expired(now) || !acceptMatches(record.AcceptKey, acceptKey) {
 		return nil, false, nil

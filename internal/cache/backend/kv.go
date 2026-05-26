@@ -3,7 +3,6 @@ package backend
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -70,14 +69,14 @@ func NewValkey(opts KVOptions) (*KV, error) {
 		SelectDB:    opts.DB,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("create valkey client: %w", err)
+		return nil, wrapError(err, "create valkey client")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.Do(ctx, client.B().Ping().Build()).Error(); err != nil {
 		client.Close()
-		return nil, fmt.Errorf("ping valkey cache: %w", err)
+		return nil, wrapError(err, "ping valkey cache")
 	}
 
 	return NewKV(valkeyadapter.NewFromClient(client), opts.Prefix), nil
@@ -103,7 +102,7 @@ func (b *KV) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		if kvx.IsNil(err) {
 			return nil, false, nil
 		}
-		return nil, false, fmt.Errorf("get kv cache entry: %w", err)
+		return nil, false, wrapError(err, "get kv cache entry")
 	}
 	return cloneBytes(value), true, nil
 }
@@ -117,7 +116,7 @@ func (b *KV) Set(ctx context.Context, key string, value []byte, ttl time.Duratio
 		return err
 	}
 	if err := b.client.Set(ctx, key, cloneBytes(value), normalizeRemoteTTL(ttl)); err != nil {
-		return fmt.Errorf("set kv cache entry: %w", err)
+		return wrapError(err, "set kv cache entry")
 	}
 	return nil
 }
@@ -131,7 +130,7 @@ func (b *KV) Delete(ctx context.Context, key string) error {
 		return err
 	}
 	if err := b.client.Delete(ctx, key); err != nil {
-		return fmt.Errorf("delete kv cache entry: %w", err)
+		return wrapError(err, "delete kv cache entry")
 	}
 	return nil
 }
@@ -141,7 +140,7 @@ func (b *KV) Close() error {
 		return nil
 	}
 	if err := b.client.Close(); err != nil {
-		return fmt.Errorf("close kv cache client: %w", err)
+		return wrapError(err, "close kv cache client")
 	}
 	return nil
 }

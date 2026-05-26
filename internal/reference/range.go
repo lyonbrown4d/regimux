@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+
+	"github.com/samber/oops"
 )
 
 var errRangeInvalid = errors.New("invalid range")
@@ -41,12 +43,12 @@ func rangeSpec(header string) (string, bool, error) {
 		return "", false, nil
 	}
 	if !strings.HasPrefix(strings.ToLower(header), "bytes=") {
-		return "", false, fmt.Errorf("%w: only bytes ranges are supported", errRangeInvalid)
+		return "", false, oops.Wrapf(errRangeInvalid, "only bytes ranges are supported")
 	}
 
 	spec := strings.TrimSpace(header[len("bytes="):])
 	if spec == "" || strings.Contains(spec, ",") {
-		return "", false, fmt.Errorf("%w: only a single bytes range is supported", errRangeInvalid)
+		return "", false, oops.Wrapf(errRangeInvalid, "only a single bytes range is supported")
 	}
 	return spec, true, nil
 }
@@ -54,7 +56,7 @@ func rangeSpec(header string) (string, bool, error) {
 func splitRangeSpec(spec string) (string, string, error) {
 	left, right, ok := strings.Cut(spec, "-")
 	if !ok {
-		return "", "", fmt.Errorf("%w: missing dash", errRangeInvalid)
+		return "", "", oops.Wrapf(errRangeInvalid, "missing dash")
 	}
 	return strings.TrimSpace(left), strings.TrimSpace(right), nil
 }
@@ -62,7 +64,7 @@ func splitRangeSpec(spec string) (string, string, error) {
 func parseRangeBounds(left, right string) (*HTTPRange, error) {
 	switch {
 	case left == "" && right == "":
-		return nil, fmt.Errorf("%w: empty range", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "empty range")
 	case left == "":
 		return parseSuffixRange(right)
 	case right == "":
@@ -75,7 +77,7 @@ func parseRangeBounds(left, right string) (*HTTPRange, error) {
 func parseSuffixRange(right string) (*HTTPRange, error) {
 	suffix, err := parseNonNegativeInt(right)
 	if err != nil || suffix <= 0 {
-		return nil, fmt.Errorf("%w: invalid suffix length", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "invalid suffix length")
 	}
 	return &HTTPRange{Start: -1, End: suffix}, nil
 }
@@ -83,7 +85,7 @@ func parseSuffixRange(right string) (*HTTPRange, error) {
 func parseOpenEndedRange(left string) (*HTTPRange, error) {
 	start, err := parseNonNegativeInt(left)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid start", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "invalid start")
 	}
 	return &HTTPRange{Start: start, End: -1}, nil
 }
@@ -91,14 +93,14 @@ func parseOpenEndedRange(left string) (*HTTPRange, error) {
 func parseBoundedRange(left, right string) (*HTTPRange, error) {
 	start, err := parseNonNegativeInt(left)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid start", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "invalid start")
 	}
 	end, err := parseNonNegativeInt(right)
 	if err != nil {
-		return nil, fmt.Errorf("%w: invalid end", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "invalid end")
 	}
 	if end < start {
-		return nil, fmt.Errorf("%w: end before start", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "end before start")
 	}
 	return &HTTPRange{Start: start, End: end}, nil
 }
@@ -153,10 +155,10 @@ func (r HTTPRange) Resolve(size int64) (*HTTPRange, error) {
 
 func validateContentSize(size int64) error {
 	if size < 0 {
-		return fmt.Errorf("%w: negative size", errRangeInvalid)
+		return oops.Wrapf(errRangeInvalid, "negative size")
 	}
 	if size == 0 {
-		return fmt.Errorf("%w: empty content", errRangeInvalid)
+		return oops.Wrapf(errRangeInvalid, "empty content")
 	}
 	return nil
 }
@@ -168,14 +170,14 @@ func (r HTTPRange) resolveSuffix(size int64) *HTTPRange {
 
 func (r HTTPRange) resolveOpenEnded(size int64) (*HTTPRange, error) {
 	if r.Start >= size {
-		return nil, fmt.Errorf("%w: start beyond content size", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "start beyond content size")
 	}
 	return &HTTPRange{Start: r.Start, End: size - 1}, nil
 }
 
 func (r HTTPRange) resolveBounded(size int64) (*HTTPRange, error) {
 	if r.Start < 0 || r.End < r.Start || r.Start >= size {
-		return nil, fmt.Errorf("%w: unsatisfiable range", errRangeInvalid)
+		return nil, oops.Wrapf(errRangeInvalid, "unsatisfiable range")
 	}
 	end := min(r.End, size-1)
 	return &HTTPRange{Start: r.Start, End: end}, nil

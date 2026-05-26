@@ -17,12 +17,12 @@ func TestClientGetBlobPreservesHeadRangeAndBearerToken(t *testing.T) {
 	registryServer := httptest.NewServer(blobHeadHandler(t, digest))
 	defer registryServer.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{
+	client := newTestClient(map[string]upstream.Config{
 		"hub": {
 			Registry: registryServer.URL,
 			Auth:     upstream.AuthConfig{Type: "bearer", Token: "static-token"},
 		},
-	}, nil)
+	})
 
 	resp, err := client.GetBlob(context.Background(), upstream.GetBlobRequest{
 		UpstreamAlias: "hub",
@@ -44,7 +44,7 @@ func TestClientListTagsBuildsRequestURL(t *testing.T) {
 	registryServer := httptest.NewServer(tagsHandler(t))
 	defer registryServer.Close()
 
-	client := upstream.NewClient(map[string]upstream.Config{"hub": {Registry: registryServer.URL}}, nil)
+	client := newTestClient(map[string]upstream.Config{"hub": {Registry: registryServer.URL}})
 	resp, err := client.ListTags(context.Background(), upstream.ListTagsRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/nginx",

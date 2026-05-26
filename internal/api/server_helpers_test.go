@@ -2,7 +2,6 @@ package api_test
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net"
 	"net/http"
@@ -11,6 +10,7 @@ import (
 
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
+	"github.com/samber/oops"
 )
 
 func startAPIServer(t *testing.T, endpoints ...httpx.Endpoint) string {
@@ -82,11 +82,11 @@ func httpGet(t *testing.T, url string) *http.Response {
 func httpGetWithClient(client *http.Client, url string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(context.Background(), http.MethodGet, url, http.NoBody)
 	if err != nil {
-		return nil, fmt.Errorf("build test request: %w", err)
+		return nil, oops.Wrapf(err, "build test request")
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("send test request: %w", err)
+		return nil, oops.Wrapf(err, "send test request")
 	}
 	return resp, nil
 }

@@ -3,12 +3,13 @@ package upstream
 
 import (
 	"encoding/json"
-	"fmt"
 	"io"
 	"net/url"
 	"strings"
 	"sync"
 	"time"
+
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 )
 
 const defaultBearerTokenTTL = 5 * time.Minute
@@ -39,7 +40,7 @@ type bearerTokenCacheEntry struct {
 
 type bearerTokenCache struct {
 	mu      sync.Mutex
-	entries map[bearerTokenCacheKey]bearerTokenCacheEntry
+	entries *collectionmapping.Map[bearerTokenCacheKey, bearerTokenCacheEntry]
 }
 
 type bearerTokenResponse struct {
@@ -80,7 +81,7 @@ func parseBearerChallenge(header string) bearerChallenge {
 
 func newBearerTokenCache() *bearerTokenCache {
 	return &bearerTokenCache{
-		entries: make(map[bearerTokenCacheKey]bearerTokenCacheEntry),
+		entries: collectionmapping.NewMap[bearerTokenCacheKey, bearerTokenCacheEntry](),
 	}
 }
 
@@ -92,12 +93,12 @@ func (c *bearerTokenCache) get(key bearerTokenCacheKey) (string, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	entry, ok := c.entries[key]
+	entry, ok := c.entries.Get(key)
 	if !ok {
 		return "", false
 	}
 	if !entry.ExpiresAt.After(now) {
-		delete(c.entries, key)
+		c.entries.Delete(key)
 		return "", false
 	}
 	return entry.Token, true
@@ -109,13 +110,13 @@ func (c *bearerTokenCache) set(key bearerTokenCacheKey, token string, expiresAt 
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = bearerTokenCacheEntry{Token: token, ExpiresAt: expiresAt}
+	c.entries.Set(key, bearerTokenCacheEntry{Token: token, ExpiresAt: expiresAt})
 }
 
 func newBearerTokenRequest(cfg Config, challenge bearerChallenge, fallbackScope string) (bearerTokenRequest, error) {
 	realm, err := url.Parse(challenge.Realm)
 	if err != nil {
-		return bearerTokenRequest{}, fmt.Errorf("parse bearer token realm: %w", err)
+		return bearerTokenRequest{}, wrapError(err, "parse bearer token realm")
 	}
 	query := realm.Query()
 
@@ -189,7 +190,7 @@ func splitChallengeParams(params string) []string {
 func decodeJSON(r io.Reader, out any) error {
 	decoder := json.NewDecoder(r)
 	if err := decoder.Decode(out); err != nil {
-		return fmt.Errorf("decode upstream JSON response: %w", err)
+		return wrapError(err, "decode upstream JSON response")
 	}
 	return nil
 }

@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
@@ -32,7 +31,7 @@ func (p tagProxy) cached(ctx context.Context, cacheKey string) (*TagsResult, boo
 
 	data, ok, err := p.cache.Get(ctx, cacheKey)
 	if err != nil {
-		return nil, false, fmt.Errorf("get tags cache entry: %w", err)
+		return nil, false, wrapError(err, "get tags cache entry")
 	}
 	if !ok {
 		return nil, false, nil
@@ -41,7 +40,7 @@ func (p tagProxy) cached(ctx context.Context, cacheKey string) (*TagsResult, boo
 	result, err := tagsFromEnvelope(data)
 	if err != nil {
 		if deleteErr := p.cache.Delete(ctx, cacheKey); deleteErr != nil {
-			return nil, false, fmt.Errorf("delete invalid tags cache entry: %w", deleteErr)
+			return nil, false, wrapError(deleteErr, "delete invalid tags cache entry")
 		}
 		return nil, false, nil
 	}
@@ -57,7 +56,7 @@ func (p tagProxy) fetch(ctx context.Context, req TagRequest) (*TagsResult, error
 		Last:          req.Last,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("fetch tags from upstream: %w", err)
+		return nil, wrapError(err, "fetch tags from upstream")
 	}
 
 	body, err := readHTTPBody(resp.Body, "tags body")

@@ -2,9 +2,10 @@ package reference
 
 import (
 	"errors"
-	"fmt"
 	"regexp"
 	"strings"
+
+	"github.com/samber/oops"
 )
 
 var (
@@ -36,10 +37,10 @@ func cleanDigestValue(value string) (string, error) {
 		return "", ErrDigestInvalid
 	}
 	if strings.ContainsAny(value, "/?#") {
-		return "", fmt.Errorf("%w: %q", ErrDigestInvalid, value)
+		return "", oops.Wrapf(ErrDigestInvalid, "%q", value)
 	}
 	if !digestRegexp.MatchString(value) {
-		return "", fmt.Errorf("%w: %q", ErrDigestInvalid, value)
+		return "", oops.Wrapf(ErrDigestInvalid, "%q", value)
 	}
 	return value, nil
 }
@@ -47,10 +48,10 @@ func cleanDigestValue(value string) (string, error) {
 func validateDigestLength(algorithm, encoded string) error {
 	length, ok := digestLength(algorithm)
 	if !ok {
-		return fmt.Errorf("%w: unsupported digest algorithm %q", ErrDigestInvalid, algorithm)
+		return oops.Wrapf(ErrDigestInvalid, "unsupported digest algorithm %q", algorithm)
 	}
 	if len(encoded) != length {
-		return fmt.Errorf("%w: %s digest must be %d hex characters", ErrDigestInvalid, algorithm, length)
+		return oops.Wrapf(ErrDigestInvalid, "%s digest must be %d hex characters", algorithm, length)
 	}
 	return nil
 }

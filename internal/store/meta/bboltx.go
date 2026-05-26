@@ -4,13 +4,13 @@ package meta
 import (
 	"context"
 	"errors"
-	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/storx/bboltx"
 	"github.com/arcgolabs/storx/codec"
 	"go.etcd.io/bbolt"
@@ -23,12 +23,12 @@ const (
 	bucketRepoBlobs = "repo_blobs"
 )
 
-var metadataBuckets = []string{
+var metadataBuckets = collectionlist.NewList(
 	bucketManifests,
 	bucketTags,
 	bucketBlobs,
 	bucketRepoBlobs,
-}
+)
 
 type BboltOptions struct {
 	Path   string
@@ -57,16 +57,16 @@ func OpenBboltWithOptions(ctx context.Context, opts BboltOptions) (*BboltStore, 
 
 	path := strings.TrimSpace(opts.Path)
 	if path == "" {
-		return nil, fmt.Errorf("%w: bbolt path is required", ErrInvalidValue)
+		return nil, errorf("%w: bbolt path is required", ErrInvalidValue)
 	}
 	path = filepath.Clean(path)
 	if err := os.MkdirAll(filepath.Dir(path), 0o750); err != nil {
-		return nil, fmt.Errorf("create bbolt directory: %w", err)
+		return nil, wrapError(err, "create bbolt directory")
 	}
 
 	db, err := bboltx.Open(path, 0o600, &bbolt.Options{Timeout: time.Second}, bboltx.WithDBLogger(opts.Logger))
 	if err != nil {
-		return nil, fmt.Errorf("open bbolt metadata db: %w", err)
+		return nil, wrapError(err, "open bbolt metadata db")
 	}
 
 	store := &BboltStore{
@@ -79,7 +79,7 @@ func OpenBboltWithOptions(ctx context.Context, opts BboltOptions) (*BboltStore, 
 	if err := store.bootstrap(ctx); err != nil {
 		closeErr := db.Close()
 		if closeErr != nil {
-			return nil, errors.Join(err, fmt.Errorf("close bbolt metadata db: %w", closeErr))
+			return nil, errors.Join(err, wrapError(closeErr, "close bbolt metadata db"))
 		}
 		return nil, err
 	}
@@ -91,24 +91,24 @@ func (s *BboltStore) bootstrap(ctx context.Context) error {
 		return err
 	}
 	if err := s.db.Raw().Update(func(tx *bbolt.Tx) error {
-		for _, name := range metadataBuckets {
+		for _, name := range metadataBuckets.Values() {
 			if _, err := tx.CreateBucketIfNotExists([]byte(name)); err != nil {
-				return fmt.Errorf("create metadata bucket %s: %w", name, err)
+				return wrapError(err, "create metadata bucket %s", name)
 			}
 		}
 		return nil
 	}); err != nil {
-		return fmt.Errorf("bootstrap bbolt metadata buckets: %w", err)
+		return wrapError(err, "bootstrap bbolt metadata buckets")
 	}
 	return nil
 }
 
 func requireMetadataContext(ctx context.Context, operation string) error {
 	if ctx == nil {
-		return fmt.Errorf("%w: %s context is required", ErrInvalidValue, operation)
+		return errorf("%w: %s context is required", ErrInvalidValue, operation)
 	}
 	if err := ctx.Err(); err != nil {
-		return fmt.Errorf("%s context: %w", operation, err)
+		return wrapError(err, "%s context", operation)
 	}
 	return nil
 }
@@ -126,7 +126,7 @@ func (s *BboltStore) Close() error {
 		return nil
 	}
 	if err := s.db.Close(); err != nil {
-		return fmt.Errorf("close bbolt metadata db: %w", err)
+		return wrapError(err, "close bbolt metadata db")
 	}
 	return nil
 }

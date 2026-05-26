@@ -6,6 +6,7 @@ require (
 	github.com/arcgolabs/clientx v0.1.2
 	github.com/arcgolabs/collectionx/list v0.9.0
 	github.com/arcgolabs/collectionx/mapping v0.9.0
+	github.com/arcgolabs/collectionx/set v0.9.0
 	github.com/arcgolabs/configx v0.5.1
 	github.com/arcgolabs/configx/format/hcl v0.0.0-20260517161814-12696a4be3fe
 	github.com/arcgolabs/dix v0.11.0
@@ -23,6 +24,9 @@ require (
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/redis/go-redis/v9 v9.19.0
+	github.com/samber/lo v1.53.0
+	github.com/samber/mo v1.16.0
+	github.com/samber/oops v1.21.0
 	github.com/spf13/cobra v1.10.2
 	github.com/valkey-io/valkey-go v1.0.75
 	go.etcd.io/bbolt v1.4.3
@@ -32,7 +36,6 @@ require (
 
 require (
 	github.com/arcgolabs/collectionx/graph v0.9.0 // indirect
-	github.com/arcgolabs/collectionx/set v0.9.0 // indirect
 	github.com/arcgolabs/observabilityx v0.4.0 // indirect
 	github.com/arcgolabs/pkg/option v0.0.3 // indirect
 	github.com/arcgolabs/storx v0.2.0 // indirect
@@ -63,9 +66,6 @@ require (
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect
-	github.com/samber/lo v1.53.0 // indirect
-	github.com/samber/mo v1.16.0 // indirect
-	github.com/samber/oops v1.21.0 // indirect
 	github.com/samber/oops/loggers/zerolog v0.0.0-20260524021446-9c5c4af9b2d2 // indirect
 	github.com/samber/slog-common v0.22.0 // indirect
 	github.com/samber/slog-zerolog/v2 v2.9.2 // indirect

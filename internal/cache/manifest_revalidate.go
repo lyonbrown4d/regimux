@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
@@ -54,7 +53,7 @@ func (p manifestProxy) revalidationCandidate(ctx context.Context, req ManifestRe
 
 	exists, err := p.objects.Exists(ctx, record.Digest)
 	if err != nil {
-		return nil, nil, false, fmt.Errorf("check manifest object for revalidation: %w", err)
+		return nil, nil, false, wrapError(err, "check manifest object for revalidation")
 	}
 	return tag, record, exists, nil
 }
@@ -66,7 +65,7 @@ func (p manifestProxy) expiredTagForRevalidation(ctx context.Context, req Manife
 		Reference:  req.Reference,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup manifest tag for revalidation: %w", err)
+		return nil, false, wrapError(err, "lookup manifest tag for revalidation")
 	}
 	return tag, ok && tagExpired(tag, time.Now()), nil
 }
@@ -78,7 +77,7 @@ func (p manifestProxy) manifestRecordForRevalidation(ctx context.Context, req Ma
 		Digest:     tag.Digest,
 	})
 	if err != nil {
-		return nil, false, fmt.Errorf("lookup manifest for revalidation: %w", err)
+		return nil, false, wrapError(err, "lookup manifest for revalidation")
 	}
 	if !ok || !acceptMatches(record.AcceptKey, reference.AcceptKey(req.Accept)) {
 		return nil, false, nil
@@ -131,11 +130,11 @@ func (p manifestProxy) refreshRevalidatedRecord(record *meta.ManifestRecord, res
 
 func (p manifestProxy) saveRevalidatedRecords(ctx context.Context, tag *meta.TagRecord, record *meta.ManifestRecord) error {
 	if _, err := p.metadata.UpsertManifest(ctx, *record); err != nil {
-		return fmt.Errorf("upsert revalidated manifest: %w", err)
+		return wrapError(err, "upsert revalidated manifest")
 	}
 	tag.ExpiresAt = record.ExpiresAt
 	if _, err := p.metadata.UpsertTag(ctx, *tag); err != nil {
-		return fmt.Errorf("upsert revalidated manifest tag: %w", err)
+		return wrapError(err, "upsert revalidated manifest tag")
 	}
 	return nil
 }

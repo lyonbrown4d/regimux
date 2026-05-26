@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"io"
 	"net/http"
 
@@ -23,12 +22,12 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 		return p.get(ctx, req, cacheKey)
 	})
 	if err != nil {
-		return nil, fmt.Errorf("coalesce manifest request: %w", err)
+		return nil, wrapError(err, "coalesce manifest request")
 	}
 
 	result, ok := value.(*CachedManifest)
 	if !ok {
-		return nil, fmt.Errorf("unexpected manifest cache result type %T", value)
+		return nil, errorf("unexpected manifest cache result type %T", value)
 	}
 	return result, nil
 }
@@ -74,7 +73,7 @@ func (p manifestProxy) fetch(ctx context.Context, req ManifestRequest) (*CachedM
 		Method:        req.Method,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("fetch manifest from upstream: %w", err)
+		return nil, wrapError(err, "fetch manifest from upstream")
 	}
 
 	body, err := readManifestBody(resp.Body, req.Method)

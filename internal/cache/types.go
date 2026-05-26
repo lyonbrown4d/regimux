@@ -2,12 +2,12 @@ package cache
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/samber/oops"
 )
 
 type CacheStatus string
@@ -102,10 +102,10 @@ type ReferrersResult struct {
 
 func ValidateRouteParts(alias, repo string) error {
 	if alias == "" {
-		return errors.New("upstream alias is required")
+		return oops.In("cache").Errorf("upstream alias is required")
 	}
 	if repo == "" {
-		return errors.New("repository is required")
+		return oops.In("cache").Errorf("repository is required")
 	}
 	return nil
 }

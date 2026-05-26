@@ -2,7 +2,6 @@ package cache
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -36,7 +35,7 @@ func (p referrerProxy) cached(ctx context.Context, cacheKey string) (*ReferrersR
 
 	data, ok, err := p.cache.Get(ctx, cacheKey)
 	if err != nil {
-		return nil, false, fmt.Errorf("get referrers cache entry: %w", err)
+		return nil, false, wrapError(err, "get referrers cache entry")
 	}
 	if !ok {
 		return nil, false, nil
@@ -45,7 +44,7 @@ func (p referrerProxy) cached(ctx context.Context, cacheKey string) (*ReferrersR
 	result, err := referrersFromEnvelope(data)
 	if err != nil {
 		if deleteErr := p.cache.Delete(ctx, cacheKey); deleteErr != nil {
-			return nil, false, fmt.Errorf("delete invalid referrers cache entry: %w", deleteErr)
+			return nil, false, wrapError(deleteErr, "delete invalid referrers cache entry")
 		}
 		return nil, false, nil
 	}
@@ -63,7 +62,7 @@ func (p referrerProxy) fetch(ctx context.Context, req ReferrerRequest) (*Referre
 		if p.fallbackTag && isManifestUnknown(err) {
 			return p.fetchFallbackTag(ctx, req)
 		}
-		return nil, fmt.Errorf("fetch referrers from upstream: %w", err)
+		return nil, wrapError(err, "fetch referrers from upstream")
 	}
 
 	body, err := readHTTPBody(resp.Body, "referrers body")
@@ -91,7 +90,7 @@ func (p referrerProxy) fetchFallbackTag(ctx context.Context, req ReferrerRequest
 		Method:        http.MethodGet,
 	})
 	if err != nil {
-		return nil, fmt.Errorf("fetch referrers fallback tag from upstream: %w", err)
+		return nil, wrapError(err, "fetch referrers fallback tag from upstream")
 	}
 
 	body, err := readHTTPBody(resp.Body, "referrers fallback body")
@@ -135,7 +134,7 @@ func isManifestUnknown(err error) bool {
 func referrersFallbackReference(digest string) (string, error) {
 	normalized, err := reference.NormalizeDigest(digest)
 	if err != nil {
-		return "", fmt.Errorf("normalize referrers fallback digest: %w", err)
+		return "", wrapError(err, "normalize referrers fallback digest")
 	}
 	algorithm, encoded, _ := strings.Cut(normalized, ":")
 	return algorithm + "-" + encoded, nil
