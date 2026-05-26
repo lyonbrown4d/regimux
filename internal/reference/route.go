@@ -22,21 +22,36 @@ func (r Route) UpstreamRepo() string {
 // ParsePath parses the supported read-only Registry V2 paths.
 func ParsePath(path string) (*Route, error) {
 	path = strings.TrimSpace(path)
-	switch path {
-	case "/v2", "/v2/":
+	if isPingPath(path) {
 		return &Route{Kind: RoutePing}, nil
 	}
+	if err := validateRegistryPath(path); err != nil {
+		return nil, err
+	}
+	return parseOperationPath(path)
+}
+
+func isPingPath(path string) bool {
+	return path == "/v2" || path == "/v2/"
+}
+
+func validateRegistryPath(path string) error {
 	if !strings.HasPrefix(path, "/v2/") {
-		return nil, fmt.Errorf("%w: path must start with /v2/", errPathInvalid)
+		return fmt.Errorf("%w: path must start with /v2/", errPathInvalid)
 	}
 	if strings.Contains(path, "?") || strings.Contains(path, "#") {
-		return nil, fmt.Errorf("%w: path must not include query or fragment", errPathInvalid)
+		return fmt.Errorf("%w: path must not include query or fragment", errPathInvalid)
 	}
 	if hasEmptyDotOrDotDotSegment(path) {
-		return nil, fmt.Errorf("%w: empty, dot, and dot-dot path segments are not allowed", errPathInvalid)
+		return fmt.Errorf("%w: empty, dot, and dot-dot path segments are not allowed", errPathInvalid)
 	}
+	return nil
+}
 
+func parseOperationPath(path string) (*Route, error) {
 	switch detectOperation(path) {
+	case RoutePing:
+		return nil, fmt.Errorf("%w: unsupported registry operation", errPathInvalid)
 	case RouteReferrers:
 		return parseReferrersPath(path)
 	case RouteTags:
@@ -153,7 +168,7 @@ func parseReferrersPath(path string) (*Route, error) {
 	return route, nil
 }
 
-func splitOperationPath(path, marker string) (name string, tail string, ok bool) {
+func splitOperationPath(path, marker string) (name, tail string, ok bool) {
 	if !strings.HasPrefix(path, "/v2/") {
 		return "", "", false
 	}
@@ -170,22 +185,16 @@ func splitOperationPath(path, marker string) (name string, tail string, ok bool)
 }
 
 func detectOperation(path string) RouteKind {
+	detected, maxIndex := detectMarkedOperation(path)
+	return detectTagsOperation(path, detected, maxIndex)
+}
+
+func detectMarkedOperation(path string) (RouteKind, int) {
 	var detected RouteKind
 	maxIndex := -1
-	for _, candidate := range []struct {
-		kind   RouteKind
-		marker string
-	}{
-		{kind: RouteReferrers, marker: "/referrers/"},
-		{kind: RouteManifest, marker: "/manifests/"},
-		{kind: RouteBlob, marker: "/blobs/"},
-	} {
+	for _, candidate := range operationMarkers() {
 		idx := strings.LastIndex(path, candidate.marker)
-		if idx < 0 {
-			continue
-		}
-		tail := path[idx+len(candidate.marker):]
-		if tail == "" || strings.Contains(tail, "/") {
+		if idx < 0 || !hasValidOperationTail(path, idx, candidate.marker) {
 			continue
 		}
 		if idx > maxIndex {
@@ -193,7 +202,10 @@ func detectOperation(path string) RouteKind {
 			detected = candidate.kind
 		}
 	}
+	return detected, maxIndex
+}
 
+func detectTagsOperation(path string, detected RouteKind, maxIndex int) RouteKind {
 	const tagsMarker = "/tags/list"
 	if strings.HasSuffix(path, tagsMarker) {
 		idx := strings.LastIndex(path, tagsMarker)
@@ -202,6 +214,25 @@ func detectOperation(path string) RouteKind {
 		}
 	}
 	return detected
+}
+
+func operationMarkers() []struct {
+	kind   RouteKind
+	marker string
+} {
+	return []struct {
+		kind   RouteKind
+		marker string
+	}{
+		{kind: RouteReferrers, marker: "/referrers/"},
+		{kind: RouteManifest, marker: "/manifests/"},
+		{kind: RouteBlob, marker: "/blobs/"},
+	}
+}
+
+func hasValidOperationTail(path string, idx int, marker string) bool {
+	tail := path[idx+len(marker):]
+	return tail != "" && !strings.Contains(tail, "/")
 }
 
 func routeFromName(kind RouteKind, name string) (*Route, error) {
@@ -222,7 +253,7 @@ func validateRepo(repo string) error {
 	if repo == "" {
 		return fmt.Errorf("%w: empty repository", errPathInvalid)
 	}
-	for _, segment := range strings.Split(repo, "/") {
+	for segment := range strings.SplitSeq(repo, "/") {
 		if !repoSegmentRegex.MatchString(segment) {
 			return fmt.Errorf("%w: invalid repository segment %q", errPathInvalid, segment)
 		}
@@ -243,14 +274,9 @@ func normalizeReference(reference string) (string, error) {
 	return "", fmt.Errorf("%w: invalid manifest reference %q", errPathInvalid, reference)
 }
 
-func validateReference(reference string) error {
-	_, err := normalizeReference(reference)
-	return err
-}
-
 func hasEmptyDotOrDotDotSegment(path string) bool {
-	segments := strings.Split(path, "/")
-	for _, segment := range segments {
+	segments := strings.SplitSeq(path, "/")
+	for segment := range segments {
 		if segment == "" {
 			continue
 		}

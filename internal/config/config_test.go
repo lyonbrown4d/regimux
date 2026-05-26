@@ -1,14 +1,18 @@
-package config
+// Package config_test verifies configuration loading through exported APIs.
+package config_test
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
 func TestLoadDefaultsIncludeStore(t *testing.T) {
-	cfg, err := Load(context.Background(), "")
+	cfg, err := config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load defaults: %v", err)
 	}
@@ -21,21 +25,21 @@ func TestLoadDefaultsIncludeStore(t *testing.T) {
 }
 
 func TestValidateStoreRejectsUnsupportedDrivers(t *testing.T) {
-	cfg, err := Load(context.Background(), "")
+	cfg, err := config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load defaults: %v", err)
 	}
 	cfg.Store.Meta.Driver = "postgres"
-	if err := cfg.NormalizeAndValidate(); err == nil {
+	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
 		t.Fatal("expected unsupported meta store driver error")
 	}
 
-	cfg, err = Load(context.Background(), "")
+	cfg, err = config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load defaults: %v", err)
 	}
 	cfg.Store.Object.Driver = "s3"
-	if err := cfg.NormalizeAndValidate(); err == nil {
+	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
 		t.Fatal("expected unsupported object store driver error")
 	}
 }
@@ -58,7 +62,7 @@ upstreams {
 		t.Fatalf("write hcl config: %v", err)
 	}
 
-	cfg, err := Load(context.Background(), path)
+	cfg, err := config.Load(context.Background(), path)
 	if err != nil {
 		t.Fatalf("load hcl config: %v", err)
 	}
@@ -77,22 +81,19 @@ upstreams {
 }
 
 func TestLoadRejectsNonHCLFile(t *testing.T) {
-	if _, err := Load(context.Background(), "regimux.yaml"); err == nil {
+	if _, err := config.Load(context.Background(), "regimux.yaml"); err == nil {
 		t.Fatal("expected non-HCL config file error")
 	}
 }
 
 func TestLoadEnvAndDotenv(t *testing.T) {
 	t.Chdir(t.TempDir())
-	_ = os.Unsetenv("REGIMUX_SERVER__LISTEN")
-	t.Cleanup(func() {
-		_ = os.Unsetenv("REGIMUX_SERVER__LISTEN")
-	})
+	unsetEnv(t, "REGIMUX_SERVER__LISTEN")
 	if err := os.WriteFile(".env", []byte("REGIMUX_SERVER__LISTEN=127.0.0.1:7777\n"), 0o600); err != nil {
 		t.Fatalf("write dotenv: %v", err)
 	}
 
-	cfg, err := Load(context.Background(), "")
+	cfg, err := config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load dotenv config: %v", err)
 	}
@@ -101,11 +102,38 @@ func TestLoadEnvAndDotenv(t *testing.T) {
 	}
 
 	t.Setenv("REGIMUX_SERVER__LISTEN", "127.0.0.1:8888")
-	cfg, err = Load(context.Background(), "")
+	cfg, err = config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load env config: %v", err)
 	}
 	if cfg.Server.Listen != "127.0.0.1:8888" {
 		t.Fatalf("unexpected env listen %q", cfg.Server.Listen)
 	}
+}
+
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+
+	original, hadOriginal := os.LookupEnv(key)
+	if err := os.Unsetenv(key); err != nil {
+		t.Fatalf("unset %s: %v", key, err)
+	}
+	t.Cleanup(func() {
+		if err := restoreEnv(key, original, hadOriginal); err != nil {
+			t.Errorf("restore %s: %v", key, err)
+		}
+	})
+}
+
+func restoreEnv(key, value string, shouldSet bool) error {
+	if shouldSet {
+		if err := os.Setenv(key, value); err != nil {
+			return fmt.Errorf("set env %s: %w", key, err)
+		}
+		return nil
+	}
+	if err := os.Unsetenv(key); err != nil {
+		return fmt.Errorf("unset env %s: %w", key, err)
+	}
+	return nil
 }

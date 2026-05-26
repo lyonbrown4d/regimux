@@ -1,10 +1,10 @@
+// Package object stores registry object blobs.
 package object
 
 import (
 	"context"
 	"crypto/sha256"
 	"crypto/sha512"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"hash"
@@ -30,7 +30,7 @@ func NewLocal(root string) (*LocalStore, error) {
 	if err != nil {
 		return nil, fmt.Errorf("resolve object store root: %w", err)
 	}
-	if err := os.MkdirAll(abs, 0o755); err != nil {
+	if err := os.MkdirAll(abs, 0o750); err != nil {
 		return nil, fmt.Errorf("create object store root: %w", err)
 	}
 	return &LocalStore{root: abs}, nil
@@ -38,7 +38,7 @@ func NewLocal(root string) (*LocalStore, error) {
 
 func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
 	ctx = normalizeContext(ctx)
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx, "stat object"); err != nil {
 		return nil, err
 	}
 	normalized, target, err := s.path(digest)
@@ -50,7 +50,7 @@ func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("stat object %s: %w", normalized, err)
 	}
 	return &Info{Digest: normalized, Size: stat.Size(), ETag: normalized, Path: target}, nil
 }
@@ -68,7 +68,7 @@ func (s *LocalStore) Exists(ctx context.Context, digest string) (bool, error) {
 
 func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error) {
 	ctx = normalizeContext(ctx)
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx, "get object"); err != nil {
 		return nil, nil, err
 	}
 	info, err := s.Stat(ctx, digest)
@@ -80,19 +80,17 @@ func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (i
 		if errors.Is(err, os.ErrNotExist) {
 			return nil, nil, ErrNotFound
 		}
-		return nil, nil, err
+		return nil, nil, fmt.Errorf("open object %s: %w", info.Digest, err)
 	}
 	if opts.Range == nil {
 		return file, info, nil
 	}
 	resolved, err := opts.Range.Resolve(info.Size)
 	if err != nil {
-		_ = file.Close()
-		return nil, nil, err
+		return nil, nil, closeFileAfterError(file, fmt.Errorf("resolve object range: %w", err))
 	}
 	if _, err := file.Seek(resolved.Start, io.SeekStart); err != nil {
-		_ = file.Close()
-		return nil, nil, err
+		return nil, nil, closeFileAfterError(file, fmt.Errorf("seek object range: %w", err))
 	}
 	ranged := *info
 	ranged.Size = resolved.Length()
@@ -101,75 +99,32 @@ func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (i
 
 func (s *LocalStore) Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error) {
 	ctx = normalizeContext(ctx)
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx, "put object"); err != nil {
 		return nil, err
 	}
 	if r == nil {
 		r = http.NoBody
 	}
+
 	normalized, target, err := s.path(digest)
 	if err != nil {
 		return nil, err
 	}
-	if existing, err := s.Stat(ctx, normalized); err == nil {
-		existing.ContentType = opts.ContentType
-		return existing, nil
-	} else if !errors.Is(err, ErrNotFound) {
-		return nil, err
+	existing, found, err := s.findExisting(ctx, normalized, opts)
+	if err != nil || found {
+		return existing, err
 	}
 
-	algorithm, expected, _ := strings.Cut(normalized, ":")
-	hasher, err := newDigestHash(algorithm)
+	session, err := newPutSession(s, normalized, target)
 	if err != nil {
 		return nil, err
 	}
-	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
-		return nil, err
-	}
-	tmp, err := os.CreateTemp(filepath.Dir(target), "."+expected+".tmp-*")
-	if err != nil {
-		return nil, err
-	}
-	tmpName := tmp.Name()
-	keepTemp := false
-	defer func() {
-		if !keepTemp {
-			_ = os.Remove(tmpName)
-		}
-	}()
-
-	size, copyErr := io.Copy(io.MultiWriter(tmp, hasher), r)
-	if copyErr != nil {
-		_ = tmp.Close()
-		return nil, copyErr
-	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return nil, err
-	}
-	if err := tmp.Close(); err != nil {
-		return nil, err
-	}
-	actual := hex.EncodeToString(hasher.Sum(nil))
-	if actual != expected {
-		return nil, fmt.Errorf("%w: expected %s got %s:%s", ErrDigestMismatch, normalized, algorithm, actual)
-	}
-	if err := os.Rename(tmpName, target); err != nil {
-		if errors.Is(err, os.ErrExist) {
-			return s.Stat(ctx, normalized)
-		}
-		if existing, statErr := s.Stat(ctx, normalized); statErr == nil {
-			return existing, nil
-		}
-		return nil, err
-	}
-	keepTemp = true
-	return &Info{Digest: normalized, Size: size, ContentType: opts.ContentType, ETag: normalized, Path: target}, nil
+	return session.commit(ctx, r, opts)
 }
 
 func (s *LocalStore) Delete(ctx context.Context, digest string) error {
 	ctx = normalizeContext(ctx)
-	if err := ctx.Err(); err != nil {
+	if err := checkContext(ctx, "delete object"); err != nil {
 		return err
 	}
 	_, target, err := s.path(digest)
@@ -177,9 +132,21 @@ func (s *LocalStore) Delete(ctx context.Context, digest string) error {
 		return err
 	}
 	if err := os.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return fmt.Errorf("delete object: %w", err)
 	}
 	return nil
+}
+
+func (s *LocalStore) findExisting(ctx context.Context, digest string, opts PutOptions) (*Info, bool, error) {
+	existing, err := s.Stat(ctx, digest)
+	if err == nil {
+		existing.ContentType = opts.ContentType
+		return existing, true, nil
+	}
+	if errors.Is(err, ErrNotFound) {
+		return nil, false, nil
+	}
+	return nil, false, err
 }
 
 func (s *LocalStore) path(digest string) (string, string, error) {
@@ -188,13 +155,13 @@ func (s *LocalStore) path(digest string) (string, string, error) {
 	}
 	normalized, err := reference.NormalizeDigest(digest)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("normalize object digest: %w", err)
 	}
 	algorithm, encoded, _ := strings.Cut(normalized, ":")
 	target := filepath.Join(s.root, "blobs", algorithm, encoded[:2], encoded)
 	rel, err := filepath.Rel(s.root, target)
 	if err != nil {
-		return "", "", err
+		return "", "", fmt.Errorf("resolve object path relative to root: %w", err)
 	}
 	if strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
 		return "", "", fmt.Errorf("object digest escapes root: %s", digest)
@@ -222,13 +189,30 @@ func normalizeContext(ctx context.Context) context.Context {
 	return ctx
 }
 
+func checkContext(ctx context.Context, operation string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("%s context: %w", operation, err)
+	}
+	return nil
+}
+
+func closeFileAfterError(file *os.File, err error) error {
+	if closeErr := file.Close(); closeErr != nil {
+		return errors.Join(err, fmt.Errorf("close object file: %w", closeErr))
+	}
+	return err
+}
+
 type readCloser struct {
 	io.Reader
 	closer io.Closer
 }
 
 func (r readCloser) Close() error {
-	return r.closer.Close()
+	if err := r.closer.Close(); err != nil {
+		return fmt.Errorf("close object reader: %w", err)
+	}
+	return nil
 }
 
 var _ Store = (*LocalStore)(nil)

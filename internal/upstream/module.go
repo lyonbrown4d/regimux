@@ -22,35 +22,39 @@ func newClient(cfg config.Config, logger *slog.Logger) *Client {
 
 func toUpstreamConfigs(configs map[string]config.UpstreamConfig) map[string]Config {
 	out := make(map[string]Config, len(configs))
-	for alias, cfg := range configs {
-		out[alias] = Config{
-			Alias:            alias,
-			Registry:         cfg.Registry,
-			Mirrors:          cfg.Mirrors,
-			MirrorPolicy:     cfg.MirrorPolicy,
-			DefaultNamespace: cfg.DefaultNamespace,
-			TagTTL:           cfg.TagTTL.String(),
-			Auth: AuthConfig{
-				Type:     cfg.Auth.Type,
-				Username: cfg.Auth.Username,
-				Password: cfg.Auth.Password,
-				Token:    cfg.Auth.Token,
-			},
-			HTTP: HTTPConfig{
-				Timeout: cfg.HTTP.Timeout,
-				Retry: HTTPRetryConfig{
-					Enabled:    cfg.HTTP.Retry.Enabled,
-					MaxRetries: cfg.HTTP.Retry.MaxRetries,
-					WaitMin:    cfg.HTTP.Retry.WaitMin,
-					WaitMax:    cfg.HTTP.Retry.WaitMax,
-				},
-				TLS: HTTPTLSConfig{
-					Enabled:            cfg.HTTP.TLS.Enabled,
-					InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
-					ServerName:         cfg.HTTP.TLS.ServerName,
-				},
-			},
-		}
+	for alias := range configs {
+		out[alias] = toUpstreamConfig(alias, configs[alias])
 	}
 	return out
+}
+
+func toUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
+	return Config{
+		Alias:            alias,
+		Registry:         cfg.Registry,
+		Mirrors:          cfg.Mirrors,
+		MirrorPolicy:     cfg.MirrorPolicy,
+		DefaultNamespace: cfg.DefaultNamespace,
+		TagTTL:           cfg.TagTTL.String(),
+		Auth: AuthConfig{
+			Type:     cfg.Auth.Type,
+			Username: cfg.Auth.Username,
+			Password: cfg.Auth.Password,
+			Token:    cfg.Auth.Token,
+		},
+		HTTP: HTTPConfig{
+			Timeout: cfg.HTTP.Timeout,
+			Retry: HTTPRetryConfig{
+				Enabled:    cfg.HTTP.Retry.Enabled,
+				MaxRetries: cfg.HTTP.Retry.MaxRetries,
+				WaitMin:    cfg.HTTP.Retry.WaitMin,
+				WaitMax:    cfg.HTTP.Retry.WaitMax,
+			},
+			TLS: HTTPTLSConfig{
+				Enabled:            cfg.HTTP.TLS.Enabled,
+				InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
+				ServerName:         cfg.HTTP.TLS.ServerName,
+			},
+		},
+	}
 }

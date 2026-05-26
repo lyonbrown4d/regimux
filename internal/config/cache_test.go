@@ -1,13 +1,16 @@
-package config
+// Package config_test verifies configuration loading through exported APIs.
+package config_test
 
 import (
 	"context"
 	"testing"
 	"time"
+
+	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
 func TestLoadCacheDefaults(t *testing.T) {
-	cfg, err := Load(context.Background(), "")
+	cfg, err := config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load default config: %v", err)
 	}
@@ -33,7 +36,7 @@ func TestLoadCacheDefaults(t *testing.T) {
 }
 
 func TestValidateCacheBackend(t *testing.T) {
-	cfg, err := Load(context.Background(), "")
+	cfg, err := config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load default config: %v", err)
 	}

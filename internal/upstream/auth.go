@@ -1,7 +1,9 @@
+// Package upstream contains upstream registry client integrations.
 package upstream
 
 import (
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/url"
 	"strings"
@@ -113,7 +115,7 @@ func (c *bearerTokenCache) set(key bearerTokenCacheKey, token string, expiresAt 
 func newBearerTokenRequest(cfg Config, challenge bearerChallenge, fallbackScope string) (bearerTokenRequest, error) {
 	realm, err := url.Parse(challenge.Realm)
 	if err != nil {
-		return bearerTokenRequest{}, err
+		return bearerTokenRequest{}, fmt.Errorf("parse bearer token realm: %w", err)
 	}
 	query := realm.Query()
 
@@ -164,31 +166,30 @@ func bearerTokenExpiresAt(resp bearerTokenResponse) time.Time {
 
 func splitChallengeParams(params string) []string {
 	var parts []string
-	var current strings.Builder
 	inQuote := false
-	for _, r := range params {
+	start := 0
+	for i, r := range params {
 		switch r {
 		case '"':
 			inQuote = !inQuote
-			current.WriteRune(r)
 		case ',':
 			if inQuote {
-				current.WriteRune(r)
 				continue
 			}
-			parts = append(parts, strings.TrimSpace(current.String()))
-			current.Reset()
-		default:
-			current.WriteRune(r)
+			parts = append(parts, strings.TrimSpace(params[start:i]))
+			start = i + 1
 		}
 	}
-	if current.Len() > 0 {
-		parts = append(parts, strings.TrimSpace(current.String()))
+	if start < len(params) {
+		parts = append(parts, strings.TrimSpace(params[start:]))
 	}
 	return parts
 }
 
 func decodeJSON(r io.Reader, out any) error {
 	decoder := json.NewDecoder(r)
-	return decoder.Decode(out)
+	if err := decoder.Decode(out); err != nil {
+		return fmt.Errorf("decode upstream JSON response: %w", err)
+	}
+	return nil
 }

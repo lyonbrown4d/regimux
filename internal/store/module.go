@@ -1,3 +1,4 @@
+// Package store wires metadata and object storage modules.
 package store
 
 import (

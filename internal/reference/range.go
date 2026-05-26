@@ -19,55 +19,88 @@ type HTTPRange struct {
 
 // ParseRange parses an HTTP Range header. Empty headers return nil, nil.
 func ParseRange(header string) (*HTTPRange, error) {
+	spec, ok, err := rangeSpec(header)
+	if err != nil {
+		return nil, err
+	}
+	if !ok {
+		var noRange *HTTPRange
+		return noRange, nil
+	}
+
+	left, right, err := splitRangeSpec(spec)
+	if err != nil {
+		return nil, err
+	}
+	return parseRangeBounds(left, right)
+}
+
+func rangeSpec(header string) (string, bool, error) {
 	header = strings.TrimSpace(header)
 	if header == "" {
-		return nil, nil
+		return "", false, nil
 	}
 	if !strings.HasPrefix(strings.ToLower(header), "bytes=") {
-		return nil, fmt.Errorf("%w: only bytes ranges are supported", errRangeInvalid)
+		return "", false, fmt.Errorf("%w: only bytes ranges are supported", errRangeInvalid)
 	}
 
 	spec := strings.TrimSpace(header[len("bytes="):])
 	if spec == "" || strings.Contains(spec, ",") {
-		return nil, fmt.Errorf("%w: only a single bytes range is supported", errRangeInvalid)
+		return "", false, fmt.Errorf("%w: only a single bytes range is supported", errRangeInvalid)
 	}
+	return spec, true, nil
+}
 
+func splitRangeSpec(spec string) (string, string, error) {
 	left, right, ok := strings.Cut(spec, "-")
 	if !ok {
-		return nil, fmt.Errorf("%w: missing dash", errRangeInvalid)
+		return "", "", fmt.Errorf("%w: missing dash", errRangeInvalid)
 	}
-	left = strings.TrimSpace(left)
-	right = strings.TrimSpace(right)
+	return strings.TrimSpace(left), strings.TrimSpace(right), nil
+}
 
+func parseRangeBounds(left, right string) (*HTTPRange, error) {
 	switch {
 	case left == "" && right == "":
 		return nil, fmt.Errorf("%w: empty range", errRangeInvalid)
 	case left == "":
-		suffix, err := parseNonNegativeInt(right)
-		if err != nil || suffix <= 0 {
-			return nil, fmt.Errorf("%w: invalid suffix length", errRangeInvalid)
-		}
-		return &HTTPRange{Start: -1, End: suffix}, nil
+		return parseSuffixRange(right)
 	case right == "":
-		start, err := parseNonNegativeInt(left)
-		if err != nil {
-			return nil, fmt.Errorf("%w: invalid start", errRangeInvalid)
-		}
-		return &HTTPRange{Start: start, End: -1}, nil
+		return parseOpenEndedRange(left)
 	default:
-		start, err := parseNonNegativeInt(left)
-		if err != nil {
-			return nil, fmt.Errorf("%w: invalid start", errRangeInvalid)
-		}
-		end, err := parseNonNegativeInt(right)
-		if err != nil {
-			return nil, fmt.Errorf("%w: invalid end", errRangeInvalid)
-		}
-		if end < start {
-			return nil, fmt.Errorf("%w: end before start", errRangeInvalid)
-		}
-		return &HTTPRange{Start: start, End: end}, nil
+		return parseBoundedRange(left, right)
 	}
+}
+
+func parseSuffixRange(right string) (*HTTPRange, error) {
+	suffix, err := parseNonNegativeInt(right)
+	if err != nil || suffix <= 0 {
+		return nil, fmt.Errorf("%w: invalid suffix length", errRangeInvalid)
+	}
+	return &HTTPRange{Start: -1, End: suffix}, nil
+}
+
+func parseOpenEndedRange(left string) (*HTTPRange, error) {
+	start, err := parseNonNegativeInt(left)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid start", errRangeInvalid)
+	}
+	return &HTTPRange{Start: start, End: -1}, nil
+}
+
+func parseBoundedRange(left, right string) (*HTTPRange, error) {
+	start, err := parseNonNegativeInt(left)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid start", errRangeInvalid)
+	}
+	end, err := parseNonNegativeInt(right)
+	if err != nil {
+		return nil, fmt.Errorf("%w: invalid end", errRangeInvalid)
+	}
+	if end < start {
+		return nil, fmt.Errorf("%w: end before start", errRangeInvalid)
+	}
+	return &HTTPRange{Start: start, End: end}, nil
 }
 
 func parseNonNegativeInt(value string) (int64, error) {
@@ -104,35 +137,48 @@ func (r HTTPRange) String() string {
 
 // Resolve converts suffix/open-ended ranges into an inclusive concrete range.
 func (r HTTPRange) Resolve(size int64) (*HTTPRange, error) {
-	if size < 0 {
-		return nil, fmt.Errorf("%w: negative size", errRangeInvalid)
-	}
-	if size == 0 {
-		return nil, fmt.Errorf("%w: empty content", errRangeInvalid)
+	if err := validateContentSize(size); err != nil {
+		return nil, err
 	}
 
 	switch {
 	case r.IsSuffix():
-		length := r.End
-		if length > size {
-			length = size
-		}
-		return &HTTPRange{Start: size - length, End: size - 1}, nil
+		return r.resolveSuffix(size), nil
 	case r.IsOpenEnded():
-		if r.Start >= size {
-			return nil, fmt.Errorf("%w: start beyond content size", errRangeInvalid)
-		}
-		return &HTTPRange{Start: r.Start, End: size - 1}, nil
+		return r.resolveOpenEnded(size)
 	default:
-		if r.Start < 0 || r.End < r.Start || r.Start >= size {
-			return nil, fmt.Errorf("%w: unsatisfiable range", errRangeInvalid)
-		}
-		end := r.End
-		if end >= size {
-			end = size - 1
-		}
-		return &HTTPRange{Start: r.Start, End: end}, nil
+		return r.resolveBounded(size)
 	}
+}
+
+func validateContentSize(size int64) error {
+	if size < 0 {
+		return fmt.Errorf("%w: negative size", errRangeInvalid)
+	}
+	if size == 0 {
+		return fmt.Errorf("%w: empty content", errRangeInvalid)
+	}
+	return nil
+}
+
+func (r HTTPRange) resolveSuffix(size int64) *HTTPRange {
+	length := min(r.End, size)
+	return &HTTPRange{Start: size - length, End: size - 1}
+}
+
+func (r HTTPRange) resolveOpenEnded(size int64) (*HTTPRange, error) {
+	if r.Start >= size {
+		return nil, fmt.Errorf("%w: start beyond content size", errRangeInvalid)
+	}
+	return &HTTPRange{Start: r.Start, End: size - 1}, nil
+}
+
+func (r HTTPRange) resolveBounded(size int64) (*HTTPRange, error) {
+	if r.Start < 0 || r.End < r.Start || r.Start >= size {
+		return nil, fmt.Errorf("%w: unsatisfiable range", errRangeInvalid)
+	}
+	end := min(r.End, size-1)
+	return &HTTPRange{Start: r.Start, End: end}, nil
 }
 
 // Length returns the inclusive byte length for a concrete range.

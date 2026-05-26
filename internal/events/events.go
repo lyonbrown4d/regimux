@@ -1,7 +1,9 @@
+// Package events defines the application event bus and events.
 package events
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/arcgolabs/eventx"
@@ -26,7 +28,10 @@ func Publish(ctx context.Context, bus Bus, event Event) error {
 	if bus == nil || event == nil {
 		return nil
 	}
-	return bus.Publish(ctx, event)
+	if err := bus.Publish(ctx, event); err != nil {
+		return fmt.Errorf("publish event %s: %w", eventName(event), err)
+	}
+	return nil
 }
 
 type ApplicationStarting struct {

@@ -1,7 +1,9 @@
+// Package main runs the RegiMux registry proxy daemon.
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -41,7 +43,9 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if showVersion {
-				fmt.Fprintln(cmd.OutOrStdout(), version)
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), version); err != nil {
+					return fmt.Errorf("write version: %w", err)
+				}
 				return nil
 			}
 			return run(cmd.Context(), configPath)
@@ -62,11 +66,26 @@ func run(ctx context.Context, configPath string) error {
 	if err != nil {
 		return fmt.Errorf("create logger: %w", err)
 	}
-	defer func() {
-		_ = logx.Close(logger)
-	}()
 
-	return buildApp(cfg, logger, version).RunContext(ctx)
+	runErr := buildApp(cfg, logger, version).RunContext(ctx)
+	closeErr := logx.Close(logger)
+	return joinLifecycleErrors(runErr, closeErr)
+}
+
+func joinLifecycleErrors(runErr, closeErr error) error {
+	switch {
+	case runErr != nil && closeErr != nil:
+		return errors.Join(
+			fmt.Errorf("run application: %w", runErr),
+			fmt.Errorf("close logger: %w", closeErr),
+		)
+	case runErr != nil:
+		return fmt.Errorf("run application: %w", runErr)
+	case closeErr != nil:
+		return fmt.Errorf("close logger: %w", closeErr)
+	default:
+		return nil
+	}
 }
 
 func buildApp(cfg config.Config, logger *slog.Logger, version string) *dix.App {
@@ -165,33 +184,48 @@ func startServer(ctx context.Context, server *api.Server) error {
 	if server == nil {
 		return nil
 	}
-	return server.Start(ctx)
+	if err := server.Start(ctx); err != nil {
+		return fmt.Errorf("start api server: %w", err)
+	}
+	return nil
 }
 
 func stopServer(ctx context.Context, server *api.Server) error {
 	if server == nil {
 		return nil
 	}
-	return server.Stop(ctx)
+	if err := server.Stop(ctx); err != nil {
+		return fmt.Errorf("stop api server: %w", err)
+	}
+	return nil
 }
 
-func closeCacheBackend(_ context.Context, cache backend.Backend) error {
-	if cache == nil {
+func closeCacheBackend(_ context.Context, cacheBackend backend.Backend) error {
+	if cacheBackend == nil {
 		return nil
 	}
-	return cache.Close()
+	if err := cacheBackend.Close(); err != nil {
+		return fmt.Errorf("close cache backend: %w", err)
+	}
+	return nil
 }
 
 func closeMetadataStore(_ context.Context, store meta.Store) error {
 	if store == nil {
 		return nil
 	}
-	return store.Close()
+	if err := store.Close(); err != nil {
+		return fmt.Errorf("close metadata store: %w", err)
+	}
+	return nil
 }
 
 func closeBus(_ context.Context, bus events.Bus) error {
 	if bus == nil {
 		return nil
 	}
-	return bus.Close()
+	if err := bus.Close(); err != nil {
+		return fmt.Errorf("close event bus: %w", err)
+	}
+	return nil
 }

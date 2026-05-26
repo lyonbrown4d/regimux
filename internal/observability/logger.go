@@ -1,44 +1,20 @@
+// Package observability builds runtime observability dependencies.
 package observability
 
 import (
 	"fmt"
 	"log/slog"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/logx"
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
 func NewLogger(cfg config.LogConfig) (*slog.Logger, error) {
-	opts := collectionlist.NewList[logx.Option]()
-
-	if cfg.Level != "" {
-		level, err := logx.ParseLevel(cfg.Level)
-		if err != nil {
-			return nil, fmt.Errorf("parse log level %q: %w", cfg.Level, err)
-		}
-		opts.Add(logx.WithLevel(level))
+	opts, err := loggerOptions(cfg)
+	if err != nil {
+		return nil, err
 	}
-	opts.Add(
-		logx.WithConsole(cfg.Console),
-		logx.WithCaller(cfg.AddCaller),
-		logx.WithLocalTime(cfg.LocalTime),
-		logx.WithCompress(cfg.Compress),
-	)
-	if cfg.File != "" {
-		opts.Add(logx.WithFile(cfg.File))
-	}
-	if cfg.MaxSizeMB > 0 || cfg.MaxAgeDays > 0 || cfg.MaxBackups > 0 {
-		opts.Add(logx.WithFileRotation(cfg.MaxSizeMB, cfg.MaxAgeDays, cfg.MaxBackups))
-	}
-	if cfg.TimeFormat != "" {
-		opts.Add(logx.WithTimeFormat(cfg.TimeFormat))
-	}
-	if cfg.SetDefault {
-		opts.Add(logx.WithGlobalLogger())
-	}
-
-	logger, err := logx.New(opts.Values()...)
+	logger, err := logx.New(opts...)
 	if err != nil {
 		return nil, fmt.Errorf("create logx logger: %w", err)
 	}
@@ -46,4 +22,48 @@ func NewLogger(cfg config.LogConfig) (*slog.Logger, error) {
 		logx.SetDefault(logger)
 	}
 	return logger.With("service", "regimux"), nil
+}
+
+func loggerOptions(cfg config.LogConfig) ([]logx.Option, error) {
+	opts := []logx.Option{
+		logx.WithConsole(cfg.Console),
+		logx.WithCaller(cfg.AddCaller),
+		logx.WithLocalTime(cfg.LocalTime),
+		logx.WithCompress(cfg.Compress),
+	}
+	levelOpt, err := levelOption(cfg.Level)
+	if err != nil {
+		return nil, err
+	}
+	opts = append(opts, levelOpt...)
+	opts = append(opts, fileOptions(cfg)...)
+	if cfg.TimeFormat != "" {
+		opts = append(opts, logx.WithTimeFormat(cfg.TimeFormat))
+	}
+	if cfg.SetDefault {
+		opts = append(opts, logx.WithGlobalLogger())
+	}
+	return opts, nil
+}
+
+func levelOption(levelName string) ([]logx.Option, error) {
+	if levelName == "" {
+		return nil, nil
+	}
+	level, err := logx.ParseLevel(levelName)
+	if err != nil {
+		return nil, fmt.Errorf("parse log level %q: %w", levelName, err)
+	}
+	return []logx.Option{logx.WithLevel(level)}, nil
+}
+
+func fileOptions(cfg config.LogConfig) []logx.Option {
+	var opts []logx.Option
+	if cfg.File != "" {
+		opts = append(opts, logx.WithFile(cfg.File))
+	}
+	if cfg.MaxSizeMB > 0 || cfg.MaxAgeDays > 0 || cfg.MaxBackups > 0 {
+		opts = append(opts, logx.WithFileRotation(cfg.MaxSizeMB, cfg.MaxAgeDays, cfg.MaxBackups))
+	}
+	return opts
 }

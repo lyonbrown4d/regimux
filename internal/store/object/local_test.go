@@ -1,4 +1,4 @@
-package object
+package object_test
 
 import (
 	"bytes"
@@ -12,76 +12,62 @@ import (
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
-func TestLocalStorePutGetExistsDelete(t *testing.T) {
+func TestLocalStorePutCreatesCASObject(t *testing.T) {
 	ctx := context.Background()
-	root := t.TempDir()
-	store, err := NewLocal(root)
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-
+	store, root := newLocalStore(t)
 	body := []byte("registry object body")
-	digest := digestFor(body)
-	info, err := store.Put(ctx, digest, bytes.NewReader(body), PutOptions{ContentType: "application/octet-stream"})
-	if err != nil {
-		t.Fatalf("put: %v", err)
-	}
+
+	digest, info := putTestObject(ctx, t, store, body)
 	if info.Digest != digest || info.Size != int64(len(body)) {
 		t.Fatalf("unexpected info: %#v", info)
 	}
+	if _, err := os.Stat(expectedCASPath(root, digest)); err != nil {
+		t.Fatalf("expected CAS object: %v", err)
+	}
+}
 
-	ok, err := store.Exists(ctx, digest)
-	if err != nil {
-		t.Fatalf("exists: %v", err)
-	}
-	if !ok {
-		t.Fatal("expected object to exist")
-	}
+func TestLocalStoreGetReadsObject(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newLocalStore(t)
+	body := []byte("registry object body")
+	digest, _ := putTestObject(ctx, t, store, body)
 
-	expectedPath := filepath.Join(root, "blobs", "sha256", digest[len("sha256:"):len("sha256:")+2], digest[len("sha256:"):])
-	if _, err := os.Stat(expectedPath); err != nil {
-		t.Fatalf("expected CAS path %s: %v", expectedPath, err)
-	}
-
-	reader, got, err := store.Get(ctx, digest, GetOptions{})
-	if err != nil {
-		t.Fatalf("get: %v", err)
-	}
-	data, err := io.ReadAll(reader)
-	if closeErr := reader.Close(); closeErr != nil {
-		t.Fatalf("close reader: %v", closeErr)
-	}
-	if err != nil {
-		t.Fatalf("read: %v", err)
-	}
+	reader, got, err := store.Get(ctx, digest, object.GetOptions{})
+	requireNoError(t, "get", err)
+	data := readAllAndClose(t, reader)
 	if !bytes.Equal(data, body) || got.Size != int64(len(body)) {
 		t.Fatalf("unexpected read: body=%q info=%#v", data, got)
 	}
+}
 
-	ranged, rangedInfo, err := store.Get(ctx, digest, GetOptions{Range: &reference.HTTPRange{Start: 9, End: 14}})
-	if err != nil {
-		t.Fatalf("range get: %v", err)
-	}
-	rangeData, err := io.ReadAll(ranged)
-	if closeErr := ranged.Close(); closeErr != nil {
-		t.Fatalf("close range reader: %v", closeErr)
-	}
-	if err != nil {
-		t.Fatalf("range read: %v", err)
-	}
-	if string(rangeData) != "object" || rangedInfo.Size != 6 {
-		t.Fatalf("unexpected range read: body=%q info=%#v", rangeData, rangedInfo)
-	}
+func TestLocalStoreGetRangeReadsPartialObject(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newLocalStore(t)
+	body := []byte("registry object body")
+	digest, _ := putTestObject(ctx, t, store, body)
 
-	if err := store.Delete(ctx, digest); err != nil {
-		t.Fatalf("delete: %v", err)
+	ranged, info, err := store.Get(ctx, digest, object.GetOptions{
+		Range: &reference.HTTPRange{Start: 9, End: 14},
+	})
+	requireNoError(t, "range get", err)
+	data := readAllAndClose(t, ranged)
+	if string(data) != "object" || info.Size != 6 {
+		t.Fatalf("unexpected range read: body=%q info=%#v", data, info)
 	}
-	ok, err = store.Exists(ctx, digest)
-	if err != nil {
-		t.Fatalf("exists after delete: %v", err)
-	}
+}
+
+func TestLocalStoreDeleteRemovesObject(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newLocalStore(t)
+	digest, _ := putTestObject(ctx, t, store, []byte("registry object body"))
+
+	err := store.Delete(ctx, digest)
+	requireNoError(t, "delete", err)
+	ok, err := store.Exists(ctx, digest)
+	requireNoError(t, "exists after delete", err)
 	if ok {
 		t.Fatal("expected object to be deleted")
 	}
@@ -89,26 +75,66 @@ func TestLocalStorePutGetExistsDelete(t *testing.T) {
 
 func TestLocalStoreRejectsDigestMismatch(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewLocal(t.TempDir())
-	if err != nil {
-		t.Fatalf("new store: %v", err)
-	}
-
+	store, _ := newLocalStore(t)
 	errDigest := digestFor([]byte("expected"))
-	_, err = store.Put(ctx, errDigest, bytes.NewReader([]byte("actual")), PutOptions{})
-	if !errors.Is(err, ErrDigestMismatch) {
+
+	_, err := store.Put(ctx, errDigest, bytes.NewReader([]byte("actual")), object.PutOptions{})
+	if !errors.Is(err, object.ErrDigestMismatch) {
 		t.Fatalf("expected digest mismatch, got %v", err)
 	}
 	ok, existsErr := store.Exists(ctx, errDigest)
-	if existsErr != nil {
-		t.Fatalf("exists: %v", existsErr)
-	}
+	requireNoError(t, "exists", existsErr)
 	if ok {
 		t.Fatal("mismatched object must not be committed")
 	}
 }
 
+func newLocalStore(t *testing.T) (*object.LocalStore, string) {
+	t.Helper()
+	root := t.TempDir()
+	store, err := object.NewLocal(root)
+	requireNoError(t, "new store", err)
+	return store, root
+}
+
+func putTestObject(ctx context.Context, t *testing.T, store *object.LocalStore, body []byte) (string, *object.Info) {
+	t.Helper()
+	digest := digestFor(body)
+	info, err := store.Put(ctx, digest, bytes.NewReader(body), object.PutOptions{
+		ContentType: "application/octet-stream",
+	})
+	requireNoError(t, "put", err)
+
+	ok, err := store.Exists(ctx, digest)
+	requireNoError(t, "exists", err)
+	if !ok {
+		t.Fatal("expected object to exist")
+	}
+	return digest, info
+}
+
+func readAllAndClose(t *testing.T, reader io.ReadCloser) []byte {
+	t.Helper()
+	data, err := io.ReadAll(reader)
+	closeErr := reader.Close()
+	requireNoError(t, "close reader", closeErr)
+	requireNoError(t, "read", err)
+	return data
+}
+
+func expectedCASPath(root, digest string) string {
+	encoded := digest[len("sha256:"):]
+	return filepath.Join(root, "blobs", "sha256", encoded[:2], encoded)
+}
+
 func digestFor(body []byte) string {
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+func requireNoError(t *testing.T, action string, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("%s: %v", action, err)
+	}
 }

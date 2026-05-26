@@ -1,6 +1,11 @@
-package reference
+// Package reference_test verifies reference helpers through exported APIs.
+package reference_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/lyonbrown4d/regimux/internal/reference"
+)
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
@@ -8,12 +13,12 @@ func TestParsePathPing(t *testing.T) {
 	t.Parallel()
 
 	for _, path := range []string{"/v2", "/v2/"} {
-		got, err := ParsePath(path)
+		got, err := reference.ParsePath(path)
 		if err != nil {
 			t.Fatalf("ParsePath(%q) error = %v", path, err)
 		}
-		if got.Kind != RoutePing {
-			t.Fatalf("ParsePath(%q).Kind = %s, want %s", path, got.Kind, RoutePing)
+		if got.Kind != reference.RoutePing {
+			t.Fatalf("ParsePath(%q).Kind = %s, want %s", path, got.Kind, reference.RoutePing)
 		}
 	}
 }
@@ -21,11 +26,11 @@ func TestParsePathPing(t *testing.T) {
 func TestParsePathManifest(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParsePath("/v2/hub/library/nginx/manifests/latest")
+	got, err := reference.ParsePath("/v2/hub/library/nginx/manifests/latest")
 	if err != nil {
 		t.Fatalf("ParsePath manifest error = %v", err)
 	}
-	if got.Kind != RouteManifest || got.Alias != "hub" || got.Repo != "library/nginx" || got.Reference != "latest" {
+	if got.Kind != reference.RouteManifest || got.Alias != "hub" || got.Repo != "library/nginx" || got.Reference != "latest" {
 		t.Fatalf("ParsePath manifest = %+v", got)
 	}
 	if got.MirrorRepo() != "hub/library/nginx" {
@@ -36,13 +41,13 @@ func TestParsePathManifest(t *testing.T) {
 func TestRouteWithDefaultNamespace(t *testing.T) {
 	t.Parallel()
 
-	official := Route{Kind: RouteManifest, Alias: "hub", Repo: "hello-world", Reference: "latest"}.
+	official := reference.Route{Kind: reference.RouteManifest, Alias: "hub", Repo: "hello-world", Reference: "latest"}.
 		WithDefaultNamespace("library")
 	if official.Repo != "library/hello-world" {
 		t.Fatalf("official repo = %q, want library/hello-world", official.Repo)
 	}
 
-	nested := Route{Kind: RouteManifest, Alias: "hub", Repo: "library/hello-world", Reference: "latest"}.
+	nested := reference.Route{Kind: reference.RouteManifest, Alias: "hub", Repo: "library/hello-world", Reference: "latest"}.
 		WithDefaultNamespace("library")
 	if nested.Repo != "library/hello-world" {
 		t.Fatalf("nested repo = %q, want library/hello-world", nested.Repo)
@@ -52,7 +57,7 @@ func TestRouteWithDefaultNamespace(t *testing.T) {
 func TestParsePathManifestDigestReference(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParseManifestPath("/v2/hub/library/nginx/manifests/SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
+	got, err := reference.ParseManifestPath("/v2/hub/library/nginx/manifests/SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA")
 	if err != nil {
 		t.Fatalf("ParseManifestPath digest error = %v", err)
 	}
@@ -64,11 +69,11 @@ func TestParsePathManifestDigestReference(t *testing.T) {
 func TestParsePathBlob(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParsePath("/v2/quay/coreos/etcd/blobs/" + testDigest)
+	got, err := reference.ParsePath("/v2/quay/coreos/etcd/blobs/" + testDigest)
 	if err != nil {
 		t.Fatalf("ParsePath blob error = %v", err)
 	}
-	if got.Kind != RouteBlob || got.Alias != "quay" || got.Repo != "coreos/etcd" || got.Digest != testDigest {
+	if got.Kind != reference.RouteBlob || got.Alias != "quay" || got.Repo != "coreos/etcd" || got.Digest != testDigest {
 		t.Fatalf("ParsePath blob = %+v", got)
 	}
 }
@@ -76,11 +81,11 @@ func TestParsePathBlob(t *testing.T) {
 func TestParsePathTags(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParsePath("/v2/ghcr/org/app/tags/list")
+	got, err := reference.ParsePath("/v2/ghcr/org/app/tags/list")
 	if err != nil {
 		t.Fatalf("ParsePath tags error = %v", err)
 	}
-	if got.Kind != RouteTags || got.Alias != "ghcr" || got.Repo != "org/app" {
+	if got.Kind != reference.RouteTags || got.Alias != "ghcr" || got.Repo != "org/app" {
 		t.Fatalf("ParsePath tags = %+v", got)
 	}
 }
@@ -88,11 +93,11 @@ func TestParsePathTags(t *testing.T) {
 func TestParsePathReferrers(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParsePath("/v2/ghcr/org/app/referrers/" + testDigest)
+	got, err := reference.ParsePath("/v2/ghcr/org/app/referrers/" + testDigest)
 	if err != nil {
 		t.Fatalf("ParsePath referrers error = %v", err)
 	}
-	if got.Kind != RouteReferrers || got.Alias != "ghcr" || got.Repo != "org/app" || got.Digest != testDigest {
+	if got.Kind != reference.RouteReferrers || got.Alias != "ghcr" || got.Repo != "org/app" || got.Digest != testDigest {
 		t.Fatalf("ParsePath referrers = %+v", got)
 	}
 }
@@ -100,7 +105,7 @@ func TestParsePathReferrers(t *testing.T) {
 func TestParsePathUsesLastOperationMarker(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParsePath("/v2/hub/team/manifests/app/manifests/latest")
+	got, err := reference.ParsePath("/v2/hub/team/manifests/app/manifests/latest")
 	if err != nil {
 		t.Fatalf("ParsePath with marker in repo error = %v", err)
 	}
@@ -121,7 +126,7 @@ func TestParsePathRejectsInvalid(t *testing.T) {
 		"/v2/hub/library/nginx/referrers/not-a-digest",
 	}
 	for _, tt := range tests {
-		if _, err := ParsePath(tt); err == nil {
+		if _, err := reference.ParsePath(tt); err == nil {
 			t.Fatalf("ParsePath(%q) expected error", tt)
 		}
 	}

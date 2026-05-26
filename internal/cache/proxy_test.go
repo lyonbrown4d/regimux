@@ -1,22 +1,15 @@
-package cache
+package cache_test
 
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
-	"errors"
-	"io"
 	"net/http"
-	"strconv"
 	"testing"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/reference"
-	"github.com/lyonbrown4d/regimux/internal/store/meta"
-	"github.com/lyonbrown4d/regimux/internal/store/object"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -26,10 +19,10 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	digest := testDigestFor(body)
 	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
 	metadata, objects := newTestStores(t)
-	proxy := NewProxy(client, WithMetadata(metadata), WithObjects(objects))
+	proxy := cache.NewProxy(client, cache.WithMetadata(metadata), cache.WithObjects(objects))
 
 	httpRange := &reference.HTTPRange{Start: 2, End: 5}
-	first, err := proxy.Blobs().Get(ctx, BlobRequest{
+	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
@@ -39,18 +32,9 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first blob get: %v", err)
 	}
-	firstBody := readAndClose(t, first.Reader)
-	if first.Cache != CacheMiss || first.Status != http.StatusPartialContent || string(firstBody) != "2345" {
-		t.Fatalf("unexpected first result: cache=%s status=%d body=%q", first.Cache, first.Status, firstBody)
-	}
-	if got := first.Headers.Get("Content-Range"); got != "bytes 2-5/10" {
-		t.Fatalf("unexpected content range %q", got)
-	}
-	if got := first.Headers.Get("Content-Length"); got != "4" {
-		t.Fatalf("unexpected content length %q", got)
-	}
+	assertRangeBlobMiss(t, first)
 
-	second, err := proxy.Blobs().Get(ctx, BlobRequest{
+	second, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
@@ -59,15 +43,12 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("second blob get: %v", err)
 	}
-	secondBody := readAndClose(t, second.Reader)
-	if second.Cache != CacheHit || string(secondBody) != string(body) {
-		t.Fatalf("unexpected second result: cache=%s body=%q", second.Cache, secondBody)
-	}
+	assertFullBlobHit(t, second, body)
 	if client.blobGets != 1 {
 		t.Fatalf("expected one upstream blob GET, got %d", client.blobGets)
 	}
 
-	head, err := proxy.Blobs().Get(ctx, BlobRequest{
+	head, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
@@ -76,10 +57,7 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("head blob get: %v", err)
 	}
-	headBody := readAndClose(t, head.Reader)
-	if head.Cache != CacheHit || len(headBody) != 0 || head.Headers.Get("Content-Length") != strconv.Itoa(len(body)) {
-		t.Fatalf("unexpected head result: cache=%s body=%q headers=%v", head.Cache, headBody, head.Headers)
-	}
+	assertHeadBlobHit(t, head, len(body))
 }
 
 func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
@@ -90,15 +68,15 @@ func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
 		manifestMedia: distribution.MediaTypeDockerManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := NewProxy(
+	proxy := cache.NewProxy(
 		client,
-		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		WithMetadata(metadata),
-		WithObjects(objects),
-		WithManifestTTL(time.Minute),
+		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		cache.WithMetadata(metadata),
+		cache.WithObjects(objects),
+		cache.WithManifestTTL(time.Minute),
 	)
 
-	head, err := proxy.Manifests().Get(ctx, ManifestRequest{
+	head, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
@@ -107,11 +85,11 @@ func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("head manifest get: %v", err)
 	}
-	if head.Cache != CacheBypass || len(head.Body) != 0 {
+	if head.Cache != cache.CacheBypass || len(head.Body) != 0 {
 		t.Fatalf("unexpected head result: cache=%s body=%q", head.Cache, head.Body)
 	}
 
-	get, err := proxy.Manifests().Get(ctx, ManifestRequest{
+	get, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
@@ -120,7 +98,7 @@ func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
 	if err != nil {
 		t.Fatalf("get manifest after head: %v", err)
 	}
-	if get.Cache != CacheBypass || !bytes.Equal(get.Body, body) {
+	if get.Cache != cache.CacheBypass || !bytes.Equal(get.Body, body) {
 		t.Fatalf("unexpected get result: cache=%s body=%q", get.Cache, get.Body)
 	}
 	if client.manifestGets != 2 {
@@ -136,17 +114,17 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 		manifestMedia: distribution.MediaTypeDockerManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := NewProxy(
+	proxy := cache.NewProxy(
 		client,
-		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		WithMetadata(metadata),
-		WithObjects(objects),
-		WithManifestTTL(time.Nanosecond),
-		WithManifestStaleIfError(true),
-		WithManifestMaxStale(time.Hour),
+		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		cache.WithMetadata(metadata),
+		cache.WithObjects(objects),
+		cache.WithManifestTTL(time.Nanosecond),
+		cache.WithManifestStaleIfError(true),
+		cache.WithManifestMaxStale(time.Hour),
 	)
 
-	first, err := proxy.Manifests().Get(ctx, ManifestRequest{
+	first, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
@@ -155,13 +133,13 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first manifest get: %v", err)
 	}
-	if first.Cache != CacheBypass {
+	if first.Cache != cache.CacheBypass {
 		t.Fatalf("first cache status = %s, want bypass", first.Cache)
 	}
 
 	time.Sleep(5 * time.Millisecond)
 	client.manifestErr = distribution.ErrUpstream.WithDetail("registry unavailable")
-	stale, err := proxy.Manifests().Get(ctx, ManifestRequest{
+	stale, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
@@ -170,7 +148,7 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("stale manifest get: %v", err)
 	}
-	if stale.Cache != CacheStale || !bytes.Equal(stale.Body, body) {
+	if stale.Cache != cache.CacheStale || !bytes.Equal(stale.Body, body) {
 		t.Fatalf("unexpected stale result: cache=%s body=%q", stale.Cache, stale.Body)
 	}
 	if got := stale.Headers.Get("Warning"); got != `110 - "Response is stale"` {
@@ -186,15 +164,15 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 		manifestMedia: distribution.MediaTypeDockerManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := NewProxy(
+	proxy := cache.NewProxy(
 		client,
-		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		WithMetadata(metadata),
-		WithObjects(objects),
-		WithManifestTTL(time.Nanosecond),
+		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		cache.WithMetadata(metadata),
+		cache.WithObjects(objects),
+		cache.WithManifestTTL(time.Nanosecond),
 	)
 
-	first, err := proxy.Manifests().Get(ctx, ManifestRequest{
+	first, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
@@ -204,7 +182,7 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 		t.Fatalf("first manifest get: %v", err)
 	}
 	time.Sleep(5 * time.Millisecond)
-	second, err := proxy.Manifests().Get(ctx, ManifestRequest{
+	second, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
@@ -213,7 +191,7 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("revalidated manifest get: %v", err)
 	}
-	if second.Cache != CacheHit || !bytes.Equal(second.Body, body) {
+	if second.Cache != cache.CacheHit || !bytes.Equal(second.Body, body) {
 		t.Fatalf("unexpected revalidated result: cache=%s body=%q", second.Cache, second.Body)
 	}
 	if client.manifestGets != 2 || client.manifestHeads != 1 {
@@ -232,13 +210,13 @@ func TestTagProxyCachesAndRewritesLink(t *testing.T) {
 			"Link": {"<https://registry-1.docker.io/v2/library/alpine/tags/list?n=100&last=3.20>; rel=\"next\""},
 		},
 	}
-	proxy := NewProxy(client, WithBackend(backend.NewMemory(backend.MemoryOptions{})), WithTagsTTL(time.Minute))
+	proxy := cache.NewProxy(client, cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})), cache.WithTagsTTL(time.Minute))
 
-	first, err := proxy.Tags().List(ctx, TagRequest{UpstreamAlias: "hub", Repo: "library/alpine", N: "100"})
+	first, err := proxy.Tags().List(ctx, cache.TagRequest{UpstreamAlias: "hub", Repo: "library/alpine", N: "100"})
 	if err != nil {
 		t.Fatalf("first tags list: %v", err)
 	}
-	if first.Cache != CacheBypass {
+	if first.Cache != cache.CacheBypass {
 		t.Fatalf("unexpected first cache status %s", first.Cache)
 	}
 	wantLink := "</v2/hub/library/alpine/tags/list?n=100&last=3.20>; rel=\"next\""
@@ -246,11 +224,11 @@ func TestTagProxyCachesAndRewritesLink(t *testing.T) {
 		t.Fatalf("unexpected rewritten link %q", got)
 	}
 
-	second, err := proxy.Tags().List(ctx, TagRequest{UpstreamAlias: "hub", Repo: "library/alpine", N: "100"})
+	second, err := proxy.Tags().List(ctx, cache.TagRequest{UpstreamAlias: "hub", Repo: "library/alpine", N: "100"})
 	if err != nil {
 		t.Fatalf("second tags list: %v", err)
 	}
-	if second.Cache != CacheHit || !bytes.Equal(second.Body, first.Body) {
+	if second.Cache != cache.CacheHit || !bytes.Equal(second.Body, first.Body) {
 		t.Fatalf("unexpected second tags result: cache=%s body=%q", second.Cache, second.Body)
 	}
 	if client.tagsLists != 1 {
@@ -266,161 +244,32 @@ func TestReferrersFallbackTagIsCached(t *testing.T) {
 		manifestBody:  []byte(`{"schemaVersion":2,"manifests":[]}`),
 		manifestMedia: distribution.MediaTypeOCIIndex,
 	}
-	proxy := NewProxy(
+	proxy := cache.NewProxy(
 		client,
-		WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		WithReferrersTTL(time.Minute),
-		WithReferrersFallbackTag(true),
+		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
+		cache.WithReferrersTTL(time.Minute),
+		cache.WithReferrersFallbackTag(true),
 	)
 
-	first, err := proxy.Referrers().Get(ctx, ReferrerRequest{UpstreamAlias: "hub", Repo: "library/alpine", Digest: digest})
+	first, err := proxy.Referrers().Get(ctx, cache.ReferrerRequest{UpstreamAlias: "hub", Repo: "library/alpine", Digest: digest})
 	if err != nil {
 		t.Fatalf("first referrers get: %v", err)
 	}
-	if first.Cache != CacheBypass || first.MediaType != distribution.MediaTypeOCIIndex {
+	if first.Cache != cache.CacheBypass || first.MediaType != distribution.MediaTypeOCIIndex {
 		t.Fatalf("unexpected first referrers result: cache=%s media=%s", first.Cache, first.MediaType)
 	}
 	if client.manifestReference != "sha256-aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
 		t.Fatalf("unexpected fallback reference %q", client.manifestReference)
 	}
 
-	second, err := proxy.Referrers().Get(ctx, ReferrerRequest{UpstreamAlias: "hub", Repo: "library/alpine", Digest: digest})
+	second, err := proxy.Referrers().Get(ctx, cache.ReferrerRequest{UpstreamAlias: "hub", Repo: "library/alpine", Digest: digest})
 	if err != nil {
 		t.Fatalf("second referrers get: %v", err)
 	}
-	if second.Cache != CacheHit || !bytes.Equal(second.Body, first.Body) {
+	if second.Cache != cache.CacheHit || !bytes.Equal(second.Body, first.Body) {
 		t.Fatalf("unexpected second referrers result: cache=%s body=%q", second.Cache, second.Body)
 	}
 	if client.referrersGets != 1 || client.manifestGets != 1 {
 		t.Fatalf("unexpected upstream calls: referrers=%d manifests=%d", client.referrersGets, client.manifestGets)
 	}
 }
-
-func newTestStores(t *testing.T) (meta.Store, object.Store) {
-	t.Helper()
-	metadata, err := meta.OpenBbolt(t.TempDir()+"/regimux.db", nil)
-	if err != nil {
-		t.Fatalf("open metadata store: %v", err)
-	}
-	t.Cleanup(func() {
-		if err := metadata.Close(); err != nil {
-			t.Fatalf("close metadata store: %v", err)
-		}
-	})
-	objects, err := object.NewLocal(t.TempDir())
-	if err != nil {
-		t.Fatalf("open object store: %v", err)
-	}
-	return metadata, objects
-}
-
-func readAndClose(t *testing.T, reader io.ReadCloser) []byte {
-	t.Helper()
-	body, err := io.ReadAll(reader)
-	if closeErr := reader.Close(); closeErr != nil {
-		t.Fatalf("close reader: %v", closeErr)
-	}
-	if err != nil {
-		t.Fatalf("read body: %v", err)
-	}
-	return body
-}
-
-func testDigestFor(body []byte) string {
-	sum := sha256.Sum256(body)
-	return "sha256:" + hex.EncodeToString(sum[:])
-}
-
-type fakeRegistryClient struct {
-	blobBody   []byte
-	blobDigest string
-	blobGets   int
-	blobHeads  int
-
-	tagsBody   []byte
-	tagsHeader http.Header
-	tagsLists  int
-
-	referrersBody []byte
-	referrersErr  error
-	referrersGets int
-
-	manifestBody      []byte
-	manifestMedia     string
-	manifestReference string
-	manifestGets      int
-	manifestHeads     int
-	manifestErr       error
-}
-
-func (c *fakeRegistryClient) Ping(context.Context, string) error {
-	return nil
-}
-
-func (c *fakeRegistryClient) GetManifest(_ context.Context, req upstream.GetManifestRequest) (*upstream.ManifestResponse, error) {
-	c.manifestGets++
-	c.manifestReference = req.Reference
-	if req.Method == http.MethodHead {
-		c.manifestHeads++
-	}
-	if c.manifestErr != nil {
-		return nil, c.manifestErr
-	}
-	body := c.manifestBody
-	if req.Method == http.MethodHead {
-		body = nil
-	}
-	return &upstream.ManifestResponse{
-		Body:      io.NopCloser(bytes.NewReader(body)),
-		Digest:    testDigestFor(c.manifestBody),
-		MediaType: c.manifestMedia,
-		Size:      int64(len(c.manifestBody)),
-		Headers:   http.Header{"Content-Type": {c.manifestMedia}},
-	}, nil
-}
-
-func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequest) (*upstream.BlobResponse, error) {
-	body := c.blobBody
-	switch req.Method {
-	case http.MethodHead:
-		c.blobHeads++
-		body = nil
-	default:
-		c.blobGets++
-		if req.Range != nil {
-			return nil, errors.New("cache miss fetch should not forward client range")
-		}
-	}
-	return &upstream.BlobResponse{
-		Body:       io.NopCloser(bytes.NewReader(body)),
-		Digest:     c.blobDigest,
-		Size:       int64(len(c.blobBody)),
-		StatusCode: http.StatusOK,
-		Headers: http.Header{
-			"Content-Length": {strconv.Itoa(len(c.blobBody))},
-			"Content-Type":   {"application/octet-stream"},
-		},
-	}, nil
-}
-
-func (c *fakeRegistryClient) ListTags(context.Context, upstream.ListTagsRequest) (*upstream.TagsResponse, error) {
-	c.tagsLists++
-	return &upstream.TagsResponse{
-		Body:    io.NopCloser(bytes.NewReader(c.tagsBody)),
-		Headers: c.tagsHeader.Clone(),
-	}, nil
-}
-
-func (c *fakeRegistryClient) GetReferrers(context.Context, upstream.ReferrersRequest) (*upstream.ReferrersResponse, error) {
-	c.referrersGets++
-	if c.referrersErr != nil {
-		return nil, c.referrersErr
-	}
-	return &upstream.ReferrersResponse{
-		Body:      io.NopCloser(bytes.NewReader(c.referrersBody)),
-		MediaType: distribution.MediaTypeOCIIndex,
-		Headers:   http.Header{"Content-Type": {distribution.MediaTypeOCIIndex}},
-	}, nil
-}
-
-var _ upstream.RegistryClient = (*fakeRegistryClient)(nil)

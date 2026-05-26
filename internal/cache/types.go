@@ -2,7 +2,7 @@ package cache
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -102,11 +102,10 @@ type ReferrersResult struct {
 
 func ValidateRouteParts(alias, repo string) error {
 	if alias == "" {
-		return fmt.Errorf("upstream alias is required")
+		return errors.New("upstream alias is required")
 	}
 	if repo == "" {
-		return fmt.Errorf("repository is required")
+		return errors.New("repository is required")
 	}
 	return nil
 }
-

@@ -3,6 +3,7 @@ package backend
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log/slog"
 	"strings"
 	"time"
@@ -69,14 +70,14 @@ func NewValkey(opts KVOptions) (*KV, error) {
 		SelectDB:    opts.DB,
 	})
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("create valkey client: %w", err)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.Do(ctx, client.B().Ping().Build()).Error(); err != nil {
 		client.Close()
-		return nil, err
+		return nil, fmt.Errorf("ping valkey cache: %w", err)
 	}
 
 	return NewKV(valkeyadapter.NewFromClient(client), opts.Prefix), nil
@@ -102,7 +103,7 @@ func (b *KV) Get(ctx context.Context, key string) ([]byte, bool, error) {
 		if kvx.IsNil(err) {
 			return nil, false, nil
 		}
-		return nil, false, err
+		return nil, false, fmt.Errorf("get kv cache entry: %w", err)
 	}
 	return cloneBytes(value), true, nil
 }
@@ -115,7 +116,10 @@ func (b *KV) Set(ctx context.Context, key string, value []byte, ttl time.Duratio
 	if err != nil {
 		return err
 	}
-	return b.client.Set(ctx, key, cloneBytes(value), normalizeRemoteTTL(ttl))
+	if err := b.client.Set(ctx, key, cloneBytes(value), normalizeRemoteTTL(ttl)); err != nil {
+		return fmt.Errorf("set kv cache entry: %w", err)
+	}
+	return nil
 }
 
 func (b *KV) Delete(ctx context.Context, key string) error {
@@ -126,28 +130,24 @@ func (b *KV) Delete(ctx context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	return b.client.Delete(ctx, key)
+	if err := b.client.Delete(ctx, key); err != nil {
+		return fmt.Errorf("delete kv cache entry: %w", err)
+	}
+	return nil
 }
 
 func (b *KV) Close() error {
 	if b == nil || b.client == nil {
 		return nil
 	}
-	return b.client.Close()
+	if err := b.client.Close(); err != nil {
+		return fmt.Errorf("close kv cache client: %w", err)
+	}
+	return nil
 }
 
 func (b *KV) key(key string) (string, error) {
 	return cacheKey(b.prefix, strings.TrimLeft(strings.TrimSpace(key), ":"))
-}
-
-func toClientOptions(opts KVOptions) kvx.ClientOptions {
-	return kvx.ClientOptions{
-		Addrs:    opts.Addrs,
-		Password: opts.Password,
-		DB:       opts.DB,
-		Logger:   opts.Logger,
-		Debug:    opts.Debug,
-	}
 }
 
 var _ Backend = (*KV)(nil)

@@ -1,3 +1,4 @@
+// Package reference parses registry references and HTTP selectors.
 package reference
 
 import (
@@ -33,39 +34,62 @@ func normalizeAcceptItem(item string) string {
 		return ""
 	}
 
-	mediaType := strings.ToLower(strings.TrimSpace(pieces[0]))
+	mediaType := normalizeMediaType(pieces[0])
 	if mediaType == "" {
 		return ""
 	}
 
-	params := make([]string, 0, len(pieces)-1)
-	for _, raw := range pieces[1:] {
-		raw = strings.TrimSpace(raw)
-		if raw == "" {
-			continue
-		}
-
-		name, value, ok := strings.Cut(raw, "=")
-		if !ok {
-			params = append(params, strings.ToLower(raw))
-			continue
-		}
-		name = strings.ToLower(strings.TrimSpace(name))
-		value = strings.TrimSpace(value)
-		if name == "" {
-			continue
-		}
-		if name == "q" && (value == "1" || value == "1.0" || value == "1.00" || value == "1.000") {
-			continue
-		}
-		params = append(params, name+"="+value)
-	}
-	sort.Strings(params)
-
+	params := normalizeAcceptParams(pieces[1:])
 	if len(params) == 0 {
 		return mediaType
 	}
 	return mediaType + ";" + strings.Join(params, ";")
+}
+
+func normalizeMediaType(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func normalizeAcceptParams(rawParams []string) []string {
+	params := make([]string, 0, len(rawParams))
+	for _, raw := range rawParams {
+		param, ok := normalizeAcceptParam(raw)
+		if ok {
+			params = append(params, param)
+		}
+	}
+	sort.Strings(params)
+	return params
+}
+
+func normalizeAcceptParam(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+
+	name, value, ok := strings.Cut(raw, "=")
+	if !ok {
+		return strings.ToLower(raw), true
+	}
+	name = strings.ToLower(strings.TrimSpace(name))
+	value = strings.TrimSpace(value)
+	if name == "" || isDefaultQuality(name, value) {
+		return "", false
+	}
+	return name + "=" + value, true
+}
+
+func isDefaultQuality(name, value string) bool {
+	if name != "q" {
+		return false
+	}
+	switch value {
+	case "1", "1.0", "1.00", "1.000":
+		return true
+	default:
+		return false
+	}
 }
 
 func splitHeaderList(value string) []string {

@@ -1,4 +1,4 @@
-package backend
+package backend_test
 
 import (
 	"bytes"
@@ -8,12 +8,13 @@ import (
 	"time"
 
 	"github.com/arcgolabs/kvx"
+	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 )
 
 func TestKVBackendPrefixAndNil(t *testing.T) {
 	ctx := context.Background()
 	client := &fakeKVClient{values: map[string][]byte{}}
-	cache := NewKV(client, "regimux")
+	cache := backend.NewKV(client, "regimux")
 
 	_, ok, err := cache.Get(ctx, "missing")
 	if err != nil {
@@ -23,10 +24,12 @@ func TestKVBackendPrefixAndNil(t *testing.T) {
 		t.Fatal("expected cache miss")
 	}
 
-	if err := cache.Set(ctx, "manifest", []byte("body"), time.Minute); err != nil {
-		t.Fatalf("set value: %v", err)
+	setErr := cache.Set(ctx, "manifest", []byte("body"), time.Minute)
+	if setErr != nil {
+		t.Fatalf("set value: %v", setErr)
 	}
-	if _, ok := client.values["regimux:manifest"]; !ok {
+	_, hasPrefixedKey := client.values["regimux:manifest"]
+	if !hasPrefixedKey {
 		t.Fatal("expected prefixed key in kv client")
 	}
 
@@ -42,7 +45,7 @@ func TestKVBackendPrefixAndNil(t *testing.T) {
 func TestKVBackendCopiesValues(t *testing.T) {
 	ctx := context.Background()
 	client := &fakeKVClient{values: map[string][]byte{}}
-	cache := NewKV(client, "")
+	cache := backend.NewKV(client, "")
 
 	value := []byte("abc")
 	if err := cache.Set(ctx, "copy", value, time.Minute); err != nil {

@@ -1,3 +1,4 @@
+// Package policy contains access policy primitives.
 package policy
 
 import "strings"
@@ -11,9 +12,8 @@ func Match(pattern, value string) bool {
 	if pattern == value {
 		return true
 	}
-	if strings.HasSuffix(pattern, "*") {
-		return strings.HasPrefix(value, strings.TrimSuffix(pattern, "*"))
+	if before, ok := strings.CutSuffix(pattern, "*"); ok {
+		return strings.HasPrefix(value, before)
 	}
 	return false
 }
-

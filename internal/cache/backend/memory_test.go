@@ -1,23 +1,26 @@
-package backend
+package backend_test
 
 import (
 	"bytes"
 	"context"
 	"testing"
 	"time"
+
+	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 )
 
 func TestMemorySetGetDelete(t *testing.T) {
 	ctx := context.Background()
-	cache := NewMemory(MemoryOptions{})
+	cache := backend.NewMemory(backend.MemoryOptions{})
 	t.Cleanup(func() {
 		if err := cache.Close(); err != nil {
 			t.Fatalf("close memory backend: %v", err)
 		}
 	})
 
-	if err := cache.Set(ctx, "manifest", []byte("body"), time.Minute); err != nil {
-		t.Fatalf("set value: %v", err)
+	setErr := cache.Set(ctx, "manifest", []byte("body"), time.Minute)
+	if setErr != nil {
+		t.Fatalf("set value: %v", setErr)
 	}
 
 	got, ok, err := cache.Get(ctx, "manifest")
@@ -31,8 +34,9 @@ func TestMemorySetGetDelete(t *testing.T) {
 		t.Fatalf("unexpected value %q", got)
 	}
 
-	if err := cache.Delete(ctx, "manifest"); err != nil {
-		t.Fatalf("delete value: %v", err)
+	deleteErr := cache.Delete(ctx, "manifest")
+	if deleteErr != nil {
+		t.Fatalf("delete value: %v", deleteErr)
 	}
 
 	_, ok, err = cache.Get(ctx, "manifest")
@@ -46,7 +50,7 @@ func TestMemorySetGetDelete(t *testing.T) {
 
 func TestMemoryTTL(t *testing.T) {
 	ctx := context.Background()
-	cache := NewMemory(MemoryOptions{})
+	cache := backend.NewMemory(backend.MemoryOptions{})
 
 	if err := cache.Set(ctx, "token", []byte("expired"), 20*time.Millisecond); err != nil {
 		t.Fatalf("set value: %v", err)
@@ -70,7 +74,7 @@ func TestMemoryTTL(t *testing.T) {
 
 func TestMemoryMaxItems(t *testing.T) {
 	ctx := context.Background()
-	cache := NewMemory(MemoryOptions{MaxItems: 1})
+	cache := backend.NewMemory(backend.MemoryOptions{MaxItems: 1})
 
 	if err := cache.Set(ctx, "first", []byte("1"), time.Minute); err != nil {
 		t.Fatalf("set first: %v", err)
@@ -98,7 +102,7 @@ func TestMemoryMaxItems(t *testing.T) {
 
 func TestMemoryCopiesValues(t *testing.T) {
 	ctx := context.Background()
-	cache := NewMemory(MemoryOptions{})
+	cache := backend.NewMemory(backend.MemoryOptions{})
 
 	value := []byte("abc")
 	if err := cache.Set(ctx, "copy", value, time.Minute); err != nil {

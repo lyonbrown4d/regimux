@@ -1,12 +1,17 @@
-package reference
+// Package reference_test verifies reference helpers through exported APIs.
+package reference_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/lyonbrown4d/regimux/internal/reference"
+)
 
 func TestNormalizeDigest(t *testing.T) {
 	t.Parallel()
 
 	raw := "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
-	got, err := NormalizeDigest(raw)
+	got, err := reference.NormalizeDigest(raw)
 	if err != nil {
 		t.Fatalf("NormalizeDigest() error = %v", err)
 	}
@@ -28,7 +33,7 @@ func TestNormalizeDigestRejectsInvalid(t *testing.T) {
 		"sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa/../x",
 	}
 	for _, tt := range tests {
-		if _, err := NormalizeDigest(tt); err == nil {
+		if _, err := reference.NormalizeDigest(tt); err == nil {
 			t.Fatalf("NormalizeDigest(%q) expected error", tt)
 		}
 	}

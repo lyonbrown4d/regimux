@@ -1,3 +1,4 @@
+// Package backend provides byte-oriented cache backends.
 package backend
 
 import (
@@ -20,7 +21,7 @@ var (
 	ErrNoAddrs  = errors.New("cache backend addrs is empty")
 )
 
-func cacheKey(prefix string, key string) (string, error) {
+func cacheKey(prefix, key string) (string, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return "", ErrEmptyKey

@@ -1,4 +1,4 @@
-package api
+package api_test
 
 import (
 	"log/slog"
@@ -6,13 +6,14 @@ import (
 	"testing"
 
 	"github.com/arcgolabs/httpx"
+	"github.com/lyonbrown4d/regimux/internal/api"
 )
 
 func TestNewServerRegistersEndpoints(t *testing.T) {
-	server := NewServer(Options{
+	server := api.NewServer(api.Options{
 		Endpoints: []httpx.Endpoint{
-			NewHealthEndpoint(),
-			NewRegistryEndpoint(nil, nil, nil, nil, slog.Default()),
+			api.NewHealthEndpoint(),
+			api.NewRegistryEndpoint(nil, nil, nil, nil, slog.Default()),
 		},
 	})
 
@@ -24,12 +25,9 @@ func TestNewServerRegistersEndpoints(t *testing.T) {
 	assertRoute(t, server, http.MethodPost, "/v2/hub/library/alpine/blobs/uploads/")
 }
 
-func assertRoute(t *testing.T, server *Server, method, path string) {
+func assertRoute(t *testing.T, server *api.Server, method, path string) {
 	t.Helper()
-	if server == nil || server.runtime == nil {
-		t.Fatal("server runtime is nil")
-	}
-	if _, ok := server.runtime.MatchRoute(method, path); !ok {
+	if !server.HasRoute(method, path) {
 		t.Fatalf("expected route %s %s to match", method, path)
 	}
 }

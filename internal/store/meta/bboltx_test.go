@@ -1,24 +1,172 @@
-package meta
+package meta_test
 
 import (
 	"context"
+	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-func TestBboltStoreManifestTagBlobCRUD(t *testing.T) {
+func TestBboltStoreManifestCRUD(t *testing.T) {
 	ctx := context.Background()
-	path := t.TempDir() + "/regimux.db"
-	store, err := OpenBboltWithOptions(ctx, BboltOptions{Path: path})
-	if err != nil {
-		t.Fatalf("open bbolt: %v", err)
-	}
-	defer store.Close()
-
+	store := newBboltStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
-	manifest, err := store.UpsertManifest(ctx, ManifestRecord{
+
+	manifest := upsertManifest(ctx, t, store, expires)
+	if manifest.Key != "hub/library/nginx@"+testDigest || manifest.CreatedAt.IsZero() || manifest.UpdatedAt.IsZero() {
+		t.Fatalf("unexpected manifest: %#v", manifest)
+	}
+
+	got, ok := getManifest(ctx, t, store)
+	if !ok || got.MediaType != manifest.MediaType || got.Headers["Docker-Content-Digest"][0] != testDigest {
+		t.Fatalf("unexpected manifest lookup: ok=%v record=%#v", ok, got)
+	}
+	if !got.Expired(expires.Add(time.Nanosecond)) {
+		t.Fatal("expected manifest to be expired after expires_at")
+	}
+}
+
+func TestBboltStoreTagCRUD(t *testing.T) {
+	ctx := context.Background()
+	store := newBboltStore(ctx, t)
+	expires := time.Now().UTC().Add(time.Hour)
+
+	tag, err := store.UpsertTag(ctx, meta.TagRecord{
+		Alias:      "hub",
+		Repository: "library/nginx",
+		Reference:  "latest",
+		Digest:     testDigest,
+		ExpiresAt:  expires,
+	})
+	requireNoError(t, "upsert tag", err)
+	if tag.Key != "hub/library/nginx:latest" {
+		t.Fatalf("unexpected tag key: %s", tag.Key)
+	}
+
+	got, ok, err := store.Tag(ctx, meta.TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"})
+	requireNoError(t, "get tag", err)
+	if !ok || got.Digest != testDigest {
+		t.Fatalf("unexpected tag lookup: ok=%v record=%#v", ok, got)
+	}
+
+	err = store.DeleteTag(ctx, meta.TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"})
+	requireNoError(t, "delete tag", err)
+	_, ok, err = store.Tag(ctx, meta.TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"})
+	requireNoError(t, "get deleted tag", err)
+	if ok {
+		t.Fatal("expected tag to be deleted")
+	}
+}
+
+func TestBboltStoreBlobCRUD(t *testing.T) {
+	ctx := context.Background()
+	store := newBboltStore(ctx, t)
+
+	blob, err := store.UpsertBlob(ctx, meta.BlobRecord{
+		Digest:    testDigest,
+		Size:      2048,
+		MediaType: "application/octet-stream",
+		ObjectKey: testDigest,
+	})
+	requireNoError(t, "upsert blob", err)
+
+	got, ok, err := store.Blob(ctx, meta.BlobKey{Digest: testDigest})
+	requireNoError(t, "get blob", err)
+	if !ok || got.Size != blob.Size || got.Digest != testDigest {
+		t.Fatalf("unexpected blob lookup: ok=%v record=%#v", ok, got)
+	}
+}
+
+func TestBboltStoreRepoBlobCRUD(t *testing.T) {
+	ctx := context.Background()
+	store := newBboltStore(ctx, t)
+
+	repoBlob, err := store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
+		Alias:      "hub",
+		Repository: "library/nginx",
+		Digest:     testDigest,
+	})
+	requireNoError(t, "upsert repo blob", err)
+	if repoBlob.Key != "hub/library/nginx@"+testDigest || repoBlob.LastVerifiedAt.IsZero() {
+		t.Fatalf("unexpected repo blob: %#v", repoBlob)
+	}
+
+	got, ok, err := store.RepoBlob(ctx, meta.RepoBlobKey{Alias: "hub", Repository: "library/nginx", Digest: testDigest})
+	requireNoError(t, "get repo blob", err)
+	if !ok || got.Digest != testDigest {
+		t.Fatalf("unexpected repo blob lookup: ok=%v record=%#v", ok, got)
+	}
+}
+
+func TestBboltStorePersistsAcrossReopen(t *testing.T) {
+	ctx := context.Background()
+	path := filepath.Join(t.TempDir(), "regimux.db")
+	store := openBboltStore(ctx, t, path)
+
+	_, err := store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 42})
+	requireNoError(t, "upsert blob", err)
+	closeBboltStore(t, store)
+
+	reopened := openBboltStore(ctx, t, path)
+	t.Cleanup(func() { closeBboltStore(t, reopened) })
+	got, ok, err := reopened.Blob(ctx, meta.BlobKey{Digest: testDigest})
+	requireNoError(t, "get blob", err)
+	if !ok || got.Size != 42 {
+		t.Fatalf("unexpected reopened blob: ok=%v record=%#v", ok, got)
+	}
+}
+
+func TestBboltStoreValidatesRecords(t *testing.T) {
+	ctx := context.Background()
+	store := newBboltStore(ctx, t)
+
+	_, err := store.UpsertBlob(ctx, meta.BlobRecord{Digest: "not-a-digest"})
+	if err == nil {
+		t.Fatal("expected invalid digest error")
+	}
+	_, err = store.UpsertManifest(ctx, meta.ManifestRecord{
+		Alias:      "hub",
+		Repository: "repo",
+		Digest:     testDigest,
+		Size:       -1,
+	})
+	if err == nil {
+		t.Fatal("expected negative size error")
+	}
+}
+
+func newBboltStore(ctx context.Context, t *testing.T) *meta.BboltStore {
+	t.Helper()
+	store := openBboltStore(ctx, t, filepath.Join(t.TempDir(), "regimux.db"))
+	t.Cleanup(func() { closeBboltStore(t, store) })
+	return store
+}
+
+func openBboltStore(ctx context.Context, t *testing.T, path string) *meta.BboltStore {
+	t.Helper()
+	store, err := meta.OpenBboltWithOptions(ctx, meta.BboltOptions{Path: path})
+	requireNoError(t, "open bbolt", err)
+	return store
+}
+
+func closeBboltStore(t *testing.T, store *meta.BboltStore) {
+	t.Helper()
+	err := store.Close()
+	requireNoError(t, "close bbolt", err)
+}
+
+func upsertManifest(
+	ctx context.Context,
+	t *testing.T,
+	store *meta.BboltStore,
+	expires time.Time,
+) *meta.ManifestRecord {
+	t.Helper()
+	manifest, err := store.UpsertManifest(ctx, meta.ManifestRecord{
 		Alias:      "hub",
 		Repository: "library/nginx",
 		Digest:     testDigest,
@@ -30,133 +178,20 @@ func TestBboltStoreManifestTagBlobCRUD(t *testing.T) {
 		},
 		ExpiresAt: expires,
 	})
-	if err != nil {
-		t.Fatalf("upsert manifest: %v", err)
-	}
-	if manifest.Key != "hub/library/nginx@"+testDigest || manifest.CreatedAt.IsZero() || manifest.UpdatedAt.IsZero() {
-		t.Fatalf("unexpected manifest: %#v", manifest)
-	}
-
-	gotManifest, ok, err := store.Manifest(ctx, ManifestKey{Alias: "hub", Repository: "library/nginx", Digest: testDigest})
-	if err != nil {
-		t.Fatalf("get manifest: %v", err)
-	}
-	if !ok || gotManifest.MediaType != manifest.MediaType || gotManifest.Headers["Docker-Content-Digest"][0] != testDigest {
-		t.Fatalf("unexpected manifest lookup: ok=%v record=%#v", ok, gotManifest)
-	}
-	if !gotManifest.Expired(expires.Add(time.Nanosecond)) {
-		t.Fatal("expected manifest to be expired after expires_at")
-	}
-
-	tag, err := store.UpsertTag(ctx, TagRecord{
-		Alias:      "hub",
-		Repository: "library/nginx",
-		Reference:  "latest",
-		Digest:     testDigest,
-		ExpiresAt:  expires,
-	})
-	if err != nil {
-		t.Fatalf("upsert tag: %v", err)
-	}
-	if tag.Key != "hub/library/nginx:latest" {
-		t.Fatalf("unexpected tag key: %s", tag.Key)
-	}
-	gotTag, ok, err := store.Tag(ctx, TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"})
-	if err != nil {
-		t.Fatalf("get tag: %v", err)
-	}
-	if !ok || gotTag.Digest != testDigest {
-		t.Fatalf("unexpected tag lookup: ok=%v record=%#v", ok, gotTag)
-	}
-
-	blob, err := store.UpsertBlob(ctx, BlobRecord{
-		Digest:    testDigest,
-		Size:      2048,
-		MediaType: "application/octet-stream",
-		ObjectKey: testDigest,
-	})
-	if err != nil {
-		t.Fatalf("upsert blob: %v", err)
-	}
-	gotBlob, ok, err := store.Blob(ctx, BlobKey{Digest: testDigest})
-	if err != nil {
-		t.Fatalf("get blob: %v", err)
-	}
-	if !ok || gotBlob.Size != blob.Size || gotBlob.Digest != testDigest {
-		t.Fatalf("unexpected blob lookup: ok=%v record=%#v", ok, gotBlob)
-	}
-
-	repoBlob, err := store.UpsertRepoBlob(ctx, RepoBlobRecord{
-		Alias:      "hub",
-		Repository: "library/nginx",
-		Digest:     testDigest,
-	})
-	if err != nil {
-		t.Fatalf("upsert repo blob: %v", err)
-	}
-	if repoBlob.Key != "hub/library/nginx@"+testDigest || repoBlob.LastVerifiedAt.IsZero() {
-		t.Fatalf("unexpected repo blob: %#v", repoBlob)
-	}
-	gotRepoBlob, ok, err := store.RepoBlob(ctx, RepoBlobKey{Alias: "hub", Repository: "library/nginx", Digest: testDigest})
-	if err != nil {
-		t.Fatalf("get repo blob: %v", err)
-	}
-	if !ok || gotRepoBlob.Digest != testDigest {
-		t.Fatalf("unexpected repo blob lookup: ok=%v record=%#v", ok, gotRepoBlob)
-	}
-
-	if err := store.DeleteTag(ctx, TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"}); err != nil {
-		t.Fatalf("delete tag: %v", err)
-	}
-	_, ok, err = store.Tag(ctx, TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"})
-	if err != nil {
-		t.Fatalf("get deleted tag: %v", err)
-	}
-	if ok {
-		t.Fatal("expected tag to be deleted")
-	}
+	requireNoError(t, "upsert manifest", err)
+	return manifest
 }
 
-func TestBboltStorePersistsAcrossReopen(t *testing.T) {
-	ctx := context.Background()
-	path := t.TempDir() + "/regimux.db"
-	store, err := OpenBboltWithOptions(ctx, BboltOptions{Path: path})
-	if err != nil {
-		t.Fatalf("open bbolt: %v", err)
-	}
-	if _, err := store.UpsertBlob(ctx, BlobRecord{Digest: testDigest, Size: 42}); err != nil {
-		t.Fatalf("upsert blob: %v", err)
-	}
-	if err := store.Close(); err != nil {
-		t.Fatalf("close: %v", err)
-	}
-
-	reopened, err := OpenBboltWithOptions(ctx, BboltOptions{Path: path})
-	if err != nil {
-		t.Fatalf("reopen bbolt: %v", err)
-	}
-	defer reopened.Close()
-	got, ok, err := reopened.Blob(ctx, BlobKey{Digest: testDigest})
-	if err != nil {
-		t.Fatalf("get blob: %v", err)
-	}
-	if !ok || got.Size != 42 {
-		t.Fatalf("unexpected reopened blob: ok=%v record=%#v", ok, got)
-	}
+func getManifest(ctx context.Context, t *testing.T, store *meta.BboltStore) (*meta.ManifestRecord, bool) {
+	t.Helper()
+	got, ok, err := store.Manifest(ctx, meta.ManifestKey{Alias: "hub", Repository: "library/nginx", Digest: testDigest})
+	requireNoError(t, "get manifest", err)
+	return got, ok
 }
 
-func TestBboltStoreValidatesRecords(t *testing.T) {
-	ctx := context.Background()
-	store, err := OpenBboltWithOptions(ctx, BboltOptions{Path: t.TempDir() + "/regimux.db"})
+func requireNoError(t *testing.T, action string, err error) {
+	t.Helper()
 	if err != nil {
-		t.Fatalf("open bbolt: %v", err)
-	}
-	defer store.Close()
-
-	if _, err := store.UpsertBlob(ctx, BlobRecord{Digest: "not-a-digest"}); err == nil {
-		t.Fatal("expected invalid digest error")
-	}
-	if _, err := store.UpsertManifest(ctx, ManifestRecord{Alias: "hub", Repository: "repo", Digest: testDigest, Size: -1}); err == nil {
-		t.Fatal("expected negative size error")
+		t.Fatalf("%s: %v", action, err)
 	}
 }

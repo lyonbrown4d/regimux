@@ -1,20 +1,25 @@
-package reference
+// Package reference_test verifies reference helpers through exported APIs.
+package reference_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/lyonbrown4d/regimux/internal/reference"
+)
 
 func TestParseRange(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		header string
-		want   HTTPRange
+		want   reference.HTTPRange
 	}{
-		{"bytes=0-99", HTTPRange{Start: 0, End: 99}},
-		{"bytes=500-", HTTPRange{Start: 500, End: -1}},
-		{"bytes=-250", HTTPRange{Start: -1, End: 250}},
+		{"bytes=0-99", reference.HTTPRange{Start: 0, End: 99}},
+		{"bytes=500-", reference.HTTPRange{Start: 500, End: -1}},
+		{"bytes=-250", reference.HTTPRange{Start: -1, End: 250}},
 	}
 	for _, tt := range tests {
-		got, err := ParseRange(tt.header)
+		got, err := reference.ParseRange(tt.header)
 		if err != nil {
 			t.Fatalf("ParseRange(%q) error = %v", tt.header, err)
 		}
@@ -27,7 +32,7 @@ func TestParseRange(t *testing.T) {
 func TestParseRangeEmpty(t *testing.T) {
 	t.Parallel()
 
-	got, err := ParseRange("")
+	got, err := reference.ParseRange("")
 	if err != nil {
 		t.Fatalf("ParseRange empty error = %v", err)
 	}
@@ -40,7 +45,7 @@ func TestParseRangeRejectsInvalid(t *testing.T) {
 	t.Parallel()
 
 	for _, header := range []string{"items=0-1", "bytes=0-1,2-3", "bytes=5-4", "bytes=-0"} {
-		if _, err := ParseRange(header); err == nil {
+		if _, err := reference.ParseRange(header); err == nil {
 			t.Fatalf("ParseRange(%q) expected error", header)
 		}
 	}
@@ -49,11 +54,11 @@ func TestParseRangeRejectsInvalid(t *testing.T) {
 func TestRangeResolve(t *testing.T) {
 	t.Parallel()
 
-	got, err := (HTTPRange{Start: 500, End: -1}).Resolve(1000)
+	got, err := (reference.HTTPRange{Start: 500, End: -1}).Resolve(1000)
 	if err != nil {
 		t.Fatalf("Resolve open ended error = %v", err)
 	}
-	if *got != (HTTPRange{Start: 500, End: 999}) {
+	if *got != (reference.HTTPRange{Start: 500, End: 999}) {
 		t.Fatalf("Resolve open ended = %+v", *got)
 	}
 	if got.Length() != 500 {
@@ -63,11 +68,11 @@ func TestRangeResolve(t *testing.T) {
 		t.Fatalf("ContentRange() = %q", got.ContentRange(1000))
 	}
 
-	got, err = (HTTPRange{Start: -1, End: 250}).Resolve(1000)
+	got, err = (reference.HTTPRange{Start: -1, End: 250}).Resolve(1000)
 	if err != nil {
 		t.Fatalf("Resolve suffix error = %v", err)
 	}
-	if *got != (HTTPRange{Start: 750, End: 999}) {
+	if *got != (reference.HTTPRange{Start: 750, End: 999}) {
 		t.Fatalf("Resolve suffix = %+v", *got)
 	}
 }
@@ -76,12 +81,12 @@ func TestRangeString(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
-		r    HTTPRange
+		r    reference.HTTPRange
 		want string
 	}{
-		{HTTPRange{Start: 0, End: 99}, "bytes=0-99"},
-		{HTTPRange{Start: 500, End: -1}, "bytes=500-"},
-		{HTTPRange{Start: -1, End: 250}, "bytes=-250"},
+		{reference.HTTPRange{Start: 0, End: 99}, "bytes=0-99"},
+		{reference.HTTPRange{Start: 500, End: -1}, "bytes=500-"},
+		{reference.HTTPRange{Start: -1, End: 250}, "bytes=-250"},
 	}
 	for _, tt := range tests {
 		if got := tt.r.String(); got != tt.want {

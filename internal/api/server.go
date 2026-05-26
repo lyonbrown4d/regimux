@@ -72,7 +72,11 @@ func (s *Server) Start(ctx context.Context) error {
 	}
 	s.logger.Info("starting http server", "listen", s.listen)
 	go func() {
-		s.errCh <- s.runtime.Listen(s.listen)
+		if err := s.runtime.Listen(s.listen); err != nil {
+			s.errCh <- fmt.Errorf("listen http server: %w", err)
+			return
+		}
+		s.errCh <- nil
 	}()
 	return nil
 }
@@ -88,7 +92,7 @@ func (s *Server) Stop(ctx context.Context) error {
 		shutdownErr = s.runtime.Shutdown()
 	})
 	if shutdownErr != nil {
-		return shutdownErr
+		return fmt.Errorf("shutdown http server: %w", shutdownErr)
 	}
 
 	select {
@@ -97,7 +101,15 @@ func (s *Server) Stop(ctx context.Context) error {
 			return fmt.Errorf("http server stopped: %w", err)
 		}
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("wait for http server shutdown: %w", ctx.Err())
 	}
 	return nil
+}
+
+func (s *Server) HasRoute(method, path string) bool {
+	if s == nil || s.runtime == nil {
+		return false
+	}
+	_, ok := s.runtime.MatchRoute(method, path)
+	return ok
 }

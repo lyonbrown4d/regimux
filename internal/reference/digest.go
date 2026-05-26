@@ -14,6 +14,23 @@ var (
 
 // NormalizeDigest validates digest syntax and returns the canonical form.
 func NormalizeDigest(value string) (string, error) {
+	value, err := cleanDigestValue(value)
+	if err != nil {
+		return "", err
+	}
+
+	algorithm, encoded, _ := strings.Cut(value, ":")
+	algorithm = strings.ToLower(algorithm)
+	encoded = strings.ToLower(encoded)
+
+	if err := validateDigestLength(algorithm, encoded); err != nil {
+		return "", err
+	}
+
+	return algorithm + ":" + encoded, nil
+}
+
+func cleanDigestValue(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
 		return "", ErrDigestInvalid
@@ -24,29 +41,31 @@ func NormalizeDigest(value string) (string, error) {
 	if !digestRegexp.MatchString(value) {
 		return "", fmt.Errorf("%w: %q", ErrDigestInvalid, value)
 	}
+	return value, nil
+}
 
-	algorithm, encoded, _ := strings.Cut(value, ":")
-	algorithm = strings.ToLower(algorithm)
-	encoded = strings.ToLower(encoded)
+func validateDigestLength(algorithm, encoded string) error {
+	length, ok := digestLength(algorithm)
+	if !ok {
+		return fmt.Errorf("%w: unsupported digest algorithm %q", ErrDigestInvalid, algorithm)
+	}
+	if len(encoded) != length {
+		return fmt.Errorf("%w: %s digest must be %d hex characters", ErrDigestInvalid, algorithm, length)
+	}
+	return nil
+}
 
+func digestLength(algorithm string) (int, bool) {
 	switch algorithm {
 	case "sha256":
-		if len(encoded) != 64 {
-			return "", fmt.Errorf("%w: sha256 digest must be 64 hex characters", ErrDigestInvalid)
-		}
+		return 64, true
 	case "sha384":
-		if len(encoded) != 96 {
-			return "", fmt.Errorf("%w: sha384 digest must be 96 hex characters", ErrDigestInvalid)
-		}
+		return 96, true
 	case "sha512":
-		if len(encoded) != 128 {
-			return "", fmt.Errorf("%w: sha512 digest must be 128 hex characters", ErrDigestInvalid)
-		}
+		return 128, true
 	default:
-		return "", fmt.Errorf("%w: unsupported digest algorithm %q", ErrDigestInvalid, algorithm)
+		return 0, false
 	}
-
-	return algorithm + ":" + encoded, nil
 }
 
 // ValidateDigest validates digest syntax.

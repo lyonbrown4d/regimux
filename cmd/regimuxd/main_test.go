@@ -1,7 +1,6 @@
 package main
 
 import (
-	"io"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -42,7 +41,7 @@ func TestBuildAppValidates(t *testing.T) {
 		t.Fatalf("validate config: %v", err)
 	}
 
-	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+	logger := slog.New(slog.DiscardHandler)
 	if err := buildApp(cfg, logger, "test").Validate(); err != nil {
 		t.Fatalf("validate app graph: %v", err)
 	}

@@ -1,8 +1,10 @@
+// Package distribution contains Docker Distribution API response helpers.
 package distribution
 
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 )
 
@@ -101,6 +103,21 @@ var (
 	ErrUpstream        = ErrorDescriptor{Status: http.StatusBadGateway, Code: CodeUpstreamError, Message: "upstream error"}
 )
 
+var statusByCode = map[ErrorCode]int{
+	CodeUnknown:         http.StatusInternalServerError,
+	CodeUnsupported:     http.StatusMethodNotAllowed,
+	CodeUnauthorized:    http.StatusUnauthorized,
+	CodeDenied:          http.StatusForbidden,
+	CodeTooManyRequests: http.StatusTooManyRequests,
+	CodeNameInvalid:     http.StatusBadRequest,
+	CodeNameUnknown:     http.StatusNotFound,
+	CodeManifestUnknown: http.StatusNotFound,
+	CodeBlobUnknown:     http.StatusNotFound,
+	CodeDigestInvalid:   http.StatusBadRequest,
+	CodeRangeInvalid:    http.StatusRequestedRangeNotSatisfiable,
+	CodeUpstreamError:   http.StatusBadGateway,
+}
+
 func ManifestUnknown(repo, reference string) *ErrorList {
 	return ErrManifestUnknown.WithDetail(map[string]string{
 		"repo":      repo,
@@ -156,7 +173,9 @@ func WriteError(w http.ResponseWriter, err error) {
 	header.Set("Docker-Distribution-Api-Version", APIVersion)
 	w.WriteHeader(status)
 
-	_ = json.NewEncoder(w).Encode(ErrorResponse{Errors: list.Errors})
+	if err := json.NewEncoder(w).Encode(ErrorResponse{Errors: list.Errors}); err != nil {
+		return
+	}
 }
 
 func WriteDistributionError(w http.ResponseWriter, err error) {
@@ -168,28 +187,16 @@ func MarshalError(err error) ([]byte, error) {
 	if list == nil {
 		list = NewError(http.StatusInternalServerError, CodeUnknown, "unknown error", nil)
 	}
-	return json.Marshal(ErrorResponse{Errors: list.Errors})
+	body, err := json.Marshal(ErrorResponse{Errors: list.Errors})
+	if err != nil {
+		return nil, fmt.Errorf("marshal distribution error response: %w", err)
+	}
+	return body, nil
 }
 
 func defaultStatus(code ErrorCode) int {
-	switch code {
-	case CodeUnsupported:
-		return http.StatusMethodNotAllowed
-	case CodeUnauthorized:
-		return http.StatusUnauthorized
-	case CodeDenied:
-		return http.StatusForbidden
-	case CodeTooManyRequests:
-		return http.StatusTooManyRequests
-	case CodeNameInvalid, CodeDigestInvalid:
-		return http.StatusBadRequest
-	case CodeNameUnknown, CodeManifestUnknown, CodeBlobUnknown:
-		return http.StatusNotFound
-	case CodeRangeInvalid:
-		return http.StatusRequestedRangeNotSatisfiable
-	case CodeUpstreamError:
-		return http.StatusBadGateway
-	default:
-		return http.StatusInternalServerError
+	if status, ok := statusByCode[code]; ok {
+		return status
 	}
+	return http.StatusInternalServerError
 }

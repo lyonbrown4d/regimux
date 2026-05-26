@@ -1,3 +1,4 @@
+// Package auth defines pull authorization contracts.
 package auth
 
 import "context"
@@ -16,4 +17,3 @@ type AllowAll struct{}
 func (AllowAll) RequirePull(context.Context, string) (*UserContext, error) {
 	return &UserContext{Subject: "anonymous"}, nil
 }
-
