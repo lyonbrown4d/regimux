@@ -42,6 +42,17 @@ func toUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 		MirrorPolicy:     cfg.MirrorPolicy,
 		DefaultNamespace: cfg.DefaultNamespace,
 		TagTTL:           cfg.TagTTL.String(),
+		Blob: BlobConfig{
+			MirrorPolicy:              cfg.Blob.MirrorPolicy,
+			TopN:                      cfg.Blob.TopN,
+			MaxConcurrencyPerEndpoint: cfg.Blob.MaxConcurrencyPerEndpoint,
+		},
+		Probe: ProbeConfig{
+			Enabled:  cfg.Probe.Enabled,
+			Interval: cfg.Probe.Interval,
+			Timeout:  cfg.Probe.Timeout,
+			Cooldown: cfg.Probe.Cooldown,
+		},
 		Auth: AuthConfig{
 			Type:     cfg.Auth.Type,
 			Username: cfg.Auth.Username,

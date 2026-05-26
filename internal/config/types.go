@@ -123,14 +123,29 @@ type SchedulerPrefetchConfig struct {
 }
 
 type UpstreamConfig struct {
-	Alias            string        `json:"-"                 koanf:"-"                 mapstructure:"-"`
-	Registry         string        `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
-	Mirrors          []string      `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
-	MirrorPolicy     string        `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`
-	DefaultNamespace string        `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
-	TagTTL           time.Duration `json:"tag_ttl"           koanf:"tag_ttl"           mapstructure:"tag_ttl"           validate:"min=0"`
-	Auth             AuthConfig    `json:"auth"              koanf:"auth"              mapstructure:"auth"`
-	HTTP             HTTPConfig    `json:"http"              koanf:"http"              mapstructure:"http"`
+	Alias            string              `json:"-"                 koanf:"-"                 mapstructure:"-"`
+	Registry         string              `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
+	Mirrors          []string            `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
+	MirrorPolicy     string              `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`
+	DefaultNamespace string              `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
+	TagTTL           time.Duration       `json:"tag_ttl"           koanf:"tag_ttl"           mapstructure:"tag_ttl"           validate:"min=0"`
+	Blob             UpstreamBlobConfig  `json:"blob"              koanf:"blob"              mapstructure:"blob"`
+	Probe            UpstreamProbeConfig `json:"probe"             koanf:"probe"             mapstructure:"probe"`
+	Auth             AuthConfig          `json:"auth"              koanf:"auth"              mapstructure:"auth"`
+	HTTP             HTTPConfig          `json:"http"              koanf:"http"              mapstructure:"http"`
+}
+
+type UpstreamBlobConfig struct {
+	MirrorPolicy              string `json:"mirror_policy"                 koanf:"mirror_policy"                 mapstructure:"mirror_policy"                 validate:"omitempty,oneof=ordered round_robin latency"`
+	TopN                      int    `json:"top_n"                         koanf:"top_n"                         mapstructure:"top_n"                         validate:"min=0"`
+	MaxConcurrencyPerEndpoint int    `json:"max_concurrency_per_endpoint"  koanf:"max_concurrency_per_endpoint"  mapstructure:"max_concurrency_per_endpoint"  validate:"min=0"`
+}
+
+type UpstreamProbeConfig struct {
+	Enabled  bool          `json:"enabled"  koanf:"enabled"  mapstructure:"enabled"`
+	Interval time.Duration `json:"interval" koanf:"interval" mapstructure:"interval" validate:"min=0"`
+	Timeout  time.Duration `json:"timeout"  koanf:"timeout"  mapstructure:"timeout"  validate:"min=0"`
+	Cooldown time.Duration `json:"cooldown" koanf:"cooldown" mapstructure:"cooldown" validate:"min=0"`
 }
 
 type AuthConfig struct {

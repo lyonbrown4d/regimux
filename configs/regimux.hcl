@@ -108,6 +108,19 @@ upstreams {
     default_namespace = "library"
     tag_ttl = "10m"
 
+    blob {
+      mirror_policy = "latency"
+      top_n = 3
+      max_concurrency_per_endpoint = 0
+    }
+
+    probe {
+      enabled = true
+      interval = "30s"
+      timeout = "3s"
+      cooldown = "2m"
+    }
+
     auth {
       type = "anonymous"
     }

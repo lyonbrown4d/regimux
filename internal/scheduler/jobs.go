@@ -2,9 +2,11 @@ package scheduler
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/samber/oops"
 )
@@ -57,6 +59,49 @@ func (r *Runtime) registerPrefetch(ctx context.Context, scheduler gocron.Schedul
 	return nil
 }
 
+func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler) error {
+	var registerErr error
+	r.cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		probeCfg := upstreamCfg.Probe
+		if !probeCfg.Enabled || probeCfg.Interval <= 0 {
+			return true
+		}
+		if r.upstream == nil {
+			registerErr = oops.In("scheduler").Errorf("upstream probe client is not configured")
+			return false
+		}
+
+		jobAlias := alias
+		options := []gocron.JobOption{
+			gocron.WithName(fmt.Sprintf("regimux.upstream.probe.%s", alias)),
+			gocron.WithTags("maintenance", "probe", alias),
+			gocron.WithContext(ctx),
+			gocron.WithSingletonMode(gocron.LimitModeReschedule),
+			gocron.WithDisabledDistributedJobLocker(true),
+			gocron.WithStartAt(gocron.WithStartImmediately()),
+		}
+		if _, err := scheduler.NewJob(
+			gocron.DurationJob(probeCfg.Interval),
+			gocron.NewTask(func(ctx context.Context) error {
+				return r.runProbe(ctx, jobAlias)
+			}),
+			options...,
+		); err != nil {
+			registerErr = oops.Wrapf(err, "register upstream probe job")
+			return false
+		}
+		r.logger.InfoContext(ctx,
+			"registered upstream probe job",
+			"alias", alias,
+			"interval", probeCfg.Interval,
+			"timeout", probeCfg.Timeout,
+			"cooldown", probeCfg.Cooldown,
+		)
+		return true
+	})
+	return registerErr
+}
+
 func (r *Runtime) runCleanup(ctx context.Context) error {
 	report, err := r.cleanup.CleanupBlobs(ctx, cache.CleanupOptions{
 		UnusedFor:  r.cfg.Scheduler.Cleanup.UnusedFor,
@@ -74,6 +119,17 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		"bytes_deleted", report.BytesDeleted,
 		"limit_reached", report.LimitReached,
 	)
+	return nil
+}
+
+func (r *Runtime) runProbe(ctx context.Context, alias string) error {
+	if r.upstream == nil {
+		return oops.In("scheduler").Errorf("upstream probe client is not configured")
+	}
+	if err := r.upstream.ProbeAlias(ctx, alias); err != nil {
+		return oops.Wrapf(err, "run upstream probe job")
+	}
+	r.logger.DebugContext(ctx, "upstream probe job completed", "alias", alias)
 	return nil
 }
 

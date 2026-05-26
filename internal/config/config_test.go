@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
@@ -21,6 +22,20 @@ func TestLoadDefaultsIncludeStore(t *testing.T) {
 	}
 	if cfg.Store.Object.Driver != "local" || cfg.Store.Object.Path != "data/objects" {
 		t.Fatalf("unexpected object store defaults: %#v", cfg.Store.Object)
+	}
+}
+
+func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
+	cfg, err := config.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+	hub := cfg.Upstreams["hub"]
+	if hub.Blob.MirrorPolicy != "ordered" || hub.Blob.TopN != 3 || hub.Blob.MaxConcurrencyPerEndpoint != 0 {
+		t.Fatalf("unexpected upstream blob defaults: %#v", hub.Blob)
+	}
+	if hub.Probe.Enabled || hub.Probe.Interval != 30*time.Second || hub.Probe.Timeout != 3*time.Second || hub.Probe.Cooldown != 2*time.Minute {
+		t.Fatalf("unexpected upstream probe defaults: %#v", hub.Probe)
 	}
 }
 
@@ -71,6 +86,19 @@ upstreams {
     registry = "https://example.com"
     mirrors = ["https://mirror-a.example.com", "https://mirror-b.example.com"]
     mirror_policy = "round_robin"
+
+    blob {
+      mirror_policy = "latency"
+      top_n = 2
+      max_concurrency_per_endpoint = 4
+    }
+
+    probe {
+      enabled = true
+      interval = "45s"
+      timeout = "4s"
+      cooldown = "90s"
+    }
   }
 }
 `), 0o600); err != nil {
@@ -92,6 +120,106 @@ upstreams {
 	}
 	if got := cfg.Upstreams["local"].Mirrors; len(got) != 2 || got[0] != "https://mirror-a.example.com" || got[1] != "https://mirror-b.example.com" {
 		t.Fatalf("unexpected mirrors: %#v", got)
+	}
+	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "latency" || got.TopN != 2 || got.MaxConcurrencyPerEndpoint != 4 {
+		t.Fatalf("unexpected blob config: %#v", got)
+	}
+	if got := cfg.Upstreams["local"].Probe; !got.Enabled || got.Interval != 45*time.Second || got.Timeout != 4*time.Second || got.Cooldown != 90*time.Second {
+		t.Fatalf("unexpected probe config: %#v", got)
+	}
+}
+
+func TestNormalizeUpstreamBlobDefaultsToMirrorPolicy(t *testing.T) {
+	cfg, err := config.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+	local := cfg.Upstreams["hub"]
+	local.MirrorPolicy = "round_robin"
+	local.Blob = config.UpstreamBlobConfig{}
+	cfg.Upstreams = map[string]config.UpstreamConfig{"local": local}
+
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		t.Fatalf("normalize upstream: %v", err)
+	}
+	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "round_robin" || got.TopN != 3 {
+		t.Fatalf("unexpected blob defaults: %#v", got)
+	}
+}
+
+func TestNormalizeLatencyBlobPolicyEnablesProbe(t *testing.T) {
+	cfg, err := config.Load(context.Background(), "")
+	if err != nil {
+		t.Fatalf("load defaults: %v", err)
+	}
+	local := cfg.Upstreams["hub"]
+	local.Blob.MirrorPolicy = "latency"
+	local.Probe.Enabled = false
+	cfg.Upstreams = map[string]config.UpstreamConfig{"local": local}
+
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		t.Fatalf("normalize upstream: %v", err)
+	}
+	if got := cfg.Upstreams["local"].Probe; !got.Enabled {
+		t.Fatalf("latency blob policy did not enable probe: %#v", got)
+	}
+}
+
+func TestValidateUpstreamBlobAndProbeRejectsInvalidValues(t *testing.T) {
+	tests := []struct {
+		name   string
+		mutate func(*config.UpstreamConfig)
+	}{
+		{
+			name: "blob policy",
+			mutate: func(upstreamCfg *config.UpstreamConfig) {
+				upstreamCfg.Blob.MirrorPolicy = "fastest"
+			},
+		},
+		{
+			name: "blob top n",
+			mutate: func(upstreamCfg *config.UpstreamConfig) {
+				upstreamCfg.Blob.TopN = -1
+			},
+		},
+		{
+			name: "blob max concurrency",
+			mutate: func(upstreamCfg *config.UpstreamConfig) {
+				upstreamCfg.Blob.MaxConcurrencyPerEndpoint = -1
+			},
+		},
+		{
+			name: "probe interval",
+			mutate: func(upstreamCfg *config.UpstreamConfig) {
+				upstreamCfg.Probe.Interval = -time.Second
+			},
+		},
+		{
+			name: "probe timeout",
+			mutate: func(upstreamCfg *config.UpstreamConfig) {
+				upstreamCfg.Probe.Timeout = -time.Second
+			},
+		},
+		{
+			name: "probe cooldown",
+			mutate: func(upstreamCfg *config.UpstreamConfig) {
+				upstreamCfg.Probe.Cooldown = -time.Second
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load(context.Background(), "")
+			if err != nil {
+				t.Fatalf("load defaults: %v", err)
+			}
+			hub := cfg.Upstreams["hub"]
+			tt.mutate(&hub)
+			cfg.Upstreams["hub"] = hub
+			if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
+				t.Fatal("expected upstream blob/probe validation error")
+			}
+		})
 	}
 }
 

@@ -11,7 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
-	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/upstream"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/oops"
 )
@@ -21,6 +21,7 @@ type Runtime struct {
 	logger   *slog.Logger
 	cleanup  *cache.CleanupService
 	prefetch *prefetch.Service
+	upstream *upstream.Client
 
 	scheduler gocron.Scheduler
 	redis     goredis.UniversalClient
@@ -30,9 +31,8 @@ func NewRuntime(
 	cfg config.Config,
 	logger *slog.Logger,
 	cleanup *cache.CleanupService,
-	metadata meta.Store,
-	tags cache.TagService,
-	manifests cache.ManifestService,
+	prefetch *prefetch.Service,
+	upstreamClient *upstream.Client,
 ) *Runtime {
 	if logger == nil {
 		logger = slog.Default()
@@ -41,7 +41,8 @@ func NewRuntime(
 		cfg:      cfg,
 		logger:   logger.With("component", "scheduler"),
 		cleanup:  cleanup,
-		prefetch: prefetch.NewService(metadata, tags, manifests, logger),
+		prefetch: prefetch,
+		upstream: upstreamClient,
 	}
 }
 
@@ -66,6 +67,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return join(err, r.Stop(ctx))
 	}
 	if err := r.registerPrefetch(ctx, scheduler); err != nil {
+		return join(err, r.Stop(ctx))
+	}
+	if err := r.registerProbe(ctx, scheduler); err != nil {
 		return join(err, r.Stop(ctx))
 	}
 	scheduler.Start()

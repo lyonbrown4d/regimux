@@ -7,6 +7,7 @@ import (
 	"net/url"
 	"path/filepath"
 	"strings"
+	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
@@ -18,6 +19,13 @@ import (
 )
 
 const envPrefix = "REGIMUX"
+
+const (
+	defaultUpstreamBlobTopN      = 3
+	defaultUpstreamProbeInterval = 30 * time.Second
+	defaultUpstreamProbeTimeout  = 3 * time.Second
+	defaultUpstreamProbeCooldown = 2 * time.Minute
+)
 
 func Load(ctx context.Context, path string) (Config, error) {
 	opts := []configx.Option{
@@ -167,6 +175,20 @@ func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (Upstream
 	}
 	upstreamCfg.MirrorPolicy = policy
 
+	var blobErr error
+	upstreamCfg.Blob, blobErr = normalizeUpstreamBlobConfig(alias, policy, upstreamCfg.Blob)
+	if blobErr != nil {
+		return UpstreamConfig{}, blobErr
+	}
+	var probeErr error
+	upstreamCfg.Probe, probeErr = normalizeUpstreamProbeConfig(alias, upstreamCfg.Probe)
+	if probeErr != nil {
+		return UpstreamConfig{}, probeErr
+	}
+	if upstreamCfg.Blob.MirrorPolicy == "latency" {
+		upstreamCfg.Probe.Enabled = true
+	}
+
 	if sourceErr := validateUpstreamSource(alias, upstreamCfg); sourceErr != nil {
 		return UpstreamConfig{}, sourceErr
 	}
@@ -192,6 +214,67 @@ func normalizeMirrorPolicy(alias, policy string) (string, error) {
 	default:
 		return "", oops.In("config").With("alias", alias, "mirror_policy", policy).Errorf("upstreams.%s.mirror_policy must be ordered or round_robin", alias)
 	}
+}
+
+func normalizeUpstreamBlobConfig(alias, upstreamPolicy string, blobCfg UpstreamBlobConfig) (UpstreamBlobConfig, error) {
+	if blobCfg.TopN < 0 {
+		return UpstreamBlobConfig{}, oops.In("config").With("alias", alias).Errorf("upstreams.%s.blob.top_n cannot be negative", alias)
+	}
+	if blobCfg.MaxConcurrencyPerEndpoint < 0 {
+		return UpstreamBlobConfig{}, oops.In("config").With("alias", alias).Errorf("upstreams.%s.blob.max_concurrency_per_endpoint cannot be negative", alias)
+	}
+
+	policy, err := normalizeBlobMirrorPolicy(alias, blobCfg.MirrorPolicy, upstreamPolicy)
+	if err != nil {
+		return UpstreamBlobConfig{}, err
+	}
+	blobCfg.MirrorPolicy = policy
+	if blobCfg.TopN == 0 {
+		blobCfg.TopN = defaultUpstreamBlobTopN
+	}
+	return blobCfg, nil
+}
+
+func normalizeBlobMirrorPolicy(alias, policy, upstreamPolicy string) (string, error) {
+	policy = strings.ToLower(strings.TrimSpace(policy))
+	if policy == "" {
+		if upstreamPolicy == "" {
+			return "ordered", nil
+		}
+		return upstreamPolicy, nil
+	}
+	switch policy {
+	case "ordered", "round_robin", "latency":
+		return policy, nil
+	default:
+		return "", oops.In("config").With("alias", alias, "blob_mirror_policy", policy).Errorf("upstreams.%s.blob.mirror_policy must be ordered, round_robin, or latency", alias)
+	}
+}
+
+func normalizeUpstreamProbeConfig(alias string, probeCfg UpstreamProbeConfig) (UpstreamProbeConfig, error) {
+	checks := []struct {
+		invalid bool
+		err     error
+	}{
+		{probeCfg.Interval < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.interval cannot be negative", alias)},
+		{probeCfg.Timeout < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.timeout cannot be negative", alias)},
+		{probeCfg.Cooldown < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.cooldown cannot be negative", alias)},
+	}
+	for _, check := range checks {
+		if check.invalid {
+			return UpstreamProbeConfig{}, check.err
+		}
+	}
+	if probeCfg.Interval == 0 {
+		probeCfg.Interval = defaultUpstreamProbeInterval
+	}
+	if probeCfg.Timeout == 0 {
+		probeCfg.Timeout = defaultUpstreamProbeTimeout
+	}
+	if probeCfg.Cooldown == 0 {
+		probeCfg.Cooldown = defaultUpstreamProbeCooldown
+	}
+	return probeCfg, nil
 }
 
 func validateUpstreamSource(alias string, upstreamCfg UpstreamConfig) error {

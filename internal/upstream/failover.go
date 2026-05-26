@@ -14,15 +14,18 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 	if err != nil {
 		return err
 	}
-	runtimes := pool.runtimesForAttempt()
+	runtimes := pool.runtimesForOperation(operation)
 	if len(runtimes) == 0 {
 		return distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + alias)
+	}
+	if operation == "blob" {
+		c.logBlobEndpointPlan(ctx, alias, pool, runtimes)
 	}
 
 	var lastErr error
 	for i := range runtimes {
 		runtime := runtimes[i]
-		lastErr = runAgainstRuntime(runtime, fn)
+		lastErr = runAgainstRuntime(ctx, pool, operation, runtime, fn)
 		if lastErr == nil {
 			return nil
 		}
@@ -32,16 +35,24 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 		if !shouldFailover(lastErr) {
 			return lastErr
 		}
+		if operation == "blob" {
+			pool.recordProbeFailure(runtime)
+		}
 		c.logFailover(alias, operation, runtime, lastErr, i < len(runtimes)-1)
 		c.publishFailover(ctx, alias, operation, runtime, lastErr, i < len(runtimes)-1)
 	}
 	return lastErr
 }
 
-func runAgainstRuntime(runtime upstreamRuntime, fn func(upstreamRuntime) error) error {
+func runAgainstRuntime(ctx context.Context, pool *upstreamPool, operation string, runtime upstreamRuntime, fn func(upstreamRuntime) error) error {
 	if runtime.err != nil {
 		return distribution.ErrUpstream.WithDetail(runtime.err.Error())
 	}
+	release, err := pool.acquireRuntime(ctx, operation, runtime)
+	if err != nil {
+		return err
+	}
+	defer release()
 	return fn(runtime)
 }
 
@@ -75,6 +86,28 @@ func (c *Client) logFailover(alias, operation string, runtime upstreamRuntime, e
 		"registry", runtime.config.Registry,
 		"error", err,
 	)
+}
+
+func (c *Client) logBlobEndpointPlan(ctx context.Context, alias string, pool *upstreamPool, runtimes []upstreamRuntime) {
+	if c == nil || c.logger == nil || pool == nil {
+		return
+	}
+	c.logger.DebugContext(ctx,
+		"selected upstream endpoints for blob request",
+		"alias", alias,
+		"blob_mirror_policy", pool.blobPolicy,
+		"blob_top_n", pool.blobTopN,
+		"blob_max_concurrency_per_endpoint", pool.blobLimit,
+		"endpoints", runtimeRegistries(runtimes),
+	)
+}
+
+func runtimeRegistries(runtimes []upstreamRuntime) []string {
+	out := make([]string, 0, len(runtimes))
+	for _, runtime := range runtimes {
+		out = append(out, runtime.config.Registry)
+	}
+	return out
 }
 
 func shouldFailover(err error) bool {

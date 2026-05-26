@@ -9,14 +9,17 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
-func Module(configModule, observabilityModule, cacheModule, storeModule dix.Module) dix.Module {
+func Module(configModule, observabilityModule, cacheModule, storeModule, upstreamModule dix.Module) dix.Module {
 	return dix.NewModule("scheduler",
-		dix.Imports(configModule, observabilityModule, cacheModule, storeModule),
+		dix.Imports(configModule, observabilityModule, cacheModule, storeModule, upstreamModule),
 		dix.Providers(
-			dix.Provider6[*Runtime, config.Config, *slog.Logger, *cache.CleanupService, meta.Store, cache.TagService, cache.ManifestService](NewRuntime),
+			dix.Provider4[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger](prefetch.NewService),
+			dix.Provider5[*Runtime, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client](NewRuntime),
 		),
 		dix.Hooks(
 			dix.OnStart[*Runtime](startRuntime, dix.LifecycleName("regimux.scheduler_start"), dix.LifecyclePriority(50)),

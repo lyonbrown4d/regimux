@@ -127,7 +127,7 @@ func buildApp(cfg config.Config, logger *slog.Logger, version string) *dix.App {
 	upstreamModule := upstream.Module(configModule, observabilityModule, eventsModule)
 	storeModule := storemodule.Module(configModule, observabilityModule)
 	cacheModule := cache.Module(configModule, observabilityModule, eventsModule, upstreamModule, storeModule)
-	schedulerModule := scheduler.Module(configModule, observabilityModule, cacheModule, storeModule)
+	schedulerModule := scheduler.Module(configModule, observabilityModule, cacheModule, storeModule, upstreamModule)
 	endpointModule := api.EndpointsModule(configModule, cacheModule, observabilityModule)
 	apiModule := api.Module(configModule, observabilityModule, eventsModule, endpointModule)
 	runtimeModule := newRuntimeModule(version, configModule, observabilityModule, eventsModule, apiModule, cacheModule, storeModule)
