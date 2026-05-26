@@ -8,9 +8,8 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
-func Module(configModule, observabilityModule dix.Module) dix.Module {
+func Module() dix.Module {
 	return dix.NewModule("worker",
-		dix.Imports(configModule, observabilityModule),
 		dix.Providers(
 			dix.Provider2[*Pools, config.Config, *slog.Logger](NewPools),
 		),

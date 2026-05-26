@@ -2,6 +2,7 @@
 package store
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/arcgolabs/dix"
@@ -11,12 +12,18 @@ import (
 	"github.com/samber/oops"
 )
 
-func Module(configModule, observabilityModule dix.Module) dix.Module {
+func Module() dix.Module {
 	return dix.NewModule("store",
-		dix.Imports(configModule, observabilityModule),
 		dix.Providers(
 			dix.ProviderErr2[meta.Store, config.Config, *slog.Logger](newMetadataStore, dix.Eager()),
 			dix.ProviderErr1[object.Store, config.Config](newObjectStore, dix.Eager()),
+		),
+		dix.Hooks(
+			dix.OnStop[meta.Store](
+				closeMetadataStore,
+				dix.LifecycleName("regimux.meta_store_close"),
+				dix.LifecyclePriority(-160),
+			),
 		),
 	)
 }
@@ -35,4 +42,14 @@ func newObjectStore(cfg config.Config) (object.Store, error) {
 		return nil, oops.Wrapf(err, "create object store")
 	}
 	return store, nil
+}
+
+func closeMetadataStore(_ context.Context, store meta.Store) error {
+	if store == nil {
+		return nil
+	}
+	if err := store.Close(); err != nil {
+		return oops.Wrapf(err, "close metadata store")
+	}
+	return nil
 }

@@ -27,7 +27,7 @@ const (
 	defaultUpstreamProbeCooldown = 2 * time.Minute
 )
 
-func Load(ctx context.Context, path string) (Config, error) {
+func Load(ctx context.Context, path string, args ...string) (Config, error) {
 	opts := []configx.Option{
 		formathcl.WithHCLSupport(),
 		configx.WithDefaults(defaultValues()),
@@ -43,6 +43,9 @@ func Load(ctx context.Context, path string) (Config, error) {
 			return Config{}, err
 		}
 		opts = append(opts, configx.WithFiles(path))
+	}
+	if len(args) > 0 {
+		opts = append(opts, configx.WithArgs(args...))
 	}
 
 	var cfg Config

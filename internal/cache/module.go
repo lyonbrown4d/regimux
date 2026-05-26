@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/arcgolabs/dix"
@@ -13,9 +14,8 @@ import (
 	"github.com/samber/oops"
 )
 
-func Module(configModule, observabilityModule, eventsModule, upstreamModule, storeModule dix.Module) dix.Module {
+func Module() dix.Module {
 	return dix.NewModule("cache",
-		dix.Imports(configModule, observabilityModule, eventsModule, upstreamModule, storeModule),
 		dix.Providers(
 			dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
 			dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxy),
@@ -32,6 +32,13 @@ func Module(configModule, observabilityModule, eventsModule, upstreamModule, sto
 			dix.Provider1[ReferrerService, *Proxy](func(proxy *Proxy) ReferrerService {
 				return proxy.Referrers()
 			}),
+		),
+		dix.Hooks(
+			dix.OnStop[backend.Backend](
+				closeBackend,
+				dix.LifecycleName("regimux.cache_close"),
+				dix.LifecyclePriority(-150),
+			),
 		),
 	)
 }
@@ -88,4 +95,14 @@ func newProxy(client upstream.RegistryClient, cacheBackend backend.Backend, meta
 		WithReferrersTTL(cfg.Cache.Referrers.TTL),
 		WithReferrersFallbackTag(cfg.Cache.Referrers.FallbackTag),
 	)
+}
+
+func closeBackend(_ context.Context, backend backend.Backend) error {
+	if backend == nil {
+		return nil
+	}
+	if err := backend.Close(); err != nil {
+		return oops.Wrapf(err, "close cache backend")
+	}
+	return nil
 }

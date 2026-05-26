@@ -1,19 +1,19 @@
 package api
 
 import (
+	"context"
 	"log/slog"
+	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/events"
 )
 
-func EndpointsModule(configModule, cacheModule, observabilityModule dix.Module) dix.Module {
+func EndpointsModule() dix.Module {
 	return dix.NewModule("api-endpoints",
-		dix.Imports(configModule, cacheModule, observabilityModule),
 		dix.Providers(
 			dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
 				dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
@@ -26,19 +26,22 @@ func EndpointsModule(configModule, cacheModule, observabilityModule dix.Module) 
 	)
 }
 
-func Module(configModule, observabilityModule, eventsModule, endpointModule dix.Module) dix.Module {
+func Module() dix.Module {
 	return dix.NewModule("api",
-		dix.Imports(configModule, observabilityModule, eventsModule, endpointModule),
 		dix.Providers(
-			dix.Provider4[*Server, config.Config, *slog.Logger, events.Bus, *collectionlist.List[httpx.Endpoint]](
+			dix.Provider3[*Server, config.Config, *slog.Logger, *collectionlist.List[httpx.Endpoint]](
 				newServer,
 				dix.Eager(),
 			),
 		),
+		dix.Hooks(
+			dix.OnStart[*Server](startServer, dix.LifecycleName("regimux.server_start"), dix.LifecyclePriority(0)),
+			dix.OnStop[*Server](stopServer, dix.LifecycleName("regimux.server_stop"), dix.LifecyclePriority(0), dix.LifecycleTimeout(20*time.Second)),
+		),
 	)
 }
 
-func newServer(cfg config.Config, logger *slog.Logger, _ events.Bus, endpoints *collectionlist.List[httpx.Endpoint]) *Server {
+func newServer(cfg config.Config, logger *slog.Logger, endpoints *collectionlist.List[httpx.Endpoint]) *Server {
 	var values []httpx.Endpoint
 	if endpoints != nil {
 		values = endpoints.Values()
@@ -50,4 +53,18 @@ func newServer(cfg config.Config, logger *slog.Logger, _ events.Bus, endpoints *
 		Endpoints:   values,
 		PrintRoutes: false,
 	})
+}
+
+func startServer(ctx context.Context, server *Server) error {
+	if server == nil {
+		return nil
+	}
+	return server.Start(ctx)
+}
+
+func stopServer(ctx context.Context, server *Server) error {
+	if server == nil {
+		return nil
+	}
+	return server.Stop(ctx)
 }
