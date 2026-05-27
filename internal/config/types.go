@@ -148,6 +148,7 @@ type UpstreamBlobConfig struct {
 	MirrorPolicy              string `json:"mirror_policy"                 koanf:"mirror_policy"                 mapstructure:"mirror_policy"                 validate:"omitempty,oneof=ordered round_robin latency"`
 	TopN                      int    `json:"top_n"                         koanf:"top_n"                         mapstructure:"top_n"                         validate:"min=0"`
 	MaxConcurrencyPerEndpoint int    `json:"max_concurrency_per_endpoint"  koanf:"max_concurrency_per_endpoint"  mapstructure:"max_concurrency_per_endpoint"  validate:"min=0"`
+	MaxConcurrentAttempts     int    `json:"max_concurrent_attempts"        koanf:"max_concurrent_attempts"        mapstructure:"max_concurrent_attempts"        validate:"min=0"`
 }
 
 type UpstreamProbeConfig struct {

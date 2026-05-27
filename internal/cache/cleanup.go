@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
@@ -97,7 +98,7 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 			report.RecentBlobs++
 			continue
 		}
-		if _, ok := protected[blob.Digest]; ok {
+		if protected.Contains(blob.Digest) {
 			report.ProtectedBlobs++
 			continue
 		}
@@ -117,19 +118,19 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 	return report, nil
 }
 
-func (s *CleanupService) protectedBlobDigests(ctx context.Context) (map[string]struct{}, error) {
+func (s *CleanupService) protectedBlobDigests(ctx context.Context) (*collectionset.Set[string], error) {
 	manifests, err := s.metadata.ListManifests(ctx)
 	if err != nil {
 		return nil, wrapError(err, "list manifest metadata for cleanup")
 	}
 
-	protected := make(map[string]struct{}, len(manifests))
+	protected := collectionset.NewSetWithCapacity[string](len(manifests))
 	for _, manifest := range manifests {
 		if manifest.Digest != "" {
-			protected[manifest.Digest] = struct{}{}
+			protected.Add(manifest.Digest)
 		}
 		if manifest.ObjectKey != "" {
-			protected[manifest.ObjectKey] = struct{}{}
+			protected.Add(manifest.ObjectKey)
 		}
 	}
 	return protected, nil

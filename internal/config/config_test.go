@@ -34,6 +34,9 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	if hub.Blob.MirrorPolicy != "ordered" || hub.Blob.TopN != 3 || hub.Blob.MaxConcurrencyPerEndpoint != 0 {
 		t.Fatalf("unexpected upstream blob defaults: %#v", hub.Blob)
 	}
+	if hub.Blob.MaxConcurrentAttempts != 1 {
+		t.Fatalf("unexpected upstream blob concurrent attempts default: %d", hub.Blob.MaxConcurrentAttempts)
+	}
 	if cfg.Cache.Blob.VerifyTTL != 0 {
 		t.Fatalf("unexpected blob verify ttl default: %s", cfg.Cache.Blob.VerifyTTL)
 	}
@@ -100,6 +103,7 @@ upstreams {
       mirror_policy = "latency"
       top_n = 2
       max_concurrency_per_endpoint = 4
+      max_concurrent_attempts = 3
     }
 
     probe {
@@ -135,7 +139,7 @@ worker {
 	if got := cfg.Upstreams["local"].Mirrors; len(got) != 2 || got[0] != "https://mirror-a.example.com" || got[1] != "https://mirror-b.example.com" {
 		t.Fatalf("unexpected mirrors: %#v", got)
 	}
-	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "latency" || got.TopN != 2 || got.MaxConcurrencyPerEndpoint != 4 {
+	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "latency" || got.TopN != 2 || got.MaxConcurrencyPerEndpoint != 4 || got.MaxConcurrentAttempts != 3 {
 		t.Fatalf("unexpected blob config: %#v", got)
 	}
 	if got := cfg.Upstreams["local"].Probe; !got.Enabled || got.Interval != 45*time.Second || got.Timeout != 4*time.Second || got.Cooldown != 90*time.Second {
@@ -159,7 +163,7 @@ func TestNormalizeUpstreamBlobDefaultsToMirrorPolicy(t *testing.T) {
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		t.Fatalf("normalize upstream: %v", err)
 	}
-	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "round_robin" || got.TopN != 3 {
+	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "round_robin" || got.TopN != 3 || got.MaxConcurrentAttempts != 1 {
 		t.Fatalf("unexpected blob defaults: %#v", got)
 	}
 }
@@ -208,6 +212,14 @@ func TestValidateUpstreamBlobAndProbeRejectsInvalidValues(t *testing.T) {
 			mutate: func(cfg *config.Config) {
 				upstreamCfg := cfg.Upstreams["hub"]
 				upstreamCfg.Blob.MaxConcurrencyPerEndpoint = -1
+				cfg.Upstreams["hub"] = upstreamCfg
+			},
+		},
+		{
+			name: "blob max concurrent attempts",
+			mutate: func(cfg *config.Config) {
+				upstreamCfg := cfg.Upstreams["hub"]
+				upstreamCfg.Blob.MaxConcurrentAttempts = -1
 				cfg.Upstreams["hub"] = upstreamCfg
 			},
 		},

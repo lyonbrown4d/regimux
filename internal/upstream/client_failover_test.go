@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -103,6 +104,81 @@ func TestClientRoundRobinStartsOnNextMirror(t *testing.T) {
 	requireNoError(t, client.Ping(context.Background(), "hub"), "second Ping")
 	requireEqual(t, firstRequests.Load(), int32(1), "first requests")
 	requireEqual(t, secondRequests.Load(), int32(1), "second requests")
+}
+
+func TestClientGetBlobStartsConcurrentBlobFailover(t *testing.T) {
+	t.Parallel()
+
+	const digest = "sha256:abcdef0123456789"
+	var slowFailRequests atomic.Int32
+	var fastSuccessRequests atomic.Int32
+
+	slowFailStarted := make(chan struct{}, 1)
+	slowFailRelease := make(chan struct{})
+	blobBody := "live"
+
+	slowFail := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		slowFailRequests.Add(1)
+		slowFailStarted <- struct{}{}
+		<-slowFailRelease
+		w.WriteHeader(http.StatusGatewayTimeout)
+	}))
+	defer slowFail.Close()
+
+	fastSuccess := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fastSuccessRequests.Add(1)
+		w.Header().Set("Docker-Content-Digest", digest)
+		w.Header().Set("Content-Length", strconv.Itoa(len(blobBody)))
+		writeString(t, w, blobBody)
+	}))
+	defer fastSuccess.Close()
+
+	client := newTestClient(map[string]upstream.Config{
+		"hub": {
+			Mirrors: []string{slowFail.URL, fastSuccess.URL},
+			Blob: upstream.BlobConfig{
+				MaxConcurrentAttempts: 2,
+			},
+		},
+	})
+
+	type blobResult struct {
+		resp *upstream.BlobResponse
+		err  error
+	}
+
+	done := make(chan blobResult, 1)
+	go func() {
+		resp, err := client.GetBlob(context.Background(), upstream.GetBlobRequest{
+			UpstreamAlias: "hub",
+			Repo:          "library/nginx",
+			Digest:        digest,
+		})
+		done <- blobResult{resp: resp, err: err}
+	}()
+
+	select {
+	case <-slowFailStarted:
+	case <-time.After(time.Second):
+		t.Fatal("slow endpoint did not receive request")
+	}
+	time.Sleep(20 * time.Millisecond)
+	if got := fastSuccessRequests.Load(); got != 1 {
+		t.Fatalf("expected fast endpoint to be attempted while slow endpoint is blocked, got %d", got)
+	}
+	close(slowFailRelease)
+
+	select {
+	case result := <-done:
+		if result.err != nil {
+			t.Fatalf("GetBlob: %v", result.err)
+		}
+		closeBody(t, result.resp.Body)
+		requireEqual(t, fastSuccessRequests.Load(), int32(1), "fast endpoint requests")
+		requireEqual(t, slowFailRequests.Load(), int32(1), "slow endpoint requests")
+	case <-time.After(time.Second):
+		t.Fatal("GetBlob did not return")
+	}
 }
 
 func statusHandler(status int, requests *atomic.Int32) http.HandlerFunc {

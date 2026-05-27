@@ -41,6 +41,7 @@ type BlobConfig struct {
 	MirrorPolicy              string `json:"mirror_policy"                 koanf:"mirror_policy"                 yaml:"mirror_policy"`
 	TopN                      int    `json:"top_n"                         koanf:"top_n"                         yaml:"top_n"`
 	MaxConcurrencyPerEndpoint int    `json:"max_concurrency_per_endpoint"  koanf:"max_concurrency_per_endpoint"  yaml:"max_concurrency_per_endpoint"`
+	MaxConcurrentAttempts     int    `json:"max_concurrent_attempts"        koanf:"max_concurrent_attempts"       yaml:"max_concurrent_attempts"`
 }
 
 type ProbeConfig struct {

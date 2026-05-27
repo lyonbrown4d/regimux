@@ -21,7 +21,8 @@ import (
 const envPrefix = "REGIMUX"
 
 const (
-	defaultUpstreamBlobTopN      = 3
+	defaultUpstreamBlobTopN             = 3
+	defaultUpstreamBlobMaxAttempts      = 1
 	defaultUpstreamProbeInterval = 30 * time.Second
 	defaultUpstreamProbeTimeout  = 3 * time.Second
 	defaultUpstreamProbeCooldown = 2 * time.Minute
@@ -247,6 +248,9 @@ func normalizeUpstreamBlobConfig(alias, upstreamPolicy string, blobCfg UpstreamB
 	if blobCfg.MaxConcurrencyPerEndpoint < 0 {
 		return UpstreamBlobConfig{}, oops.In("config").With("alias", alias).Errorf("upstreams.%s.blob.max_concurrency_per_endpoint cannot be negative", alias)
 	}
+	if blobCfg.MaxConcurrentAttempts < 0 {
+		return UpstreamBlobConfig{}, oops.In("config").With("alias", alias).Errorf("upstreams.%s.blob.max_concurrent_attempts cannot be negative", alias)
+	}
 
 	policy, err := normalizeBlobMirrorPolicy(alias, blobCfg.MirrorPolicy, upstreamPolicy)
 	if err != nil {
@@ -255,6 +259,9 @@ func normalizeUpstreamBlobConfig(alias, upstreamPolicy string, blobCfg UpstreamB
 	blobCfg.MirrorPolicy = policy
 	if blobCfg.TopN == 0 {
 		blobCfg.TopN = defaultUpstreamBlobTopN
+	}
+	if blobCfg.MaxConcurrentAttempts == 0 {
+		blobCfg.MaxConcurrentAttempts = defaultUpstreamBlobMaxAttempts
 	}
 	return blobCfg, nil
 }

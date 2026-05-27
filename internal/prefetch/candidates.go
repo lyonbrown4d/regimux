@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 const (
@@ -152,13 +154,13 @@ func normalizeOptions(options Options) Options {
 }
 
 func parseAvailableTags(tags []string) []versionTag {
-	seen := map[string]struct{}{}
+	seen := collectionset.NewOrderedSetWithCapacity[string](len(tags))
 	parsed := make([]versionTag, 0, len(tags))
 	for _, tag := range tags {
-		if _, ok := seen[tag]; ok {
+		if seen.Contains(tag) {
 			continue
 		}
-		seen[tag] = struct{}{}
+		seen.Add(tag)
 
 		version, ok := parseVersionTag(tag)
 		if !ok {

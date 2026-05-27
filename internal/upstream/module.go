@@ -57,6 +57,7 @@ func toUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 			MirrorPolicy:              cfg.Blob.MirrorPolicy,
 			TopN:                      cfg.Blob.TopN,
 			MaxConcurrencyPerEndpoint: cfg.Blob.MaxConcurrencyPerEndpoint,
+			MaxConcurrentAttempts:     cfg.Blob.MaxConcurrentAttempts,
 		},
 		Probe: ProbeConfig{
 			Enabled:  cfg.Probe.Enabled,

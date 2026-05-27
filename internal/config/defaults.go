@@ -77,6 +77,7 @@ func defaultConfig() Config {
 					MirrorPolicy:              "ordered",
 					TopN:                      3,
 					MaxConcurrencyPerEndpoint: 0,
+					MaxConcurrentAttempts:     1,
 				},
 				Probe: UpstreamProbeConfig{
 					Enabled:  false,

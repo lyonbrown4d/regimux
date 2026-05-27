@@ -117,6 +117,7 @@ upstreams {
       mirror_policy = "latency"
       top_n = 3
       max_concurrency_per_endpoint = 0
+      max_concurrent_attempts = 1
     }
 
     probe {

@@ -26,6 +26,7 @@ type upstreamPool struct {
 	blobPolicy  string
 	blobTopN    int
 	blobLimit   int
+	blobMaxAttempts int
 	runtimes    []upstreamRuntime
 	next        int
 	nextBlob    int
@@ -48,6 +49,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 		blobPolicy:  normalizeBlobMirrorPolicy(cfg.Blob.MirrorPolicy, policy),
 		blobTopN:    cfg.Blob.TopN,
 		blobLimit:   cfg.Blob.MaxConcurrencyPerEndpoint,
+		blobMaxAttempts: cfg.Blob.MaxConcurrentAttempts,
 		probeConfig: cfg.Probe,
 		health: NewEndpointHealthTracker(EndpointHealthOptions{
 			Cooldown: cfg.Probe.Cooldown,
@@ -77,6 +79,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 			"blob_mirror_policy", pool.blobPolicy,
 			"blob_top_n", pool.blobTopN,
 			"blob_max_concurrency_per_endpoint", pool.blobLimit,
+			"blob_max_concurrent_attempts", pool.blobMaxAttempts,
 			"probe_enabled", pool.probeConfig.Enabled,
 			"probe_interval", pool.probeConfig.Interval,
 			"probe_timeout", pool.probeConfig.Timeout,
@@ -262,4 +265,11 @@ func (p *upstreamPool) recordProbeFailure(runtime upstreamRuntime) {
 
 func (p *upstreamPool) probeEnabled() bool {
 	return p != nil && p.probeConfig.Enabled
+}
+
+func (p *upstreamPool) blobAttemptConcurrency() int {
+	if p == nil || p.blobMaxAttempts <= 0 {
+		return 1
+	}
+	return p.blobMaxAttempts
 }

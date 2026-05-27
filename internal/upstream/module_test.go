@@ -17,6 +17,7 @@ func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
 			MirrorPolicy:              "latency",
 			TopN:                      3,
 			MaxConcurrencyPerEndpoint: 4,
+			MaxConcurrentAttempts:     2,
 		},
 		Probe: config.UpstreamProbeConfig{
 			Enabled:  true,
@@ -27,7 +28,7 @@ func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
 	}
 
 	got := toUpstreamConfig("hub", cfg)
-	if got.Blob.MirrorPolicy != "latency" || got.Blob.TopN != 3 || got.Blob.MaxConcurrencyPerEndpoint != 4 {
+	if got.Blob.MirrorPolicy != "latency" || got.Blob.TopN != 3 || got.Blob.MaxConcurrencyPerEndpoint != 4 || got.Blob.MaxConcurrentAttempts != 2 {
 		t.Fatalf("unexpected blob mapping: %#v", got.Blob)
 	}
 	if !got.Probe.Enabled || got.Probe.Interval != 30*time.Second || got.Probe.Timeout != 3*time.Second || got.Probe.Cooldown != 2*time.Minute {
