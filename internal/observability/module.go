@@ -7,6 +7,7 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/logx"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/samber/oops"
 )
 
@@ -16,6 +17,23 @@ var Module = dix.NewModule("observability",
 			return cfg.Log
 		}),
 		dix.ProviderErr1[*slog.Logger, config.LogConfig](NewLogger),
+		dix.Provider1[*Metrics, *slog.Logger](NewMetrics, dix.Eager()),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewUpstreamMetricsSubscriber,
+			dix.Key("metrics.upstream"), dix.Order(10),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewFailoverMetricsSubscriber,
+			dix.Key("metrics.failover"), dix.Order(11),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewCacheAccessMetricsSubscriber,
+			dix.Key("metrics.cache_access"), dix.Order(12),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewCacheStoreMetricsSubscriber,
+			dix.Key("metrics.cache_store"), dix.Order(13),
+		),
 	),
 	dix.Hooks(
 		dix.OnStop[*slog.Logger](

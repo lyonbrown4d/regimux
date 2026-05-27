@@ -88,7 +88,7 @@ func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime u
 
 	startedAt := time.Now()
 	requestURL := strings.TrimRight(runtime.config.Registry, "/") + registryAPIVersionPath
-	resp, err := c.execute(probeCtx, runtime, http.MethodGet, requestURL)
+	resp, err := c.execute(probeCtx, runtime, operationPing, http.MethodGet, requestURL)
 	latency := time.Since(startedAt)
 	if err != nil {
 		pool.recordProbeFailure(runtime)

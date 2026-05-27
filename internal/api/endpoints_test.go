@@ -7,10 +7,12 @@ import (
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -58,6 +60,21 @@ func TestRegistryEndpointInvalidDigestReturnsDigestInvalid(t *testing.T) {
 	}
 	if len(body.Errors) != 1 || body.Errors[0].Code != distribution.CodeDigestInvalid {
 		t.Fatalf("error body = %#v, want DIGEST_INVALID", body.Errors)
+	}
+}
+
+func TestMetricsEndpointExposesPrometheusText(t *testing.T) {
+	metrics := observability.NewMetrics(nil)
+	metrics.ObserveAPIRequest("registry.manifest", http.MethodGet, http.StatusOK, time.Millisecond, nil)
+	baseURL := startAPIServer(t, api.NewMetricsEndpoint(metrics))
+
+	resp := httpGet(t, baseURL+"/metrics")
+	body := readHTTPResponse(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%q, want 200", resp.StatusCode, body)
+	}
+	if !bytes.Contains(body, []byte("regimux_service_api_requests_total")) {
+		t.Fatalf("metrics body missing api counter: %q", body)
 	}
 }
 

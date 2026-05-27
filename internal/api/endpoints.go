@@ -8,11 +8,13 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/mo"
@@ -51,6 +53,7 @@ type RegistryEndpoint struct {
 	tags      cache.TagService
 	referrers cache.ReferrerService
 	logger    *slog.Logger
+	metrics   *observability.Metrics
 
 	defaultNamespaces *collectionmapping.Map[string, string]
 }
@@ -86,6 +89,31 @@ func NewRegistryEndpointFromConfig(
 	endpoint := NewRegistryEndpoint(manifests, blobs, tags, referrers, logger)
 	endpoint.defaultNamespaces = defaultNamespacesFromConfig(cfg)
 	return endpoint
+}
+
+type RegistryEndpointOptions struct {
+	Config  config.Config
+	Metrics *observability.Metrics
+}
+
+func NewRegistryEndpointFromOptions(
+	manifests cache.ManifestService,
+	blobs cache.BlobService,
+	tags cache.TagService,
+	referrers cache.ReferrerService,
+	logger *slog.Logger,
+	options RegistryEndpointOptions,
+) *RegistryEndpoint {
+	endpoint := NewRegistryEndpointFromConfig(manifests, blobs, tags, referrers, logger, options.Config)
+	endpoint.metrics = options.Metrics
+	return endpoint
+}
+
+func (e *RegistryEndpoint) SetMetrics(metrics *observability.Metrics) {
+	if e == nil {
+		return
+	}
+	e.metrics = metrics
 }
 
 func (e *RegistryEndpoint) EndpointSpec() httpx.EndpointSpec {
@@ -125,28 +153,39 @@ func (e *RegistryEndpoint) head(ctx context.Context, input *registryInput) (*reg
 }
 
 func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, method string) (*registryOutput, error) {
+	startedAt := time.Now()
+	routeName := "registry.invalid"
 	route, err := routeFromInput(input)
 	if err != nil {
 		if errors.Is(err, reference.ErrDigestInvalid) {
-			return errorOutput(distribution.ErrDigestInvalid.WithDetail(err.Error())), nil
+			out := errorOutput(distribution.ErrDigestInvalid.WithDetail(err.Error()))
+			e.observeAPI(routeName, method, out, time.Since(startedAt), nil)
+			return out, nil
 		}
-		return errorOutput(distribution.ErrNameInvalid.WithDetail(err.Error())), nil
+		out := errorOutput(distribution.ErrNameInvalid.WithDetail(err.Error()))
+		e.observeAPI(routeName, method, out, time.Since(startedAt), nil)
+		return out, nil
 	}
 	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
+	routeName = registryRouteName(route.Kind)
 
+	var out *registryOutput
 	switch route.Kind {
 	case reference.RoutePing:
-		return e.ping(ctx, nil)
+		out, err = e.ping(ctx, nil)
 	case reference.RouteManifest:
-		return e.manifest(ctx, input, route, method), nil
+		out = e.manifest(ctx, input, route, method)
 	case reference.RouteBlob:
-		return e.blob(ctx, input, route, method), nil
+		out = e.blob(ctx, input, route, method)
 	case reference.RouteTags:
-		return e.tagsRoute(ctx, input, route, method), nil
+		out = e.tagsRoute(ctx, input, route, method)
 	case reference.RouteReferrers:
-		return e.referrersRoute(ctx, input, route, method), nil
+		out = e.referrersRoute(ctx, input, route, method)
+	default:
+		out = errorOutput(distribution.ErrNameInvalid.WithDetail("unknown registry route"))
 	}
-	return errorOutput(distribution.ErrNameInvalid.WithDetail("unknown registry route")), nil
+	e.observeAPI(routeName, method, out, time.Since(startedAt), err)
+	return out, err
 }
 
 func (e *RegistryEndpoint) defaultNamespace(alias string) mo.Option[string] {
@@ -291,3 +330,21 @@ var (
 	_ httpx.EndpointSpecProvider = (*HealthEndpoint)(nil)
 	_ httpx.EndpointSpecProvider = (*RegistryEndpoint)(nil)
 )
+
+func (e *RegistryEndpoint) observeAPI(route, method string, out *registryOutput, duration time.Duration, err error) {
+	if e == nil || e.metrics == nil {
+		return
+	}
+	status := http.StatusInternalServerError
+	if out != nil && out.Status != 0 {
+		status = out.Status
+	}
+	e.metrics.ObserveAPIRequest(route, method, status, duration, err)
+}
+
+func registryRouteName(kind reference.RouteKind) string {
+	if kind == "" {
+		return "registry.unknown"
+	}
+	return "registry." + string(kind)
+}

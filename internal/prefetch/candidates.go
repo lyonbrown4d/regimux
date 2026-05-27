@@ -3,12 +3,11 @@ package prefetch
 
 import (
 	"fmt"
-	"regexp"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/Masterminds/semver/v3"
 	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
@@ -16,8 +15,6 @@ const (
 	defaultMaxCandidates      = 5
 	defaultMaxVersionDistance = 5
 )
-
-var tagPattern = regexp.MustCompile(`^([vV]?)(\d+(?:\.\d+){0,2})(?:-([A-Za-z0-9_][A-Za-z0-9_.-]*))?$`)
 
 // PullRecord is one observed pull signal for a repository tag.
 type PullRecord struct {
@@ -134,10 +131,11 @@ type candidateAccumulator struct {
 }
 
 type versionTag struct {
-	raw     string
-	prefix  string
-	numbers []int
-	suffix  string
+	raw      string
+	prefix   string
+	segments int
+	version  *semver.Version
+	suffix   string
 }
 
 func normalizeOptions(options Options) Options {
@@ -177,26 +175,41 @@ func parseVersionTag(tag string) (versionTag, bool) {
 		return versionTag{}, false
 	}
 
-	matches := tagPattern.FindStringSubmatch(raw)
-	if matches == nil {
+	clean, prefix := normalizeTagPrefix(raw)
+	parts := strings.SplitN(clean, "-", 2)
+	if strings.TrimSpace(parts[0]) == "" {
 		return versionTag{}, false
 	}
 
-	parts := strings.Split(matches[2], ".")
-	numbers := make([]int, 0, len(parts))
-	for _, part := range parts {
-		number, err := strconv.Atoi(part)
-		if err != nil {
+	base := parts[0]
+	normalizedBase, segments, ok := normalizeSemverBase(base)
+	if !ok {
+		return versionTag{}, false
+	}
+
+	suffix := ""
+	if len(parts) == 2 {
+		suffix = strings.TrimSpace(parts[1])
+		if suffix == "" {
 			return versionTag{}, false
 		}
-		numbers = append(numbers, number)
+	}
+
+	versionText := normalizedBase
+	if suffix != "" {
+		versionText += "-" + normalizeSemverSuffix(suffix)
+	}
+	parsed, err := semver.NewVersion(versionText)
+	if err != nil {
+		return versionTag{}, false
 	}
 
 	return versionTag{
-		raw:     raw,
-		prefix:  matches[1],
-		numbers: numbers,
-		suffix:  matches[3],
+		raw:      raw,
+		prefix:   prefix,
+		segments: segments,
+		version:  parsed,
+		suffix:   suffix,
 	}, true
 }
 
@@ -204,49 +217,94 @@ func isCompatibleCandidate(source, target versionTag, maxDistance int) bool {
 	if target.raw == source.raw {
 		return false
 	}
-	if source.prefix != target.prefix {
+	if !strings.EqualFold(source.prefix, target.prefix) {
 		return false
 	}
 	if source.suffix != target.suffix {
 		return false
 	}
-	if len(source.numbers) != len(target.numbers) {
+	if source.segments > target.segments {
 		return false
 	}
-	if compareNumbers(source.numbers, target.numbers) >= 0 {
+	if compareVersionSegments(source.version, target.version, source.segments) >= 0 {
 		return false
 	}
 
-	distance := versionDistance(source.numbers, target.numbers)
+	distance := versionDistance(source, target)
 	return distance > 0 && distance <= maxDistance
 }
 
-func compareNumbers(left, right []int) int {
-	length := len(left)
-	if len(right) < length {
-		length = len(right)
+func normalizeTagPrefix(raw string) (string, string) {
+	prefix := ""
+	if strings.HasPrefix(raw, "v") || strings.HasPrefix(raw, "V") {
+		prefix = raw[:1]
+		raw = raw[1:]
 	}
-	for i := range length {
-		if left[i] < right[i] {
+	return raw, prefix
+}
+
+func normalizeSemverBase(raw string) (string, int, bool) {
+	parts := strings.Split(raw, ".")
+	if len(parts) == 0 || len(parts) > 3 {
+		return "", 0, false
+	}
+
+	for _, part := range parts {
+		if part == "" {
+			return "", 0, false
+		}
+	}
+	normalized := strings.TrimSpace(raw)
+	if normalized == "" {
+		return "", 0, false
+	}
+	segments := len(parts)
+	for i := segments; i < 3; i++ {
+		normalized += ".0"
+	}
+	return normalized, segments, true
+}
+
+func normalizeSemverSuffix(raw string) string {
+	return strings.ReplaceAll(raw, "_", "-")
+}
+
+func compareVersionSegments(left, right *semver.Version, segments int) int {
+	for i := 0; i < segments; i++ {
+		leftSegment := getVersionSegment(left, i)
+		rightSegment := getVersionSegment(right, i)
+		if leftSegment < rightSegment {
 			return -1
 		}
-		if left[i] > right[i] {
+		if leftSegment > rightSegment {
 			return 1
 		}
-	}
-	if len(left) < len(right) {
-		return -1
-	}
-	if len(left) > len(right) {
-		return 1
 	}
 	return 0
 }
 
-func versionDistance(source, target []int) int {
-	for i := range source {
-		if source[i] != target[i] {
-			return target[i] - source[i]
+func getVersionSegment(version *semver.Version, index int) int {
+	if version == nil {
+		return 0
+	}
+	switch index {
+	case 0:
+		return int(version.Major())
+	case 1:
+		return int(version.Minor())
+	case 2:
+		return int(version.Patch())
+	default:
+		return 0
+	}
+}
+
+func versionDistance(source, target versionTag) int {
+	for i := 0; i < source.segments; i++ {
+		sourceSegment := getVersionSegment(source.version, i)
+		targetSegment := getVersionSegment(target.version, i)
+		if sourceSegment != targetSegment {
+			return targetSegment - sourceSegment
 		}
 	}
 	return 0
@@ -261,7 +319,7 @@ func scoreCandidate(record PullRecord, source, target versionTag, options Option
 		count = 1000
 	}
 
-	distance := versionDistance(source.numbers, target.numbers)
+	distance := versionDistance(source, target)
 	proximity := options.MaxVersionDistance - distance + 1
 	if proximity < 0 {
 		proximity = 0
@@ -271,8 +329,11 @@ func scoreCandidate(record PullRecord, source, target versionTag, options Option
 	score += count * 10
 	score += proximity * 20
 	score += recencyScore(record.LastPullAt, options.Now)
-	if len(source.numbers) > 1 && source.numbers[0] == target.numbers[0] {
-		score += 25
+	if source.segments > 1 {
+		score += 10
+		if getVersionSegment(source.version, 0) != getVersionSegment(target.version, 0) {
+			score -= 40
+		}
 	}
 	if source.suffix != "" {
 		score += 25
@@ -306,7 +367,7 @@ func recencyScore(lastPullAt, now time.Time) int {
 }
 
 func candidateReason(record PullRecord, source, target versionTag) string {
-	change := changedVersionPart(source.numbers, target.numbers)
+	change := changedVersionPart(source, target)
 	suffix := "without suffix"
 	if source.suffix != "" {
 		suffix = fmt.Sprintf("with suffix %q", source.suffix)
@@ -314,15 +375,19 @@ func candidateReason(record PullRecord, source, target versionTag) string {
 	return fmt.Sprintf("observed %s pulled %d times; %s is an available newer %s tag %s", record.Tag, normalizedCount(record.Count), target.raw, change, suffix)
 }
 
-func changedVersionPart(source, target []int) string {
+func changedVersionPart(source, target versionTag) string {
 	names := []string{"major", "minor", "patch"}
-	for i := range source {
-		if source[i] != target[i] {
-			if i < len(names) {
-				return names[i]
-			}
-			return "version"
+	if source.version == nil || target.version == nil {
+		return "version"
+	}
+	for i := 0; i < source.segments; i++ {
+		if getVersionSegment(source.version, i) == getVersionSegment(target.version, i) {
+			continue
 		}
+		if i < len(names) {
+			return names[i]
+		}
+		return "version"
 	}
 	return "version"
 }
@@ -338,7 +403,7 @@ func compareTagNames(left, right string) int {
 	leftVersion, leftOK := parseVersionTag(left)
 	rightVersion, rightOK := parseVersionTag(right)
 	if leftOK && rightOK {
-		if versionCompare := compareNumbers(leftVersion.numbers, rightVersion.numbers); versionCompare != 0 {
+		if versionCompare := compareVersionSegments(leftVersion.version, rightVersion.version, minVersionSegments(leftVersion, rightVersion)); versionCompare != 0 {
 			return versionCompare
 		}
 		if leftVersion.suffix < rightVersion.suffix {
@@ -355,4 +420,11 @@ func compareTagNames(left, right string) int {
 		return 1
 	}
 	return 0
+}
+
+func minVersionSegments(left, right versionTag) int {
+	if left.segments < right.segments {
+		return left.segments
+	}
+	return right.segments
 }

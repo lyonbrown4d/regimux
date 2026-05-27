@@ -30,21 +30,36 @@ func AcceptKey(header string) string {
 }
 
 func normalizeAcceptItem(item string) string {
-	pieces := splitSemicolonList(item)
-	if len(pieces) == 0 {
+	item = strings.TrimSpace(item)
+	if item == "" {
 		return ""
 	}
 
-	mediaType := normalizeMediaType(pieces[0])
-	if mediaType == "" {
+	mediaType, params, err := mime.ParseMediaType(item)
+	if err != nil {
+		pieces := splitSemicolonList(item)
+		if len(pieces) == 0 {
+			return ""
+		}
+		mediaType = normalizeMediaType(pieces[0])
+		if mediaType == "" {
+			return ""
+		}
+		fallbackParams := normalizeAcceptParams(pieces[1:])
+		if len(fallbackParams) == 0 {
+			return mediaType
+		}
+		return mediaType + ";" + strings.Join(fallbackParams, ";")
+	}
+	normalized := normalizeMediaType(mediaType)
+	if normalized == "" {
 		return ""
 	}
-
-	params := normalizeAcceptParams(pieces[1:])
-	if len(params) == 0 {
-		return mediaType
+	paramPairs := normalizeAcceptParamMap(params)
+	if len(paramPairs) == 0 {
+		return normalized
 	}
-	return mediaType + ";" + strings.Join(params, ";")
+	return normalized + ";" + strings.Join(paramPairs, ";")
 }
 
 func normalizeMediaType(value string) string {
@@ -66,6 +81,18 @@ func normalizeAcceptParams(rawParams []string) []string {
 	}
 	sort.Strings(params)
 	return params
+}
+
+func normalizeAcceptParamMap(params map[string]string) []string {
+	out := make([]string, 0, len(params))
+	for name, value := range params {
+		param, ok := normalizeAcceptParam(name + "=" + value)
+		if ok {
+			out = append(out, param)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func normalizeAcceptParam(raw string) (string, bool) {

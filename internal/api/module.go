@@ -10,6 +10,7 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 )
 
 var EndpointsModule = dix.NewModule("api-endpoints",
@@ -17,8 +18,12 @@ var EndpointsModule = dix.NewModule("api-endpoints",
 		dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
 			dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
 		),
-		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, config.Config](
-			NewRegistryEndpointFromConfig,
+		dix.Provider1[*MetricsEndpoint, *observability.Metrics](NewMetricsEndpoint,
+			dix.Into[httpx.Endpoint](dix.Key("metrics"), dix.Order(-90)),
+		),
+		dix.Provider2[RegistryEndpointOptions, config.Config, *observability.Metrics](newRegistryEndpointOptions),
+		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, RegistryEndpointOptions](
+			NewRegistryEndpointFromOptions,
 			dix.Into[httpx.Endpoint](dix.Key("registry"), dix.Order(10)),
 		),
 	),
@@ -52,6 +57,13 @@ func newServer(cfg config.ServerConfig, logger *slog.Logger, endpoints *collecti
 		Endpoints:   values,
 		PrintRoutes: false,
 	})
+}
+
+func newRegistryEndpointOptions(cfg config.Config, metrics *observability.Metrics) RegistryEndpointOptions {
+	return RegistryEndpointOptions{
+		Config:  cfg,
+		Metrics: metrics,
+	}
 }
 
 func startServer(ctx context.Context, server *Server) error {

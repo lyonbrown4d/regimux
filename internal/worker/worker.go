@@ -3,9 +3,9 @@ package worker
 import (
 	"context"
 	"log/slog"
-	"sync"
 
 	"github.com/panjf2000/ants/v2"
+	"golang.org/x/sync/errgroup"
 )
 
 type Pools struct {
@@ -80,55 +80,33 @@ func RunAll(ctx context.Context, pool *ants.Pool, tasks []func(context.Context) 
 	if len(tasks) == 0 {
 		return nil
 	}
-	if pool == nil {
-		var firstErr error
-		for _, task := range tasks {
-			if task == nil {
-				continue
-			}
-			if ctx.Err() != nil {
-				return ctx.Err()
-			}
-			if err := task(ctx); err != nil && firstErr == nil {
-				firstErr = err
-			}
-		}
-		return firstErr
-	}
 
-	results := make(chan error, len(tasks))
-	var wg sync.WaitGroup
+	group, gctx := errgroup.WithContext(ctx)
 	for _, task := range tasks {
-		if task == nil {
-			continue
-		}
 		task := task
-		wg.Add(1)
-		if err := pool.Submit(func() {
-			defer wg.Done()
-			if ctx.Err() != nil {
-				results <- ctx.Err()
-				return
+		group.Go(func() error {
+			if task == nil {
+				return nil
 			}
-			results <- task(ctx)
-		}); err != nil {
-			wg.Done()
-			if err := task(ctx); err != nil {
-				results <- err
+
+			if pool == nil {
+				return task(gctx)
 			}
-		}
-	}
 
-	go func() {
-		wg.Wait()
-		close(results)
-	}()
+			done := make(chan error, 1)
+			if err := pool.Submit(func() {
+				done <- task(gctx)
+			}); err != nil {
+				return err
+			}
 
-	var outErr error
-	for err := range results {
-		if err != nil && outErr == nil {
-			outErr = err
-		}
+			select {
+			case err := <-done:
+				return err
+			case <-gctx.Done():
+				return gctx.Err()
+			}
+		})
 	}
-	return outErr
+	return group.Wait()
 }

@@ -112,7 +112,9 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		DryRun:     r.cfg.Scheduler.Cleanup.DryRun,
 	})
 	if err != nil {
-		return oops.Wrapf(err, "run cleanup job")
+		err = oops.Wrapf(err, "run cleanup job")
+		r.observeJob("cleanup", "", startedAt, err)
+		return err
 	}
 	r.logger.InfoContext(ctx, "cleanup job completed",
 		"duration_ms", time.Since(startedAt).Milliseconds(),
@@ -123,18 +125,24 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		"bytes_deleted", report.BytesDeleted,
 		"limit_reached", report.LimitReached,
 	)
+	r.observeJob("cleanup", "", startedAt, nil)
 	return nil
 }
 
 func (r *Runtime) runProbe(ctx context.Context, alias string) error {
 	startedAt := time.Now()
 	if r.upstream == nil {
-		return oops.In("scheduler").Errorf("upstream probe client is not configured")
+		err := oops.In("scheduler").Errorf("upstream probe client is not configured")
+		r.observeJob("probe", alias, startedAt, err)
+		return err
 	}
 	if err := r.upstream.ProbeAlias(ctx, alias); err != nil {
-		return oops.Wrapf(err, "run upstream probe job")
+		err = oops.Wrapf(err, "run upstream probe job")
+		r.observeJob("probe", alias, startedAt, err)
+		return err
 	}
 	r.logger.InfoContext(ctx, "upstream probe job completed", "alias", alias, "duration_ms", time.Since(startedAt).Milliseconds())
+	r.observeJob("probe", alias, startedAt, nil)
 	return nil
 }
 
@@ -149,7 +157,9 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		Accept:               r.cfg.Scheduler.Prefetch.Accept,
 	})
 	if err != nil {
-		return oops.Wrapf(err, "run prefetch job")
+		err = oops.Wrapf(err, "run prefetch job")
+		r.observeJob("prefetch", "", startedAt, err)
+		return err
 	}
 	r.logger.InfoContext(ctx, "prefetch job completed",
 		"duration_ms", time.Since(startedAt).Milliseconds(),
@@ -160,5 +170,13 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		"prefetched", report.Prefetched,
 		"failed", report.Failed,
 	)
+	r.observeJob("prefetch", "", startedAt, nil)
 	return nil
+}
+
+func (r *Runtime) observeJob(job, alias string, startedAt time.Time, err error) {
+	if r == nil || r.metrics == nil {
+		return
+	}
+	r.metrics.ObserveSchedulerJob(job, alias, time.Since(startedAt), err)
 }

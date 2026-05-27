@@ -4,6 +4,7 @@ package upstream
 import (
 	"encoding/json"
 	"io"
+	"mime"
 	"net/url"
 	"strings"
 	"time"
@@ -58,6 +59,21 @@ func parseBearerChallenge(header string) bearerChallenge {
 	if !ok || !strings.EqualFold(scheme, distribution.AuthSchemeBearer) {
 		return bearerChallenge{}
 	}
+	scheme = strings.TrimSpace(scheme)
+	params = strings.TrimSpace(params)
+	if params == "" {
+		return bearerChallenge{}
+	}
+
+	mediaType := scheme + ";" + normalizeChallengeParams(params)
+	_, values, err := mime.ParseMediaType(mediaType)
+	if err == nil {
+		return bearerChallenge{
+			Realm:   normalizeChallengeValue(values["realm"]),
+			Service: normalizeChallengeValue(values["service"]),
+			Scope:   normalizeChallengeValue(values["scope"]),
+		}
+	}
 
 	out := bearerChallenge{}
 	for _, part := range splitChallengeParams(params) {
@@ -76,6 +92,39 @@ func parseBearerChallenge(header string) bearerChallenge {
 		}
 	}
 	return out
+}
+
+func normalizeChallengeParams(raw string) string {
+	parts := splitChallengeParams(raw)
+	var normalized strings.Builder
+	for _, rawPart := range parts {
+		name, value, ok := strings.Cut(rawPart, "=")
+		if !ok {
+			continue
+		}
+		name = strings.ToLower(strings.TrimSpace(name))
+		value = strings.Trim(strings.TrimSpace(value), `"`)
+		if name == "" {
+			continue
+		}
+		if normalized.Len() > 0 {
+			normalized.WriteString(";")
+		}
+		normalized.WriteString(name)
+		if value != "" {
+			normalized.WriteString("=")
+			normalized.WriteString(value)
+		}
+	}
+	return normalized.String()
+}
+
+func normalizeChallengeValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ""
+	}
+	return strings.Trim(value, `"`)
 }
 
 func newBearerTokenCache() *bearerTokenCache {

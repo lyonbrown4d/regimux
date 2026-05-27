@@ -96,6 +96,8 @@ type UpstreamRequest struct {
 	Method    string
 	Path      string
 	Status    int
+	Attempts  int
+	Duration  time.Duration
 	Error     string
 }
 

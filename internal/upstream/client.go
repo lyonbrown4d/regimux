@@ -91,7 +91,7 @@ func NewClientFromConfigs(
 func (c *Client) Ping(ctx context.Context, alias string) error {
 	return c.doWithFailover(ctx, alias, operationPing, func(runtime upstreamRuntime) error {
 		requestURL := strings.TrimRight(runtime.config.Registry, "/") + registryAPIVersionPath
-		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, "")
+		resp, err := c.do(ctx, runtime, operationPing, http.MethodGet, requestURL, "")
 		if err != nil {
 			return err
 		}
@@ -111,7 +111,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 		if req.Accept != "" {
 			opts = append(opts, withHeader(distribution.HeaderAccept, req.Accept))
 		}
-		resp, err := c.do(ctx, runtime, method, requestURL, pullRepositoryScope(req.Repo), opts...)
+		resp, err := c.do(ctx, runtime, operationManifest, method, requestURL, pullRepositoryScope(req.Repo), opts...)
 		if err != nil {
 			return err
 		}
@@ -142,7 +142,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 		if req.Range != nil {
 			opts = append(opts, withHeader(distribution.HeaderRange, req.Range.String()))
 		}
-		resp, err := c.do(ctx, runtime, method, requestURL, pullRepositoryScope(req.Repo), opts...)
+		resp, err := c.do(ctx, runtime, operationBlob, method, requestURL, pullRepositoryScope(req.Repo), opts...)
 		if err != nil {
 			return err
 		}
@@ -172,7 +172,7 @@ func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsRespon
 			return err
 		}
 
-		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
+		resp, err := c.do(ctx, runtime, operationTags, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
 		if err != nil {
 			return err
 		}
@@ -192,7 +192,7 @@ func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*Refer
 	var out *ReferrersResponse
 	err := c.doWithFailover(ctx, req.UpstreamAlias, operationReferrers, func(runtime upstreamRuntime) error {
 		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointReferrers, req.Digest)
-		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
+		resp, err := c.do(ctx, runtime, operationReferrers, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
 		if err != nil {
 			return err
 		}

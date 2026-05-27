@@ -9,6 +9,7 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
@@ -29,6 +30,7 @@ type RuntimeDependencies struct {
 	Cleanup  *cache.CleanupService
 	Prefetch *prefetch.Service
 	Upstream *upstream.Client
+	Metrics  *observability.Metrics
 }
 
 var Module = dix.NewModule("scheduler",
@@ -36,7 +38,7 @@ var Module = dix.NewModule("scheduler",
 		dix.Provider5[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger, *worker.Pools](
 			newPrefetchServiceDependencies,
 		),
-		dix.Provider5[RuntimeDependencies, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client](
+		dix.Provider6[RuntimeDependencies, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client, *observability.Metrics](
 			newRuntimeDependencies,
 		),
 		dix.Provider1[*prefetch.Service, PrefetchServiceDependencies](NewPrefetchService),
@@ -80,6 +82,7 @@ func newRuntimeDependencies(
 	cleanup *cache.CleanupService,
 	prefetch *prefetch.Service,
 	upstreamClient *upstream.Client,
+	metrics *observability.Metrics,
 ) RuntimeDependencies {
 	return RuntimeDependencies{
 		Config:   cfg,
@@ -87,6 +90,7 @@ func newRuntimeDependencies(
 		Cleanup:  cleanup,
 		Prefetch: prefetch,
 		Upstream: upstreamClient,
+		Metrics:  metrics,
 	}
 }
 

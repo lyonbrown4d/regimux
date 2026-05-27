@@ -3,8 +3,11 @@ package upstream
 import (
 	"context"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 	"resty.dev/v3"
@@ -12,8 +15,8 @@ import (
 
 type requestOption func(*resty.Request)
 
-func (c *Client) do(ctx context.Context, runtime upstreamRuntime, method, endpoint, scope string, opts ...requestOption) (upstreamResponse, error) {
-	resp, err := c.execute(ctx, runtime, method, endpoint, opts...)
+func (c *Client) do(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint, scope string, opts ...requestOption) (upstreamResponse, error) {
+	resp, err := c.execute(ctx, runtime, operation, method, endpoint, opts...)
 	if err != nil {
 		return upstreamResponse{}, err
 	}
@@ -35,13 +38,49 @@ func (c *Client) do(ctx context.Context, runtime upstreamRuntime, method, endpoi
 	}
 	retryRuntime := runtime
 	retryRuntime.config.Auth = AuthConfig{Type: distribution.AuthSchemeBearer, Token: token}
-	return c.execute(ctx, retryRuntime, method, endpoint, opts...)
+	return c.execute(ctx, retryRuntime, operation, method, endpoint, opts...)
 }
 
-func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
+func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
 	if runtime.client == nil {
 		return upstreamResponse{}, newError("upstream http client is not configured")
 	}
+	startedAt := time.Now()
+	maxAttempts := maxUpstreamAttempts(runtime.config.HTTP.Retry)
+	var attempts int
+	var lastStatus int
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attempts = attempt
+		resp, err := c.executeOnce(ctx, runtime, method, endpoint, opts...)
+		if err != nil {
+			c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, lastStatus, attempts, time.Since(startedAt), err)
+			return upstreamResponse{}, err
+		}
+
+		lastStatus = resp.StatusCode
+		if shouldRetryUpstreamStatus(resp.StatusCode) && attempt < maxAttempts {
+			if drainErr := drainAndClose(resp.Body); drainErr != nil {
+				c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, lastStatus, attempts, time.Since(startedAt), drainErr)
+				return upstreamResponse{}, drainErr
+			}
+			wait := retryBackoff(runtime.config.HTTP.Retry, attempt)
+			c.logUpstreamRetry(ctx, runtime, operation, method, endpoint, resp.StatusCode, attempt, maxAttempts, wait)
+			if waitErr := waitRetry(ctx, wait); waitErr != nil {
+				c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, lastStatus, attempts, time.Since(startedAt), waitErr)
+				return upstreamResponse{}, waitErr
+			}
+			continue
+		}
+
+		c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, resp.StatusCode, attempts, time.Since(startedAt), nil)
+		return resp, nil
+	}
+
+	return upstreamResponse{}, newError("upstream request did not execute")
+}
+
+func (c *Client) executeOnce(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
 	req := runtime.client.R().SetDoNotParseResponse(true)
 	prepareRequest(req, runtime.config)
 	for _, opt := range opts {
@@ -54,6 +93,100 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, method, e
 		return upstreamResponse{}, wrapError(err, "execute upstream request %s %s", method, endpoint)
 	}
 	return rawUpstreamResponse(resp)
+}
+
+func maxUpstreamAttempts(cfg HTTPRetryConfig) int {
+	if !cfg.Enabled {
+		return 1
+	}
+	return max(1, cfg.MaxRetries+1)
+}
+
+func shouldRetryUpstreamStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
+}
+
+func retryBackoff(cfg HTTPRetryConfig, attempt int) time.Duration {
+	if attempt <= 0 {
+		attempt = 1
+	}
+	wait := cfg.WaitMin
+	if wait <= 0 {
+		wait = 100 * time.Millisecond
+	}
+	for range attempt - 1 {
+		wait *= 2
+	}
+	if cfg.WaitMax > 0 && wait > cfg.WaitMax {
+		return cfg.WaitMax
+	}
+	return wait
+}
+
+func waitRetry(ctx context.Context, wait time.Duration) error {
+	if wait <= 0 {
+		return nil
+	}
+	timer := time.NewTimer(wait)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return wrapError(ctx.Err(), "wait upstream retry")
+	}
+}
+
+func (c *Client) publishUpstreamRequest(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint string, status, attempts int, duration time.Duration, err error) {
+	if c == nil || c.events == nil {
+		return
+	}
+	message := ""
+	if err != nil {
+		message = err.Error()
+	}
+	if publishErr := events.Publish(ctx, c.events, events.UpstreamRequest{
+		Alias:     runtime.config.Alias,
+		Operation: operation,
+		Registry:  runtime.config.Registry,
+		Method:    strings.ToUpper(method),
+		Path:      requestPath(endpoint),
+		Status:    status,
+		Attempts:  attempts,
+		Duration:  duration,
+		Error:     message,
+	}); publishErr != nil && c.logger != nil {
+		c.logger.DebugContext(ctx, "publish upstream request event failed", "error", publishErr)
+	}
+}
+
+func (c *Client) logUpstreamRetry(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint string, status, attempt, maxAttempts int, wait time.Duration) {
+	if c == nil || c.logger == nil {
+		return
+	}
+	c.logger.WarnContext(ctx,
+		"retrying upstream request",
+		"alias", runtime.config.Alias,
+		"operation", operation,
+		"method", method,
+		"registry", runtime.config.Registry,
+		"path", requestPath(endpoint),
+		"status", status,
+		"attempt", attempt,
+		"max_attempts", maxAttempts,
+		"wait", wait,
+	)
+}
+
+func requestPath(endpoint string) string {
+	parsed, err := url.Parse(endpoint)
+	if err != nil || parsed == nil || parsed.Path == "" {
+		return endpoint
+	}
+	if parsed.RawQuery == "" {
+		return parsed.Path
+	}
+	return parsed.Path + "?" + parsed.RawQuery
 }
 
 func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challenge bearerChallenge, fallbackScope string) (string, error) {

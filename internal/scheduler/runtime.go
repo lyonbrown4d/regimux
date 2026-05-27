@@ -10,6 +10,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 	goredis "github.com/redis/go-redis/v9"
@@ -22,6 +23,7 @@ type Runtime struct {
 	cleanup  *cache.CleanupService
 	prefetch *prefetch.Service
 	upstream *upstream.Client
+	metrics  *observability.Metrics
 
 	scheduler gocron.Scheduler
 	redis     goredis.UniversalClient
@@ -33,6 +35,7 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 	cleanup := deps.Cleanup
 	prefetch := deps.Prefetch
 	upstreamClient := deps.Upstream
+	metrics := deps.Metrics
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -42,6 +45,7 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 		cleanup:  cleanup,
 		prefetch: prefetch,
 		upstream: upstreamClient,
+		metrics:  metrics,
 	}
 }
 
