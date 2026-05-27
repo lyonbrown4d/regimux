@@ -15,18 +15,16 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
-func Module() dix.Module {
-	return dix.NewModule("scheduler",
-		dix.Providers(
-			dix.Provider5[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger, *worker.Pools](prefetch.NewService),
-			dix.Provider5[*Runtime, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client](NewRuntime),
-		),
-		dix.Hooks(
-			dix.OnStart[*Runtime](startRuntime, dix.LifecycleName("regimux.scheduler_start"), dix.LifecyclePriority(50)),
-			dix.OnStop[*Runtime](stopRuntime, dix.LifecycleName("regimux.scheduler_stop"), dix.LifecyclePriority(-50), dix.LifecycleTimeout(20*time.Second)),
-		),
-	)
-}
+var Module = dix.NewModule("scheduler",
+	dix.Providers(
+		dix.Provider5[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger, *worker.Pools](prefetch.NewService),
+		dix.Provider5[*Runtime, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client](NewRuntime),
+	),
+	dix.Hooks(
+		dix.OnStart[*Runtime](startRuntime, dix.LifecycleName("regimux.scheduler_start"), dix.LifecyclePriority(50)),
+		dix.OnStop[*Runtime](stopRuntime, dix.LifecycleName("regimux.scheduler_stop"), dix.LifecyclePriority(-50), dix.LifecycleTimeout(20*time.Second)),
+	),
+)
 
 func startRuntime(ctx context.Context, runtime *Runtime) error {
 	if runtime == nil {

@@ -14,34 +14,32 @@ import (
 	"github.com/samber/oops"
 )
 
-func Module() dix.Module {
-	return dix.NewModule("cache",
-		dix.Providers(
-			dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
-			dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxy),
-			dix.Provider2[*CleanupService, meta.Store, object.Store](NewCleanupService),
-			dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
-				return proxy.Manifests()
-			}),
-			dix.Provider1[BlobService, *Proxy](func(proxy *Proxy) BlobService {
-				return proxy.Blobs()
-			}),
-			dix.Provider1[TagService, *Proxy](func(proxy *Proxy) TagService {
-				return proxy.Tags()
-			}),
-			dix.Provider1[ReferrerService, *Proxy](func(proxy *Proxy) ReferrerService {
-				return proxy.Referrers()
-			}),
+var Module = dix.NewModule("cache",
+	dix.Providers(
+		dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
+		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxy),
+		dix.Provider2[*CleanupService, meta.Store, object.Store](NewCleanupService),
+		dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
+			return proxy.Manifests()
+		}),
+		dix.Provider1[BlobService, *Proxy](func(proxy *Proxy) BlobService {
+			return proxy.Blobs()
+		}),
+		dix.Provider1[TagService, *Proxy](func(proxy *Proxy) TagService {
+			return proxy.Tags()
+		}),
+		dix.Provider1[ReferrerService, *Proxy](func(proxy *Proxy) ReferrerService {
+			return proxy.Referrers()
+		}),
+	),
+	dix.Hooks(
+		dix.OnStop[backend.Backend](
+			closeBackend,
+			dix.LifecycleName("regimux.cache_close"),
+			dix.LifecyclePriority(-150),
 		),
-		dix.Hooks(
-			dix.OnStop[backend.Backend](
-				closeBackend,
-				dix.LifecycleName("regimux.cache_close"),
-				dix.LifecyclePriority(-150),
-			),
-		),
-	)
-}
+	),
+)
 
 func newBackend(cfg config.Config, logger *slog.Logger) (backend.Backend, error) {
 	switch cfg.Cache.Backend {

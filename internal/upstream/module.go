@@ -10,13 +10,11 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
-func Module() dix.Module {
-	return dix.NewModule("upstream",
-		dix.Providers(
-			dix.Provider4[*Client, config.Config, *slog.Logger, *worker.Pools, events.Bus](newClient, dix.As[RegistryClient]()),
-		),
-	)
-}
+var Module = dix.NewModule("upstream",
+	dix.Providers(
+		dix.Provider4[*Client, config.Config, *slog.Logger, *worker.Pools, events.Bus](newClient, dix.As[RegistryClient]()),
+	),
+)
 
 func newClient(cfg config.Config, logger *slog.Logger, pools *worker.Pools, bus events.Bus) *Client {
 	return NewClient(toUpstreamConfigs(cfg.OrderedUpstreams()), logger, pools, bus)

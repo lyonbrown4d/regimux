@@ -7,15 +7,7 @@ import (
 	"github.com/arcgolabs/configx"
 )
 
-func Module(cfg Config) dix.Module {
-	return dix.NewModule("config",
-		dix.Providers(
-			dix.Value(cfg),
-		),
-	)
-}
-
-func ModuleFromOptions(options ...configx.Option) dix.Module {
+var Module = func(options ...configx.Option) dix.Module {
 	optCopy := append([]configx.Option(nil), options...)
 	return dix.NewModule("config",
 		dix.Providers(

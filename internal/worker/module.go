@@ -8,16 +8,14 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
-func Module() dix.Module {
-	return dix.NewModule("worker",
-		dix.Providers(
-			dix.Provider2[*Pools, config.Config, *slog.Logger](NewPools),
-		),
-		dix.Hooks(
-			dix.OnStop[*Pools](closePools, dix.LifecycleName("regimux.worker_stop"), dix.LifecyclePriority(-60)),
-		),
-	)
-}
+var Module = dix.NewModule("worker",
+	dix.Providers(
+		dix.Provider2[*Pools, config.Config, *slog.Logger](NewPools),
+	),
+	dix.Hooks(
+		dix.OnStop[*Pools](closePools, dix.LifecycleName("regimux.worker_stop"), dix.LifecyclePriority(-60)),
+	),
+)
 
 func NewPools(cfg config.Config, logger *slog.Logger) *Pools {
 	if logger == nil {

@@ -10,20 +10,18 @@ import (
 	"github.com/samber/oops"
 )
 
-func Module() dix.Module {
-	return dix.NewModule("observability",
-		dix.Providers(
-			dix.ProviderErr1[*slog.Logger, config.Config](newLogger),
+var Module = dix.NewModule("observability",
+	dix.Providers(
+		dix.ProviderErr1[*slog.Logger, config.Config](newLogger),
+	),
+	dix.Hooks(
+		dix.OnStop[*slog.Logger](
+			closeLogger,
+			dix.LifecycleName("regimux.logger_close"),
+			dix.LifecyclePriority(-240),
 		),
-		dix.Hooks(
-			dix.OnStop[*slog.Logger](
-				closeLogger,
-				dix.LifecycleName("regimux.logger_close"),
-				dix.LifecyclePriority(-240),
-			),
-		),
-	)
-}
+	),
+)
 
 func newLogger(cfg config.Config) (*slog.Logger, error) {
 	return NewLogger(cfg.Log)

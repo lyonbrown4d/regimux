@@ -12,21 +12,19 @@ import (
 	"github.com/samber/oops"
 )
 
-func Module() dix.Module {
-	return dix.NewModule("store",
-		dix.Providers(
-			dix.ProviderErr2[meta.Store, config.Config, *slog.Logger](newMetadataStore, dix.Eager()),
-			dix.ProviderErr1[object.Store, config.Config](newObjectStore, dix.Eager()),
+var Module = dix.NewModule("store",
+	dix.Providers(
+		dix.ProviderErr2[meta.Store, config.Config, *slog.Logger](newMetadataStore, dix.Eager()),
+		dix.ProviderErr1[object.Store, config.Config](newObjectStore, dix.Eager()),
+	),
+	dix.Hooks(
+		dix.OnStop[meta.Store](
+			closeMetadataStore,
+			dix.LifecycleName("regimux.meta_store_close"),
+			dix.LifecyclePriority(-160),
 		),
-		dix.Hooks(
-			dix.OnStop[meta.Store](
-				closeMetadataStore,
-				dix.LifecycleName("regimux.meta_store_close"),
-				dix.LifecyclePriority(-160),
-			),
-		),
-	)
-}
+	),
+)
 
 func newMetadataStore(cfg config.Config, logger *slog.Logger) (meta.Store, error) {
 	store, err := meta.OpenBbolt(cfg.Store.Meta.Path, logger)

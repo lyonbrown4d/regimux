@@ -28,20 +28,20 @@ func run(ctx context.Context, configPath string, args ...string) error {
 }
 
 func buildApp(configPath string, version string, args ...string) *dix.App {
-	configModule := config.ModuleFromOptions(
+	configModule := config.Module(
 		configx.WithFiles(configPath),
 		configx.WithArgs(args...),
 	)
-	observabilityModule := observability.Module()
+	observabilityModule := observability.Module
 	buildModule := build.Module(version)
-	eventsModule := events.Module()
-	workerModule := worker.Module()
-	upstreamModule := upstream.Module()
-	storeModule := storemodule.Module()
-	cacheModule := cache.Module()
-	schedulerModule := scheduler.Module()
-	endpointModule := api.EndpointsModule()
-	apiModule := api.Module()
+	eventsModule := events.Module
+	workerModule := worker.Module
+	upstreamModule := upstream.Module
+	storeModule := storemodule.Module
+	cacheModule := cache.Module
+	schedulerModule := scheduler.Module
+	endpointModule := api.EndpointsModule
+	apiModule := api.Module
 
 	return dix.New("regimuxd",
 		dix.Version(version),
