@@ -134,7 +134,7 @@ func (p *upstreamPool) runtimesForOperation(operation string) []upstreamRuntime 
 	if p == nil {
 		return nil
 	}
-	if operation == "blob" {
+	if operation == operationBlob {
 		return p.blobRuntimes()
 	}
 	return p.runtimesForPolicy(p.policy, false)
@@ -207,7 +207,7 @@ func (p *upstreamPool) nextOffset(modulo int, blob bool) int {
 }
 
 func (p *upstreamPool) acquireRuntime(ctx context.Context, operation string, runtime upstreamRuntime) (func(), error) {
-	if p == nil || operation != "blob" {
+	if p == nil || operation != operationBlob {
 		return func() {}, nil
 	}
 

@@ -92,7 +92,7 @@ func (c *Client) Ping(ctx context.Context, alias string) error {
 			return err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, "ping"))
+			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationPing))
 		}
 		return closeBody(resp.Body)
 	})
@@ -112,7 +112,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 			return err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, "manifest"))
+			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationManifest))
 		}
 		out = &ManifestResponse{
 			Body:      resp.Body,
@@ -143,7 +143,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 			return err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, "blob"))
+			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationBlob))
 		}
 		out = &BlobResponse{
 			Body:       resp.Body,
@@ -173,7 +173,7 @@ func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsRespon
 			return err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, "tags"))
+			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationTags))
 		}
 		out = &TagsResponse{Body: resp.Body, Headers: resp.Header.Clone()}
 		return nil
@@ -193,7 +193,7 @@ func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*Refer
 			return err
 		}
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, "referrers"))
+			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationReferrers))
 		}
 		out = &ReferrersResponse{
 			Body:      resp.Body,

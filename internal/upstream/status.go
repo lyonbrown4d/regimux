@@ -32,7 +32,7 @@ func mapStatus(status int, kind string) error {
 	case http.StatusForbidden:
 		return withUpstreamStatus(status, distribution.ErrDenied)
 	case http.StatusNotFound:
-		if kind == "blob" {
+		if kind == operationBlob {
 			return withUpstreamStatus(status, distribution.ErrBlobUnknown)
 		}
 		return withUpstreamStatus(status, distribution.ErrManifestUnknown)
