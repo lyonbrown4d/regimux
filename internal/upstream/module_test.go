@@ -1,10 +1,11 @@
-package upstream
+package upstream_test
 
 import (
 	"testing"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
 func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
@@ -27,7 +28,7 @@ func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
 		},
 	}
 
-	got := toUpstreamConfig("hub", cfg)
+	got := upstream.ConfigFromUpstreamConfig("hub", cfg)
 	if got.Blob.MirrorPolicy != "latency" || got.Blob.TopN != 3 || got.Blob.MaxConcurrencyPerEndpoint != 4 || got.Blob.MaxConcurrentAttempts != 2 {
 		t.Fatalf("unexpected blob mapping: %#v", got.Blob)
 	}

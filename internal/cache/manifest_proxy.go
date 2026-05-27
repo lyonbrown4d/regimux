@@ -78,13 +78,17 @@ func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestReque
 
 func (p manifestProxy) recordManifestPull(ctx context.Context, req ManifestRequest) {
 	if key, ok := manifestPullKey(req); ok && p.metadata != nil {
-		_, _ = p.metadata.RecordPull(ctx, key, time.Now().UTC())
+		if _, err := p.metadata.RecordPull(ctx, key, time.Now().UTC()); err != nil {
+			return
+		}
 	}
 }
 
 func (p manifestProxy) recordManifestUpstreamPull(ctx context.Context, req ManifestRequest) {
 	if key, ok := manifestPullKey(req); ok && p.metadata != nil {
-		_, _ = p.metadata.RecordUpstreamPull(ctx, key, time.Now().UTC())
+		if _, err := p.metadata.RecordUpstreamPull(ctx, key, time.Now().UTC()); err != nil {
+			return
+		}
 	}
 }
 

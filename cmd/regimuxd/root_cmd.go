@@ -19,7 +19,7 @@ func newRootCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
 				if _, err := fmt.Fprintln(cmd.OutOrStdout(), build.VersionFromBuildInfo()); err != nil {
-					return err
+					return fmt.Errorf("print version: %w", err)
 				}
 				return nil
 			}
@@ -28,6 +28,6 @@ func newRootCommand() *cobra.Command {
 	}
 	cmd.Flags().StringVarP(&configPath, "config", "c", "configs/regimux.hcl", "path to regimux HCL config file")
 	cmd.Flags().BoolVar(&showVersion, "version", false, "print version and exit")
-	cmd.Flags().ParseErrorsWhitelist.UnknownFlags = true
+	cmd.Flags().ParseErrorsAllowlist.UnknownFlags = true
 	return cmd
 }

@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
@@ -74,7 +73,7 @@ func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler)
 
 		jobAlias := alias
 		options := []gocron.JobOption{
-			gocron.WithName(fmt.Sprintf("regimux.upstream.probe.%s", alias)),
+			gocron.WithName("regimux.upstream.probe." + alias),
 			gocron.WithTags("maintenance", "probe", alias),
 			gocron.WithContext(ctx),
 			gocron.WithSingletonMode(gocron.LimitModeReschedule),
@@ -113,7 +112,7 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 	})
 	if err != nil {
 		err = oops.Wrapf(err, "run cleanup job")
-		r.observeJob("cleanup", "", startedAt, err)
+		r.observeJob(ctx, "cleanup", "", startedAt, err)
 		return err
 	}
 	r.logger.InfoContext(ctx, "cleanup job completed",
@@ -125,7 +124,7 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		"bytes_deleted", report.BytesDeleted,
 		"limit_reached", report.LimitReached,
 	)
-	r.observeJob("cleanup", "", startedAt, nil)
+	r.observeJob(ctx, "cleanup", "", startedAt, nil)
 	return nil
 }
 
@@ -133,16 +132,16 @@ func (r *Runtime) runProbe(ctx context.Context, alias string) error {
 	startedAt := time.Now()
 	if r.upstream == nil {
 		err := oops.In("scheduler").Errorf("upstream probe client is not configured")
-		r.observeJob("probe", alias, startedAt, err)
+		r.observeJob(ctx, "probe", alias, startedAt, err)
 		return err
 	}
 	if err := r.upstream.ProbeAlias(ctx, alias); err != nil {
 		err = oops.Wrapf(err, "run upstream probe job")
-		r.observeJob("probe", alias, startedAt, err)
+		r.observeJob(ctx, "probe", alias, startedAt, err)
 		return err
 	}
 	r.logger.InfoContext(ctx, "upstream probe job completed", "alias", alias, "duration_ms", time.Since(startedAt).Milliseconds())
-	r.observeJob("probe", alias, startedAt, nil)
+	r.observeJob(ctx, "probe", alias, startedAt, nil)
 	return nil
 }
 
@@ -158,7 +157,7 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 	})
 	if err != nil {
 		err = oops.Wrapf(err, "run prefetch job")
-		r.observeJob("prefetch", "", startedAt, err)
+		r.observeJob(ctx, "prefetch", "", startedAt, err)
 		return err
 	}
 	r.logger.InfoContext(ctx, "prefetch job completed",
@@ -170,13 +169,13 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		"prefetched", report.Prefetched,
 		"failed", report.Failed,
 	)
-	r.observeJob("prefetch", "", startedAt, nil)
+	r.observeJob(ctx, "prefetch", "", startedAt, nil)
 	return nil
 }
 
-func (r *Runtime) observeJob(job, alias string, startedAt time.Time, err error) {
+func (r *Runtime) observeJob(ctx context.Context, job, alias string, startedAt time.Time, err error) {
 	if r == nil || r.metrics == nil {
 		return
 	}
-	r.metrics.ObserveSchedulerJob(job, alias, time.Since(startedAt), err)
+	r.metrics.ObserveSchedulerJob(ctx, job, alias, time.Since(startedAt), err)
 }

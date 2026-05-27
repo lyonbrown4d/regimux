@@ -67,8 +67,8 @@ type ManifestCacheConfig struct {
 
 type BlobCacheConfig struct {
 	// VerifyTTL controls how often shared blobs are re-verified against upstream.
-	VerifyTTL     time.Duration `json:"verify_ttl"      koanf:"verify_ttl"      mapstructure:"verify_ttl"      validate:"min=0"`
-	StreamAndCache bool `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
+	VerifyTTL      time.Duration `json:"verify_ttl"       koanf:"verify_ttl"       mapstructure:"verify_ttl"       validate:"min=0"`
+	StreamAndCache bool          `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
 }
 
 type TagsCacheConfig struct {
@@ -99,36 +99,36 @@ type StoreObjectConfig struct {
 type SchedulerConfig struct {
 	Enabled         bool                    `json:"enabled"          koanf:"enabled"          mapstructure:"enabled"`
 	DistributedLock bool                    `json:"distributed_lock" koanf:"distributed_lock" mapstructure:"distributed_lock"`
-	LockTTL         time.Duration           `json:"lock_ttl"         koanf:"lock_ttl"         mapstructure:"lock_ttl" validate:"min=0"`
+	LockTTL         time.Duration           `json:"lock_ttl"         koanf:"lock_ttl"         mapstructure:"lock_ttl"         validate:"min=0"`
 	Cleanup         SchedulerCleanupConfig  `json:"cleanup"          koanf:"cleanup"          mapstructure:"cleanup"`
 	Prefetch        SchedulerPrefetchConfig `json:"prefetch"         koanf:"prefetch"         mapstructure:"prefetch"`
 }
 
 type SchedulerCleanupConfig struct {
-	Enabled     bool          `json:"enabled"      koanf:"enabled"      mapstructure:"enabled"`
-	Interval    time.Duration `json:"interval"     koanf:"interval"     mapstructure:"interval" validate:"min=0"`
-	MaxScan     int           `json:"max_scan"     koanf:"max_scan"     mapstructure:"max_scan" validate:"min=0"`
-	UnusedFor   time.Duration `json:"unused_for"   koanf:"unused_for"   mapstructure:"unused_for" validate:"min=0"`
-	MaxDeletes  int           `json:"max_deletes"  koanf:"max_deletes"  mapstructure:"max_deletes" validate:"min=0"`
-	DryRun      bool          `json:"dry_run"      koanf:"dry_run"      mapstructure:"dry_run"`
-	Distributed bool          `json:"distributed"  koanf:"distributed"  mapstructure:"distributed"`
+	Enabled     bool          `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
+	Interval    time.Duration `json:"interval"    koanf:"interval"    mapstructure:"interval"    validate:"min=0"`
+	MaxScan     int           `json:"max_scan"    koanf:"max_scan"    mapstructure:"max_scan"    validate:"min=0"`
+	UnusedFor   time.Duration `json:"unused_for"  koanf:"unused_for"  mapstructure:"unused_for"  validate:"min=0"`
+	MaxDeletes  int           `json:"max_deletes" koanf:"max_deletes" mapstructure:"max_deletes" validate:"min=0"`
+	DryRun      bool          `json:"dry_run"     koanf:"dry_run"     mapstructure:"dry_run"`
+	Distributed bool          `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
 }
 
 type SchedulerPrefetchConfig struct {
 	Enabled              bool          `json:"enabled"                 koanf:"enabled"                 mapstructure:"enabled"`
-	Interval             time.Duration `json:"interval"                koanf:"interval"                mapstructure:"interval" validate:"min=0"`
-	MaxRecords           int           `json:"max_records"             koanf:"max_records"             mapstructure:"max_records" validate:"min=0"`
-	MinPullCount         int64         `json:"min_pull_count"          koanf:"min_pull_count"          mapstructure:"min_pull_count" validate:"min=0"`
-	TagsPageSize         int           `json:"tags_page_size"          koanf:"tags_page_size"          mapstructure:"tags_page_size" validate:"min=0"`
+	Interval             time.Duration `json:"interval"                koanf:"interval"                mapstructure:"interval"                validate:"min=0"`
+	MaxRecords           int           `json:"max_records"             koanf:"max_records"             mapstructure:"max_records"             validate:"min=0"`
+	MinPullCount         int64         `json:"min_pull_count"          koanf:"min_pull_count"          mapstructure:"min_pull_count"          validate:"min=0"`
+	TagsPageSize         int           `json:"tags_page_size"          koanf:"tags_page_size"          mapstructure:"tags_page_size"          validate:"min=0"`
 	MaxCandidatesPerRepo int           `json:"max_candidates_per_repo" koanf:"max_candidates_per_repo" mapstructure:"max_candidates_per_repo" validate:"min=0"`
-	MaxVersionDistance   int           `json:"max_version_distance"    koanf:"max_version_distance"    mapstructure:"max_version_distance" validate:"min=0"`
+	MaxVersionDistance   int           `json:"max_version_distance"    koanf:"max_version_distance"    mapstructure:"max_version_distance"    validate:"min=0"`
 	Accept               string        `json:"accept"                  koanf:"accept"                  mapstructure:"accept"`
 	Distributed          bool          `json:"distributed"             koanf:"distributed"             mapstructure:"distributed"`
 }
 
 type WorkerConfig struct {
-	ProbeConcurrency    int `json:"probe_concurrency"     koanf:"probe_concurrency"     mapstructure:"probe_concurrency"     validate:"min=0"`
-	PrefetchConcurrency int `json:"prefetch_concurrency"  koanf:"prefetch_concurrency"  mapstructure:"prefetch_concurrency"  validate:"min=0"`
+	ProbeConcurrency    int `json:"probe_concurrency"    koanf:"probe_concurrency"    mapstructure:"probe_concurrency"    validate:"min=0"`
+	PrefetchConcurrency int `json:"prefetch_concurrency" koanf:"prefetch_concurrency" mapstructure:"prefetch_concurrency" validate:"min=0"`
 }
 
 type UpstreamConfig struct {
@@ -145,10 +145,10 @@ type UpstreamConfig struct {
 }
 
 type UpstreamBlobConfig struct {
-	MirrorPolicy              string `json:"mirror_policy"                 koanf:"mirror_policy"                 mapstructure:"mirror_policy"                 validate:"omitempty,oneof=ordered round_robin latency"`
-	TopN                      int    `json:"top_n"                         koanf:"top_n"                         mapstructure:"top_n"                         validate:"min=0"`
-	MaxConcurrencyPerEndpoint int    `json:"max_concurrency_per_endpoint"  koanf:"max_concurrency_per_endpoint"  mapstructure:"max_concurrency_per_endpoint"  validate:"min=0"`
-	MaxConcurrentAttempts     int    `json:"max_concurrent_attempts"        koanf:"max_concurrent_attempts"        mapstructure:"max_concurrent_attempts"        validate:"min=0"`
+	MirrorPolicy              string `json:"mirror_policy"                koanf:"mirror_policy"                mapstructure:"mirror_policy"                validate:"omitempty,oneof=ordered round_robin latency"`
+	TopN                      int    `json:"top_n"                        koanf:"top_n"                        mapstructure:"top_n"                        validate:"min=0"`
+	MaxConcurrencyPerEndpoint int    `json:"max_concurrency_per_endpoint" koanf:"max_concurrency_per_endpoint" mapstructure:"max_concurrency_per_endpoint" validate:"min=0"`
+	MaxConcurrentAttempts     int    `json:"max_concurrent_attempts"      koanf:"max_concurrent_attempts"      mapstructure:"max_concurrent_attempts"      validate:"min=0"`
 }
 
 type UpstreamProbeConfig struct {

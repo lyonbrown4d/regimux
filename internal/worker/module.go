@@ -1,3 +1,4 @@
+// Package worker wires shared worker pools.
 package worker
 
 import (

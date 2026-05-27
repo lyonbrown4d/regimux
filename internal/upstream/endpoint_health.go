@@ -152,10 +152,10 @@ func (t *EndpointHealthTracker) RankEndpointCandidates(registries []string, now 
 
 func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes []upstreamRuntime, now time.Time) []endpointRuntimeCandidate {
 	candidates := make([]endpointRuntimeCandidate, 0, len(runtimes))
-	for _, runtime := range runtimes {
+	for i := range runtimes {
 		candidates = append(candidates, endpointRuntimeCandidate{
-			runtime: runtime,
-			state:   t.Snapshot(runtime.config.Registry, now),
+			runtime: runtimes[i],
+			state:   t.Snapshot(runtimes[i].config.Registry, now),
 		})
 	}
 
@@ -168,8 +168,8 @@ func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes []upstreamRuntime
 func (t *EndpointHealthTracker) rankRuntimes(runtimes []upstreamRuntime, now time.Time) []upstreamRuntime {
 	candidates := t.rankRuntimeCandidates(runtimes, now)
 	out := make([]upstreamRuntime, 0, len(candidates))
-	for _, candidate := range candidates {
-		out = append(out, candidate.runtime)
+	for i := range candidates {
+		out = append(out, candidates[i].runtime)
 	}
 	return out
 }

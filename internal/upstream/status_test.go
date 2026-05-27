@@ -1,9 +1,10 @@
-package upstream
+package upstream_test
 
 import (
 	"net/http"
 	"testing"
 
+	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -13,16 +14,16 @@ func TestMapStatusNotFound(t *testing.T) {
 		kind string
 		want distribution.ErrorCode
 	}{
-		{name: "blob", kind: operationBlob, want: distribution.CodeBlobUnknown},
-		{name: "manifest", kind: operationManifest, want: distribution.CodeManifestUnknown},
-		{name: "tags", kind: operationTags, want: distribution.CodeManifestUnknown},
-		{name: "referrers", kind: operationReferrers, want: distribution.CodeManifestUnknown},
-		{name: "ping", kind: operationPing, want: distribution.CodeManifestUnknown},
+		{name: "blob", kind: "blob", want: distribution.CodeBlobUnknown},
+		{name: "manifest", kind: "manifest", want: distribution.CodeManifestUnknown},
+		{name: "tags", kind: "tags", want: distribution.CodeManifestUnknown},
+		{name: "referrers", kind: "referrers", want: distribution.CodeManifestUnknown},
+		{name: "ping", kind: "ping", want: distribution.CodeManifestUnknown},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			err := mapStatus(http.StatusNotFound, tc.kind)
+			err := upstream.MapStatus(http.StatusNotFound, tc.kind)
 			list := distribution.FromError(err)
 			if list == nil {
 				t.Fatal("expected mapped distribution error")
@@ -33,4 +34,3 @@ func TestMapStatusNotFound(t *testing.T) {
 		})
 	}
 }
-

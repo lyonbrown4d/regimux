@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"log/slog"
 	"net/http"
-	"sort"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -14,9 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
-	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/panjf2000/ants/v2"
-	"github.com/samber/oops"
 )
 
 const (
@@ -130,44 +127,70 @@ func (s *Service) prefetchRepository(ctx context.Context, route repoKey, records
 	var failed atomic.Int32
 	var mu sync.Mutex
 	tasks := make([]func(context.Context) error, 0, len(candidates))
-	for _, candidate := range candidates {
-		candidate := candidate
-		tasks = append(tasks, func(taskCtx context.Context) error {
-			_, err := s.manifests.Get(taskCtx, cache.ManifestRequest{
-				UpstreamAlias:  candidate.Alias,
-				Repo:           candidate.Repo,
-				Reference:      candidate.Tag,
-				Accept:         opts.Accept,
-				Method:         http.MethodGet,
-				SkipPullRecord: true,
-			})
-			if err != nil {
-				failed.Add(1)
-				s.logger.WarnContext(taskCtx, "prefetch manifest failed",
-					"alias", candidate.Alias,
-					"repository", candidate.Repo,
-					"reference", candidate.Tag,
-					"reason", candidate.Reason,
-					"score", candidate.Score,
-					"error", err,
-				)
-				return err
-			}
-			mu.Lock()
-			prefetched = append(prefetched, candidate.Alias+"/"+candidate.Repo+":"+candidate.Tag)
-			mu.Unlock()
-			s.logger.InfoContext(taskCtx, "prefetched manifest",
-				"alias", candidate.Alias,
-				"repository", candidate.Repo,
-				"reference", candidate.Tag,
-				"reason", candidate.Reason,
-				"score", candidate.Score,
-			)
-			return nil
-		})
+	for i := range candidates {
+		tasks = append(tasks, s.prefetchTask(opts, candidates[i], &failed, &mu, &prefetched))
 	}
-	_ = worker.RunAll(ctx, s.prefetchPool(), tasks)
+	if err := worker.RunAll(ctx, s.prefetchPool(), tasks); err != nil {
+		s.logger.DebugContext(ctx, "prefetch repository completed with failures", "error", err)
+	}
 	return prefetched, len(candidates), int(failed.Load())
+}
+
+func (s *Service) prefetchTask(
+	opts RunOptions,
+	candidate Candidate,
+	failed *atomic.Int32,
+	mu *sync.Mutex,
+	prefetched *[]string,
+) func(context.Context) error {
+	return func(taskCtx context.Context) error {
+		if err := s.prefetchCandidate(taskCtx, opts, candidate); err != nil {
+			failed.Add(1)
+			s.logPrefetchFailure(taskCtx, candidate, err)
+			return err
+		}
+		mu.Lock()
+		*prefetched = append(*prefetched, candidate.Alias+"/"+candidate.Repo+":"+candidate.Tag)
+		mu.Unlock()
+		s.logPrefetchSuccess(taskCtx, candidate)
+		return nil
+	}
+}
+
+func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, candidate Candidate) error {
+	_, err := s.manifests.Get(ctx, cache.ManifestRequest{
+		UpstreamAlias:  candidate.Alias,
+		Repo:           candidate.Repo,
+		Reference:      candidate.Tag,
+		Accept:         opts.Accept,
+		Method:         http.MethodGet,
+		SkipPullRecord: true,
+	})
+	if err != nil {
+		return cacheWrap(err, "prefetch manifest")
+	}
+	return nil
+}
+
+func (s *Service) logPrefetchFailure(ctx context.Context, candidate Candidate, err error) {
+	s.logger.WarnContext(ctx, "prefetch manifest failed",
+		"alias", candidate.Alias,
+		"repository", candidate.Repo,
+		"reference", candidate.Tag,
+		"reason", candidate.Reason,
+		"score", candidate.Score,
+		"error", err,
+	)
+}
+
+func (s *Service) logPrefetchSuccess(ctx context.Context, candidate Candidate) {
+	s.logger.InfoContext(ctx, "prefetched manifest",
+		"alias", candidate.Alias,
+		"repository", candidate.Repo,
+		"reference", candidate.Tag,
+		"reason", candidate.Reason,
+		"score", candidate.Score,
+	)
 }
 
 func (s *Service) prefetchPool() *ants.Pool {
@@ -184,7 +207,7 @@ func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int
 		N:             strconv.Itoa(pageSize),
 	})
 	if err != nil {
-		return nil, err
+		return nil, cacheWrap(err, "list tags for prefetch")
 	}
 	var body struct {
 		Tags []string `json:"tags"`
@@ -198,87 +221,4 @@ func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int
 type repoKey struct {
 	alias string
 	repo  string
-}
-
-func normalizeRunOptions(opts RunOptions) RunOptions {
-	if opts.MaxRecords <= 0 {
-		opts.MaxRecords = defaultMaxRecords
-	}
-	if opts.TagsPageSize <= 0 {
-		opts.TagsPageSize = defaultTagsPageSize
-	}
-	if opts.MinPullCount <= 0 {
-		opts.MinPullCount = defaultMinPullCount
-	}
-	if opts.MaxCandidatesPerRepo <= 0 {
-		opts.MaxCandidatesPerRepo = defaultMaxCandidates
-	}
-	if opts.MaxVersionDistance <= 0 {
-		opts.MaxVersionDistance = defaultMaxVersionDistance
-	}
-	if opts.Accept == "" {
-		opts.Accept = distribution.DefaultManifestAccept
-	}
-	if opts.Now.IsZero() {
-		opts.Now = time.Now().UTC()
-	}
-	return opts
-}
-
-func filterPullRecords(records []meta.PullRecord, opts RunOptions) []meta.PullRecord {
-	out := make([]meta.PullRecord, 0, len(records))
-	for _, record := range records {
-		if record.Count < opts.MinPullCount || record.Reference == "" {
-			continue
-		}
-		out = append(out, record)
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].LastPullAt.Equal(out[j].LastPullAt) {
-			return out[i].LastPullAt.After(out[j].LastPullAt)
-		}
-		return out[i].Count > out[j].Count
-	})
-	if len(out) > opts.MaxRecords {
-		out = out[:opts.MaxRecords]
-	}
-	return out
-}
-
-func groupPullRecords(records []meta.PullRecord) map[repoKey][]meta.PullRecord {
-	groups := make(map[repoKey][]meta.PullRecord)
-	for _, record := range records {
-		key := repoKey{alias: record.Alias, repo: record.Repository}
-		groups[key] = append(groups[key], record)
-	}
-	return groups
-}
-
-func toCandidateRecords(records []meta.PullRecord) []PullRecord {
-	out := make([]PullRecord, 0, len(records))
-	for _, record := range records {
-		count := record.Count
-		if count > int64(^uint(0)>>1) {
-			count = int64(^uint(0) >> 1)
-		}
-		out = append(out, PullRecord{
-			Alias:      record.Alias,
-			Repo:       record.Repository,
-			Tag:        record.Reference,
-			Count:      int(count),
-			LastPullAt: record.LastPullAt,
-		})
-	}
-	return out
-}
-
-func cacheError(message string) error {
-	return oops.In("prefetch").Errorf("%s", message)
-}
-
-func cacheWrap(err error, message string) error {
-	if err == nil {
-		return nil
-	}
-	return oops.In("prefetch").Wrapf(err, "%s", message)
 }

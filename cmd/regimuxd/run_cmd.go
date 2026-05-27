@@ -2,11 +2,12 @@ package main
 
 import (
 	"context"
+	"time"
 
-	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/configx"
-	"github.com/lyonbrown4d/regimux/internal/build"
+	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/api"
+	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -16,7 +17,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/samber/oops"
-	"time"
 )
 
 func run(ctx context.Context, configPath string, args ...string) error {
@@ -24,7 +24,10 @@ func run(ctx context.Context, configPath string, args ...string) error {
 	if err := app.ValidateContext(ctx); err != nil {
 		return oops.Wrapf(err, "validate application")
 	}
-	return app.RunContext(ctx)
+	if err := app.RunContext(ctx); err != nil {
+		return oops.Wrapf(err, "run application")
+	}
+	return nil
 }
 
 func buildApp(configPath string, args ...string) *dix.App {

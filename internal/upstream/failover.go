@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"sync"
 
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -49,106 +48,6 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, alias, operation 
 		c.publishFailover(ctx, alias, operation, runtime, lastErr, i < len(runtimes)-1)
 	}
 	return lastErr
-}
-
-func (c *Client) doWithConcurrentFailover(ctx context.Context, alias, operation string, pool *upstreamPool, runtimes []upstreamRuntime, fn func(upstreamRuntime) error) error {
-	maxAttempts := pool.blobAttemptConcurrency()
-	if maxAttempts <= 1 {
-		return c.doWithSequentialFailover(ctx, alias, operation, pool, runtimes, fn)
-	}
-	if maxAttempts > len(runtimes) {
-		maxAttempts = len(runtimes)
-	}
-
-	type attemptResult struct {
-		runtime upstreamRuntime
-		err     error
-		attempt int
-	}
-
-	attemptCtx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	results := make(chan attemptResult, len(runtimes))
-	nextAttempt := 0
-	inFlight := 0
-	var mu sync.Mutex
-
-	startNext := func() bool {
-		mu.Lock()
-		if nextAttempt >= len(runtimes) {
-			mu.Unlock()
-			return false
-		}
-		runtime := runtimes[nextAttempt]
-		attempt := nextAttempt + 1
-		nextAttempt++
-		inFlight++
-		mu.Unlock()
-
-		c.logBlobAttempt(ctx, alias, runtime, attempt, len(runtimes), maxAttempts)
-		go func() {
-			err := runAgainstRuntime(attemptCtx, pool, operation, runtime, fn)
-			results <- attemptResult{
-				runtime: runtime,
-				err:     err,
-				attempt: attempt,
-			}
-		}()
-		return true
-	}
-
-	for range maxAttempts {
-		if !startNext() {
-			break
-		}
-	}
-
-	for {
-		mu.Lock()
-		done := nextAttempt >= len(runtimes) && inFlight == 0
-		mu.Unlock()
-		if done {
-			break
-		}
-
-		select {
-		case result := <-results:
-			mu.Lock()
-			inFlight--
-			remaining := len(runtimes) - nextAttempt
-			inFlightRemaining := inFlight
-			hasNext := nextAttempt < len(runtimes)
-			mu.Unlock()
-
-			if result.err == nil {
-				c.logBlobEndpointSelected(ctx, alias, result.runtime, result.attempt, len(runtimes))
-				cancel()
-				return nil
-			}
-			if ctxErr := attemptCtx.Err(); ctxErr != nil {
-				return wrapError(ctxErr, "upstream %s context", operation)
-			}
-			if !shouldFailover(result.err) {
-				cancel()
-				return result.err
-			}
-
-			pool.recordProbeFailure(result.runtime)
-			c.logBlobAttemptFailure(ctx, alias, result.runtime, result.err, result.attempt, len(runtimes), remaining+inFlightRemaining)
-			c.logFailover(alias, operation, result.runtime, result.err, hasNext)
-			c.publishFailover(ctx, alias, operation, result.runtime, result.err, hasNext)
-			if hasNext {
-				startNext()
-			}
-		case <-attemptCtx.Done():
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return wrapError(ctxErr, "upstream %s context", operation)
-			}
-			return nil
-		}
-	}
-
-	return distribution.ErrUpstream.WithDetail("all upstream blob attempts failed for " + alias)
 }
 
 func (c *Client) logBlobAttempt(ctx context.Context, alias string, runtime upstreamRuntime, attempt, total, maxAttempts int) {
@@ -256,8 +155,8 @@ func (c *Client) logBlobEndpointPlan(ctx context.Context, alias string, pool *up
 
 func runtimeRegistries(runtimes []upstreamRuntime) []string {
 	out := make([]string, 0, len(runtimes))
-	for _, runtime := range runtimes {
-		out = append(out, runtime.config.Registry)
+	for i := range runtimes {
+		out = append(out, runtimes[i].config.Registry)
 	}
 	return out
 }

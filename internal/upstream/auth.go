@@ -51,30 +51,41 @@ type bearerTokenResponse struct {
 }
 
 func parseBearerChallenge(header string) bearerChallenge {
-	header = strings.TrimSpace(header)
-	if header == "" {
-		return bearerChallenge{}
-	}
-	scheme, params, ok := strings.Cut(header, " ")
-	if !ok || !strings.EqualFold(scheme, distribution.AuthSchemeBearer) {
-		return bearerChallenge{}
-	}
-	scheme = strings.TrimSpace(scheme)
-	params = strings.TrimSpace(params)
-	if params == "" {
+	params, ok := bearerChallengeParams(header)
+	if !ok {
 		return bearerChallenge{}
 	}
 
-	mediaType := scheme + ";" + normalizeChallengeParams(params)
+	if challenge, ok := parseBearerChallengeMediaType(params); ok {
+		return challenge
+	}
+	return parseBearerChallengeFallback(params)
+}
+
+func bearerChallengeParams(header string) (string, bool) {
+	header = strings.TrimSpace(header)
+	scheme, params, ok := strings.Cut(header, " ")
+	if !ok || !strings.EqualFold(scheme, distribution.AuthSchemeBearer) {
+		return "", false
+	}
+	params = strings.TrimSpace(params)
+	return params, params != ""
+}
+
+func parseBearerChallengeMediaType(params string) (bearerChallenge, bool) {
+	mediaType := distribution.AuthSchemeBearer + ";" + normalizeChallengeParams(params)
 	_, values, err := mime.ParseMediaType(mediaType)
 	if err == nil {
 		return bearerChallenge{
 			Realm:   normalizeChallengeValue(values["realm"]),
 			Service: normalizeChallengeValue(values["service"]),
 			Scope:   normalizeChallengeValue(values["scope"]),
-		}
+		}, true
 	}
+	return bearerChallenge{}, false
+}
 
+func parseBearerChallengeFallback(params string) bearerChallenge {
 	out := bearerChallenge{}
 	for _, part := range splitChallengeParams(params) {
 		key, value, ok := strings.Cut(part, "=")
@@ -96,7 +107,7 @@ func parseBearerChallenge(header string) bearerChallenge {
 
 func normalizeChallengeParams(raw string) string {
 	parts := splitChallengeParams(raw)
-	var normalized strings.Builder
+	normalized := make([]string, 0, len(parts))
 	for _, rawPart := range parts {
 		name, value, ok := strings.Cut(rawPart, "=")
 		if !ok {
@@ -107,16 +118,13 @@ func normalizeChallengeParams(raw string) string {
 		if name == "" {
 			continue
 		}
-		if normalized.Len() > 0 {
-			normalized.WriteString(";")
-		}
-		normalized.WriteString(name)
 		if value != "" {
-			normalized.WriteString("=")
-			normalized.WriteString(value)
+			normalized = append(normalized, name+"="+value)
+			continue
 		}
+		normalized = append(normalized, name)
 	}
-	return normalized.String()
+	return strings.Join(normalized, ";")
 }
 
 func normalizeChallengeValue(value string) string {

@@ -80,7 +80,7 @@ func newRuntimeDependencies(
 	cfg config.Config,
 	logger *slog.Logger,
 	cleanup *cache.CleanupService,
-	prefetch *prefetch.Service,
+	prefetchService *prefetch.Service,
 	upstreamClient *upstream.Client,
 	metrics *observability.Metrics,
 ) RuntimeDependencies {
@@ -88,7 +88,7 @@ func newRuntimeDependencies(
 		Config:   cfg,
 		Logger:   logger,
 		Cleanup:  cleanup,
-		Prefetch: prefetch,
+		Prefetch: prefetchService,
 		Upstream: upstreamClient,
 		Metrics:  metrics,
 	}

@@ -1,24 +1,25 @@
-package upstream
+package upstream_test
 
 import (
 	"testing"
 	"time"
+
+	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
 func TestEndpointHealthRanksLowerLatencyFirst(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(100, 0)
-	tracker := NewEndpointHealthTracker(EndpointHealthOptions{})
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{})
 	tracker.RecordProbeSuccess("https://slow.example", 200*time.Millisecond, now)
 	tracker.RecordProbeSuccess("https://fast.example", 20*time.Millisecond, now)
 
-	runtimes := []upstreamRuntime{
-		{config: Config{Registry: "https://unknown.example"}},
-		{config: Config{Registry: "https://slow.example"}},
-		{config: Config{Registry: "https://fast.example"}},
-	}
-	ranked := tracker.rankRuntimes(runtimes, now)
+	ranked := tracker.RankEndpointCandidates([]string{
+		"https://unknown.example",
+		"https://slow.example",
+		"https://fast.example",
+	}, now)
 
 	requireRegistryOrder(t, ranked, []string{
 		"https://fast.example",
@@ -31,7 +32,7 @@ func TestEndpointHealthFailureEntersCooldown(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(200, 0)
-	tracker := NewEndpointHealthTracker(EndpointHealthOptions{
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{
 		Cooldown:       time.Minute,
 		FailurePenalty: 50 * time.Millisecond,
 	})
@@ -65,7 +66,7 @@ func TestEndpointHealthInflightPenaltySpreadsSelection(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(300, 0)
-	tracker := NewEndpointHealthTracker(EndpointHealthOptions{
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{
 		InflightPenalty: 100 * time.Millisecond,
 	})
 	tracker.RecordProbeSuccess("https://fast.example", 20*time.Millisecond, now)
@@ -97,7 +98,7 @@ func TestEndpointHealthEWMADoesNotJumpOnSingleSample(t *testing.T) {
 	t.Parallel()
 
 	now := time.Unix(400, 0)
-	tracker := NewEndpointHealthTracker(EndpointHealthOptions{
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{
 		Alpha: 0.2,
 	})
 	tracker.RecordProbeSuccess("https://mirror.example", 100*time.Millisecond, now)
@@ -112,14 +113,14 @@ func TestEndpointHealthEWMADoesNotJumpOnSingleSample(t *testing.T) {
 	}
 }
 
-func requireRegistryOrder(t *testing.T, runtimes []upstreamRuntime, want []string) {
+func requireRegistryOrder(t *testing.T, candidates []upstream.EndpointHealthCandidate, want []string) {
 	t.Helper()
-	if len(runtimes) != len(want) {
-		t.Fatalf("runtime count = %d, want %d", len(runtimes), len(want))
+	if len(candidates) != len(want) {
+		t.Fatalf("candidate count = %d, want %d", len(candidates), len(want))
 	}
-	for i := range runtimes {
-		if runtimes[i].config.Registry != want[i] {
-			t.Fatalf("runtime[%d] = %q, want %q", i, runtimes[i].config.Registry, want[i])
+	for i := range candidates {
+		if candidates[i].Registry != want[i] {
+			t.Fatalf("candidate[%d] = %q, want %q", i, candidates[i].Registry, want[i])
 		}
 	}
 }

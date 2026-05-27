@@ -20,19 +20,19 @@ const (
 )
 
 type upstreamPool struct {
-	mu          sync.Mutex
-	alias       string
-	policy      string
-	blobPolicy  string
-	blobTopN    int
-	blobLimit   int
+	mu              sync.Mutex
+	alias           string
+	policy          string
+	blobPolicy      string
+	blobTopN        int
+	blobLimit       int
 	blobMaxAttempts int
-	runtimes    []upstreamRuntime
-	next        int
-	nextBlob    int
-	limiters    map[string]chan struct{}
-	health      *EndpointHealthTracker
-	probeConfig ProbeConfig
+	runtimes        []upstreamRuntime
+	next            int
+	nextBlob        int
+	limiters        map[string]chan struct{}
+	health          *EndpointHealthTracker
+	probeConfig     ProbeConfig
 }
 
 type upstreamRuntime struct {
@@ -44,13 +44,13 @@ type upstreamRuntime struct {
 func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 	policy := normalizeMirrorPolicy(cfg.MirrorPolicy)
 	pool := &upstreamPool{
-		alias:       cfg.Alias,
-		policy:      policy,
-		blobPolicy:  normalizeBlobMirrorPolicy(cfg.Blob.MirrorPolicy, policy),
-		blobTopN:    cfg.Blob.TopN,
-		blobLimit:   cfg.Blob.MaxConcurrencyPerEndpoint,
+		alias:           cfg.Alias,
+		policy:          policy,
+		blobPolicy:      normalizeBlobMirrorPolicy(cfg.Blob.MirrorPolicy, policy),
+		blobTopN:        cfg.Blob.TopN,
+		blobLimit:       cfg.Blob.MaxConcurrencyPerEndpoint,
 		blobMaxAttempts: cfg.Blob.MaxConcurrentAttempts,
-		probeConfig: cfg.Probe,
+		probeConfig:     cfg.Probe,
 		health: NewEndpointHealthTracker(EndpointHealthOptions{
 			Cooldown: cfg.Probe.Cooldown,
 		}),
@@ -179,7 +179,7 @@ func (p *upstreamPool) latencyRuntimes() []upstreamRuntime {
 
 	start := p.nextOffset(topN, true)
 	out := collectionlist.NewListWithCapacity[upstreamRuntime](len(ranked))
-	for i := 0; i < topN; i++ {
+	for i := range topN {
 		out.Add(ranked[(start+i)%topN])
 	}
 	for i := topN; i < len(ranked); i++ {

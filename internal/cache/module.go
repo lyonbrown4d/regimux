@@ -101,11 +101,11 @@ func newProxyDependencies(
 	}
 }
 
-func closeBackend(_ context.Context, backend backend.Backend) error {
-	if backend == nil {
+func closeBackend(_ context.Context, cacheBackend backend.Backend) error {
+	if cacheBackend == nil {
 		return nil
 	}
-	if err := backend.Close(); err != nil {
+	if err := cacheBackend.Close(); err != nil {
 		return oops.Wrapf(err, "close cache backend")
 	}
 	return nil

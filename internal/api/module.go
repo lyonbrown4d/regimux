@@ -18,9 +18,6 @@ var EndpointsModule = dix.NewModule("api-endpoints",
 		dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
 			dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
 		),
-		dix.Provider1[*MetricsEndpoint, *observability.Metrics](NewMetricsEndpoint,
-			dix.Into[httpx.Endpoint](dix.Key("metrics"), dix.Order(-90)),
-		),
 		dix.Provider2[RegistryEndpointOptions, config.Config, *observability.Metrics](newRegistryEndpointOptions),
 		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, RegistryEndpointOptions](
 			NewRegistryEndpointFromOptions,
@@ -34,7 +31,7 @@ var Module = dix.NewModule("api",
 		dix.Provider1[config.ServerConfig, config.Config](func(cfg config.Config) config.ServerConfig {
 			return cfg.Server
 		}),
-		dix.Provider3[*Server, config.ServerConfig, *slog.Logger, *collectionlist.List[httpx.Endpoint]](
+		dix.Provider4[*Server, config.ServerConfig, *slog.Logger, *collectionlist.List[httpx.Endpoint], *observability.Metrics](
 			newServer,
 			dix.Eager(),
 		),
@@ -45,17 +42,26 @@ var Module = dix.NewModule("api",
 	),
 )
 
-func newServer(cfg config.ServerConfig, logger *slog.Logger, endpoints *collectionlist.List[httpx.Endpoint]) *Server {
+func newServer(
+	cfg config.ServerConfig,
+	logger *slog.Logger,
+	endpoints *collectionlist.List[httpx.Endpoint],
+	metrics *observability.Metrics,
+) *Server {
 	var values []httpx.Endpoint
 	if endpoints != nil {
 		values = endpoints.Values()
 	}
 	return NewServer(Options{
-		Listen:      cfg.Listen,
-		PublicURL:   cfg.PublicURL,
-		Logger:      logger,
-		Endpoints:   values,
-		PrintRoutes: false,
+		Listen:       cfg.Listen,
+		PublicURL:    cfg.PublicURL,
+		Logger:       logger,
+		Endpoints:    values,
+		Metrics:      metrics,
+		ReadTimeout:  cfg.ReadTimeout,
+		WriteTimeout: cfg.WriteTimeout,
+		IdleTimeout:  cfg.IdleTimeout,
+		PrintRoutes:  false,
 	})
 }
 

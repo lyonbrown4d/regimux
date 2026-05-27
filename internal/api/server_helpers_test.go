@@ -15,13 +15,16 @@ import (
 
 func startAPIServer(t *testing.T, endpoints ...httpx.Endpoint) string {
 	t.Helper()
+	return startAPIServerWithOptions(t, api.Options{Endpoints: endpoints})
+}
+
+func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
+	t.Helper()
 
 	addr := freeTCPAddr(t)
-	values := append([]httpx.Endpoint{api.NewHealthEndpoint()}, endpoints...)
-	server := api.NewServer(api.Options{
-		Listen:    addr,
-		Endpoints: values,
-	})
+	opts.Listen = addr
+	opts.Endpoints = append([]httpx.Endpoint{api.NewHealthEndpoint()}, opts.Endpoints...)
+	server := api.NewServer(opts)
 	if err := server.Start(context.Background()); err != nil {
 		t.Fatalf("start api server: %v", err)
 	}

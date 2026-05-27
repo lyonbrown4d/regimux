@@ -1,3 +1,4 @@
+// Package build exposes build metadata providers.
 package build
 
 import (

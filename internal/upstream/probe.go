@@ -34,23 +34,12 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 	if !pool.probeEnabled() {
 		return nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 
 	var successes atomic.Int32
 	var failures atomic.Int32
 	tasks := make([]func(context.Context) error, 0, len(pool.runtimes))
-	for _, runtime := range pool.runtimes {
-		runtime := runtime
-		tasks = append(tasks, func(taskCtx context.Context) error {
-			if err := c.probeRuntime(taskCtx, pool, runtime); err != nil {
-				failures.Add(1)
-				return err
-			}
-			successes.Add(1)
-			return nil
-		})
+	for index := range pool.runtimes {
+		tasks = append(tasks, c.probeTask(pool, index, &successes, &failures))
 	}
 	probeErr := worker.RunAll(ctx, c.probePool(), tasks)
 	successCount := int(successes.Load())
@@ -60,7 +49,18 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 		return nil
 	}
 	c.logProbeSummary(ctx, alias, successCount, failureCount, probeErr)
-	return probeErr
+	return errors.Join(newError("probe upstream endpoints"), probeErr)
+}
+
+func (c *Client) probeTask(pool *upstreamPool, index int, successes, failures *atomic.Int32) func(context.Context) error {
+	return func(taskCtx context.Context) error {
+		if err := c.probeRuntime(taskCtx, pool, pool.runtimes[index]); err != nil {
+			failures.Add(1)
+			return err
+		}
+		successes.Add(1)
+		return nil
+	}
 }
 
 func (c *Client) probePool() *ants.Pool {

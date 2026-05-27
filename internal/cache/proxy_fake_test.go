@@ -3,6 +3,7 @@ package cache_test
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
@@ -77,7 +78,7 @@ func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequ
 		if req.Range != nil {
 			resolved, resolveErr := req.Range.Resolve(int64(len(c.blobBody)))
 			if resolveErr != nil {
-				return nil, resolveErr
+				return nil, fmt.Errorf("resolve fake blob range: %w", resolveErr)
 			}
 			body = body[resolved.Start : resolved.End+1]
 			contentLength = len(body)

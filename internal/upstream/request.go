@@ -45,39 +45,80 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, operation
 	if runtime.client == nil {
 		return upstreamResponse{}, newError("upstream http client is not configured")
 	}
-	startedAt := time.Now()
 	maxAttempts := maxUpstreamAttempts(runtime.config.HTTP.Retry)
-	var attempts int
-	var lastStatus int
+	state := requestAttemptState{
+		startedAt: time.Now(),
+		operation: operation,
+		method:    method,
+		endpoint:  endpoint,
+	}
 
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		attempts = attempt
-		resp, err := c.executeOnce(ctx, runtime, method, endpoint, opts...)
+	for attempt := range maxAttempts {
+		resp, retry, err := c.executeAttempt(ctx, runtime, state, attempt+1, maxAttempts, opts...)
 		if err != nil {
-			c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, lastStatus, attempts, time.Since(startedAt), err)
 			return upstreamResponse{}, err
 		}
-
-		lastStatus = resp.StatusCode
-		if shouldRetryUpstreamStatus(resp.StatusCode) && attempt < maxAttempts {
-			if drainErr := drainAndClose(resp.Body); drainErr != nil {
-				c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, lastStatus, attempts, time.Since(startedAt), drainErr)
-				return upstreamResponse{}, drainErr
-			}
-			wait := retryBackoff(runtime.config.HTTP.Retry, attempt)
-			c.logUpstreamRetry(ctx, runtime, operation, method, endpoint, resp.StatusCode, attempt, maxAttempts, wait)
-			if waitErr := waitRetry(ctx, wait); waitErr != nil {
-				c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, lastStatus, attempts, time.Since(startedAt), waitErr)
-				return upstreamResponse{}, waitErr
-			}
+		if retry {
 			continue
 		}
-
-		c.publishUpstreamRequest(ctx, runtime, operation, method, endpoint, resp.StatusCode, attempts, time.Since(startedAt), nil)
 		return resp, nil
 	}
 
 	return upstreamResponse{}, newError("upstream request did not execute")
+}
+
+type requestAttemptState struct {
+	startedAt time.Time
+	operation string
+	method    string
+	endpoint  string
+	status    int
+}
+
+func (c *Client) executeAttempt(
+	ctx context.Context,
+	runtime upstreamRuntime,
+	state requestAttemptState,
+	attempt int,
+	maxAttempts int,
+	opts ...requestOption,
+) (upstreamResponse, bool, error) {
+	resp, err := c.executeOnce(ctx, runtime, state.method, state.endpoint, opts...)
+	if err != nil {
+		c.publishAttempt(ctx, runtime, state, attempt, err)
+		return upstreamResponse{}, false, err
+	}
+
+	state.status = resp.StatusCode
+	if !shouldRetryUpstreamStatus(resp.StatusCode) || attempt >= maxAttempts {
+		c.publishAttempt(ctx, runtime, state, attempt, nil)
+		return resp, false, nil
+	}
+	if err := c.prepareRetry(ctx, runtime, state, resp, attempt, maxAttempts); err != nil {
+		c.publishAttempt(ctx, runtime, state, attempt, err)
+		return upstreamResponse{}, false, err
+	}
+	return upstreamResponse{}, true, nil
+}
+
+func (c *Client) prepareRetry(
+	ctx context.Context,
+	runtime upstreamRuntime,
+	state requestAttemptState,
+	resp upstreamResponse,
+	attempt int,
+	maxAttempts int,
+) error {
+	if err := drainAndClose(resp.Body); err != nil {
+		return err
+	}
+	wait := retryBackoff(runtime.config.HTTP.Retry, attempt)
+	c.logUpstreamRetry(ctx, runtime, state.operation, state.method, state.endpoint, resp.StatusCode, attempt, maxAttempts, wait)
+	return waitRetry(ctx, wait)
+}
+
+func (c *Client) publishAttempt(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, attempts int, err error) {
+	c.publishUpstreamRequest(ctx, runtime, state.operation, state.method, state.endpoint, state.status, attempts, time.Since(state.startedAt), err)
 }
 
 func (c *Client) executeOnce(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {

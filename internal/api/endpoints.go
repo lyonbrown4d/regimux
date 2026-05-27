@@ -20,33 +20,6 @@ import (
 	"github.com/samber/mo"
 )
 
-type HealthEndpoint struct{}
-
-func NewHealthEndpoint() *HealthEndpoint {
-	return &HealthEndpoint{}
-}
-
-func (e *HealthEndpoint) EndpointSpec() httpx.EndpointSpec {
-	return endpointSpec("health")
-}
-
-func (e *HealthEndpoint) Register(registrar httpx.Registrar) {
-	group := registrar.Scope()
-	httpx.MustGroupGet(group, "healthz", e.health)
-}
-
-func (e *HealthEndpoint) health(context.Context, *struct{}) (*healthOutput, error) {
-	out := &healthOutput{}
-	out.Body.Status = "ok"
-	return out, nil
-}
-
-type healthOutput struct {
-	Body struct {
-		Status string `json:"status"`
-	} `json:"body"`
-}
-
 type RegistryEndpoint struct {
 	manifests cache.ManifestService
 	blobs     cache.BlobService
@@ -109,13 +82,6 @@ func NewRegistryEndpointFromOptions(
 	return endpoint
 }
 
-func (e *RegistryEndpoint) SetMetrics(metrics *observability.Metrics) {
-	if e == nil {
-		return
-	}
-	e.metrics = metrics
-}
-
 func (e *RegistryEndpoint) EndpointSpec() httpx.EndpointSpec {
 	return endpointSpec("registry")
 }
@@ -159,11 +125,11 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	if err != nil {
 		if errors.Is(err, reference.ErrDigestInvalid) {
 			out := errorOutput(distribution.ErrDigestInvalid.WithDetail(err.Error()))
-			e.observeAPI(routeName, method, out, time.Since(startedAt), nil)
+			e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), nil)
 			return out, nil
 		}
 		out := errorOutput(distribution.ErrNameInvalid.WithDetail(err.Error()))
-		e.observeAPI(routeName, method, out, time.Since(startedAt), nil)
+		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), nil)
 		return out, nil
 	}
 	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
@@ -184,7 +150,7 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	default:
 		out = errorOutput(distribution.ErrNameInvalid.WithDetail("unknown registry route"))
 	}
-	e.observeAPI(routeName, method, out, time.Since(startedAt), err)
+	e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), err)
 	return out, err
 }
 
@@ -330,21 +296,3 @@ var (
 	_ httpx.EndpointSpecProvider = (*HealthEndpoint)(nil)
 	_ httpx.EndpointSpecProvider = (*RegistryEndpoint)(nil)
 )
-
-func (e *RegistryEndpoint) observeAPI(route, method string, out *registryOutput, duration time.Duration, err error) {
-	if e == nil || e.metrics == nil {
-		return
-	}
-	status := http.StatusInternalServerError
-	if out != nil && out.Status != 0 {
-		status = out.Status
-	}
-	e.metrics.ObserveAPIRequest(route, method, status, duration, err)
-}
-
-func registryRouteName(kind reference.RouteKind) string {
-	if kind == "" {
-		return "registry.unknown"
-	}
-	return "registry." + string(kind)
-}

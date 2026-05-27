@@ -5,6 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/panjf2000/ants/v2"
+	"github.com/samber/oops"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -74,39 +75,52 @@ func newPool(size int, logger *slog.Logger) *ants.Pool {
 }
 
 func RunAll(ctx context.Context, pool *ants.Pool, tasks []func(context.Context) error) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	if len(tasks) == 0 {
 		return nil
 	}
 
 	group, gctx := errgroup.WithContext(ctx)
 	for _, task := range tasks {
-		task := task
-		group.Go(func() error {
-			if task == nil {
-				return nil
-			}
-
-			if pool == nil {
-				return task(gctx)
-			}
-
-			done := make(chan error, 1)
-			if err := pool.Submit(func() {
-				done <- task(gctx)
-			}); err != nil {
-				return err
-			}
-
-			select {
-			case err := <-done:
-				return err
-			case <-gctx.Done():
-				return gctx.Err()
-			}
-		})
+		group.Go(func() error { return runOne(gctx, pool, task) })
 	}
-	return group.Wait()
+	if err := group.Wait(); err != nil {
+		return oops.Wrapf(err, "run worker tasks")
+	}
+	return nil
+}
+
+func runOne(ctx context.Context, pool *ants.Pool, task func(context.Context) error) error {
+	if task == nil {
+		return nil
+	}
+	if pool == nil {
+		return runInline(ctx, task)
+	}
+	return runPooled(ctx, pool, task)
+}
+
+func runInline(ctx context.Context, task func(context.Context) error) error {
+	if err := task(ctx); err != nil {
+		return oops.Wrapf(err, "run inline worker task")
+	}
+	return nil
+}
+
+func runPooled(ctx context.Context, pool *ants.Pool, task func(context.Context) error) error {
+	done := make(chan error, 1)
+	if err := pool.Submit(func() {
+		done <- task(ctx)
+	}); err != nil {
+		return oops.Wrapf(err, "submit worker task")
+	}
+
+	select {
+	case err := <-done:
+		if err != nil {
+			return oops.Wrapf(err, "run pooled worker task")
+		}
+		return nil
+	case <-ctx.Done():
+		return oops.Wrapf(ctx.Err(), "wait worker task")
+	}
 }

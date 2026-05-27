@@ -6,10 +6,16 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/arcgolabs/httpx"
 	"github.com/arcgolabs/httpx/adapter"
-	"github.com/arcgolabs/httpx/adapter/std"
+	fiberadapter "github.com/arcgolabs/httpx/adapter/fiber"
+	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/adaptor"
+	"github.com/gofiber/fiber/v2/middleware/etag"
+	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/samber/oops"
 )
 
@@ -17,18 +23,22 @@ type Server struct {
 	listen string
 	logger *slog.Logger
 
-	adapter *std.Adapter
+	adapter *fiberadapter.Adapter
 	runtime httpx.ServerRuntime
 	errCh   chan error
 	once    sync.Once
 }
 
 type Options struct {
-	Listen      string
-	PublicURL   string
-	Logger      *slog.Logger
-	Endpoints   []httpx.Endpoint
-	PrintRoutes bool
+	Listen       string
+	PublicURL    string
+	Logger       *slog.Logger
+	Endpoints    []httpx.Endpoint
+	Metrics      *observability.Metrics
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	IdleTimeout  time.Duration
+	PrintRoutes  bool
 }
 
 func NewServer(opts Options) *Server {
@@ -41,7 +51,19 @@ func NewServer(opts Options) *Server {
 		listen = ":5000"
 	}
 
-	stdAdapter := std.New(nil, adapter.HumaOptions{
+	fiberApp := fiber.New(fiber.Config{
+		ReadTimeout:           opts.ReadTimeout,
+		WriteTimeout:          opts.WriteTimeout,
+		IdleTimeout:           opts.IdleTimeout,
+		DisableStartupMessage: true,
+	})
+	fiberApp.Use(recover.New())
+	fiberApp.Use(etag.New())
+	if opts.Metrics != nil {
+		fiberApp.Get("/metrics", adaptor.HTTPHandler(opts.Metrics.Handler()))
+	}
+
+	fiberAdapter := fiberadapter.New(fiberApp, adapter.HumaOptions{
 		Title:       "RegiMux",
 		Version:     "dev",
 		Description: "Read-only OCI / Docker Registry V2 multi-upstream proxy mirror gateway.",
@@ -49,7 +71,7 @@ func NewServer(opts Options) *Server {
 		OpenAPIPath: "/openapi.json",
 	})
 	server := httpx.New(
-		httpx.WithAdapter(stdAdapter),
+		httpx.WithAdapter(fiberAdapter),
 		httpx.WithLogger(logger),
 		httpx.WithPrintRoutes(opts.PrintRoutes),
 	)
@@ -60,7 +82,7 @@ func NewServer(opts Options) *Server {
 	return &Server{
 		listen:  listen,
 		logger:  logger,
-		adapter: stdAdapter,
+		adapter: fiberAdapter,
 		runtime: server,
 		errCh:   make(chan error, 1),
 	}

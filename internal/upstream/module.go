@@ -26,26 +26,28 @@ func newClientDependencies(
 	bus events.Bus,
 ) ClientDependencies {
 	return ClientDependencies{
-		Configs: toUpstreamConfigs(cfg.OrderedUpstreams()),
+		Configs: ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()),
 		Logger:  logger,
 		Pools:   pools,
 		Bus:     bus,
 	}
 }
 
-func toUpstreamConfigs(configs *collectionmapping.OrderedMap[string, config.UpstreamConfig]) *collectionmapping.OrderedMap[string, Config] {
+// ConfigsFromUpstreamConfigs converts runtime config upstreams into client configs.
+func ConfigsFromUpstreamConfigs(configs *collectionmapping.OrderedMap[string, config.UpstreamConfig]) *collectionmapping.OrderedMap[string, Config] {
 	if configs == nil {
 		return collectionmapping.NewOrderedMap[string, Config]()
 	}
 	out := collectionmapping.NewOrderedMapWithCapacity[string, Config](configs.Len())
 	configs.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out.Set(alias, toUpstreamConfig(alias, cfg))
+		out.Set(alias, ConfigFromUpstreamConfig(alias, cfg))
 		return true
 	})
 	return out
 }
 
-func toUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
+// ConfigFromUpstreamConfig converts one runtime upstream config into a client config.
+func ConfigFromUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 	return Config{
 		Alias:            alias,
 		Registry:         cfg.Registry,

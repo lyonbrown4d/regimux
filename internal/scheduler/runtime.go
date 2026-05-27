@@ -33,7 +33,7 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 	cfg := deps.Config
 	logger := deps.Logger
 	cleanup := deps.Cleanup
-	prefetch := deps.Prefetch
+	prefetchService := deps.Prefetch
 	upstreamClient := deps.Upstream
 	metrics := deps.Metrics
 	if logger == nil {
@@ -43,7 +43,7 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 		cfg:      cfg,
 		logger:   logger.With("component", "scheduler"),
 		cleanup:  cleanup,
-		prefetch: prefetch,
+		prefetch: prefetchService,
 		upstream: upstreamClient,
 		metrics:  metrics,
 	}
@@ -52,9 +52,6 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 func (r *Runtime) Start(ctx context.Context) error {
 	if r == nil || !r.cfg.Scheduler.Enabled {
 		return nil
-	}
-	if ctx == nil {
-		ctx = context.Background()
 	}
 	options, err := r.schedulerOptions(ctx)
 	if err != nil {
@@ -86,9 +83,6 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	}
 	var stopErr error
 	if r.scheduler != nil {
-		if ctx == nil {
-			ctx = context.Background()
-		}
 		stopErr = r.scheduler.ShutdownWithContext(ctx)
 		r.scheduler = nil
 	}
@@ -138,7 +132,9 @@ func (r *Runtime) newRedisLocker(ctx context.Context) (goredis.UniversalClient, 
 	pingCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	if err := client.Ping(pingCtx).Err(); err != nil {
-		_ = client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
 		return nil, nil, oops.Wrapf(err, "ping scheduler redis locker")
 	}
 
@@ -150,7 +146,9 @@ func (r *Runtime) newRedisLocker(ctx context.Context) (goredis.UniversalClient, 
 	}
 	locker, err := redislock.NewRedisLockerWithOptions(client, lockOpts...)
 	if err != nil {
-		_ = client.Close()
+		if closeErr := client.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
 		return nil, nil, oops.Wrapf(err, "create scheduler redis locker")
 	}
 	return client, locker, nil

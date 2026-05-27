@@ -80,25 +80,9 @@ func TestCleanupServiceKeepsRecentAndManifestProtectedBlobs(t *testing.T) {
 	if err != nil {
 		t.Fatalf("cleanup blobs: %v", err)
 	}
-	if report.DeletedBlobs != 1 || report.RecentBlobs != 1 || report.ProtectedBlobs != 1 {
-		t.Fatalf("unexpected cleanup report: %#v", report)
-	}
-	for _, digest := range []string{recentDigest, manifestProtectedDigest} {
-		ok, err := objects.Exists(ctx, digest)
-		if err != nil {
-			t.Fatalf("object exists %s: %v", digest, err)
-		}
-		if !ok {
-			t.Fatalf("expected protected/recent object to remain: %s", digest)
-		}
-	}
-	ok, err := objects.Exists(ctx, repoOnlyDigest)
-	if err != nil {
-		t.Fatalf("object exists %s: %v", repoOnlyDigest, err)
-	}
-	if ok {
-		t.Fatalf("expected stale repo-only object to be deleted: %s", repoOnlyDigest)
-	}
+	assertCleanupReportCounts(t, report, 1, 1, 1)
+	assertObjectsExist(ctx, t, objects, recentDigest, manifestProtectedDigest)
+	assertObjectMissing(ctx, t, objects, repoOnlyDigest)
 }
 
 func TestCleanupServiceRespectsScanLimit(t *testing.T) {
@@ -160,4 +144,38 @@ func putCleanupBlob(
 		t.Fatalf("upsert cleanup blob: %v", err)
 	}
 	return digest
+}
+
+func assertCleanupReportCounts(t *testing.T, report *cache.CleanupReport, deleted, recent, protected int) {
+	t.Helper()
+
+	if report.DeletedBlobs != deleted || report.RecentBlobs != recent || report.ProtectedBlobs != protected {
+		t.Fatalf("unexpected cleanup report: %#v", report)
+	}
+}
+
+func assertObjectsExist(ctx context.Context, t *testing.T, objects object.Store, digests ...string) {
+	t.Helper()
+
+	for _, digest := range digests {
+		ok, err := objects.Exists(ctx, digest)
+		if err != nil {
+			t.Fatalf("object exists %s: %v", digest, err)
+		}
+		if !ok {
+			t.Fatalf("expected object to remain: %s", digest)
+		}
+	}
+}
+
+func assertObjectMissing(ctx context.Context, t *testing.T, objects object.Store, digest string) {
+	t.Helper()
+
+	ok, err := objects.Exists(ctx, digest)
+	if err != nil {
+		t.Fatalf("object exists %s: %v", digest, err)
+	}
+	if ok {
+		t.Fatalf("expected object to be deleted: %s", digest)
+	}
 }

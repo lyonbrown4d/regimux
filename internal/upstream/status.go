@@ -25,7 +25,8 @@ func (e *upstreamHTTPStatusError) Unwrap() error {
 	return e.err
 }
 
-func mapStatus(status int, kind string) error {
+// MapStatus maps an upstream HTTP status to a distribution error.
+func MapStatus(status int, kind string) error {
 	switch status {
 	case http.StatusUnauthorized:
 		return withUpstreamStatus(status, distribution.ErrUnauthorized)
@@ -44,6 +45,10 @@ func mapStatus(status int, kind string) error {
 		}
 		return withUpstreamStatus(status, distribution.ErrUpstream.WithDetail(map[string]any{"status": status, "kind": kind}))
 	}
+}
+
+func mapStatus(status int, kind string) error {
+	return MapStatus(status, kind)
 }
 
 func withUpstreamStatus(status int, err error) error {
