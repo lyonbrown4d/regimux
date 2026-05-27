@@ -127,8 +127,8 @@ func TestClientGetBlobStartsConcurrentBlobFailover(t *testing.T) {
 
 	fastSuccess := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		fastSuccessRequests.Add(1)
-		w.Header().Set("Docker-Content-Digest", digest)
-		w.Header().Set("Content-Length", strconv.Itoa(len(blobBody)))
+		w.Header().Set(distribution.HeaderDockerContentDigest, digest)
+		w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(blobBody)))
 		writeString(t, w, blobBody)
 	}))
 	defer fastSuccess.Close()
@@ -195,9 +195,9 @@ func healthyManifestHandler(t *testing.T, requests *atomic.Int32) http.HandlerFu
 		requests.Add(1)
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/manifests/latest", "manifest path")
 		body := `{"schemaVersion":2}`
-		w.Header().Set("Docker-Content-Digest", "sha256:abc")
-		w.Header().Set("Content-Type", distribution.MediaTypeDockerManifest)
-		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.Header().Set(distribution.HeaderDockerContentDigest, "sha256:abc")
+		w.Header().Set(distribution.HeaderContentType, distribution.MediaTypeDockerManifest)
+		w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(body)))
 		writeString(t, w, body)
 	}
 }

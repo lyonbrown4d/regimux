@@ -126,17 +126,17 @@ func challengeManifestHandler(t *testing.T, authURL string, requests *atomic.Int
 		t.Helper()
 		requests.Add(1)
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/manifests/latest", "manifest path")
-		requireEqual(t, r.Header.Get("Accept"), distribution.MediaTypeDockerManifest, "manifest accept")
+		requireEqual(t, r.Header.Get(distribution.HeaderAccept), distribution.MediaTypeDockerManifest, "manifest accept")
 		if requests.Load() == 1 {
-			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authURL))
+			w.Header().Set(distribution.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authURL))
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
-		requireEqual(t, r.Header.Get("Authorization"), "Bearer challenge-token", "manifest authorization")
+		requireEqual(t, r.Header.Get(distribution.HeaderAuthorization), "Bearer challenge-token", "manifest authorization")
 		body := `{"schemaVersion":2}`
-		w.Header().Set("Docker-Content-Digest", "sha256:abc")
-		w.Header().Set("Content-Type", distribution.MediaTypeDockerManifest)
-		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.Header().Set(distribution.HeaderDockerContentDigest, "sha256:abc")
+		w.Header().Set(distribution.HeaderContentType, distribution.MediaTypeDockerManifest)
+		w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(body)))
 		writeString(t, w, body)
 	}
 }
@@ -160,9 +160,9 @@ func cachedManifestHandler(t *testing.T, authURL string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		t.Helper()
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/manifests/latest", "manifest path")
-		got := r.Header.Get("Authorization")
+		got := r.Header.Get(distribution.HeaderAuthorization)
 		if got == "" {
-			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authURL))
+			w.Header().Set(distribution.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authURL))
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
@@ -208,9 +208,9 @@ func scopedManifestHandler(t *testing.T, authURL string) http.HandlerFunc {
 		t.Helper()
 		wantAuth, ok := expectedAuth[r.URL.Path]
 		requireEqual(t, ok, true, "known manifest path")
-		got := r.Header.Get("Authorization")
+		got := r.Header.Get(distribution.HeaderAuthorization)
 		if got == "" {
-			w.Header().Set("WWW-Authenticate", fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authURL))
+			w.Header().Set(distribution.HeaderWWWAuthenticate, fmt.Sprintf(`Bearer realm="%s/token",service="registry.test"`, authURL))
 			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}

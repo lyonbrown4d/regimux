@@ -11,7 +11,11 @@ import (
 	"resty.dev/v3"
 )
 
-const defaultUserAgent = "regimux/dev"
+const (
+	defaultUserAgent    = "regimux/dev"
+	registryAPIVersionPath = "/v2/"
+	tagsPath             = "tags/list"
+)
 
 func newHTTPClient(cfg Config) (clienthttp.Client, error) {
 	httpClient, err := clienthttp.New(clienthttp.Config{
@@ -78,9 +82,9 @@ func withHeader(key, value string) requestOption {
 func registryURL(registry, repo, operation, value string) string {
 	base := strings.TrimRight(registry, "/")
 	if value == "" {
-		return base + "/v2/" + strings.Trim(repo, "/") + "/" + operation
+		return base + registryAPIVersionPath + strings.Trim(repo, "/") + "/" + operation
 	}
-	return base + "/v2/" + strings.Trim(repo, "/") + "/" + operation + "/" + value
+	return base + registryAPIVersionPath + strings.Trim(repo, "/") + "/" + operation + "/" + value
 }
 
 func pullRepositoryScope(repo string) string {
@@ -95,7 +99,7 @@ func methodOr(method, fallback string) string {
 }
 
 func tagsURL(registry string, req ListTagsRequest) (string, error) {
-	requestURL := registryURL(registry, req.Repo, "tags/list", "")
+	requestURL := registryURL(registry, req.Repo, tagsPath, "")
 	parsed, err := url.Parse(requestURL)
 	if err != nil {
 		return "", wrapError(err, "parse upstream tags URL")

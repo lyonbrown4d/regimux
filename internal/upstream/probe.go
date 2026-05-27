@@ -87,7 +87,7 @@ func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime u
 	defer cancel()
 
 	startedAt := time.Now()
-	requestURL := strings.TrimRight(runtime.config.Registry, "/") + "/v2/"
+	requestURL := strings.TrimRight(runtime.config.Registry, "/") + registryAPIVersionPath
 	resp, err := c.execute(probeCtx, runtime, http.MethodGet, requestURL)
 	latency := time.Since(startedAt)
 	if err != nil {
@@ -103,7 +103,7 @@ func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime u
 	}
 
 	pool.recordProbeFailure(runtime)
-	err = closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, "probe"))
+	err = closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationPing))
 	c.logProbeResult(ctx, pool.alias, runtime, latency, err)
 	return err
 }

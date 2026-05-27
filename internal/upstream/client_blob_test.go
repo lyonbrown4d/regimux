@@ -11,6 +11,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func TestClientGetBlobPreservesHeadRangeAndBearerToken(t *testing.T) {
@@ -153,8 +154,8 @@ func blobBodyHandler(t *testing.T, digest, body string, probeDelay time.Duration
 			return
 		}
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/blobs/"+digest, "blob path")
-		w.Header().Set("Docker-Content-Digest", digest)
-		w.Header().Set("Content-Length", strconv.Itoa(len(body)))
+		w.Header().Set(distribution.HeaderDockerContentDigest, digest)
+		w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(body)))
 		writeString(t, w, body)
 	}
 }
@@ -165,10 +166,10 @@ func blobHeadHandler(t *testing.T, digest string) http.HandlerFunc {
 		t.Helper()
 		requireEqual(t, r.Method, http.MethodHead, "method")
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/blobs/"+digest, "blob path")
-		requireEqual(t, r.Header.Get("Range"), "bytes=2-5", "range")
-		requireEqual(t, r.Header.Get("Authorization"), "Bearer static-token", "authorization")
-		w.Header().Set("Docker-Content-Digest", digest)
-		w.Header().Set("Content-Length", "4")
+		requireEqual(t, r.Header.Get(distribution.HeaderRange), "bytes=2-5", "range")
+		requireEqual(t, r.Header.Get(distribution.HeaderAuthorization), "Bearer static-token", "authorization")
+		w.Header().Set(distribution.HeaderDockerContentDigest, digest)
+		w.Header().Set(distribution.HeaderContentLength, "4")
 		w.WriteHeader(http.StatusPartialContent)
 	}
 }

@@ -27,6 +27,10 @@ const (
 	operationBlob      = "blob"
 	operationTags      = "tags"
 	operationReferrers = "referrers"
+
+	endpointManifest  = "manifests"
+	endpointBlob      = "blobs"
+	endpointReferrers = "referrers"
 )
 
 type ClientDependencies struct {
@@ -86,7 +90,7 @@ func NewClientFromConfigs(
 
 func (c *Client) Ping(ctx context.Context, alias string) error {
 	return c.doWithFailover(ctx, alias, operationPing, func(runtime upstreamRuntime) error {
-		requestURL := strings.TrimRight(runtime.config.Registry, "/") + "/v2/"
+		requestURL := strings.TrimRight(runtime.config.Registry, "/") + registryAPIVersionPath
 		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, "")
 		if err != nil {
 			return err
@@ -102,7 +106,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 	var out *ManifestResponse
 	err := c.doWithFailover(ctx, req.UpstreamAlias, operationManifest, func(runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
-		requestURL := registryURL(runtime.config.Registry, req.Repo, "manifests", req.Reference)
+		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointManifest, req.Reference)
 		var opts []requestOption
 		if req.Accept != "" {
 			opts = append(opts, withHeader(distribution.HeaderAccept, req.Accept))
@@ -133,7 +137,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 	var out *BlobResponse
 	err := c.doWithFailover(ctx, req.UpstreamAlias, operationBlob, func(runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
-		requestURL := registryURL(runtime.config.Registry, req.Repo, "blobs", req.Digest)
+		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointBlob, req.Digest)
 		var opts []requestOption
 		if req.Range != nil {
 			opts = append(opts, withHeader(distribution.HeaderRange, req.Range.String()))
@@ -187,7 +191,7 @@ func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsRespon
 func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*ReferrersResponse, error) {
 	var out *ReferrersResponse
 	err := c.doWithFailover(ctx, req.UpstreamAlias, operationReferrers, func(runtime upstreamRuntime) error {
-		requestURL := registryURL(runtime.config.Registry, req.Repo, "referrers", req.Digest)
+		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointReferrers, req.Digest)
 		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
 		if err != nil {
 			return err
