@@ -24,6 +24,15 @@ func (p blobProxy) Get(ctx context.Context, req BlobRequest) (*BlobReadResult, e
 		}
 		return cached, err
 	}
+
+	if p.shouldStreamAndCache(req) {
+		result, err := p.fetchStreamAndStore(ctx, req)
+		if result != nil {
+			p.publishCacheAccess(ctx, req, result.Cache)
+		}
+		return result, err
+	}
+
 	if p.shouldBypassStore(req) {
 		result, err := p.fetchPassthrough(ctx, req)
 		if result != nil {
@@ -42,6 +51,14 @@ func (p blobProxy) shouldBypassStore(req BlobRequest) bool {
 	return p.metadata == nil || p.objects == nil || req.Method == http.MethodHead
 }
 
+func (p blobProxy) shouldStreamAndCache(req BlobRequest) bool {
+	return p.streamAndCache &&
+		req.Method != http.MethodHead &&
+		req.Range != nil &&
+		p.metadata != nil &&
+		p.objects != nil
+}
+
 func (p blobProxy) fetchStored(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
 	key := "blob:" + req.Digest
 	if p.group == nil {
@@ -55,6 +72,39 @@ func (p blobProxy) fetchStored(ctx context.Context, req BlobRequest) (*BlobReadR
 		return nil, wrapError(err, "coalesce blob request")
 	}
 	return p.openStored(ctx, req, CacheMiss)
+}
+
+func (p blobProxy) fetchStreamAndStore(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
+	if req.Range == nil || req.Method == http.MethodHead {
+		return nil, errorf("stream-and-cache range fetch requires range request")
+	}
+	resp, err := p.client.GetBlob(ctx, upstream.GetBlobRequest{
+		UpstreamAlias: req.UpstreamAlias,
+		Repo:          req.Repo,
+		Digest:        req.Digest,
+		Range:         req.Range,
+		Method:        req.Method,
+	})
+	if err != nil {
+		return nil, wrapError(err, "stream blob from upstream")
+	}
+	p.logBlobCacheHit(ctx, req, "stream_and_cache_range")
+	reader := resp.Body
+	if err := p.touchSharedBlobMetadata(ctx, req, time.Now().UTC()); err != nil {
+		if closeErr := closeHTTPBody(resp.Body, "blob stream response body"); closeErr != nil {
+			return nil, errors.Join(err, closeErr)
+		}
+		return nil, err
+	}
+	return &BlobReadResult{
+		Reader:  reader,
+		Digest:  resp.Digest,
+		Size:    resp.Size,
+		Range:   req.Range,
+		Status:  resp.StatusCode,
+		Headers: resp.Headers,
+		Cache:   CacheBypass,
+	}, nil
 }
 
 func (p blobProxy) fetchAndOpenStored(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
@@ -128,6 +178,15 @@ func (p blobProxy) lookupRepoBlob(ctx context.Context, req BlobRequest) (*BlobRe
 	if !ok {
 		return nil, false, nil
 	}
+	shouldVerify, err := p.shouldVerifySharedBlob(ctx, req)
+	if err != nil {
+		return nil, false, err
+	}
+	if shouldVerify {
+		if err := p.verifyRepoBlob(ctx, req); err != nil {
+			return nil, false, err
+		}
+	}
 	return p.openExistingStored(ctx, req, CacheHit)
 }
 
@@ -139,10 +198,106 @@ func (p blobProxy) lookupSharedBlob(ctx context.Context, req BlobRequest) (*Blob
 	if !exists {
 		return nil, false, nil
 	}
-	if err := p.verifyRepoBlob(ctx, req); err != nil {
+	p.logBlobCacheHit(ctx, req, "shared_object_hit")
+	shouldVerify, err := p.shouldVerifySharedBlob(ctx, req)
+	if err != nil {
 		return nil, false, err
 	}
+	if shouldVerify {
+		if err := p.verifyRepoBlob(ctx, req); err != nil {
+			return nil, false, err
+		}
+	}
 	return p.openExistingStored(ctx, req, CacheHit)
+}
+
+func (p blobProxy) shouldVerifySharedBlob(ctx context.Context, req BlobRequest) (bool, error) {
+	if p.verifyMembership <= 0 {
+		return false, nil
+	}
+	if p.metadata == nil {
+		return false, nil
+	}
+	record, ok, err := p.metadata.RepoBlob(ctx, meta.RepoBlobKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Digest:     req.Digest,
+	})
+	if err != nil {
+		return false, wrapError(err, "lookup shared blob verification record")
+	}
+	if !ok {
+		return true, nil
+	}
+	if record.LastVerifiedAt.IsZero() {
+		return true, nil
+	}
+	if now := time.Now().UTC(); now.Sub(record.LastVerifiedAt) >= p.verifyMembership {
+		return true, nil
+	}
+	p.logBlobCacheHit(ctx, req, "shared_object_verify_skipped")
+	return false, nil
+}
+
+func (p blobProxy) touchSharedBlobMetadata(ctx context.Context, req BlobRequest, now time.Time) error {
+	if p.metadata == nil {
+		return nil
+	}
+	blob, ok, err := p.metadata.Blob(ctx, meta.BlobKey{Digest: req.Digest})
+	if err != nil {
+		return wrapError(err, "lookup shared blob metadata")
+	}
+	if !ok {
+		return nil
+	}
+	blob.LastAccessAt = now
+	if _, err := p.metadata.UpsertBlob(ctx, *blob); err != nil {
+		return wrapError(err, "touch shared blob metadata")
+	}
+	repoBlob, ok, err := p.metadata.RepoBlob(ctx, meta.RepoBlobKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Digest:     req.Digest,
+	})
+	if err != nil {
+		return wrapError(err, "lookup shared repo blob metadata")
+	}
+	if !ok {
+		return nil
+	}
+	repoBlob.LastAccessAt = now
+	repoBlob.LastVerifiedAt = now
+	_, err = p.metadata.UpsertRepoBlob(ctx, *repoBlob)
+	if err != nil {
+		return wrapError(err, "touch shared repo blob metadata")
+	}
+	return nil
+}
+
+func (p blobProxy) logBlobCacheHit(ctx context.Context, req BlobRequest, reason string) {
+	if p.logger == nil {
+		return
+	}
+	p.logger.DebugContext(ctx,
+		"blob cache event",
+		"reason", reason,
+		"alias", req.UpstreamAlias,
+		"repo", req.Repo,
+		"digest", req.Digest,
+	)
+}
+
+func (p blobProxy) logBlobLookupSkip(ctx context.Context, req BlobRequest, reason string) {
+	if p.logger == nil {
+		return
+	}
+	p.logger.DebugContext(ctx,
+		"blob cache lookup skipped",
+		"reason", reason,
+		"alias", req.UpstreamAlias,
+		"repo", req.Repo,
+		"digest", req.Digest,
+	)
 }
 
 func (p blobProxy) openExistingStored(ctx context.Context, req BlobRequest, cacheStatus CacheStatus) (*BlobReadResult, bool, error) {
@@ -246,6 +401,7 @@ func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info 
 }
 
 func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus CacheStatus) (*BlobReadResult, error) {
+	p.logBlobLookupSkip(ctx, req, "read_cached_blob")
 	info, err := p.objects.Stat(ctx, req.Digest)
 	if err != nil {
 		return nil, wrapError(err, "stat stored blob object")

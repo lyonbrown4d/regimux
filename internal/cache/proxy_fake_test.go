@@ -3,7 +3,6 @@ package cache_test
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"strconv"
@@ -63,25 +62,44 @@ func (c *fakeRegistryClient) GetManifest(_ context.Context, req upstream.GetMani
 
 func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequest) (*upstream.BlobResponse, error) {
 	body := c.blobBody
+	headers := http.Header{
+		"Content-Type": {distribution.MediaTypeOctetStream},
+	}
+	contentLength := len(c.blobBody)
+
 	switch req.Method {
 	case http.MethodHead:
 		c.blobHeads++
 		body = nil
+		contentLength = 0
 	default:
 		c.blobGets++
 		if req.Range != nil {
-			return nil, errors.New("cache miss fetch should not forward client range")
+			resolved, resolveErr := req.Range.Resolve(int64(len(c.blobBody)))
+			if resolveErr != nil {
+				return nil, resolveErr
+			}
+			body = body[resolved.Start : resolved.End+1]
+			contentLength = len(body)
+			headers.Set("Content-Range", resolved.ContentRange(int64(len(c.blobBody))))
+			headers.Set("Content-Length", strconv.Itoa(contentLength))
+			return &upstream.BlobResponse{
+				Body:       io.NopCloser(bytes.NewReader(body)),
+				Digest:     c.blobDigest,
+				Size:       int64(contentLength),
+				StatusCode: http.StatusPartialContent,
+				Headers:    headers,
+			}, nil
 		}
 	}
+
+	headers.Set("Content-Length", strconv.Itoa(contentLength))
 	return &upstream.BlobResponse{
 		Body:       io.NopCloser(bytes.NewReader(body)),
 		Digest:     c.blobDigest,
-		Size:       int64(len(c.blobBody)),
+		Size:       int64(contentLength),
 		StatusCode: http.StatusOK,
-		Headers: http.Header{
-			"Content-Length": {strconv.Itoa(len(c.blobBody))},
-			"Content-Type":   {"application/octet-stream"},
-		},
+		Headers:    headers,
 	}, nil
 }
 

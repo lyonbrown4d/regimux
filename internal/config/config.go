@@ -360,6 +360,7 @@ func (c *Config) validateScheduler() error {
 	}{
 		{c.Scheduler.LockTTL < 0, oops.In("config").Errorf("scheduler.lock_ttl cannot be negative")},
 		{c.Scheduler.Cleanup.Interval < 0, oops.In("config").Errorf("scheduler.cleanup.interval cannot be negative")},
+		{c.Scheduler.Cleanup.MaxScan < 0, oops.In("config").Errorf("scheduler.cleanup.max_scan cannot be negative")},
 		{c.Scheduler.Cleanup.UnusedFor < 0, oops.In("config").Errorf("scheduler.cleanup.unused_for cannot be negative")},
 		{c.Scheduler.Cleanup.MaxDeletes < 0, oops.In("config").Errorf("scheduler.cleanup.max_deletes cannot be negative")},
 		{c.Scheduler.Prefetch.Interval < 0, oops.In("config").Errorf("scheduler.prefetch.interval cannot be negative")},

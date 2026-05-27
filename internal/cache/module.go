@@ -17,7 +17,8 @@ import (
 var Module = dix.NewModule("cache",
 	dix.Providers(
 		dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
-		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxy),
+		dix.Provider6[ProxyDependencies, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxyDependencies),
+		dix.Provider1[*Proxy, ProxyDependencies](NewProxy),
 		dix.Provider2[*CleanupService, meta.Store, object.Store](NewCleanupService),
 		dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
 			return proxy.Manifests()
@@ -79,20 +80,22 @@ func newBackend(cfg config.Config, logger *slog.Logger) (backend.Backend, error)
 	}
 }
 
-func newProxy(client upstream.RegistryClient, cacheBackend backend.Backend, metadata meta.Store, objects object.Store, cfg config.Config, bus events.Bus) *Proxy {
-	return NewProxy(
-		client,
-		WithBackend(cacheBackend),
-		WithMetadata(metadata),
-		WithObjects(objects),
-		WithEvents(bus),
-		WithManifestTTL(cfg.Cache.Manifest.TagTTL),
-		WithManifestStaleIfError(cfg.Cache.Manifest.StaleIfError),
-		WithManifestMaxStale(cfg.Cache.Manifest.MaxStale),
-		WithTagsTTL(cfg.Cache.Tags.TTL),
-		WithReferrersTTL(cfg.Cache.Referrers.TTL),
-		WithReferrersFallbackTag(cfg.Cache.Referrers.FallbackTag),
-	)
+func newProxyDependencies(
+	client upstream.RegistryClient,
+	cacheBackend backend.Backend,
+	metadata meta.Store,
+	objects object.Store,
+	cfg config.Config,
+	bus events.Bus,
+) ProxyDependencies {
+	return ProxyDependencies{
+		Client:    client,
+		Cache:     cacheBackend,
+		Metadata:  metadata,
+		Objects:   objects,
+		Config:    cfg,
+		Events:    bus,
+	}
 }
 
 func closeBackend(_ context.Context, backend backend.Backend) error {

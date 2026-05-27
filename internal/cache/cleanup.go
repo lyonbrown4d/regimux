@@ -17,6 +17,7 @@ type CleanupService struct {
 type CleanupOptions struct {
 	UnusedFor  time.Duration
 	MaxDeletes int
+	MaxScan    int
 	DryRun     bool
 	Now        time.Time
 }
@@ -58,6 +59,9 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 	if opts.UnusedFor <= 0 {
 		return nil, errorf("cleanup unused duration must be positive")
 	}
+	if opts.MaxScan < 0 {
+		return nil, errorf("cleanup scan limit cannot be negative")
+	}
 
 	now := opts.Now.UTC()
 	if now.IsZero() {
@@ -77,6 +81,10 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 	}
 	cutoff := now.Add(-opts.UnusedFor)
 	for _, blob := range blobs {
+		if opts.MaxScan > 0 && report.ScannedBlobs >= opts.MaxScan {
+			report.LimitReached = true
+			break
+		}
 		if err := ctx.Err(); err != nil {
 			return nil, wrapError(err, "cleanup context")
 		}

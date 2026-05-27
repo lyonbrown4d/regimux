@@ -106,6 +106,7 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 	report, err := r.cleanup.CleanupBlobs(ctx, cache.CleanupOptions{
 		UnusedFor:  r.cfg.Scheduler.Cleanup.UnusedFor,
 		MaxDeletes: r.cfg.Scheduler.Cleanup.MaxDeletes,
+		MaxScan:    r.cfg.Scheduler.Cleanup.MaxScan,
 		DryRun:     r.cfg.Scheduler.Cleanup.DryRun,
 	})
 	if err != nil {

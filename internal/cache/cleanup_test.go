@@ -101,6 +101,38 @@ func TestCleanupServiceKeepsRecentAndManifestProtectedBlobs(t *testing.T) {
 	}
 }
 
+func TestCleanupServiceRespectsScanLimit(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
+	metadata, objects := newTestStores(t)
+
+	putCleanupBlob(ctx, t, metadata, objects, []byte("first"), now.Add(-48*time.Hour))
+	putCleanupBlob(ctx, t, metadata, objects, []byte("second"), now.Add(-48*time.Hour))
+	putCleanupBlob(ctx, t, metadata, objects, []byte("third"), now.Add(-48*time.Hour))
+
+	report, err := cache.NewCleanupService(metadata, objects).CleanupBlobs(ctx, cache.CleanupOptions{
+		UnusedFor: 24 * time.Hour,
+		MaxScan:   2,
+		Now:       now,
+	})
+	if err != nil {
+		t.Fatalf("cleanup blobs: %v", err)
+	}
+	if report.ScannedBlobs != 2 || report.DeletedBlobs != 2 {
+		t.Fatalf("unexpected cleanup report: %#v", report)
+	}
+	if !report.LimitReached {
+		t.Fatalf("expected scan limit reached")
+	}
+	remaining, err := metadata.ListBlobs(ctx)
+	if err != nil {
+		t.Fatalf("list blobs: %v", err)
+	}
+	if got := len(remaining); got != 1 {
+		t.Fatalf("remaining blobs = %d, want 1", got)
+	}
+}
+
 func putCleanupBlob(
 	ctx context.Context,
 	t *testing.T,

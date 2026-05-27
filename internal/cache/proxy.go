@@ -3,6 +3,7 @@ package cache
 
 import (
 	"io"
+	"log/slog"
 	"mime"
 	"net/http"
 	"net/url"
@@ -10,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -30,101 +32,57 @@ type Proxy struct {
 	referrersTTL         time.Duration
 	referrersFallbackTag bool
 	events               events.Bus
+	blobStreamAndCache   bool
+	blobVerifyTTL        time.Duration
+	logger               *slog.Logger
 	manifestGroup        singleflight.Group
 	blobGroup            singleflight.Group
 }
 
-type Options struct {
+type ProxyDependencies struct {
+	Client               upstream.RegistryClient
 	Cache                backend.Backend
 	Metadata             meta.Store
 	Objects              object.Store
-	ManifestTTL          time.Duration
-	ManifestStaleIfError bool
-	ManifestMaxStale     time.Duration
-	TagsTTL              time.Duration
-	ReferrersTTL         time.Duration
-	ReferrersFallbackTag bool
+	Config               config.Config
 	Events               events.Bus
+	Logger               *slog.Logger
 }
 
-type Option func(*Proxy)
-
-func WithBackend(cache backend.Backend) Option {
-	return func(p *Proxy) {
-		p.cache = cache
-	}
-}
-
-func WithMetadata(metadata meta.Store) Option {
-	return func(p *Proxy) {
-		p.metadata = metadata
-	}
-}
-
-func WithObjects(objects object.Store) Option {
-	return func(p *Proxy) {
-		p.objects = objects
-	}
-}
-
-func WithManifestTTL(ttl time.Duration) Option {
-	return func(p *Proxy) {
-		p.manifestTTL = ttl
-	}
-}
-
-func WithManifestStaleIfError(enabled bool) Option {
-	return func(p *Proxy) {
-		p.manifestStaleIfError = enabled
-	}
-}
-
-func WithManifestMaxStale(ttl time.Duration) Option {
-	return func(p *Proxy) {
-		p.manifestMaxStale = ttl
-	}
-}
-
-func WithTagsTTL(ttl time.Duration) Option {
-	return func(p *Proxy) {
-		p.tagsTTL = ttl
-	}
-}
-
-func WithReferrersTTL(ttl time.Duration) Option {
-	return func(p *Proxy) {
-		p.referrersTTL = ttl
-	}
-}
-
-func WithReferrersFallbackTag(enabled bool) Option {
-	return func(p *Proxy) {
-		p.referrersFallbackTag = enabled
-	}
-}
-
-func WithEvents(bus events.Bus) Option {
-	return func(p *Proxy) {
-		p.events = bus
-	}
-}
-
-func NewProxy(client upstream.RegistryClient, opts ...Option) *Proxy {
+func NewProxy(deps ProxyDependencies) *Proxy {
 	p := &Proxy{
-		client:           client,
-		cache:            backend.Noop{},
-		manifestTTL:      defaultManifestTTL(),
-		manifestMaxStale: 168 * time.Hour,
-		tagsTTL:          5 * time.Minute,
-		referrersTTL:     5 * time.Minute,
+		client:              deps.Client,
+		cache:               deps.Cache,
+		metadata:            deps.Metadata,
+		objects:             deps.Objects,
+		events:              deps.Events,
+		logger:              deps.Logger,
+		manifestTTL:         defaultManifestTTL(),
+		manifestMaxStale:    168 * time.Hour,
+		blobVerifyTTL:       deps.Config.Cache.Blob.VerifyTTL,
+		tagsTTL:             5 * time.Minute,
+		referrersTTL:        5 * time.Minute,
+		manifestStaleIfError: deps.Config.Cache.Manifest.StaleIfError,
+		referrersFallbackTag: deps.Config.Cache.Referrers.FallbackTag,
+		blobStreamAndCache:  deps.Config.Cache.Blob.StreamAndCache,
 	}
-	for _, opt := range opts {
-		if opt != nil {
-			opt(p)
-		}
+	if deps.Config.Cache.Manifest.TagTTL > 0 {
+		p.manifestTTL = deps.Config.Cache.Manifest.TagTTL
+	}
+	if deps.Config.Cache.Manifest.MaxStale > 0 {
+		p.manifestMaxStale = deps.Config.Cache.Manifest.MaxStale
+	}
+	if deps.Config.Cache.Tags.TTL > 0 {
+		p.tagsTTL = deps.Config.Cache.Tags.TTL
+	}
+	if deps.Config.Cache.Referrers.TTL > 0 {
+		p.referrersTTL = deps.Config.Cache.Referrers.TTL
 	}
 	if p.cache == nil {
 		p.cache = backend.Noop{}
+	}
+	if p.logger == nil {
+		p.logger = slog.Default()
 	}
 	return p
 }
@@ -145,11 +103,14 @@ func (p *Proxy) Manifests() ManifestService {
 
 func (p *Proxy) Blobs() BlobService {
 	return blobProxy{
-		client:   p.client,
-		metadata: p.metadata,
-		objects:  p.objects,
-		events:   p.events,
-		group:    &p.blobGroup,
+		client:           p.client,
+		metadata:         p.metadata,
+		objects:          p.objects,
+		events:           p.events,
+		logger:           p.logger,
+		streamAndCache:   p.blobStreamAndCache,
+		verifyMembership:  p.blobVerifyTTL,
+		group:            &p.blobGroup,
 	}
 }
 
@@ -185,11 +146,14 @@ type manifestProxy struct {
 }
 
 type blobProxy struct {
-	client   upstream.RegistryClient
-	metadata meta.Store
-	objects  object.Store
-	events   events.Bus
-	group    *singleflight.Group
+	client          upstream.RegistryClient
+	metadata        meta.Store
+	objects         object.Store
+	events          events.Bus
+	logger          *slog.Logger
+	streamAndCache  bool
+	verifyMembership time.Duration
+	group           *singleflight.Group
 }
 
 type tagProxy struct {

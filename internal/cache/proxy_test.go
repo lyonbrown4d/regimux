@@ -9,10 +9,23 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
+
+func newTestProxy(client upstream.RegistryClient, metadata meta.Store, objects object.Store, cacheBackend backend.Backend, cfg config.Config) *cache.Proxy {
+	return cache.NewProxy(cache.ProxyDependencies{
+		Client:   client,
+		Cache:    cacheBackend,
+		Metadata: metadata,
+		Objects:  objects,
+		Config:   cfg,
+	})
+}
 
 func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	ctx := context.Background()
@@ -20,7 +33,7 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 	digest := testDigestFor(body)
 	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
 	metadata, objects := newTestStores(t)
-	proxy := cache.NewProxy(client, cache.WithMetadata(metadata), cache.WithObjects(objects))
+	proxy := newTestProxy(client, metadata, objects, nil, config.Config{})
 
 	httpRange := &reference.HTTPRange{Start: 2, End: 5}
 	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
@@ -67,7 +80,7 @@ func TestBlobProxyTouchesBlobAccessOnLocalHit(t *testing.T) {
 	digest := testDigestFor(body)
 	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
 	metadata, objects := newTestStores(t)
-	proxy := cache.NewProxy(client, cache.WithMetadata(metadata), cache.WithObjects(objects))
+	proxy := newTestProxy(client, metadata, objects, nil, config.Config{})
 
 	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
@@ -144,12 +157,18 @@ func TestManifestHeadMissDoesNotPoisonGetCache(t *testing.T) {
 		manifestMedia: distribution.MediaTypeDockerManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := cache.NewProxy(
+	proxy := newTestProxy(
 		client,
-		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		cache.WithMetadata(metadata),
-		cache.WithObjects(objects),
-		cache.WithManifestTTL(time.Minute),
+		metadata,
+		objects,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Manifest: config.ManifestCacheConfig{
+					TagTTL: time.Minute,
+				},
+			},
+		},
 	)
 
 	head, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
@@ -190,7 +209,7 @@ func TestManifestProxyRecordsPullAndUpstreamPullTimes(t *testing.T) {
 		manifestMedia: distribution.MediaTypeOCIManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := cache.NewProxy(client, cache.WithMetadata(metadata), cache.WithObjects(objects))
+	proxy := newTestProxy(client, metadata, objects, nil, config.Config{})
 	req := cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/node",
@@ -231,14 +250,20 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 		manifestMedia: distribution.MediaTypeDockerManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := cache.NewProxy(
+	proxy := newTestProxy(
 		client,
-		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		cache.WithMetadata(metadata),
-		cache.WithObjects(objects),
-		cache.WithManifestTTL(time.Nanosecond),
-		cache.WithManifestStaleIfError(true),
-		cache.WithManifestMaxStale(time.Hour),
+		metadata,
+		objects,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Manifest: config.ManifestCacheConfig{
+					TagTTL:       time.Nanosecond,
+					MaxStale:     time.Hour,
+					StaleIfError: true,
+				},
+			},
+		},
 	)
 
 	first, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
@@ -281,12 +306,18 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 		manifestMedia: distribution.MediaTypeDockerManifest,
 	}
 	metadata, objects := newTestStores(t)
-	proxy := cache.NewProxy(
+	proxy := newTestProxy(
 		client,
-		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		cache.WithMetadata(metadata),
-		cache.WithObjects(objects),
-		cache.WithManifestTTL(time.Nanosecond),
+		metadata,
+		objects,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Manifest: config.ManifestCacheConfig{
+					TagTTL: time.Nanosecond,
+				},
+			},
+		},
 	)
 
 	first, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
@@ -327,7 +358,19 @@ func TestTagProxyCachesAndRewritesLink(t *testing.T) {
 			"Link": {"<https://registry-1.docker.io/v2/library/alpine/tags/list?n=100&last=3.20>; rel=\"next\""},
 		},
 	}
-	proxy := cache.NewProxy(client, cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})), cache.WithTagsTTL(time.Minute))
+	proxy := newTestProxy(
+		client,
+		nil,
+		nil,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Tags: config.TagsCacheConfig{
+					TTL: time.Minute,
+				},
+			},
+		},
+	)
 
 	first, err := proxy.Tags().List(ctx, cache.TagRequest{UpstreamAlias: "hub", Repo: "library/alpine", N: "100"})
 	if err != nil {
@@ -361,11 +404,19 @@ func TestReferrersFallbackTagIsCached(t *testing.T) {
 		manifestBody:  []byte(`{"schemaVersion":2,"manifests":[]}`),
 		manifestMedia: distribution.MediaTypeOCIIndex,
 	}
-	proxy := cache.NewProxy(
+	proxy := newTestProxy(
 		client,
-		cache.WithBackend(backend.NewMemory(backend.MemoryOptions{})),
-		cache.WithReferrersTTL(time.Minute),
-		cache.WithReferrersFallbackTag(true),
+		nil,
+		nil,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Referrers: config.ReferrersConfig{
+					TTL:         time.Minute,
+					FallbackTag: true,
+				},
+			},
+		},
 	)
 
 	first, err := proxy.Referrers().Get(ctx, cache.ReferrerRequest{UpstreamAlias: "hub", Repo: "library/alpine", Digest: digest})
@@ -388,5 +439,187 @@ func TestReferrersFallbackTagIsCached(t *testing.T) {
 	}
 	if client.referrersGets != 1 || client.manifestGets != 1 {
 		t.Fatalf("unexpected upstream calls: referrers=%d manifests=%d", client.referrersGets, client.manifestGets)
+	}
+}
+
+func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	proxy := newTestProxy(
+		client,
+		metadata,
+		objects,
+		nil,
+		config.Config{
+			Cache: config.CacheConfig{
+				Blob: config.BlobCacheConfig{
+					StreamAndCache: true,
+				},
+			},
+		},
+	)
+
+	httpRange := &reference.HTTPRange{Start: 2, End: 5}
+	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Range:         httpRange,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first blob get: %v", err)
+	}
+	assertRangeBlobBypass(t, first)
+	if client.blobGets != 1 {
+		t.Fatalf("expected one upstream range GET, got %d", client.blobGets)
+	}
+
+	exists, err := objects.Exists(ctx, digest)
+	if err != nil {
+		t.Fatalf("check object exists: %v", err)
+	}
+	if exists {
+		t.Fatalf("blob should not be stored during range stream-and-cache path")
+	}
+
+	second, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("second blob get: %v", err)
+	}
+	bodyBuf := readAndClose(t, second.Reader)
+	if second.Cache != cache.CacheMiss || !bytes.Equal(bodyBuf, body) {
+		t.Fatalf("unexpected second blob result: cache=%s body=%q", second.Cache, bodyBuf)
+	}
+	if client.blobGets != 2 {
+		t.Fatalf("expected two upstream GETs, got %d", client.blobGets)
+	}
+
+	exists, err = objects.Exists(ctx, digest)
+	if err != nil {
+		t.Fatalf("check object exists after full fetch: %v", err)
+	}
+	if !exists {
+		t.Fatalf("blob should be stored after full fetch")
+	}
+
+	third, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Range:         httpRange,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("third blob get: %v", err)
+	}
+	assertRangeBlobHit(t, third)
+	if client.blobGets != 2 {
+		t.Fatalf("unexpected additional upstream GET after cached range: %d", client.blobGets)
+	}
+}
+
+func TestBlobProxySkipsVerifyForRecentSharedBlobWithinTTL(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	verifyTTL := 5 * time.Minute
+	proxy := newTestProxy(
+		client,
+		metadata,
+		objects,
+		nil,
+		config.Config{
+			Cache: config.CacheConfig{
+				Blob: config.BlobCacheConfig{
+					VerifyTTL: verifyTTL,
+				},
+			},
+		},
+	)
+
+	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first blob get: %v", err)
+	}
+	_ = readAndClose(t, first.Reader)
+	if first.Cache != cache.CacheMiss {
+		t.Fatalf("first cache status = %s, want miss", first.Cache)
+	}
+	if client.blobGets != 1 || client.blobHeads != 0 {
+		t.Fatalf("unexpected first blob request counters: gets=%d heads=%d", client.blobGets, client.blobHeads)
+	}
+
+	record, ok, err := metadata.RepoBlob(ctx, meta.RepoBlobKey{
+		Alias:      "hub",
+		Repository: "library/alpine",
+		Digest:     digest,
+	})
+	if err != nil || !ok {
+		t.Fatalf("repo blob lookup: ok=%v err=%v", ok, err)
+	}
+	record.LastVerifiedAt = time.Now().UTC().Add(-verifyTTL / 2)
+	if _, err := metadata.UpsertRepoBlob(ctx, *record); err != nil {
+		t.Fatalf("refresh repo blob verify time: %v", err)
+	}
+
+	second, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("second blob get: %v", err)
+	}
+	_ = readAndClose(t, second.Reader)
+	if second.Cache != cache.CacheHit {
+		t.Fatalf("second cache status = %s, want hit", second.Cache)
+	}
+	if client.blobGets != 1 {
+		t.Fatalf("unexpected upstream GET count after hit: %d", client.blobGets)
+	}
+	if client.blobHeads != 0 {
+		t.Fatalf("expected verify skip within TTL, got head count %d", client.blobHeads)
+	}
+
+	record.LastVerifiedAt = time.Now().UTC().Add(-(verifyTTL + time.Second))
+	if _, err := metadata.UpsertRepoBlob(ctx, *record); err != nil {
+		t.Fatalf("expire repo blob verify time: %v", err)
+	}
+
+	third, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("third blob get: %v", err)
+	}
+	_ = readAndClose(t, third.Reader)
+	if third.Cache != cache.CacheHit {
+		t.Fatalf("third cache status = %s, want hit", third.Cache)
+	}
+	if client.blobGets != 1 {
+		t.Fatalf("unexpected upstream GET count after TTL retry: %d", client.blobGets)
+	}
+	if client.blobHeads != 1 {
+		t.Fatalf("expected one upstream HEAD after TTL expiry, got %d", client.blobHeads)
 	}
 }

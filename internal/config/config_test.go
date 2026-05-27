@@ -34,11 +34,17 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	if hub.Blob.MirrorPolicy != "ordered" || hub.Blob.TopN != 3 || hub.Blob.MaxConcurrencyPerEndpoint != 0 {
 		t.Fatalf("unexpected upstream blob defaults: %#v", hub.Blob)
 	}
+	if cfg.Cache.Blob.VerifyTTL != 0 {
+		t.Fatalf("unexpected blob verify ttl default: %s", cfg.Cache.Blob.VerifyTTL)
+	}
 	if hub.Probe.Enabled || hub.Probe.Interval != 30*time.Second || hub.Probe.Timeout != 3*time.Second || hub.Probe.Cooldown != 2*time.Minute {
 		t.Fatalf("unexpected upstream probe defaults: %#v", hub.Probe)
 	}
 	if cfg.Worker.ProbeConcurrency != 16 || cfg.Worker.PrefetchConcurrency != 8 {
 		t.Fatalf("unexpected worker defaults: %#v", cfg.Worker)
+	}
+	if cfg.Scheduler.Cleanup.MaxScan != 0 {
+		t.Fatalf("unexpected cleanup max_scan default: %d", cfg.Scheduler.Cleanup.MaxScan)
 	}
 }
 
@@ -239,6 +245,12 @@ func TestValidateUpstreamBlobAndProbeRejectsInvalidValues(t *testing.T) {
 			name: "worker prefetch concurrency",
 			mutate: func(cfg *config.Config) {
 				cfg.Worker.PrefetchConcurrency = -1
+			},
+		},
+		{
+			name: "cleanup max_scan",
+			mutate: func(cfg *config.Config) {
+				cfg.Scheduler.Cleanup.MaxScan = -1
 			},
 		},
 	}

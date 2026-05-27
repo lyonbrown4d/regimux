@@ -66,6 +66,8 @@ type ManifestCacheConfig struct {
 }
 
 type BlobCacheConfig struct {
+	// VerifyTTL controls how often shared blobs are re-verified against upstream.
+	VerifyTTL     time.Duration `json:"verify_ttl"      koanf:"verify_ttl"      mapstructure:"verify_ttl"      validate:"min=0"`
 	StreamAndCache bool `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
 }
 
@@ -105,6 +107,7 @@ type SchedulerConfig struct {
 type SchedulerCleanupConfig struct {
 	Enabled     bool          `json:"enabled"      koanf:"enabled"      mapstructure:"enabled"`
 	Interval    time.Duration `json:"interval"     koanf:"interval"     mapstructure:"interval" validate:"min=0"`
+	MaxScan     int           `json:"max_scan"     koanf:"max_scan"     mapstructure:"max_scan" validate:"min=0"`
 	UnusedFor   time.Duration `json:"unused_for"   koanf:"unused_for"   mapstructure:"unused_for" validate:"min=0"`
 	MaxDeletes  int           `json:"max_deletes"  koanf:"max_deletes"  mapstructure:"max_deletes" validate:"min=0"`
 	DryRun      bool          `json:"dry_run"      koanf:"dry_run"      mapstructure:"dry_run"`
