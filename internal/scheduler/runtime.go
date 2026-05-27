@@ -27,13 +27,12 @@ type Runtime struct {
 	redis     goredis.UniversalClient
 }
 
-func NewRuntime(
-	cfg config.Config,
-	logger *slog.Logger,
-	cleanup *cache.CleanupService,
-	prefetch *prefetch.Service,
-	upstreamClient *upstream.Client,
-) *Runtime {
+func NewRuntime(deps RuntimeDependencies) *Runtime {
+	cfg := deps.Config
+	logger := deps.Logger
+	cleanup := deps.Cleanup
+	prefetch := deps.Prefetch
+	upstreamClient := deps.Upstream
 	if logger == nil {
 		logger = slog.Default()
 	}

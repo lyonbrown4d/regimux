@@ -54,15 +54,24 @@ type RunReport struct {
 	PrefetchedRoutes []string
 }
 
-func NewService(metadata meta.Store, tags cache.TagService, manifests cache.ManifestService, logger *slog.Logger, workers *worker.Pools) *Service {
+type ServiceDependencies struct {
+	Metadata  meta.Store
+	Tags      cache.TagService
+	Manifests cache.ManifestService
+	Logger    *slog.Logger
+	Workers   *worker.Pools
+}
+
+func NewService(deps ServiceDependencies) *Service {
+	logger := deps.Logger
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &Service{
-		metadata:  metadata,
-		tags:      tags,
-		manifests: manifests,
-		workers:   workers,
+		metadata:  deps.Metadata,
+		tags:      deps.Tags,
+		manifests: deps.Manifests,
+		workers:   deps.Workers,
 		logger:    logger.With("component", prefetchLogGroup),
 	}
 }

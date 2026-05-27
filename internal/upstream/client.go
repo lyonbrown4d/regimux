@@ -21,7 +21,18 @@ type Client struct {
 	logger     *slog.Logger
 }
 
-func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *slog.Logger, pools *worker.Pools, bus events.Bus) *Client {
+type ClientDependencies struct {
+	Configs *collectionmapping.OrderedMap[string, Config]
+	Logger  *slog.Logger
+	Pools   *worker.Pools
+	Bus     events.Bus
+}
+
+func NewClient(deps ClientDependencies) *Client {
+	configs := deps.Configs
+	logger := deps.Logger
+	pools := deps.Pools
+	bus := deps.Bus
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -49,6 +60,20 @@ func NewClient(configs *collectionmapping.OrderedMap[string, Config], logger *sl
 		events:     bus,
 		logger:     logger,
 	}
+}
+
+func NewClientFromConfigs(
+	configs *collectionmapping.OrderedMap[string, Config],
+	logger *slog.Logger,
+	pools *worker.Pools,
+	bus events.Bus,
+) *Client {
+	return NewClient(ClientDependencies{
+		Configs: configs,
+		Logger:  logger,
+		Pools:   pools,
+		Bus:     bus,
+	})
 }
 
 func (c *Client) Ping(ctx context.Context, alias string) error {

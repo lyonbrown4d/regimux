@@ -12,12 +12,25 @@ import (
 
 var Module = dix.NewModule("upstream",
 	dix.Providers(
-		dix.Provider4[*Client, config.Config, *slog.Logger, *worker.Pools, events.Bus](newClient, dix.As[RegistryClient]()),
+		dix.Provider1[*Client, ClientDependencies](NewClient, dix.As[RegistryClient]()),
+		dix.Provider4[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus](
+			newClientDependencies,
+		),
 	),
 )
 
-func newClient(cfg config.Config, logger *slog.Logger, pools *worker.Pools, bus events.Bus) *Client {
-	return NewClient(toUpstreamConfigs(cfg.OrderedUpstreams()), logger, pools, bus)
+func newClientDependencies(
+	cfg config.Config,
+	logger *slog.Logger,
+	pools *worker.Pools,
+	bus events.Bus,
+) ClientDependencies {
+	return ClientDependencies{
+		Configs: toUpstreamConfigs(cfg.OrderedUpstreams()),
+		Logger:  logger,
+		Pools:   pools,
+		Bus:     bus,
+	}
 }
 
 func toUpstreamConfigs(configs *collectionmapping.OrderedMap[string, config.UpstreamConfig]) *collectionmapping.OrderedMap[string, Config] {
