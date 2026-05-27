@@ -9,55 +9,74 @@ import (
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
-func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn func(upstreamRuntime) error) error {
-	pool, err := c.upstream(alias)
-	if err != nil {
-		return err
-	}
-	runtimes := pool.runtimesForOperation(operation)
-	if len(runtimes) == 0 {
-		return distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + alias)
-	}
-	if operation == operationBlob {
-		c.logBlobEndpointPlan(ctx, alias, pool, runtimes)
-		if pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
-			return c.doWithConcurrentFailover(ctx, alias, operation, pool, runtimes, fn)
-		}
-	}
-	return c.doWithSequentialFailover(ctx, alias, operation, pool, runtimes, fn)
+type failoverRequest struct {
+	alias     string
+	operation string
+	digest    string
 }
 
-func (c *Client) doWithSequentialFailover(ctx context.Context, alias, operation string, pool *upstreamPool, runtimes []upstreamRuntime, fn func(upstreamRuntime) error) error {
+func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn func(upstreamRuntime) error) (func(), error) {
+	pool, err := c.upstream(req.alias)
+	if err != nil {
+		return nil, err
+	}
+	selection := pool.selectRuntimes(req.operation, req.digest)
+
+	runtimes := selection.runtimes
+	if len(runtimes) == 0 {
+		selection.Release()
+		return nil, distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + req.alias)
+	}
+	var failoverErr error
+	if req.operation == operationBlob {
+		c.logBlobEndpointPlan(ctx, req, pool, runtimes)
+		if pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
+			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
+		} else {
+			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+		}
+	} else {
+		failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+	}
+	if failoverErr != nil {
+		selection.Release()
+		return nil, failoverErr
+	}
+	return selection.Release, nil
+}
+
+func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime, fn func(upstreamRuntime) error) error {
 	var lastErr error
 	for i := range runtimes {
 		runtime := runtimes[i]
-		lastErr = runAgainstRuntime(ctx, pool, operation, runtime, fn)
+		lastErr = runAgainstRuntime(ctx, pool, req.operation, runtime, fn)
 		if lastErr == nil {
 			return nil
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return wrapError(ctxErr, "upstream %s context", operation)
+			return wrapError(ctxErr, "upstream %s context", req.operation)
 		}
 		if !shouldFailover(lastErr) {
 			return lastErr
 		}
-		if operation == operationBlob {
+		if req.operation == operationBlob {
 			pool.recordProbeFailure(runtime)
 		}
-		c.logFailover(alias, operation, runtime, lastErr, i < len(runtimes)-1)
-		c.publishFailover(ctx, alias, operation, runtime, lastErr, i < len(runtimes)-1)
+		c.logFailover(req, runtime, lastErr, i < len(runtimes)-1)
+		c.publishFailover(ctx, req, runtime, lastErr, i < len(runtimes)-1)
 	}
 	return lastErr
 }
 
-func (c *Client) logBlobAttempt(ctx context.Context, alias string, runtime upstreamRuntime, attempt, total, maxAttempts int) {
+func (c *Client) logBlobAttempt(ctx context.Context, req failoverRequest, runtime upstreamRuntime, attempt, total, maxAttempts int) {
 	if c == nil || c.logger == nil {
 		return
 	}
 	c.logger.DebugContext(
 		ctx,
 		"attempting upstream blob endpoint",
-		"alias", alias,
+		"alias", req.alias,
+		"digest", req.digest,
 		"registry", runtime.config.Registry,
 		"attempt", attempt,
 		"total_attempts", total,
@@ -65,14 +84,15 @@ func (c *Client) logBlobAttempt(ctx context.Context, alias string, runtime upstr
 	)
 }
 
-func (c *Client) logBlobAttemptFailure(ctx context.Context, alias string, runtime upstreamRuntime, err error, attempt, total, remaining int) {
+func (c *Client) logBlobAttemptFailure(ctx context.Context, req failoverRequest, runtime upstreamRuntime, err error, attempt, total, remaining int) {
 	if c == nil || c.logger == nil {
 		return
 	}
 	c.logger.WarnContext(
 		ctx,
 		"upstream blob endpoint failed",
-		"alias", alias,
+		"alias", req.alias,
+		"digest", req.digest,
 		"registry", runtime.config.Registry,
 		"attempt", attempt,
 		"total_attempts", total,
@@ -81,14 +101,15 @@ func (c *Client) logBlobAttemptFailure(ctx context.Context, alias string, runtim
 	)
 }
 
-func (c *Client) logBlobEndpointSelected(ctx context.Context, alias string, runtime upstreamRuntime, attempt, total int) {
+func (c *Client) logBlobEndpointSelected(ctx context.Context, req failoverRequest, runtime upstreamRuntime, attempt, total int) {
 	if c == nil || c.logger == nil {
 		return
 	}
 	c.logger.InfoContext(
 		ctx,
 		"selected upstream blob endpoint",
-		"alias", alias,
+		"alias", req.alias,
+		"digest", req.digest,
 		"registry", runtime.config.Registry,
 		"attempt", attempt,
 		"total_attempts", total,
@@ -107,7 +128,7 @@ func runAgainstRuntime(ctx context.Context, pool *upstreamPool, operation string
 	return fn(runtime)
 }
 
-func (c *Client) publishFailover(ctx context.Context, alias, operation string, runtime upstreamRuntime, err error, hasNext bool) {
+func (c *Client) publishFailover(ctx context.Context, req failoverRequest, runtime upstreamRuntime, err error, hasNext bool) {
 	if c == nil || c.events == nil {
 		return
 	}
@@ -116,8 +137,8 @@ func (c *Client) publishFailover(ctx context.Context, alias, operation string, r
 		message = err.Error()
 	}
 	if publishErr := events.Publish(ctx, c.events, events.UpstreamFailover{
-		Alias:     alias,
-		Operation: operation,
+		Alias:     req.alias,
+		Operation: req.operation,
 		Registry:  runtime.config.Registry,
 		Error:     message,
 		HasNext:   hasNext,
@@ -126,26 +147,33 @@ func (c *Client) publishFailover(ctx context.Context, alias, operation string, r
 	}
 }
 
-func (c *Client) logFailover(alias, operation string, runtime upstreamRuntime, err error, hasNext bool) {
+func (c *Client) logFailover(req failoverRequest, runtime upstreamRuntime, err error, hasNext bool) {
 	if !hasNext || c.logger == nil {
 		return
 	}
-	c.logger.Warn(
-		"upstream endpoint failed; trying next endpoint",
-		"alias", alias,
-		"operation", operation,
+	attrs := []any{
+		"alias", req.alias,
+		"operation", req.operation,
 		"registry", runtime.config.Registry,
 		"error", err,
+	}
+	if req.digest != "" {
+		attrs = append(attrs, "digest", req.digest)
+	}
+	c.logger.Warn(
+		"upstream endpoint failed; trying next endpoint",
+		attrs...,
 	)
 }
 
-func (c *Client) logBlobEndpointPlan(ctx context.Context, alias string, pool *upstreamPool, runtimes []upstreamRuntime) {
+func (c *Client) logBlobEndpointPlan(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime) {
 	if c == nil || c.logger == nil || pool == nil {
 		return
 	}
 	c.logger.DebugContext(ctx,
 		"selected upstream endpoints for blob request",
-		"alias", alias,
+		"alias", req.alias,
+		"digest", req.digest,
 		"blob_mirror_policy", pool.blobPolicy,
 		"blob_top_n", pool.blobTopN,
 		"blob_max_concurrency_per_endpoint", pool.blobLimit,

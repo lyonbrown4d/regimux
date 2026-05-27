@@ -20,6 +20,7 @@ type blobFailoverRunner struct {
 	cancel     context.CancelFunc
 	alias      string
 	operation  string
+	digest     string
 	pool       *upstreamPool
 	runtimes   []upstreamRuntime
 	fn         func(upstreamRuntime) error
@@ -33,15 +34,14 @@ type blobFailoverRunner struct {
 
 func (c *Client) doWithConcurrentFailover(
 	ctx context.Context,
-	alias string,
-	operation string,
+	req failoverRequest,
 	pool *upstreamPool,
 	runtimes []upstreamRuntime,
 	fn func(upstreamRuntime) error,
 ) error {
 	maxAttempts := pool.blobAttemptConcurrency()
 	if maxAttempts <= 1 {
-		return c.doWithSequentialFailover(ctx, alias, operation, pool, runtimes, fn)
+		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 	}
 	if maxAttempts > len(runtimes) {
 		maxAttempts = len(runtimes)
@@ -53,8 +53,9 @@ func (c *Client) doWithConcurrentFailover(
 		ctx:         ctx,
 		attemptCtx:  attemptCtx,
 		cancel:      cancel,
-		alias:       alias,
-		operation:   operation,
+		alias:       req.alias,
+		operation:   req.operation,
+		digest:      req.digest,
 		pool:        pool,
 		runtimes:    runtimes,
 		fn:          fn,
@@ -95,7 +96,8 @@ func (r *blobFailoverRunner) startNext() bool {
 	if !ok {
 		return false
 	}
-	r.client.logBlobAttempt(r.ctx, r.alias, runtime, attempt, len(r.runtimes), r.maxAttempts)
+	req := failoverRequest{alias: r.alias, operation: r.operation, digest: r.digest}
+	r.client.logBlobAttempt(r.ctx, req, runtime, attempt, len(r.runtimes), r.maxAttempts)
 	go func() {
 		r.results <- attemptResult{
 			runtime: runtime,
@@ -121,8 +123,9 @@ func (r *blobFailoverRunner) nextRuntime() (upstreamRuntime, int, bool) {
 
 func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	remaining, inFlightRemaining, hasNext := r.finishAttempt()
+	req := failoverRequest{alias: r.alias, operation: r.operation, digest: r.digest}
 	if result.err == nil {
-		r.client.logBlobEndpointSelected(r.ctx, r.alias, result.runtime, result.attempt, len(r.runtimes))
+		r.client.logBlobEndpointSelected(r.ctx, req, result.runtime, result.attempt, len(r.runtimes))
 		r.cancel()
 		return true, nil
 	}
@@ -135,9 +138,9 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	}
 
 	r.pool.recordProbeFailure(result.runtime)
-	r.client.logBlobAttemptFailure(r.ctx, r.alias, result.runtime, result.err, result.attempt, len(r.runtimes), remaining+inFlightRemaining)
-	r.client.logFailover(r.alias, r.operation, result.runtime, result.err, hasNext)
-	r.client.publishFailover(r.ctx, r.alias, r.operation, result.runtime, result.err, hasNext)
+	r.client.logBlobAttemptFailure(r.ctx, req, result.runtime, result.err, result.attempt, len(r.runtimes), remaining+inFlightRemaining)
+	r.client.logFailover(req, result.runtime, result.err, hasNext)
+	r.client.publishFailover(r.ctx, req, result.runtime, result.err, hasNext)
 	if hasNext {
 		r.startNext()
 	}

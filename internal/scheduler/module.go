@@ -20,6 +20,7 @@ type PrefetchServiceDependencies struct {
 	Metadata  meta.Store
 	Tags      cache.TagService
 	Manifests cache.ManifestService
+	Blobs     cache.BlobService
 	Logger    *slog.Logger
 	Pools     *worker.Pools
 }
@@ -35,7 +36,7 @@ type RuntimeDependencies struct {
 
 var Module = dix.NewModule("scheduler",
 	dix.Providers(
-		dix.Provider5[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, *slog.Logger, *worker.Pools](
+		dix.Provider6[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
 			newPrefetchServiceDependencies,
 		),
 		dix.Provider6[RuntimeDependencies, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client, *observability.Metrics](
@@ -55,6 +56,7 @@ func NewPrefetchService(deps PrefetchServiceDependencies) *prefetch.Service {
 		Metadata:  deps.Metadata,
 		Tags:      deps.Tags,
 		Manifests: deps.Manifests,
+		Blobs:     deps.Blobs,
 		Logger:    deps.Logger,
 		Workers:   deps.Pools,
 	})
@@ -64,6 +66,7 @@ func newPrefetchServiceDependencies(
 	metadata meta.Store,
 	tags cache.TagService,
 	manifests cache.ManifestService,
+	blobs cache.BlobService,
 	logger *slog.Logger,
 	pools *worker.Pools,
 ) PrefetchServiceDependencies {
@@ -71,6 +74,7 @@ func newPrefetchServiceDependencies(
 		Metadata:  metadata,
 		Tags:      tags,
 		Manifests: manifests,
+		Blobs:     blobs,
 		Logger:    logger,
 		Pools:     pools,
 	}

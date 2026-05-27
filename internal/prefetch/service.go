@@ -3,6 +3,7 @@ package prefetch
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -27,6 +28,7 @@ type Service struct {
 	metadata  meta.Store
 	tags      cache.TagService
 	manifests cache.ManifestService
+	blobs     cache.BlobService
 	workers   *worker.Pools
 	logger    *slog.Logger
 }
@@ -55,6 +57,7 @@ type ServiceDependencies struct {
 	Metadata  meta.Store
 	Tags      cache.TagService
 	Manifests cache.ManifestService
+	Blobs     cache.BlobService
 	Logger    *slog.Logger
 	Workers   *worker.Pools
 }
@@ -68,20 +71,15 @@ func NewService(deps ServiceDependencies) *Service {
 		metadata:  deps.Metadata,
 		tags:      deps.Tags,
 		manifests: deps.Manifests,
+		blobs:     deps.Blobs,
 		workers:   deps.Workers,
 		logger:    logger.With("component", prefetchLogGroup),
 	}
 }
 
 func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) {
-	if ctx == nil {
-		return nil, cacheError("prefetch context is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return nil, cacheWrap(err, "prefetch context")
-	}
-	if s == nil || s.metadata == nil || s.tags == nil || s.manifests == nil {
-		return nil, cacheError("prefetch service is not configured")
+	if err := s.validateRun(ctx); err != nil {
+		return nil, err
 	}
 	opts = normalizeRunOptions(opts)
 
@@ -98,24 +96,47 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 	}
 	groups := groupPullRecords(records)
 	report.Repositories = len(groups)
+	if err := s.prefetchGroups(ctx, groups, opts, report); err != nil {
+		return nil, err
+	}
+	return report, nil
+}
+
+func (s *Service) validateRun(ctx context.Context) error {
+	if ctx == nil {
+		return cacheError("prefetch context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return cacheWrap(err, "prefetch context")
+	}
+	if s == nil || s.metadata == nil || s.tags == nil || s.manifests == nil {
+		return cacheError("prefetch service is not configured")
+	}
+	return nil
+}
+
+func (s *Service) prefetchGroups(ctx context.Context, groups map[repoKey][]meta.PullRecord, opts RunOptions, report *RunReport) error {
 	for route, group := range groups {
 		if err := ctx.Err(); err != nil {
-			return nil, cacheWrap(err, "prefetch context")
+			return cacheWrap(err, "prefetch context")
 		}
-		prefetchedRoutes, candidates, failed := s.prefetchRepository(ctx, route, group, opts)
+		prefetchedRoutes, candidates, failed, err := s.prefetchRepository(ctx, route, group, opts)
+		if err != nil {
+			return err
+		}
 		report.Prefetched += len(prefetchedRoutes)
 		report.Candidates += candidates
 		report.Failed += failed
 		report.PrefetchedRoutes = append(report.PrefetchedRoutes, prefetchedRoutes...)
 	}
-	return report, nil
+	return nil
 }
 
-func (s *Service) prefetchRepository(ctx context.Context, route repoKey, records []meta.PullRecord, opts RunOptions) ([]string, int, int) {
+func (s *Service) prefetchRepository(ctx context.Context, route repoKey, records []meta.PullRecord, opts RunOptions) ([]string, int, int, error) {
 	tags, err := s.availableTags(ctx, route, opts.TagsPageSize)
 	if err != nil {
 		s.logger.WarnContext(ctx, "prefetch tags discovery failed", "alias", route.alias, "repository", route.repo, "error", err)
-		return nil, 0, 1
+		return nil, 0, 1, nil
 	}
 	candidates := GenerateCandidates(toCandidateRecords(records), tags, Options{
 		MaxCandidates:      opts.MaxCandidatesPerRepo,
@@ -131,9 +152,12 @@ func (s *Service) prefetchRepository(ctx context.Context, route repoKey, records
 		tasks = append(tasks, s.prefetchTask(opts, candidates[i], &failed, &mu, &prefetched))
 	}
 	if err := worker.RunAll(ctx, s.prefetchPool(), tasks); err != nil {
+		if isContextError(err) {
+			return nil, len(candidates), int(failed.Load()), cacheWrap(err, "prefetch repository")
+		}
 		s.logger.DebugContext(ctx, "prefetch repository completed with failures", "error", err)
 	}
-	return prefetched, len(candidates), int(failed.Load())
+	return prefetched, len(candidates), int(failed.Load()), nil
 }
 
 func (s *Service) prefetchTask(
@@ -144,21 +168,25 @@ func (s *Service) prefetchTask(
 	prefetched *[]string,
 ) func(context.Context) error {
 	return func(taskCtx context.Context) error {
-		if err := s.prefetchCandidate(taskCtx, opts, candidate); err != nil {
+		result, err := s.prefetchCandidate(taskCtx, opts, candidate)
+		if err != nil {
 			failed.Add(1)
-			s.logPrefetchFailure(taskCtx, candidate, err)
-			return err
+			s.logPrefetchFailure(taskCtx, candidate, result, err)
+			if isContextError(err) {
+				return err
+			}
+			return nil
 		}
 		mu.Lock()
 		*prefetched = append(*prefetched, candidate.Alias+"/"+candidate.Repo+":"+candidate.Tag)
 		mu.Unlock()
-		s.logPrefetchSuccess(taskCtx, candidate)
+		s.logPrefetchSuccess(taskCtx, candidate, result)
 		return nil
 	}
 }
 
-func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, candidate Candidate) error {
-	_, err := s.manifests.Get(ctx, cache.ManifestRequest{
+func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, candidate Candidate) (prefetchResult, error) {
+	manifest, err := s.manifests.Get(ctx, cache.ManifestRequest{
 		UpstreamAlias:  candidate.Alias,
 		Repo:           candidate.Repo,
 		Reference:      candidate.Tag,
@@ -167,27 +195,35 @@ func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, candid
 		SkipPullRecord: true,
 	})
 	if err != nil {
-		return cacheWrap(err, "prefetch manifest")
+		return prefetchResult{}, cacheWrap(err, "prefetch manifest")
 	}
-	return nil
+	return s.prefetchManifestArtifacts(ctx, opts, candidate, candidate.Tag, manifest, 0)
 }
 
-func (s *Service) logPrefetchFailure(ctx context.Context, candidate Candidate, err error) {
-	s.logger.WarnContext(ctx, "prefetch manifest failed",
+func (s *Service) logPrefetchFailure(ctx context.Context, candidate Candidate, result prefetchResult, err error) {
+	s.logger.WarnContext(ctx, "prefetch candidate failed",
 		"alias", candidate.Alias,
 		"repository", candidate.Repo,
 		"reference", candidate.Tag,
+		"digest", result.manifestDigest,
+		"layer_count", result.layerCount,
+		"blob_count", result.blobCount,
+		"child_manifest_count", result.childManifestCount,
 		"reason", candidate.Reason,
 		"score", candidate.Score,
 		"error", err,
 	)
 }
 
-func (s *Service) logPrefetchSuccess(ctx context.Context, candidate Candidate) {
-	s.logger.InfoContext(ctx, "prefetched manifest",
+func (s *Service) logPrefetchSuccess(ctx context.Context, candidate Candidate, result prefetchResult) {
+	s.logger.InfoContext(ctx, "prefetched manifest artifacts",
 		"alias", candidate.Alias,
 		"repository", candidate.Repo,
 		"reference", candidate.Tag,
+		"digest", result.manifestDigest,
+		"layer_count", result.layerCount,
+		"blob_count", result.blobCount,
+		"child_manifest_count", result.childManifestCount,
 		"reason", candidate.Reason,
 		"score", candidate.Score,
 	)
@@ -221,4 +257,8 @@ func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int
 type repoKey struct {
 	alias string
 	repo  string
+}
+
+func isContextError(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

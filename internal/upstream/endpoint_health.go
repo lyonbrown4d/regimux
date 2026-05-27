@@ -165,15 +165,6 @@ func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes []upstreamRuntime
 	return candidates
 }
 
-func (t *EndpointHealthTracker) rankRuntimes(runtimes []upstreamRuntime, now time.Time) []upstreamRuntime {
-	candidates := t.rankRuntimeCandidates(runtimes, now)
-	out := make([]upstreamRuntime, 0, len(candidates))
-	for i := range candidates {
-		out = append(out, candidates[i].runtime)
-	}
-	return out
-}
-
 func (t *EndpointHealthTracker) stateLocked(registry string) *endpointHealthState {
 	if t.states == nil {
 		t.states = make(map[string]*endpointHealthState)

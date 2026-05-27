@@ -32,6 +32,7 @@ type upstreamPool struct {
 	nextBlob        int
 	limiters        map[string]chan struct{}
 	health          *EndpointHealthTracker
+	scheduler       *layerScheduler
 	probeConfig     ProbeConfig
 }
 
@@ -52,6 +53,9 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 		blobMaxAttempts: cfg.Blob.MaxConcurrentAttempts,
 		probeConfig:     cfg.Probe,
 		health: NewEndpointHealthTracker(EndpointHealthOptions{
+			Cooldown: cfg.Probe.Cooldown,
+		}),
+		scheduler: newLayerScheduler(EndpointHealthOptions{
 			Cooldown: cfg.Probe.Cooldown,
 		}),
 	}
@@ -130,24 +134,42 @@ func normalizeBlobMirrorPolicy(policy, fallback string) string {
 	}
 }
 
-func (p *upstreamPool) runtimesForOperation(operation string) []upstreamRuntime {
-	if p == nil {
-		return nil
-	}
-	if operation == operationBlob {
-		return p.blobRuntimes()
-	}
-	return p.runtimesForPolicy(p.policy, false)
+type runtimeSelection struct {
+	runtimes []upstreamRuntime
+	release  func()
 }
 
-func (p *upstreamPool) blobRuntimes() []upstreamRuntime {
+func newRuntimeSelection(runtimes []upstreamRuntime, release func()) runtimeSelection {
+	if release == nil {
+		release = func() {}
+	}
+	return runtimeSelection{runtimes: runtimes, release: release}
+}
+
+func (s runtimeSelection) Release() {
+	if s.release != nil {
+		s.release()
+	}
+}
+
+func (p *upstreamPool) selectRuntimes(operation, digest string) runtimeSelection {
+	if p == nil {
+		return newRuntimeSelection(nil, nil)
+	}
+	if operation == operationBlob {
+		return p.selectBlobRuntimes(digest)
+	}
+	return newRuntimeSelection(p.runtimesForPolicy(p.policy, false), nil)
+}
+
+func (p *upstreamPool) selectBlobRuntimes(digest string) runtimeSelection {
 	switch p.blobPolicy {
 	case mirrorPolicyRoundRobin:
-		return p.runtimesForPolicy(mirrorPolicyRoundRobin, true)
+		return newRuntimeSelection(p.runtimesForPolicy(mirrorPolicyRoundRobin, true), nil)
 	case mirrorPolicyLatency:
-		return p.latencyRuntimes()
+		return p.selectLatencyBlobRuntimes(digest)
 	default:
-		return p.runtimesForPolicy(mirrorPolicyOrdered, true)
+		return newRuntimeSelection(p.runtimesForPolicy(mirrorPolicyOrdered, true), nil)
 	}
 }
 
@@ -164,28 +186,13 @@ func (p *upstreamPool) runtimesForPolicy(policy string, blob bool) []upstreamRun
 	return out.Values()
 }
 
-func (p *upstreamPool) latencyRuntimes() []upstreamRuntime {
+func (p *upstreamPool) selectLatencyBlobRuntimes(digest string) runtimeSelection {
 	if len(p.runtimes) <= 1 {
-		return p.runtimes
+		return newRuntimeSelection(p.runtimes, nil)
 	}
-	ranked := p.health.rankRuntimes(p.runtimes, time.Now())
-	topN := p.blobTopN
-	if topN <= 0 || topN > len(ranked) {
-		topN = len(ranked)
-	}
-	if topN <= 1 {
-		return ranked
-	}
-
-	start := p.nextOffset(topN, true)
-	out := collectionlist.NewListWithCapacity[upstreamRuntime](len(ranked))
-	for i := range topN {
-		out.Add(ranked[(start+i)%topN])
-	}
-	for i := topN; i < len(ranked); i++ {
-		out.Add(ranked[i])
-	}
-	return out.Values()
+	now := time.Now()
+	candidates := p.health.rankRuntimeCandidates(p.runtimes, now)
+	return p.scheduler.schedule(digest, candidates, p.blobTopN, p.blobAttemptConcurrency(), now)
 }
 
 func (p *upstreamPool) nextOffset(modulo int, blob bool) int {

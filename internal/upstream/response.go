@@ -6,6 +6,7 @@ import (
 	"mime"
 	"net/http"
 	"strconv"
+	"sync"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"resty.dev/v3"
@@ -15,6 +16,39 @@ type upstreamResponse struct {
 	Body       io.ReadCloser
 	Header     http.Header
 	StatusCode int
+}
+
+type releaseReadCloser struct {
+	body    io.ReadCloser
+	release func()
+	once    sync.Once
+}
+
+func newReleaseReadCloser(body io.ReadCloser, release func()) io.ReadCloser {
+	if body == nil || release == nil {
+		return body
+	}
+	return &releaseReadCloser{body: body, release: release}
+}
+
+func (r *releaseReadCloser) Read(p []byte) (int, error) {
+	n, err := r.body.Read(p)
+	if err == nil {
+		return n, nil
+	}
+	if errors.Is(err, io.EOF) {
+		return n, io.EOF
+	}
+	return n, wrapError(err, "read upstream response body")
+}
+
+func (r *releaseReadCloser) Close() error {
+	err := r.body.Close()
+	r.once.Do(r.release)
+	if err != nil {
+		return wrapError(err, "close upstream response body")
+	}
+	return nil
 }
 
 func rawUpstreamResponse(resp *resty.Response) (upstreamResponse, error) {

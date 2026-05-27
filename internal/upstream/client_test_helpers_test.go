@@ -46,7 +46,7 @@ func writeJSON(t *testing.T, w http.ResponseWriter, value any) {
 
 func writeString(t *testing.T, w http.ResponseWriter, value string) {
 	t.Helper()
-	if _, err := io.WriteString(w, value); err != nil {
+	if _, err := strings.NewReader(value).WriteTo(w); err != nil {
 		t.Fatalf("write response body: %v", err)
 	}
 }
