@@ -14,8 +14,14 @@ import (
 
 var Module = dix.NewModule("store",
 	dix.Providers(
-		dix.ProviderErr2[meta.Store, config.Config, *slog.Logger](newMetadataStore, dix.Eager()),
-		dix.ProviderErr1[object.Store, config.Config](newObjectStore, dix.Eager()),
+		dix.Provider1[config.StoreMetaConfig, config.Config](func(cfg config.Config) config.StoreMetaConfig {
+			return cfg.Store.Meta
+		}),
+		dix.Provider1[config.StoreObjectConfig, config.Config](func(cfg config.Config) config.StoreObjectConfig {
+			return cfg.Store.Object
+		}),
+		dix.ProviderErr2[meta.Store, config.StoreMetaConfig, *slog.Logger](NewMetadataStore, dix.Eager()),
+		dix.ProviderErr1[object.Store, config.StoreObjectConfig](NewObjectStore, dix.Eager()),
 	),
 	dix.Hooks(
 		dix.OnStop[meta.Store](
@@ -26,16 +32,16 @@ var Module = dix.NewModule("store",
 	),
 )
 
-func newMetadataStore(cfg config.Config, logger *slog.Logger) (meta.Store, error) {
-	store, err := meta.OpenBbolt(cfg.Store.Meta.Path, logger)
+func NewMetadataStore(cfg config.StoreMetaConfig, logger *slog.Logger) (meta.Store, error) {
+	store, err := meta.OpenBbolt(cfg.Path, logger)
 	if err != nil {
 		return nil, oops.Wrapf(err, "open metadata store")
 	}
 	return store, nil
 }
 
-func newObjectStore(cfg config.Config) (object.Store, error) {
-	store, err := object.New(cfg.Store.Object.Driver, cfg.Store.Object.Path)
+func NewObjectStore(cfg config.StoreObjectConfig) (object.Store, error) {
+	store, err := object.New(cfg.Driver, cfg.Path)
 	if err != nil {
 		return nil, oops.Wrapf(err, "create object store")
 	}

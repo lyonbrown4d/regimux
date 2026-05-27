@@ -16,8 +16,11 @@ import (
 
 var Module = dix.NewModule("cache",
 	dix.Providers(
-		dix.ProviderErr2[backend.Backend, config.Config, *slog.Logger](newBackend, dix.Eager()),
-		dix.Provider6[ProxyDependencies, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.Config, events.Bus](newProxyDependencies),
+		dix.Provider1[config.CacheConfig, config.Config](func(cfg config.Config) config.CacheConfig {
+			return cfg.Cache
+		}),
+		dix.ProviderErr2[backend.Backend, config.CacheConfig, *slog.Logger](newBackend, dix.Eager()),
+		dix.Provider6[ProxyDependencies, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.CacheConfig, events.Bus](newProxyDependencies),
 		dix.Provider1[*Proxy, ProxyDependencies](NewProxy),
 		dix.Provider2[*CleanupService, meta.Store, object.Store](NewCleanupService),
 		dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
@@ -42,17 +45,17 @@ var Module = dix.NewModule("cache",
 	),
 )
 
-func newBackend(cfg config.Config, logger *slog.Logger) (backend.Backend, error) {
-	switch cfg.Cache.Backend {
+func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, error) {
+	switch cfg.Backend {
 	case "redis":
 		cache, err := backend.NewRedis(backend.KVOptions{
-			Addrs:    cfg.Cache.Redis.Addrs,
-			Username: cfg.Cache.Redis.Username,
-			Password: cfg.Cache.Redis.Password,
-			DB:       cfg.Cache.Redis.DB,
-			Prefix:   cfg.Cache.Prefix,
+			Addrs:    cfg.Redis.Addrs,
+			Username: cfg.Redis.Username,
+			Password: cfg.Redis.Password,
+			DB:       cfg.Redis.DB,
+			Prefix:   cfg.Prefix,
 			Logger:   logger,
-			Debug:    cfg.Cache.Redis.Debug,
+			Debug:    cfg.Redis.Debug,
 		})
 		if err != nil {
 			return nil, oops.Wrapf(err, "create redis cache backend")
@@ -60,13 +63,13 @@ func newBackend(cfg config.Config, logger *slog.Logger) (backend.Backend, error)
 		return cache, nil
 	case "valkey":
 		cache, err := backend.NewValkey(backend.KVOptions{
-			Addrs:    cfg.Cache.Valkey.Addrs,
-			Username: cfg.Cache.Valkey.Username,
-			Password: cfg.Cache.Valkey.Password,
-			DB:       cfg.Cache.Valkey.DB,
-			Prefix:   cfg.Cache.Prefix,
+			Addrs:    cfg.Valkey.Addrs,
+			Username: cfg.Valkey.Username,
+			Password: cfg.Valkey.Password,
+			DB:       cfg.Valkey.DB,
+			Prefix:   cfg.Prefix,
 			Logger:   logger,
-			Debug:    cfg.Cache.Valkey.Debug,
+			Debug:    cfg.Valkey.Debug,
 		})
 		if err != nil {
 			return nil, oops.Wrapf(err, "create valkey cache backend")
@@ -74,8 +77,8 @@ func newBackend(cfg config.Config, logger *slog.Logger) (backend.Backend, error)
 		return cache, nil
 	default:
 		return backend.NewMemory(backend.MemoryOptions{
-			MaxItems: cfg.Cache.Memory.MaxItems,
-			Prefix:   cfg.Cache.Prefix,
+			MaxItems: cfg.Memory.MaxItems,
+			Prefix:   cfg.Prefix,
 		}), nil
 	}
 }
@@ -85,16 +88,16 @@ func newProxyDependencies(
 	cacheBackend backend.Backend,
 	metadata meta.Store,
 	objects object.Store,
-	cfg config.Config,
+	cacheCfg config.CacheConfig,
 	bus events.Bus,
 ) ProxyDependencies {
 	return ProxyDependencies{
-		Client:    client,
-		Cache:     cacheBackend,
-		Metadata:  metadata,
-		Objects:   objects,
-		Config:    cfg,
-		Events:    bus,
+		Client:      client,
+		Cache:       cacheBackend,
+		Metadata:    metadata,
+		Objects:     objects,
+		CacheConfig: cacheCfg,
+		Events:      bus,
 	}
 }
 

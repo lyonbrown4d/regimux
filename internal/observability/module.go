@@ -12,7 +12,10 @@ import (
 
 var Module = dix.NewModule("observability",
 	dix.Providers(
-		dix.ProviderErr1[*slog.Logger, config.Config](newLogger),
+		dix.Provider1[config.LogConfig, config.Config](func(cfg config.Config) config.LogConfig {
+			return cfg.Log
+		}),
+		dix.ProviderErr1[*slog.Logger, config.LogConfig](NewLogger),
 	),
 	dix.Hooks(
 		dix.OnStop[*slog.Logger](
@@ -22,10 +25,6 @@ var Module = dix.NewModule("observability",
 		),
 	),
 )
-
-func newLogger(cfg config.Config) (*slog.Logger, error) {
-	return NewLogger(cfg.Log)
-}
 
 func closeLogger(_ context.Context, logger *slog.Logger) error {
 	if logger == nil {

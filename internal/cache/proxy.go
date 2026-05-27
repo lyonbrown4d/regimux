@@ -40,43 +40,43 @@ type Proxy struct {
 }
 
 type ProxyDependencies struct {
-	Client               upstream.RegistryClient
-	Cache                backend.Backend
-	Metadata             meta.Store
-	Objects              object.Store
-	Config               config.Config
-	Events               events.Bus
-	Logger               *slog.Logger
+	Client      upstream.RegistryClient
+	Cache       backend.Backend
+	Metadata    meta.Store
+	Objects     object.Store
+	CacheConfig config.CacheConfig
+	Events      events.Bus
+	Logger      *slog.Logger
 }
 
 func NewProxy(deps ProxyDependencies) *Proxy {
 	p := &Proxy{
-		client:              deps.Client,
-		cache:               deps.Cache,
-		metadata:            deps.Metadata,
-		objects:             deps.Objects,
-		events:              deps.Events,
-		logger:              deps.Logger,
-		manifestTTL:         defaultManifestTTL(),
-		manifestMaxStale:    168 * time.Hour,
-		blobVerifyTTL:       deps.Config.Cache.Blob.VerifyTTL,
-		tagsTTL:             5 * time.Minute,
-		referrersTTL:        5 * time.Minute,
-		manifestStaleIfError: deps.Config.Cache.Manifest.StaleIfError,
-		referrersFallbackTag: deps.Config.Cache.Referrers.FallbackTag,
-		blobStreamAndCache:  deps.Config.Cache.Blob.StreamAndCache,
+		client:               deps.Client,
+		cache:                deps.Cache,
+		metadata:             deps.Metadata,
+		objects:              deps.Objects,
+		events:               deps.Events,
+		logger:               deps.Logger,
+		manifestTTL:          defaultManifestTTL(),
+		manifestMaxStale:     168 * time.Hour,
+		blobVerifyTTL:        deps.CacheConfig.Blob.VerifyTTL,
+		tagsTTL:              5 * time.Minute,
+		referrersTTL:         5 * time.Minute,
+		manifestStaleIfError: deps.CacheConfig.Manifest.StaleIfError,
+		referrersFallbackTag: deps.CacheConfig.Referrers.FallbackTag,
+		blobStreamAndCache:   deps.CacheConfig.Blob.StreamAndCache,
 	}
-	if deps.Config.Cache.Manifest.TagTTL > 0 {
-		p.manifestTTL = deps.Config.Cache.Manifest.TagTTL
+	if deps.CacheConfig.Manifest.TagTTL > 0 {
+		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
 	}
-	if deps.Config.Cache.Manifest.MaxStale > 0 {
-		p.manifestMaxStale = deps.Config.Cache.Manifest.MaxStale
+	if deps.CacheConfig.Manifest.MaxStale > 0 {
+		p.manifestMaxStale = deps.CacheConfig.Manifest.MaxStale
 	}
-	if deps.Config.Cache.Tags.TTL > 0 {
-		p.tagsTTL = deps.Config.Cache.Tags.TTL
+	if deps.CacheConfig.Tags.TTL > 0 {
+		p.tagsTTL = deps.CacheConfig.Tags.TTL
 	}
-	if deps.Config.Cache.Referrers.TTL > 0 {
-		p.referrersTTL = deps.Config.Cache.Referrers.TTL
+	if deps.CacheConfig.Referrers.TTL > 0 {
+		p.referrersTTL = deps.CacheConfig.Referrers.TTL
 	}
 	if p.cache == nil {
 		p.cache = backend.Noop{}
@@ -109,7 +109,7 @@ func (p *Proxy) Blobs() BlobService {
 		events:           p.events,
 		logger:           p.logger,
 		streamAndCache:   p.blobStreamAndCache,
-		verifyMembership:  p.blobVerifyTTL,
+		verifyMembership: p.blobVerifyTTL,
 		group:            &p.blobGroup,
 	}
 }
@@ -146,14 +146,14 @@ type manifestProxy struct {
 }
 
 type blobProxy struct {
-	client          upstream.RegistryClient
-	metadata        meta.Store
-	objects         object.Store
-	events          events.Bus
-	logger          *slog.Logger
-	streamAndCache  bool
+	client           upstream.RegistryClient
+	metadata         meta.Store
+	objects          object.Store
+	events           events.Bus
+	logger           *slog.Logger
+	streamAndCache   bool
 	verifyMembership time.Duration
-	group           *singleflight.Group
+	group            *singleflight.Group
 }
 
 type tagProxy struct {

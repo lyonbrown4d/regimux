@@ -26,7 +26,10 @@ var EndpointsModule = dix.NewModule("api-endpoints",
 
 var Module = dix.NewModule("api",
 	dix.Providers(
-		dix.Provider3[*Server, config.Config, *slog.Logger, *collectionlist.List[httpx.Endpoint]](
+		dix.Provider1[config.ServerConfig, config.Config](func(cfg config.Config) config.ServerConfig {
+			return cfg.Server
+		}),
+		dix.Provider3[*Server, config.ServerConfig, *slog.Logger, *collectionlist.List[httpx.Endpoint]](
 			newServer,
 			dix.Eager(),
 		),
@@ -37,14 +40,14 @@ var Module = dix.NewModule("api",
 	),
 )
 
-func newServer(cfg config.Config, logger *slog.Logger, endpoints *collectionlist.List[httpx.Endpoint]) *Server {
+func newServer(cfg config.ServerConfig, logger *slog.Logger, endpoints *collectionlist.List[httpx.Endpoint]) *Server {
 	var values []httpx.Endpoint
 	if endpoints != nil {
 		values = endpoints.Values()
 	}
 	return NewServer(Options{
-		Listen:      cfg.Server.Listen,
-		PublicURL:   cfg.Server.PublicURL,
+		Listen:      cfg.Listen,
+		PublicURL:   cfg.PublicURL,
 		Logger:      logger,
 		Endpoints:   values,
 		PrintRoutes: false,
