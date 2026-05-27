@@ -6,8 +6,6 @@ import (
 	"log/slog"
 )
 
-var version = "dev"
-
 func main() {
 	if err := newRootCommand().Execute(); err != nil {
 		slog.Error("regimuxd failed", "error", err)

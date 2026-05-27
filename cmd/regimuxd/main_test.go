@@ -17,7 +17,7 @@ func TestBuildAppValidates(t *testing.T) {
 	}
 	configPath := writeTestConfig(t, cfg)
 
-	if err := buildApp(configPath, "test").Validate(); err != nil {
+	if err := buildApp(configPath).Validate(); err != nil {
 		t.Fatalf("validate app graph: %v", err)
 	}
 }
@@ -34,7 +34,7 @@ func TestBuildAppFailsWhenEagerProviderConstructionFails(t *testing.T) {
 	}
 	configPath := writeTestConfig(t, cfg)
 
-	_, err := buildApp(configPath, "test").Build()
+	_, err := buildApp(configPath).Build()
 	if err == nil {
 		t.Fatal("expected app build to fail")
 	}

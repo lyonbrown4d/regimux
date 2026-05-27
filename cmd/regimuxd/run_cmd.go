@@ -20,20 +20,22 @@ import (
 )
 
 func run(ctx context.Context, configPath string, args ...string) error {
-	app := buildApp(configPath, version, args...)
+	app := buildApp(configPath, args...)
 	if err := app.ValidateContext(ctx); err != nil {
 		return oops.Wrapf(err, "validate application")
 	}
 	return app.RunContext(ctx)
 }
 
-func buildApp(configPath string, version string, args ...string) *dix.App {
+func buildApp(configPath string, args ...string) *dix.App {
+	version := build.VersionFromBuildInfo()
+
 	configModule := config.Module(
 		configx.WithFiles(configPath),
 		configx.WithArgs(args...),
 	)
 	observabilityModule := observability.Module
-	buildModule := build.Module(version)
+	buildModule := build.Module
 	eventsModule := events.Module
 	workerModule := worker.Module
 	upstreamModule := upstream.Module

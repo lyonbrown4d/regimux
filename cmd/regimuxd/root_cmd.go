@@ -2,6 +2,8 @@ package main
 
 import (
 	"fmt"
+
+	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/spf13/cobra"
 )
 
@@ -16,7 +18,7 @@ func newRootCommand() *cobra.Command {
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if showVersion {
-				if _, err := fmt.Fprintln(cmd.OutOrStdout(), version); err != nil {
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), build.VersionFromBuildInfo()); err != nil {
 					return err
 				}
 				return nil
