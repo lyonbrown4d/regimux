@@ -66,7 +66,7 @@ func buildLoadOptions(path string, args ...string) ([]configx.Option, error) {
 func baseLoadOptions() []configx.Option {
 	return []configx.Option{
 		formathcl.WithHCLSupport(),
-		configx.WithDefaults(defaultValues()),
+		configx.WithTypedDefaults(defaultConfig()),
 		configx.WithDotenv(),
 		configx.WithIgnoreDotenvError(true),
 		configx.WithEnvPrefix(envPrefix),

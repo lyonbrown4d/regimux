@@ -23,7 +23,7 @@ This repository currently contains a runnable skeleton based on the design docum
 Run locally:
 
 ```bash
-go run ./cmd/regimuxd --config configs/regimux.hcl
+go run ./cmd/regimuxd --config configs/regimux.minimal.hcl
 ```
 
 Then try:
@@ -33,3 +33,7 @@ curl -i http://localhost:5000/v2/
 curl -i -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
   http://localhost:5000/v2/hub/library/alpine/manifests/latest
 ```
+
+配置文件示例：
+- 最小化：`configs/regimux.minimal.hcl`（只覆盖启动监听和 `hub` 上游）
+- 完整：`configs/regimux.full.hcl`（包含所有可配置项，适合直接复用）
