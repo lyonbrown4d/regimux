@@ -37,3 +37,9 @@ curl -i -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.doc
 配置文件示例：
 - 最小化：`configs/regimux.minimal.hcl`（只覆盖启动监听和 `hub` 上游）
 - 完整：`configs/regimux.full.hcl`（包含所有可配置项，适合直接复用）
+
+命令行覆盖配置（由 configx 解析）：
+
+```bash
+go run ./cmd/regimuxd --config configs/regimux.minimal.hcl --server.listen=:6000 --worker.prefetch_concurrency=4
+```
