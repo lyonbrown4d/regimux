@@ -3,6 +3,7 @@ package scheduler
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
@@ -103,6 +104,7 @@ func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler)
 }
 
 func (r *Runtime) runCleanup(ctx context.Context) error {
+	startedAt := time.Now()
 	report, err := r.cleanup.CleanupBlobs(ctx, cache.CleanupOptions{
 		UnusedFor:  r.cfg.Scheduler.Cleanup.UnusedFor,
 		MaxDeletes: r.cfg.Scheduler.Cleanup.MaxDeletes,
@@ -113,6 +115,7 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		return oops.Wrapf(err, "run cleanup job")
 	}
 	r.logger.InfoContext(ctx, "cleanup job completed",
+		"duration_ms", time.Since(startedAt).Milliseconds(),
 		"dry_run", report.DryRun,
 		"scanned_blobs", report.ScannedBlobs,
 		"eligible_blobs", report.EligibleBlobs,
@@ -124,17 +127,19 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 }
 
 func (r *Runtime) runProbe(ctx context.Context, alias string) error {
+	startedAt := time.Now()
 	if r.upstream == nil {
 		return oops.In("scheduler").Errorf("upstream probe client is not configured")
 	}
 	if err := r.upstream.ProbeAlias(ctx, alias); err != nil {
 		return oops.Wrapf(err, "run upstream probe job")
 	}
-	r.logger.DebugContext(ctx, "upstream probe job completed", "alias", alias)
+	r.logger.InfoContext(ctx, "upstream probe job completed", "alias", alias, "duration_ms", time.Since(startedAt).Milliseconds())
 	return nil
 }
 
 func (r *Runtime) runPrefetch(ctx context.Context) error {
+	startedAt := time.Now()
 	report, err := r.prefetch.Run(ctx, prefetch.RunOptions{
 		MaxRecords:           r.cfg.Scheduler.Prefetch.MaxRecords,
 		MinPullCount:         r.cfg.Scheduler.Prefetch.MinPullCount,
@@ -147,6 +152,7 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		return oops.Wrapf(err, "run prefetch job")
 	}
 	r.logger.InfoContext(ctx, "prefetch job completed",
+		"duration_ms", time.Since(startedAt).Milliseconds(),
 		"scanned_records", report.ScannedRecords,
 		"skipped_records", report.SkippedRecords,
 		"repositories", report.Repositories,

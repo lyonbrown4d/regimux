@@ -21,6 +21,14 @@ type Client struct {
 	logger     *slog.Logger
 }
 
+const (
+	operationPing      = "ping"
+	operationManifest  = "manifest"
+	operationBlob      = "blob"
+	operationTags      = "tags"
+	operationReferrers = "referrers"
+)
+
 type ClientDependencies struct {
 	Configs *collectionmapping.OrderedMap[string, Config]
 	Logger  *slog.Logger
@@ -77,7 +85,7 @@ func NewClientFromConfigs(
 }
 
 func (c *Client) Ping(ctx context.Context, alias string) error {
-	return c.doWithFailover(ctx, alias, "ping", func(runtime upstreamRuntime) error {
+	return c.doWithFailover(ctx, alias, operationPing, func(runtime upstreamRuntime) error {
 		requestURL := strings.TrimRight(runtime.config.Registry, "/") + "/v2/"
 		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, "")
 		if err != nil {
@@ -92,7 +100,7 @@ func (c *Client) Ping(ctx context.Context, alias string) error {
 
 func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*ManifestResponse, error) {
 	var out *ManifestResponse
-	err := c.doWithFailover(ctx, req.UpstreamAlias, "manifest", func(runtime upstreamRuntime) error {
+	err := c.doWithFailover(ctx, req.UpstreamAlias, operationManifest, func(runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
 		requestURL := registryURL(runtime.config.Registry, req.Repo, "manifests", req.Reference)
 		var opts []requestOption
@@ -123,7 +131,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 
 func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse, error) {
 	var out *BlobResponse
-	err := c.doWithFailover(ctx, req.UpstreamAlias, "blob", func(runtime upstreamRuntime) error {
+	err := c.doWithFailover(ctx, req.UpstreamAlias, operationBlob, func(runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
 		requestURL := registryURL(runtime.config.Registry, req.Repo, "blobs", req.Digest)
 		var opts []requestOption
@@ -154,7 +162,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 
 func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsResponse, error) {
 	var out *TagsResponse
-	err := c.doWithFailover(ctx, req.UpstreamAlias, "tags", func(runtime upstreamRuntime) error {
+	err := c.doWithFailover(ctx, req.UpstreamAlias, operationTags, func(runtime upstreamRuntime) error {
 		requestURL, err := tagsURL(runtime.config.Registry, req)
 		if err != nil {
 			return err
@@ -178,7 +186,7 @@ func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsRespon
 
 func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*ReferrersResponse, error) {
 	var out *ReferrersResponse
-	err := c.doWithFailover(ctx, req.UpstreamAlias, "referrers", func(runtime upstreamRuntime) error {
+	err := c.doWithFailover(ctx, req.UpstreamAlias, operationReferrers, func(runtime upstreamRuntime) error {
 		requestURL := registryURL(runtime.config.Registry, req.Repo, "referrers", req.Digest)
 		resp, err := c.do(ctx, runtime, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
 		if err != nil {

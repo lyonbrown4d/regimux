@@ -19,7 +19,7 @@ func (c *Client) doWithFailover(ctx context.Context, alias, operation string, fn
 	if len(runtimes) == 0 {
 		return distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + alias)
 	}
-	if operation == "blob" {
+	if operation == operationBlob {
 		c.logBlobEndpointPlan(ctx, alias, pool, runtimes)
 		if pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
 			return c.doWithConcurrentFailover(ctx, alias, operation, pool, runtimes, fn)
@@ -42,7 +42,7 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, alias, operation 
 		if !shouldFailover(lastErr) {
 			return lastErr
 		}
-		if operation == "blob" {
+		if operation == operationBlob {
 			pool.recordProbeFailure(runtime)
 		}
 		c.logFailover(alias, operation, runtime, lastErr, i < len(runtimes)-1)
@@ -73,14 +73,17 @@ func (c *Client) doWithConcurrentFailover(ctx context.Context, alias, operation 
 	inFlight := 0
 	var mu sync.Mutex
 
-	startNext := func() {
+	startNext := func() bool {
+		mu.Lock()
 		if nextAttempt >= len(runtimes) {
-			return
+			mu.Unlock()
+			return false
 		}
 		runtime := runtimes[nextAttempt]
 		attempt := nextAttempt + 1
 		nextAttempt++
 		inFlight++
+		mu.Unlock()
 
 		c.logBlobAttempt(ctx, alias, runtime, attempt, len(runtimes), maxAttempts)
 		go func() {
@@ -91,19 +94,30 @@ func (c *Client) doWithConcurrentFailover(ctx context.Context, alias, operation 
 				attempt: attempt,
 			}
 		}()
+		return true
 	}
 
 	for range maxAttempts {
-		startNext()
+		if !startNext() {
+			break
+		}
 	}
 
-	for nextAttempt < len(runtimes) || inFlight > 0 {
+	for {
+		mu.Lock()
+		done := nextAttempt >= len(runtimes) && inFlight == 0
+		mu.Unlock()
+		if done {
+			break
+		}
+
 		select {
 		case result := <-results:
 			mu.Lock()
 			inFlight--
 			remaining := len(runtimes) - nextAttempt
 			inFlightRemaining := inFlight
+			hasNext := nextAttempt < len(runtimes)
 			mu.Unlock()
 
 			if result.err == nil {
@@ -120,7 +134,6 @@ func (c *Client) doWithConcurrentFailover(ctx context.Context, alias, operation 
 			}
 
 			pool.recordProbeFailure(result.runtime)
-			hasNext := nextAttempt < len(runtimes)
 			c.logBlobAttemptFailure(ctx, alias, result.runtime, result.err, result.attempt, len(runtimes), remaining+inFlightRemaining)
 			c.logFailover(alias, operation, result.runtime, result.err, hasNext)
 			c.publishFailover(ctx, alias, operation, result.runtime, result.err, hasNext)
