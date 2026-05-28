@@ -15,46 +15,72 @@ var (
 type Store interface {
 	Close() error
 
+	CatalogRepository
+	EndpointHealthRepository
+	ManifestRepository
+	TagRepository
+	PullRepository
+	BlobRepository
+	RepoBlobRepository
+	PrefetchRepository
+	MetadataReadModel
+}
+
+type CatalogRepository interface {
 	UpstreamByAlias(ctx context.Context, alias string) (*Upstream, error)
 	ListUpstreams(ctx context.Context, opts ...UpstreamListOption) ([]Upstream, error)
 	RepositoryByName(ctx context.Context, upstreamID int64, name string) (*Repository, error)
 	ListRepositories(ctx context.Context, opts ...RepositoryListOption) ([]Repository, error)
+}
 
+type EndpointHealthRepository interface {
 	EndpointHealth(ctx context.Context, key EndpointHealthKey) (*EndpointHealthRecord, bool, error)
 	UpsertEndpointHealth(ctx context.Context, record EndpointHealthRecord) (*EndpointHealthRecord, error)
 	ListEndpointHealth(ctx context.Context, opts ...EndpointHealthListOption) ([]EndpointHealthRecord, error)
+}
 
+type ManifestRepository interface {
 	Manifest(ctx context.Context, key ManifestKey) (*ManifestRecord, bool, error)
 	UpsertManifest(ctx context.Context, record ManifestRecord) (*ManifestRecord, error)
 	DeleteManifest(ctx context.Context, key ManifestKey) error
 	GetManifest(ctx context.Context, key string) (*ManifestRecord, bool, error)
 	PutManifest(ctx context.Context, record ManifestRecord) error
 	ListManifests(ctx context.Context) ([]ManifestRecord, error)
+}
 
+type TagRepository interface {
 	Tag(ctx context.Context, key TagKey) (*TagRecord, bool, error)
 	UpsertTag(ctx context.Context, record TagRecord) (*TagRecord, error)
 	DeleteTag(ctx context.Context, key TagKey) error
 	GetTag(ctx context.Context, key string) (*TagRecord, bool, error)
 	PutTag(ctx context.Context, record TagRecord) error
 	ListTags(ctx context.Context) ([]TagRecord, error)
+}
 
+type PullRepository interface {
 	Pull(ctx context.Context, key PullKey) (*PullRecord, bool, error)
 	RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error)
+}
 
+type BlobRepository interface {
 	Blob(ctx context.Context, key BlobKey) (*BlobRecord, bool, error)
 	UpsertBlob(ctx context.Context, record BlobRecord) (*BlobRecord, error)
 	DeleteBlob(ctx context.Context, key BlobKey) error
 	GetBlob(ctx context.Context, digest string) (*BlobRecord, bool, error)
 	PutBlob(ctx context.Context, record BlobRecord) error
 	ListBlobs(ctx context.Context, opts ...BlobListOption) ([]BlobRecord, error)
+}
 
+type RepoBlobRepository interface {
 	RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error)
 	UpsertRepoBlob(ctx context.Context, record RepoBlobRecord) (*RepoBlobRecord, error)
 	DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
 	ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) ([]RepoBlobRecord, error)
+}
 
+type PrefetchRepository interface {
 	CreatePrefetchRun(ctx context.Context, record PrefetchRunRecord) (*PrefetchRunRecord, error)
 	UpdatePrefetchRun(ctx context.Context, record PrefetchRunRecord) (*PrefetchRunRecord, error)
 	ListPrefetchRuns(ctx context.Context, opts ...PrefetchRunListOption) ([]PrefetchRunRecord, error)
@@ -64,7 +90,9 @@ type Store interface {
 	RequestPrefetchControl(ctx context.Context, record PrefetchControlRecord) (*PrefetchControlRecord, error)
 	ConsumePrefetchControl(ctx context.Context, action string, at time.Time) (*PrefetchControlRecord, bool, error)
 	ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) ([]PrefetchControlRecord, error)
+}
 
+type MetadataReadModel interface {
 	MetadataStats(ctx context.Context, now time.Time) (MetadataStats, error)
 }
 

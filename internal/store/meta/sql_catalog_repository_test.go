@@ -8,9 +8,9 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func TestSQLiteStoreRepositoryMetadataAggregates(t *testing.T) {
+func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	first := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	second := first.Add(time.Hour)
 	repoKey := meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}

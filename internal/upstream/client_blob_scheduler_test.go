@@ -146,7 +146,7 @@ func TestClientLoadEndpointHealthAvoidsLatencyColdStart(t *testing.T) {
 	defer slow.Close()
 
 	ctx := context.Background()
-	store, err := meta.OpenSQLiteWithOptions(ctx, meta.SQLiteOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, err, "open metadata store")
 	t.Cleanup(func() {
 		requireNoError(t, store.Close(), "close metadata store")

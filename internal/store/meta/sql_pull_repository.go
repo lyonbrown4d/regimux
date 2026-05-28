@@ -9,37 +9,41 @@ import (
 	"github.com/arcgolabs/dbx/repository"
 )
 
-func (s *SQLiteStore) Pull(ctx context.Context, key PullKey) (*PullRecord, bool, error) {
+func (s *SQLStore) Pull(ctx context.Context, key PullKey) (*PullRecord, bool, error) {
 	key, err := normalizePullKey(key)
 	if err != nil {
 		return nil, false, err
 	}
-	row, err := repository.By(s.pulls, sqlitePullRows.Key).Get(ctx, key.String())
+	row, err := repository.By(s.pulls, sqlPullRows.Key).Get(ctx, key.String())
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, wrapError(err, "get pull metadata")
 	}
-	return pullRowToRecord(row), true, nil
+	record, err := s.mapper.PullRowToRecord(row)
+	if err != nil {
+		return nil, false, err
+	}
+	return record, true, nil
 }
 
-func (s *SQLiteStore) RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
+func (s *SQLStore) RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
 	return s.recordPull(ctx, key, at, false)
 }
 
-func (s *SQLiteStore) RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
+func (s *SQLStore) RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
 	return s.recordPull(ctx, key, at, true)
 }
 
-func (s *SQLiteStore) recordPull(ctx context.Context, key PullKey, at time.Time, upstream bool) (*PullRecord, error) {
+func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, upstream bool) (*PullRecord, error) {
 	key, err := normalizePullKey(key)
 	if err != nil {
 		return nil, err
 	}
 	now := at.UTC()
 	if now.IsZero() {
-		now = sqliteNow()
+		now = metadataNow()
 	}
 	record := PullRecord{
 		Key:        key.String(),
@@ -63,14 +67,17 @@ func (s *SQLiteStore) recordPull(ctx context.Context, key PullKey, at time.Time,
 		record.Count++
 		record.LastPullAt = now
 	}
-	row := pullRecordToRow(record)
+	row, err := s.mapper.PullRecordToRow(record)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.writePullRecord(ctx, key, &record, row, now); err != nil {
 		return nil, err
 	}
 	return &record, nil
 }
 
-func (s *SQLiteStore) writePullRecord(ctx context.Context, key PullKey, record *PullRecord, row pullRow, at time.Time) error {
+func (s *SQLStore) writePullRecord(ctx context.Context, key PullKey, record *PullRecord, row pullRow, at time.Time) error {
 	if record.ID != 0 {
 		if err := s.updatePullRow(ctx, row); err != nil {
 			return err
@@ -84,14 +91,14 @@ func (s *SQLiteStore) writePullRecord(ctx context.Context, key PullKey, record *
 	return s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, at)
 }
 
-func (s *SQLiteStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error) {
+func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error) {
 	options := pullListOptions(opts...)
 	query := repository.Query(s.pulls)
 	if options.RecentFirst {
 		query = query.OrderBy(
-			sqlitePullRows.LastPullAt.Desc(),
-			sqlitePullRows.UpdatedAt.Desc(),
-			sqlitePullRows.ID.Desc(),
+			sqlPullRows.LastPullAt.Desc(),
+			sqlPullRows.UpdatedAt.Desc(),
+			sqlPullRows.ID.Desc(),
 		)
 	}
 	if options.Limit > 0 {
@@ -99,37 +106,46 @@ func (s *SQLiteStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]
 		if err != nil {
 			return nil, wrapError(err, "list pull metadata")
 		}
-		return pullRowsToRecords(page.Items), nil
+		return s.pullRowsToRecords(page.Items)
 	}
 	rows, err := query.List(ctx)
 	if err != nil {
 		return nil, wrapError(err, "list pull metadata")
 	}
-	return pullRowsToRecords(rows), nil
+	return s.pullRowsToRecords(rows)
 }
 
-func pullRowsToRecords(rows interface {
+func (s *SQLStore) pullRowsToRecords(rows interface {
 	Len() int
 	Range(func(int, pullRow) bool)
-}) []PullRecord {
+}) ([]PullRecord, error) {
 	records := make([]PullRecord, 0, rows.Len())
+	var decodeErr error
 	rows.Range(func(_ int, row pullRow) bool {
-		records = append(records, *pullRowToRecord(row))
+		record, err := s.mapper.PullRowToRecord(row)
+		if err != nil {
+			decodeErr = err
+			return false
+		}
+		records = append(records, *record)
 		return true
 	})
-	return records
+	if decodeErr != nil {
+		return nil, decodeErr
+	}
+	return records, nil
 }
 
-func (s *SQLiteStore) updatePullRow(ctx context.Context, row pullRow) error {
-	_, err := repository.By(s.pulls, sqlitePullRows.Key).Update(ctx, row.Key,
-		sqlitePullRows.Alias.Set(row.Alias),
-		sqlitePullRows.Repository.Set(row.Repository),
-		sqlitePullRows.Reference.Set(row.Reference),
-		sqlitePullRows.Count.Set(row.Count),
-		sqlitePullRows.LastPullAt.Set(row.LastPullAt),
-		sqlitePullRows.LastUpstreamPullAt.Set(row.LastUpstreamPullAt),
-		sqlitePullRows.CreatedAt.Set(row.CreatedAt),
-		sqlitePullRows.UpdatedAt.Set(row.UpdatedAt),
+func (s *SQLStore) updatePullRow(ctx context.Context, row pullRow) error {
+	_, err := repository.By(s.pulls, sqlPullRows.Key).Update(ctx, row.Key,
+		sqlPullRows.Alias.Set(row.Alias),
+		sqlPullRows.Repository.Set(row.Repository),
+		sqlPullRows.Reference.Set(row.Reference),
+		sqlPullRows.Count.Set(row.Count),
+		sqlPullRows.LastPullAt.Set(row.LastPullAt),
+		sqlPullRows.LastUpstreamPullAt.Set(row.LastUpstreamPullAt),
+		sqlPullRows.CreatedAt.Set(row.CreatedAt),
+		sqlPullRows.UpdatedAt.Set(row.UpdatedAt),
 	)
 	if err != nil {
 		return wrapError(err, "record pull metadata")

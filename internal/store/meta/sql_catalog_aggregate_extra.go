@@ -8,7 +8,7 @@ import (
 	"github.com/arcgolabs/dbx/querydsl"
 )
 
-func (s *SQLiteStore) repositoryMaxUpdatedAt(
+func (s *SQLStore) repositoryMaxUpdatedAt(
 	ctx context.Context,
 	source querydsl.TableSource,
 	aliasColumn querydsl.TypedOperand[string],
@@ -30,14 +30,14 @@ func (s *SQLiteStore) repositoryMaxUpdatedAt(
 	return nullUnixNanoTime(row.Value), nil
 }
 
-func (s *SQLiteStore) upstreamAggregate(ctx context.Context, upstreamID int64) (upstreamAggregateRow, error) {
+func (s *SQLStore) upstreamAggregate(ctx context.Context, upstreamID int64) (upstreamAggregateRow, error) {
 	row, err := dbx.GetTyped[upstreamAggregateRow](ctx, s.db, querydsl.SelectInto[upstreamAggregateRow](
-		querydsl.Count(sqliteRepositoryRows.ID).As("repository_count"),
-		querydsl.Sum(sqliteRepositoryRows.PullCount).As("pull_count"),
-		querydsl.Sum(sqliteRepositoryRows.BlobBytes).As("blob_bytes"),
-		querydsl.Sum(sqliteRepositoryRows.BlobLinkCount).As("blob_link_count"),
-		querydsl.Max(sqliteRepositoryRows.LastActivityAt).As("last_activity_at"),
-	).From(sqliteRepositoryRows).Where(sqliteRepositoryRows.UpstreamID.Eq(upstreamID)))
+		querydsl.Count(sqlRepositoryRows.ID).As("repository_count"),
+		querydsl.Sum(sqlRepositoryRows.PullCount).As("pull_count"),
+		querydsl.Sum(sqlRepositoryRows.BlobBytes).As("blob_bytes"),
+		querydsl.Sum(sqlRepositoryRows.BlobLinkCount).As("blob_link_count"),
+		querydsl.Max(sqlRepositoryRows.LastActivityAt).As("last_activity_at"),
+	).From(sqlRepositoryRows).Where(sqlRepositoryRows.UpstreamID.Eq(upstreamID)))
 	if err != nil {
 		return upstreamAggregateRow{}, wrapError(err, "aggregate upstream metadata")
 	}

@@ -15,9 +15,9 @@ const secondTestDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
 const thirdTestDigest = "sha256:cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
 const fourthTestDigest = "sha256:dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd"
 
-func TestSQLiteStoreManifestCRUD(t *testing.T) {
+func TestSQLStoreManifestCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
 
 	manifest := upsertManifest(ctx, t, store, expires)
@@ -35,9 +35,9 @@ func TestSQLiteStoreManifestCRUD(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreTagCRUD(t *testing.T) {
+func TestSQLStoreTagCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
 
 	tag, err := store.UpsertTag(ctx, meta.TagRecord{
@@ -67,9 +67,9 @@ func TestSQLiteStoreTagCRUD(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreBlobCRUD(t *testing.T) {
+func TestSQLStoreBlobCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 
 	blob, err := store.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:    testDigest,
@@ -89,9 +89,9 @@ func TestSQLiteStoreBlobCRUD(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreRepoBlobCRUD(t *testing.T) {
+func TestSQLStoreRepoBlobCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 
 	repoBlob, err := store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
 		Alias:      "hub",
@@ -110,9 +110,9 @@ func TestSQLiteStoreRepoBlobCRUD(t *testing.T) {
 	}
 }
 
-func TestSQLiteStorePullRecords(t *testing.T) {
+func TestSQLStorePullRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	first := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	second := first.Add(time.Hour)
 	key := meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}
@@ -139,9 +139,9 @@ func TestSQLiteStorePullRecords(t *testing.T) {
 	assertPullLookup(t, got, ok, second)
 }
 
-func TestSQLiteStoreListsRecords(t *testing.T) {
+func TestSQLStoreListsRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
 
 	seedListRecords(ctx, t, store, expires)
@@ -163,9 +163,9 @@ func TestSQLiteStoreListsRecords(t *testing.T) {
 	assertRepoBlobList(t, repoBlobs)
 }
 
-func TestSQLiteStoreMetadataStatsAndListOptions(t *testing.T) {
+func TestSQLStoreMetadataStatsAndListOptions(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	now := time.Date(2026, 5, 26, 12, 0, 0, 0, time.UTC)
 
 	seedStatsRecords(ctx, t, store, now)
@@ -178,7 +178,7 @@ func TestSQLiteStoreMetadataStatsAndListOptions(t *testing.T) {
 	assertRepoBlobListOptions(ctx, t, store)
 }
 
-func assertPullListOptions(ctx context.Context, t *testing.T, store *meta.SQLiteStore) {
+func assertPullListOptions(ctx context.Context, t *testing.T, store *meta.SQLStore) {
 	t.Helper()
 	pulls, err := store.ListPulls(ctx, meta.PullListRecentFirst(), meta.PullListLimit(2))
 	requireNoError(t, "list recent pulls", err)
@@ -187,7 +187,7 @@ func assertPullListOptions(ctx context.Context, t *testing.T, store *meta.SQLite
 	}
 }
 
-func assertBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQLiteStore) {
+func assertBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQLStore) {
 	t.Helper()
 	recentBlobs, err := store.ListBlobs(ctx, meta.BlobListOrderByRecent(), meta.BlobListLimit(2))
 	requireNoError(t, "list recent blobs", err)
@@ -202,7 +202,7 @@ func assertBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQLite
 	}
 }
 
-func assertRepoBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQLiteStore) {
+func assertRepoBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQLStore) {
 	t.Helper()
 	repoBlobs, err := store.ListRepoBlobs(ctx, meta.RepoBlobListRecentFirst(), meta.RepoBlobListLimit(2))
 	requireNoError(t, "list recent repo blobs", err)
@@ -211,17 +211,17 @@ func assertRepoBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQ
 	}
 }
 
-func TestSQLiteStorePersistsAcrossReopen(t *testing.T) {
+func TestSQLStorePersistsAcrossReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "regimux.db")
-	store := openSQLiteStore(ctx, t, path)
+	store := openSQLStore(ctx, t, path)
 
 	_, err := store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 42})
 	requireNoError(t, "upsert blob", err)
-	closeSQLiteStore(t, store)
+	closeSQLStore(t, store)
 
-	reopened := openSQLiteStore(ctx, t, path)
-	t.Cleanup(func() { closeSQLiteStore(t, reopened) })
+	reopened := openSQLStore(ctx, t, path)
+	t.Cleanup(func() { closeSQLStore(t, reopened) })
 	got, ok, err := reopened.Blob(ctx, meta.BlobKey{Digest: testDigest})
 	requireNoError(t, "get blob", err)
 	if !ok || got.Size != 42 {
@@ -232,13 +232,13 @@ func TestSQLiteStorePersistsAcrossReopen(t *testing.T) {
 func TestOpenDBWithOptionsAppliesDBHooks(t *testing.T) {
 	ctx := context.Background()
 	hook := &recordingDBHook{}
-	store, err := meta.OpenSQLiteWithOptions(ctx, meta.SQLiteOptions{
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{
 		Path:  filepath.Join(t.TempDir(), "regimux.db"),
 		Hooks: []dbx.Hook{hook},
 		Debug: true,
 	})
 	requireNoError(t, "open sqlite", err)
-	t.Cleanup(func() { closeSQLiteStore(t, store) })
+	t.Cleanup(func() { closeSQLStore(t, store) })
 
 	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 42})
 	requireNoError(t, "upsert blob", err)
@@ -250,9 +250,9 @@ func TestOpenDBWithOptionsAppliesDBHooks(t *testing.T) {
 	}
 }
 
-func TestSQLiteStoreValidatesRecords(t *testing.T) {
+func TestSQLStoreValidatesRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 
 	_, err := store.UpsertBlob(ctx, meta.BlobRecord{Digest: "not-a-digest"})
 	if err == nil {

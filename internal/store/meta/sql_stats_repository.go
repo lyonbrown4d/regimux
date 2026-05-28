@@ -19,7 +19,7 @@ type pullTimesStatsRow struct {
 	LastUpstreamPullAt sql.NullInt64 `dbx:"last_upstream_pull_at"`
 }
 
-func (s *SQLiteStore) MetadataStats(ctx context.Context, now time.Time) (MetadataStats, error) {
+func (s *SQLStore) MetadataStats(ctx context.Context, now time.Time) (MetadataStats, error) {
 	stats := MetadataStats{}
 	for _, load := range []func(context.Context, time.Time, *MetadataStats) error{
 		s.loadManifestStats,
@@ -36,7 +36,7 @@ func (s *SQLiteStore) MetadataStats(ctx context.Context, now time.Time) (Metadat
 	return stats, nil
 }
 
-func (s *SQLiteStore) loadManifestStats(ctx context.Context, now time.Time, stats *MetadataStats) error {
+func (s *SQLStore) loadManifestStats(ctx context.Context, now time.Time, stats *MetadataStats) error {
 	count, err := s.manifest.CountSpec(ctx)
 	if err != nil {
 		return wrapError(err, "count manifest metadata")
@@ -45,7 +45,7 @@ func (s *SQLiteStore) loadManifestStats(ctx context.Context, now time.Time, stat
 	if err != nil {
 		return err
 	}
-	bytes, err := s.sumInt64(ctx, sqliteManifestRows, sqliteManifestRows.Size, "manifest metadata bytes")
+	bytes, err := s.sumInt64(ctx, sqlManifestRows, sqlManifestRows.Size, "manifest metadata bytes")
 	if err != nil {
 		return err
 	}
@@ -55,7 +55,7 @@ func (s *SQLiteStore) loadManifestStats(ctx context.Context, now time.Time, stat
 	return nil
 }
 
-func (s *SQLiteStore) loadTagStats(ctx context.Context, now time.Time, stats *MetadataStats) error {
+func (s *SQLStore) loadTagStats(ctx context.Context, now time.Time, stats *MetadataStats) error {
 	count, err := s.tags.CountSpec(ctx)
 	if err != nil {
 		return wrapError(err, "count tag metadata")
@@ -69,12 +69,12 @@ func (s *SQLiteStore) loadTagStats(ctx context.Context, now time.Time, stats *Me
 	return nil
 }
 
-func (s *SQLiteStore) loadBlobStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
+func (s *SQLStore) loadBlobStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
 	count, err := s.blobs.CountSpec(ctx)
 	if err != nil {
 		return wrapError(err, "count blob metadata")
 	}
-	bytes, err := s.sumInt64(ctx, sqliteBlobRows, sqliteBlobRows.Size, "blob metadata bytes")
+	bytes, err := s.sumInt64(ctx, sqlBlobRows, sqlBlobRows.Size, "blob metadata bytes")
 	if err != nil {
 		return err
 	}
@@ -83,7 +83,7 @@ func (s *SQLiteStore) loadBlobStats(ctx context.Context, _ time.Time, stats *Met
 	return nil
 }
 
-func (s *SQLiteStore) loadRepositoryBlobStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
+func (s *SQLStore) loadRepositoryBlobStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
 	count, err := s.repoBlobs.CountSpec(ctx)
 	if err != nil {
 		return wrapError(err, "count repository blob metadata")
@@ -92,7 +92,7 @@ func (s *SQLiteStore) loadRepositoryBlobStats(ctx context.Context, _ time.Time, 
 	return nil
 }
 
-func (s *SQLiteStore) loadPullStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
+func (s *SQLStore) loadPullStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
 	count, err := s.pulls.CountSpec(ctx)
 	if err != nil {
 		return wrapError(err, "count pull metadata")
@@ -107,12 +107,12 @@ func (s *SQLiteStore) loadPullStats(ctx context.Context, _ time.Time, stats *Met
 	return nil
 }
 
-func (s *SQLiteStore) loadRepositoryStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
+func (s *SQLStore) loadRepositoryStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
 	count, err := s.repositories.CountSpec(ctx)
 	if err != nil {
 		return wrapError(err, "count repository metadata")
 	}
-	bytes, err := s.sumInt64(ctx, sqliteRepositoryRows, sqliteRepositoryRows.BlobBytes, "repository metadata bytes")
+	bytes, err := s.sumInt64(ctx, sqlRepositoryRows, sqlRepositoryRows.BlobBytes, "repository metadata bytes")
 	if err != nil {
 		return err
 	}
@@ -121,11 +121,11 @@ func (s *SQLiteStore) loadRepositoryStats(ctx context.Context, _ time.Time, stat
 	return nil
 }
 
-func (s *SQLiteStore) expiredManifestCount(ctx context.Context, now time.Time) (int64, error) {
+func (s *SQLStore) expiredManifestCount(ctx context.Context, now time.Time) (int64, error) {
 	expiresAt := unixNano(now)
 	count, err := s.manifest.CountSpec(ctx, repository.Where(querydsl.And(
-		sqliteManifestRows.ExpiresAt.Ne(0),
-		sqliteManifestRows.ExpiresAt.Le(expiresAt),
+		sqlManifestRows.ExpiresAt.Ne(0),
+		sqlManifestRows.ExpiresAt.Le(expiresAt),
 	)))
 	if err != nil {
 		return 0, wrapError(err, "count expired manifest metadata")
@@ -133,11 +133,11 @@ func (s *SQLiteStore) expiredManifestCount(ctx context.Context, now time.Time) (
 	return count, nil
 }
 
-func (s *SQLiteStore) expiredTagCount(ctx context.Context, now time.Time) (int64, error) {
+func (s *SQLStore) expiredTagCount(ctx context.Context, now time.Time) (int64, error) {
 	expiresAt := unixNano(now)
 	count, err := s.tags.CountSpec(ctx, repository.Where(querydsl.And(
-		sqliteTagRows.ExpiresAt.Ne(0),
-		sqliteTagRows.ExpiresAt.Le(expiresAt),
+		sqlTagRows.ExpiresAt.Ne(0),
+		sqlTagRows.ExpiresAt.Le(expiresAt),
 	)))
 	if err != nil {
 		return 0, wrapError(err, "count expired tag metadata")
@@ -145,7 +145,7 @@ func (s *SQLiteStore) expiredTagCount(ctx context.Context, now time.Time) (int64
 	return count, nil
 }
 
-func (s *SQLiteStore) sumInt64(
+func (s *SQLStore) sumInt64(
 	ctx context.Context,
 	source querydsl.TableSource,
 	column querydsl.TypedOperand[int64],
@@ -163,11 +163,11 @@ func (s *SQLiteStore) sumInt64(
 	return row.Value.Int64, nil
 }
 
-func (s *SQLiteStore) latestPullTimes(ctx context.Context) (time.Time, time.Time, error) {
+func (s *SQLStore) latestPullTimes(ctx context.Context) (time.Time, time.Time, error) {
 	row, err := dbx.GetTyped[pullTimesStatsRow](ctx, s.db, querydsl.SelectInto[pullTimesStatsRow](
-		querydsl.Max(sqlitePullRows.LastPullAt).As("last_pull_at"),
-		querydsl.Max(sqlitePullRows.LastUpstreamPullAt).As("last_upstream_pull_at"),
-	).From(sqlitePullRows))
+		querydsl.Max(sqlPullRows.LastPullAt).As("last_pull_at"),
+		querydsl.Max(sqlPullRows.LastUpstreamPullAt).As("last_upstream_pull_at"),
+	).From(sqlPullRows))
 	if err != nil {
 		return time.Time{}, time.Time{}, wrapError(err, "get latest pull metadata times")
 	}

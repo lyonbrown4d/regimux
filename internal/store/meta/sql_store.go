@@ -6,8 +6,6 @@ import (
 	"database/sql"
 	"errors"
 	"log/slog"
-	"os"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -15,7 +13,6 @@ import (
 	dbxdialect "github.com/arcgolabs/dbx/dialect"
 	mysqldialect "github.com/arcgolabs/dbx/dialect/mysql"
 	postgresdialect "github.com/arcgolabs/dbx/dialect/postgres"
-	sqlitedialect "github.com/arcgolabs/dbx/dialect/sqlite"
 	"github.com/arcgolabs/dbx/repository"
 
 	_ "github.com/go-sql-driver/mysql" // register the database/sql MySQL driver.
@@ -38,11 +35,10 @@ type DBOptions struct {
 	Debug  bool
 }
 
-type SQLiteOptions = DBOptions
-
-type SQLiteStore struct {
+type SQLStore struct {
 	driver           string
 	db               *dbx.DB
+	mapper           *MetadataMapper
 	upstreams        *repository.Base[upstreamRow, upstreamRowSchema]
 	repositories     *repository.Base[repositoryRow, repositoryRowSchema]
 	manifest         *repository.Base[manifestRow, manifestRowSchema]
@@ -56,7 +52,7 @@ type SQLiteStore struct {
 	prefetchControls *repository.Base[prefetchControlRow, prefetchControlRowSchema]
 }
 
-func OpenSQLite(path string, logger *slog.Logger) (*SQLiteStore, error) {
+func OpenSQLite(path string, logger *slog.Logger) (*SQLStore, error) {
 	return OpenDBWithOptions(context.Background(), DBOptions{
 		Driver: metaDriverSQLite,
 		Path:   path,
@@ -64,12 +60,20 @@ func OpenSQLite(path string, logger *slog.Logger) (*SQLiteStore, error) {
 	})
 }
 
-func OpenSQLiteWithOptions(ctx context.Context, opts SQLiteOptions) (*SQLiteStore, error) {
+func OpenSQLiteWithOptions(ctx context.Context, opts DBOptions) (*SQLStore, error) {
 	opts.Driver = metaDriverSQLite
 	return OpenDBWithOptions(ctx, opts)
 }
 
-func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLiteStore, error) {
+func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLStore, error) {
+	core, err := OpenMetadataDB(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	return NewSQLStore(core, NewMetadataMapper()), nil
+}
+
+func OpenMetadataDB(ctx context.Context, opts DBOptions) (*dbx.DB, error) {
 	if err := requireMetadataContext(ctx, "open metadata store"); err != nil {
 		return nil, err
 	}
@@ -88,7 +92,7 @@ func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLiteStore, error
 	if err != nil {
 		return nil, wrapError(err, "open metadata db")
 	}
-	configureSQLitePool(core.SQLDB())
+	configureMetadataDBPool(core.SQLDB())
 	if openConfig.driver == metaDriverSQLite {
 		err = configureSQLitePragmas(ctx, core.SQLDB())
 	}
@@ -100,29 +104,36 @@ func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLiteStore, error
 		return nil, err
 	}
 
-	store := &SQLiteStore{
-		driver:           openConfig.driver,
-		db:               core,
-		upstreams:        repository.New[upstreamRow](core, sqliteUpstreamRows),
-		repositories:     repository.New[repositoryRow](core, sqliteRepositoryRows),
-		manifest:         repository.New[manifestRow](core, sqliteManifestRows),
-		tags:             repository.New[tagRow](core, sqliteTagRows),
-		pulls:            repository.New[pullRow](core, sqlitePullRows),
-		blobs:            repository.New[blobRow](core, sqliteBlobRows),
-		repoBlobs:        repository.New[repoBlobRow](core, sqliteRepoBlobRows),
-		endpointHealth:   repository.New[endpointHealthRow](core, sqliteEndpointHealthRows),
-		prefetchRuns:     repository.New[prefetchRunRow](core, sqlitePrefetchRunRows),
-		prefetchOutcomes: repository.New[prefetchOutcomeRow](core, sqlitePrefetchOutcomeRows),
-		prefetchControls: repository.New[prefetchControlRow](core, sqlitePrefetchControlRows),
-	}
-	if err := store.migrate(ctx); err != nil {
+	if err := MigrateMetadataDB(ctx, core); err != nil {
 		closeErr := core.Close()
 		if closeErr != nil {
 			return nil, errors.Join(err, wrapError(closeErr, "close metadata db"))
 		}
 		return nil, err
 	}
-	return store, nil
+	return core, nil
+}
+
+func NewSQLStore(db *dbx.DB, mapper *MetadataMapper) *SQLStore {
+	if mapper == nil {
+		mapper = NewMetadataMapper()
+	}
+	return &SQLStore{
+		driver:           normalizeDBDriver(db.Dialect().Name()),
+		db:               db,
+		mapper:           mapper,
+		upstreams:        repository.New[upstreamRow](db, sqlUpstreamRows),
+		repositories:     repository.New[repositoryRow](db, sqlRepositoryRows),
+		manifest:         repository.New[manifestRow](db, sqlManifestRows),
+		tags:             repository.New[tagRow](db, sqlTagRows),
+		pulls:            repository.New[pullRow](db, sqlPullRows),
+		blobs:            repository.New[blobRow](db, sqlBlobRows),
+		repoBlobs:        repository.New[repoBlobRow](db, sqlRepoBlobRows),
+		endpointHealth:   repository.New[endpointHealthRow](db, sqlEndpointHealthRows),
+		prefetchRuns:     repository.New[prefetchRunRow](db, sqlPrefetchRunRows),
+		prefetchOutcomes: repository.New[prefetchOutcomeRow](db, sqlPrefetchOutcomeRows),
+		prefetchControls: repository.New[prefetchControlRow](db, sqlPrefetchControlRows),
+	}
 }
 
 func dbOptions(opts DBOptions) []dbx.Option {
@@ -154,21 +165,6 @@ func resolveDBOpenConfig(opts DBOptions) (dbOpenConfig, error) {
 	default:
 		return dbOpenConfig{}, errorf("%w: metadata store driver must be sqlite, mysql, or postgres", ErrInvalidValue)
 	}
-}
-
-func resolveSQLiteOpenConfig(opts DBOptions) (dbOpenConfig, error) {
-	dsnSource := opts.DSN
-	if strings.TrimSpace(dsnSource) == "" {
-		dsnSource = opts.Path
-	}
-	dsn, err := sqliteDSN(dsnSource)
-	if err != nil {
-		return dbOpenConfig{}, err
-	}
-	if err := ensureSQLiteDirectory(dsnSource); err != nil {
-		return dbOpenConfig{}, err
-	}
-	return dbOpenConfig{driver: metaDriverSQLite, dsn: dsn, dialect: sqlitedialect.New()}, nil
 }
 
 func resolveExternalOpenConfig(driver, dsn string, dialect dbxdialect.Dialect) (dbOpenConfig, error) {
@@ -209,29 +205,7 @@ func requireMetadataContext(ctx context.Context, operation string) error {
 	return nil
 }
 
-func sqliteDSN(path string) (string, error) {
-	path = strings.TrimSpace(path)
-	if path == "" {
-		return "", errorf("%w: sqlite path is required", ErrInvalidValue)
-	}
-	if strings.EqualFold(path, ":memory:") || strings.HasPrefix(strings.ToLower(path), "file:") {
-		return path, nil
-	}
-	return filepath.Clean(path), nil
-}
-
-func ensureSQLiteDirectory(path string) error {
-	path = strings.TrimSpace(path)
-	if path == "" || strings.EqualFold(path, ":memory:") || strings.HasPrefix(strings.ToLower(path), "file:") {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(filepath.Clean(path)), 0o750); err != nil {
-		return wrapError(err, "create sqlite metadata directory")
-	}
-	return nil
-}
-
-func configureSQLitePool(raw *sql.DB) {
+func configureMetadataDBPool(raw *sql.DB) {
 	if raw == nil {
 		return
 	}
@@ -240,34 +214,17 @@ func configureSQLitePool(raw *sql.DB) {
 	raw.SetConnMaxLifetime(0)
 }
 
-func configureSQLitePragmas(ctx context.Context, raw *sql.DB) error {
-	if raw == nil {
-		return errorf("%w: sqlite db is required", ErrInvalidValue)
-	}
-	statements := []string{
-		"PRAGMA busy_timeout = 5000",
-		"PRAGMA journal_mode = WAL",
-		"PRAGMA synchronous = NORMAL",
-	}
-	for _, statement := range statements {
-		if _, err := raw.ExecContext(ctx, statement); err != nil {
-			return wrapError(err, "configure sqlite metadata pragma")
-		}
-	}
-	return nil
-}
-
-func (s *SQLiteStore) migrate(ctx context.Context) error {
-	if err := requireMetadataContext(ctx, "migrate sqlite metadata store"); err != nil {
+func MigrateMetadataDB(ctx context.Context, db *dbx.DB) error {
+	if err := requireMetadataContext(ctx, "migrate metadata store"); err != nil {
 		return err
 	}
-	if err := runDBMigrations(ctx, s.db); err != nil {
+	if err := runDBMigrations(ctx, db); err != nil {
 		return wrapError(err, "migrate metadata schema")
 	}
 	return nil
 }
 
-func (s *SQLiteStore) Close() error {
+func (s *SQLStore) Close() error {
 	if s == nil || s.db == nil {
 		return nil
 	}
@@ -277,8 +234,8 @@ func (s *SQLiteStore) Close() error {
 	return nil
 }
 
-func sqliteNow() time.Time {
+func metadataNow() time.Time {
 	return time.Now().UTC()
 }
 
-var _ Store = (*SQLiteStore)(nil)
+var _ Store = (*SQLStore)(nil)

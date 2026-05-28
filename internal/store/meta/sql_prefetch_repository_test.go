@@ -8,9 +8,9 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func TestSQLiteStorePrefetchPolicyRecords(t *testing.T) {
+func TestSQLStorePrefetchPolicyRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newSQLiteStore(ctx, t)
+	store := newSQLStore(ctx, t)
 	now := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
 
 	run, err := store.CreatePrefetchRun(ctx, meta.PrefetchRunRecord{

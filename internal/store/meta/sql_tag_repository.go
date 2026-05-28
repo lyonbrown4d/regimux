@@ -8,7 +8,7 @@ import (
 	"github.com/arcgolabs/dbx/repository"
 )
 
-func (s *SQLiteStore) Tag(ctx context.Context, key TagKey) (*TagRecord, bool, error) {
+func (s *SQLStore) Tag(ctx context.Context, key TagKey) (*TagRecord, bool, error) {
 	key, err := normalizeTagKey(key)
 	if err != nil {
 		return nil, false, err
@@ -16,12 +16,12 @@ func (s *SQLiteStore) Tag(ctx context.Context, key TagKey) (*TagRecord, bool, er
 	return s.tagByKey(ctx, key.String())
 }
 
-func (s *SQLiteStore) UpsertTag(ctx context.Context, record TagRecord) (*TagRecord, error) {
+func (s *SQLStore) UpsertTag(ctx context.Context, record TagRecord) (*TagRecord, error) {
 	key, record, err := normalizeTagRecord(record)
 	if err != nil {
 		return nil, err
 	}
-	now := sqliteNow()
+	now := metadataNow()
 	existing, ok, err := s.Tag(ctx, key)
 	if err != nil {
 		return nil, err
@@ -34,7 +34,10 @@ func (s *SQLiteStore) UpsertTag(ctx context.Context, record TagRecord) (*TagReco
 		record.CreatedAt = now
 	}
 	record.UpdatedAt = now
-	row := tagRecordToRow(record)
+	row, err := s.mapper.TagRecordToRow(record)
+	if err != nil {
+		return nil, err
+	}
 	if err := s.writeTagRow(ctx, &record, row); err != nil {
 		return nil, err
 	}
@@ -44,7 +47,7 @@ func (s *SQLiteStore) UpsertTag(ctx context.Context, record TagRecord) (*TagReco
 	return &record, nil
 }
 
-func (s *SQLiteStore) writeTagRow(ctx context.Context, record *TagRecord, row tagRow) error {
+func (s *SQLStore) writeTagRow(ctx context.Context, record *TagRecord, row tagRow) error {
 	if record.ID != 0 {
 		if err := s.updateTagRow(ctx, row); err != nil {
 			return err
@@ -58,22 +61,22 @@ func (s *SQLiteStore) writeTagRow(ctx context.Context, record *TagRecord, row ta
 	return nil
 }
 
-func (s *SQLiteStore) DeleteTag(ctx context.Context, key TagKey) error {
+func (s *SQLStore) DeleteTag(ctx context.Context, key TagKey) error {
 	key, err := normalizeTagKey(key)
 	if err != nil {
 		return err
 	}
-	_, err = repository.By(s.tags, sqliteTagRows.Key).Delete(ctx, key.String())
+	_, err = repository.By(s.tags, sqlTagRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete tag metadata")
 	}
-	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, sqliteNow()); err != nil {
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, metadataNow()); err != nil {
 		return err
 	}
 	return nil
 }
 
-func (s *SQLiteStore) GetTag(ctx context.Context, key string) (*TagRecord, bool, error) {
+func (s *SQLStore) GetTag(ctx context.Context, key string) (*TagRecord, bool, error) {
 	key = strings.TrimSpace(key)
 	if key == "" {
 		return nil, false, errorf("%w: tag key is required", ErrInvalidKey)
@@ -81,46 +84,59 @@ func (s *SQLiteStore) GetTag(ctx context.Context, key string) (*TagRecord, bool,
 	return s.tagByKey(ctx, key)
 }
 
-func (s *SQLiteStore) PutTag(ctx context.Context, record TagRecord) error {
+func (s *SQLStore) PutTag(ctx context.Context, record TagRecord) error {
 	if _, err := s.UpsertTag(ctx, record); err != nil {
 		return wrapError(err, "put tag metadata")
 	}
 	return nil
 }
 
-func (s *SQLiteStore) ListTags(ctx context.Context) ([]TagRecord, error) {
+func (s *SQLStore) ListTags(ctx context.Context) ([]TagRecord, error) {
 	rows, err := s.tags.List(ctx, nil)
 	if err != nil {
 		return nil, wrapError(err, "list tag metadata")
 	}
 	records := make([]TagRecord, 0, rows.Len())
+	var decodeErr error
 	rows.Range(func(_ int, row tagRow) bool {
-		records = append(records, *tagRowToRecord(row))
+		record, err := s.mapper.TagRowToRecord(row)
+		if err != nil {
+			decodeErr = err
+			return false
+		}
+		records = append(records, *record)
 		return true
 	})
+	if decodeErr != nil {
+		return nil, decodeErr
+	}
 	return records, nil
 }
 
-func (s *SQLiteStore) tagByKey(ctx context.Context, key string) (*TagRecord, bool, error) {
-	row, err := repository.By(s.tags, sqliteTagRows.Key).Get(ctx, key)
+func (s *SQLStore) tagByKey(ctx context.Context, key string) (*TagRecord, bool, error) {
+	row, err := repository.By(s.tags, sqlTagRows.Key).Get(ctx, key)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
 	if err != nil {
 		return nil, false, wrapError(err, "get tag metadata")
 	}
-	return tagRowToRecord(row), true, nil
+	record, err := s.mapper.TagRowToRecord(row)
+	if err != nil {
+		return nil, false, err
+	}
+	return record, true, nil
 }
 
-func (s *SQLiteStore) updateTagRow(ctx context.Context, row tagRow) error {
-	_, err := repository.By(s.tags, sqliteTagRows.Key).Update(ctx, row.Key,
-		sqliteTagRows.Alias.Set(row.Alias),
-		sqliteTagRows.Repository.Set(row.Repository),
-		sqliteTagRows.Reference.Set(row.Reference),
-		sqliteTagRows.Digest.Set(row.Digest),
-		sqliteTagRows.ExpiresAt.Set(row.ExpiresAt),
-		sqliteTagRows.CreatedAt.Set(row.CreatedAt),
-		sqliteTagRows.UpdatedAt.Set(row.UpdatedAt),
+func (s *SQLStore) updateTagRow(ctx context.Context, row tagRow) error {
+	_, err := repository.By(s.tags, sqlTagRows.Key).Update(ctx, row.Key,
+		sqlTagRows.Alias.Set(row.Alias),
+		sqlTagRows.Repository.Set(row.Repository),
+		sqlTagRows.Reference.Set(row.Reference),
+		sqlTagRows.Digest.Set(row.Digest),
+		sqlTagRows.ExpiresAt.Set(row.ExpiresAt),
+		sqlTagRows.CreatedAt.Set(row.CreatedAt),
+		sqlTagRows.UpdatedAt.Set(row.UpdatedAt),
 	)
 	if err != nil {
 		return wrapError(err, "upsert tag metadata")

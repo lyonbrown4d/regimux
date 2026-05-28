@@ -40,7 +40,7 @@ type repositoryAggregate struct {
 	LastActivityAt   time.Time
 }
 
-func (s *SQLiteStore) repositoryAggregate(ctx context.Context, alias, name string) (repositoryAggregate, error) {
+func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) (repositoryAggregate, error) {
 	pulls, err := s.repositoryPullAggregate(ctx, alias, name)
 	if err != nil {
 		return repositoryAggregate{}, err
@@ -49,11 +49,11 @@ func (s *SQLiteStore) repositoryAggregate(ctx context.Context, alias, name strin
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	manifestAt, err := s.repositoryMaxUpdatedAt(ctx, sqliteManifestRows, sqliteManifestRows.Alias, sqliteManifestRows.Repository, sqliteManifestRows.UpdatedAt, alias, name, "manifest")
+	manifestAt, err := s.repositoryMaxUpdatedAt(ctx, sqlManifestRows, sqlManifestRows.Alias, sqlManifestRows.Repository, sqlManifestRows.UpdatedAt, alias, name, "manifest")
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	tagAt, err := s.repositoryMaxUpdatedAt(ctx, sqliteTagRows, sqliteTagRows.Alias, sqliteTagRows.Repository, sqliteTagRows.UpdatedAt, alias, name, "tag")
+	tagAt, err := s.repositoryMaxUpdatedAt(ctx, sqlTagRows, sqlTagRows.Alias, sqlTagRows.Repository, sqlTagRows.UpdatedAt, alias, name, "tag")
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
@@ -77,14 +77,14 @@ func (s *SQLiteStore) repositoryAggregate(ctx context.Context, alias, name strin
 	}, nil
 }
 
-func (s *SQLiteStore) repositoryPullAggregate(ctx context.Context, alias, name string) (repositoryPullAggregateRow, error) {
+func (s *SQLStore) repositoryPullAggregate(ctx context.Context, alias, name string) (repositoryPullAggregateRow, error) {
 	row, err := dbx.GetTyped[repositoryPullAggregateRow](ctx, s.db, querydsl.SelectInto[repositoryPullAggregateRow](
-		querydsl.Sum(sqlitePullRows.Count).As("pull_count"),
-		querydsl.Max(sqlitePullRows.LastPullAt).As("last_pull_at"),
-		querydsl.Max(sqlitePullRows.LastUpstreamPullAt).As("last_upstream_pull_at"),
-	).From(sqlitePullRows).Where(querydsl.And(
-		sqlitePullRows.Alias.Eq(alias),
-		sqlitePullRows.Repository.Eq(name),
+		querydsl.Sum(sqlPullRows.Count).As("pull_count"),
+		querydsl.Max(sqlPullRows.LastPullAt).As("last_pull_at"),
+		querydsl.Max(sqlPullRows.LastUpstreamPullAt).As("last_upstream_pull_at"),
+	).From(sqlPullRows).Where(querydsl.And(
+		sqlPullRows.Alias.Eq(alias),
+		sqlPullRows.Repository.Eq(name),
 	)))
 	if err != nil {
 		return repositoryPullAggregateRow{}, wrapError(err, "aggregate repository pull metadata")
@@ -92,18 +92,18 @@ func (s *SQLiteStore) repositoryPullAggregate(ctx context.Context, alias, name s
 	return row, nil
 }
 
-func (s *SQLiteStore) repositoryBlobAggregate(ctx context.Context, alias, name string) (repositoryBlobAggregateRow, error) {
+func (s *SQLStore) repositoryBlobAggregate(ctx context.Context, alias, name string) (repositoryBlobAggregateRow, error) {
 	row, err := dbx.GetTyped[repositoryBlobAggregateRow](ctx, s.db, querydsl.SelectInto[repositoryBlobAggregateRow](
-		querydsl.Count(sqliteRepoBlobRows.ID).As("blob_link_count"),
-		querydsl.Sum(sqliteBlobRows.Size).As("blob_bytes"),
-		querydsl.Max(sqliteRepoBlobRows.LastAccessAt).As("last_access_at"),
-		querydsl.Max(sqliteRepoBlobRows.LastVerifiedAt).As("last_verified_at"),
-		querydsl.Max(sqliteRepoBlobRows.UpdatedAt).As("last_repo_blob_at"),
-	).From(sqliteRepoBlobRows).
-		LeftJoin(sqliteBlobRows).On(sqliteRepoBlobRows.Digest.EqColumn(sqliteBlobRows.Digest)).
+		querydsl.Count(sqlRepoBlobRows.ID).As("blob_link_count"),
+		querydsl.Sum(sqlBlobRows.Size).As("blob_bytes"),
+		querydsl.Max(sqlRepoBlobRows.LastAccessAt).As("last_access_at"),
+		querydsl.Max(sqlRepoBlobRows.LastVerifiedAt).As("last_verified_at"),
+		querydsl.Max(sqlRepoBlobRows.UpdatedAt).As("last_repo_blob_at"),
+	).From(sqlRepoBlobRows).
+		LeftJoin(sqlBlobRows).On(sqlRepoBlobRows.Digest.EqColumn(sqlBlobRows.Digest)).
 		Where(querydsl.And(
-			sqliteRepoBlobRows.Alias.Eq(alias),
-			sqliteRepoBlobRows.Repository.Eq(name),
+			sqlRepoBlobRows.Alias.Eq(alias),
+			sqlRepoBlobRows.Repository.Eq(name),
 		)))
 	if err != nil {
 		return repositoryBlobAggregateRow{}, wrapError(err, "aggregate repository blob metadata")

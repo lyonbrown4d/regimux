@@ -11,21 +11,21 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func newSQLiteStore(ctx context.Context, t *testing.T) *meta.SQLiteStore {
+func newSQLStore(ctx context.Context, t *testing.T) *meta.SQLStore {
 	t.Helper()
-	store := openSQLiteStore(ctx, t, filepath.Join(t.TempDir(), "regimux.db"))
-	t.Cleanup(func() { closeSQLiteStore(t, store) })
+	store := openSQLStore(ctx, t, filepath.Join(t.TempDir(), "regimux.db"))
+	t.Cleanup(func() { closeSQLStore(t, store) })
 	return store
 }
 
-func openSQLiteStore(ctx context.Context, t *testing.T, path string) *meta.SQLiteStore {
+func openSQLStore(ctx context.Context, t *testing.T, path string) *meta.SQLStore {
 	t.Helper()
-	store, err := meta.OpenSQLiteWithOptions(ctx, meta.SQLiteOptions{Path: path})
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: path})
 	requireNoError(t, "open sqlite", err)
 	return store
 }
 
-func closeSQLiteStore(t *testing.T, store *meta.SQLiteStore) {
+func closeSQLStore(t *testing.T, store *meta.SQLStore) {
 	t.Helper()
 	err := store.Close()
 	requireNoError(t, "close sqlite", err)
@@ -65,7 +65,7 @@ func (h *recordingDBHook) hasNegativeDuration() bool {
 func upsertManifest(
 	ctx context.Context,
 	t *testing.T,
-	store *meta.SQLiteStore,
+	store *meta.SQLStore,
 	expires time.Time,
 ) *meta.ManifestRecord {
 	t.Helper()
@@ -85,14 +85,14 @@ func upsertManifest(
 	return manifest
 }
 
-func getManifest(ctx context.Context, t *testing.T, store *meta.SQLiteStore) (*meta.ManifestRecord, bool) {
+func getManifest(ctx context.Context, t *testing.T, store *meta.SQLStore) (*meta.ManifestRecord, bool) {
 	t.Helper()
 	got, ok, err := store.Manifest(ctx, meta.ManifestKey{Alias: "hub", Repository: "library/nginx", Digest: testDigest})
 	requireNoError(t, "get manifest", err)
 	return got, ok
 }
 
-func assertManifestIDStableAfterUpdate(ctx context.Context, t *testing.T, store *meta.SQLiteStore, manifest *meta.ManifestRecord) {
+func assertManifestIDStableAfterUpdate(ctx context.Context, t *testing.T, store *meta.SQLStore, manifest *meta.ManifestRecord) {
 	t.Helper()
 	updatedManifest := *manifest
 	updatedManifest.Size = 256

@@ -81,7 +81,7 @@ func defaultRunOptions() prefetch.RunOptions {
 
 func newPrefetchMetaStore(ctx context.Context, t *testing.T) meta.Store {
 	t.Helper()
-	store, err := meta.OpenSQLiteWithOptions(ctx, meta.SQLiteOptions{
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{
 		Path: filepath.Join(t.TempDir(), "meta.db"),
 	})
 	if err != nil {

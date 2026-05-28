@@ -9,10 +9,10 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func TestSQLiteStoreEndpointHealthPersistsAcrossReopen(t *testing.T) {
+func TestSQLStoreEndpointHealthPersistsAcrossReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "regimux.db")
-	store := openSQLiteStore(ctx, t, path)
+	store := openSQLStore(ctx, t, path)
 
 	now := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
 	record, err := store.UpsertEndpointHealth(ctx, meta.EndpointHealthRecord{
@@ -35,10 +35,10 @@ func TestSQLiteStoreEndpointHealthPersistsAcrossReopen(t *testing.T) {
 	if record.ID == 0 || record.Key == "" || record.Registry != "https://mirror.example" {
 		t.Fatalf("unexpected endpoint health record: %#v", record)
 	}
-	closeSQLiteStore(t, store)
+	closeSQLStore(t, store)
 
-	reopened := openSQLiteStore(ctx, t, path)
-	t.Cleanup(func() { closeSQLiteStore(t, reopened) })
+	reopened := openSQLStore(ctx, t, path)
+	t.Cleanup(func() { closeSQLStore(t, reopened) })
 	got, ok, err := reopened.EndpointHealth(ctx, meta.EndpointHealthKey{
 		Alias:      "hub",
 		Registry:   "https://mirror.example",

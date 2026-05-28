@@ -8,7 +8,7 @@ import (
 func metadataTimestamp(at time.Time) time.Time {
 	at = at.UTC()
 	if at.IsZero() {
-		return sqliteNow()
+		return metadataNow()
 	}
 	return at
 }

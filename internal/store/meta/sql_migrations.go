@@ -8,14 +8,14 @@ import (
 	"github.com/arcgolabs/dbx/migrate"
 )
 
-const sqliteMigrationHistoryTable = "meta_schema_history"
+const metadataMigrationHistoryTable = "meta_schema_history"
 
 //go:embed migrations/*/*.sql
 var metadataMigrationFS embed.FS
 
 func runDBMigrations(ctx context.Context, db *dbx.DB) error {
 	runner := migrate.NewRunner(db.SQLDB(), db.Dialect(), migrate.RunnerOptions{
-		HistoryTable: sqliteMigrationHistoryTable,
+		HistoryTable: metadataMigrationHistoryTable,
 		ValidateHash: true,
 	})
 	source, err := metadataMigrationSource(db.Dialect().Name())

@@ -52,7 +52,7 @@ func assertRepositoryAggregate(
 	}
 }
 
-func seedListRecords(ctx context.Context, t *testing.T, store *meta.SQLiteStore, expires time.Time) {
+func seedListRecords(ctx context.Context, t *testing.T, store *meta.SQLStore, expires time.Time) {
 	t.Helper()
 
 	upsertManifest(ctx, t, store, expires)
@@ -120,7 +120,7 @@ func assertRepoBlobList(t *testing.T, repoBlobs []meta.RepoBlobRecord) {
 	}
 }
 
-func seedStatsRecords(ctx context.Context, t *testing.T, store *meta.SQLiteStore, now time.Time) {
+func seedStatsRecords(ctx context.Context, t *testing.T, store *meta.SQLStore, now time.Time) {
 	t.Helper()
 
 	upsertStatsManifest(ctx, t, store, "library/node", testDigest, 100, now.Add(-time.Hour))
@@ -147,7 +147,7 @@ func seedStatsRecords(ctx context.Context, t *testing.T, store *meta.SQLiteStore
 func upsertStatsManifest(
 	ctx context.Context,
 	t *testing.T,
-	store *meta.SQLiteStore,
+	store *meta.SQLStore,
 	repository string,
 	digest string,
 	size int64,
@@ -169,7 +169,7 @@ func upsertStatsManifest(
 func upsertStatsTag(
 	ctx context.Context,
 	t *testing.T,
-	store *meta.SQLiteStore,
+	store *meta.SQLStore,
 	repository string,
 	reference string,
 	digest string,
@@ -187,7 +187,7 @@ func upsertStatsTag(
 	requireNoError(t, "upsert stats tag", err)
 }
 
-func upsertStatsBlob(ctx context.Context, t *testing.T, store *meta.SQLiteStore, digest string, size int64, at time.Time) {
+func upsertStatsBlob(ctx context.Context, t *testing.T, store *meta.SQLStore, digest string, size int64, at time.Time) {
 	t.Helper()
 
 	_, err := store.UpsertBlob(ctx, meta.BlobRecord{
@@ -200,7 +200,7 @@ func upsertStatsBlob(ctx context.Context, t *testing.T, store *meta.SQLiteStore,
 	requireNoError(t, "upsert stats blob", err)
 }
 
-func upsertStatsRepoBlob(ctx context.Context, t *testing.T, store *meta.SQLiteStore, digest string, at time.Time) {
+func upsertStatsRepoBlob(ctx context.Context, t *testing.T, store *meta.SQLStore, digest string, at time.Time) {
 	t.Helper()
 
 	_, err := store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
@@ -214,7 +214,7 @@ func upsertStatsRepoBlob(ctx context.Context, t *testing.T, store *meta.SQLiteSt
 	requireNoError(t, "upsert stats repo blob", err)
 }
 
-func recordStatsPull(ctx context.Context, t *testing.T, store *meta.SQLiteStore, reference string, at time.Time) {
+func recordStatsPull(ctx context.Context, t *testing.T, store *meta.SQLStore, reference string, at time.Time) {
 	t.Helper()
 
 	_, err := store.RecordPull(ctx, meta.PullKey{

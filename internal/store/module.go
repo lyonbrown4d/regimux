@@ -29,13 +29,15 @@ var Module = dix.NewModule("store",
 			return cfg.Store.Object
 		}),
 		dix.Provider3[MetadataStoreDependencies, config.StoreMetaConfig, *slog.Logger, *observability.Metrics](newMetadataStoreDependencies),
-		dix.ProviderErr1[meta.Store, MetadataStoreDependencies](NewMetadataStore, dix.Eager()),
+		dix.Provider0[*meta.MetadataMapper](meta.NewMetadataMapper),
+		dix.ProviderErr1[*dbx.DB, MetadataStoreDependencies](NewMetadataDB, dix.Eager()),
+		dix.Provider2[meta.Store, *dbx.DB, *meta.MetadataMapper](NewMetadataStore, dix.Eager()),
 		dix.ProviderErr1[object.Store, config.StoreObjectConfig](NewObjectStore, dix.Eager()),
 	),
 	dix.Hooks(
-		dix.OnStop[meta.Store](
-			closeMetadataStore,
-			dix.LifecycleName("regimux.meta_store_close"),
+		dix.OnStop[*dbx.DB](
+			closeMetadataDB,
+			dix.LifecycleName("regimux.metadata_db_close"),
 			dix.LifecyclePriority(-160),
 		),
 		dix.OnStop[object.Store](
@@ -54,14 +56,14 @@ func newMetadataStoreDependencies(cfg config.StoreMetaConfig, logger *slog.Logge
 	}
 }
 
-func NewMetadataStore(deps MetadataStoreDependencies) (meta.Store, error) {
+func NewMetadataDB(deps MetadataStoreDependencies) (*dbx.DB, error) {
 	cfg := deps.Config
 	switch cfg.Driver {
 	case "sqlite", "mysql", "postgres":
 	default:
 		return nil, oops.In("store").With("driver", cfg.Driver).Errorf("unsupported metadata store driver")
 	}
-	store, err := meta.OpenDBWithOptions(context.Background(), meta.DBOptions{
+	db, err := meta.OpenMetadataDB(context.Background(), meta.DBOptions{
 		Driver: cfg.Driver,
 		DSN:    cfg.DSN,
 		Path:   cfg.Path,
@@ -71,7 +73,11 @@ func NewMetadataStore(deps MetadataStoreDependencies) (meta.Store, error) {
 	if err != nil {
 		return nil, oops.Wrapf(err, "open metadata store")
 	}
-	return store, nil
+	return db, nil
+}
+
+func NewMetadataStore(db *dbx.DB, mapper *meta.MetadataMapper) meta.Store {
+	return meta.NewSQLStore(db, mapper)
 }
 
 func metadataDBHooks(metrics *observability.Metrics, driver string) []dbx.Hook {
@@ -125,12 +131,12 @@ func closeObjectStore(_ context.Context, store object.Store) error {
 	return nil
 }
 
-func closeMetadataStore(_ context.Context, store meta.Store) error {
-	if store == nil {
+func closeMetadataDB(_ context.Context, db *dbx.DB) error {
+	if db == nil {
 		return nil
 	}
-	if err := store.Close(); err != nil {
-		return oops.Wrapf(err, "close metadata store")
+	if err := db.Close(); err != nil {
+		return oops.Wrapf(err, "close metadata db")
 	}
 	return nil
 }
