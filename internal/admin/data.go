@@ -5,6 +5,7 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
@@ -105,12 +106,12 @@ func (s *Service) upstreamRows(now time.Time) []UpstreamRow {
 }
 
 func upstreamSnapshotMap(snapshot upstream.ClientSnapshot) map[string]upstream.UpstreamSnapshot {
-	out := make(map[string]upstream.UpstreamSnapshot, len(snapshot.Upstreams))
-	for i := range snapshot.Upstreams {
-		row := snapshot.Upstreams[i]
-		out[row.Alias] = row
-	}
-	return out
+	return collectionmapping.AssociateList(
+		collectionlist.NewList(snapshot.Upstreams...),
+		func(_ int, row upstream.UpstreamSnapshot) (string, upstream.UpstreamSnapshot) {
+			return row.Alias, row
+		},
+	).All()
 }
 
 func endpointRows(snapshot upstream.UpstreamSnapshot) []EndpointRow {

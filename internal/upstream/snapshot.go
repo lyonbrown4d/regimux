@@ -1,6 +1,10 @@
 package upstream
 
-import "time"
+import (
+	"time"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
+)
 
 type ClientSnapshot struct {
 	Upstreams []UpstreamSnapshot
@@ -24,14 +28,17 @@ func (c *Client) Snapshot(now time.Time) ClientSnapshot {
 		return ClientSnapshot{}
 	}
 
-	out := ClientSnapshot{}
-	c.upstreams.Range(func(_ string, pool *upstreamPool) bool {
-		if pool != nil {
-			out.Upstreams = append(out.Upstreams, pool.snapshot(now))
-		}
-		return true
-	})
-	return out
+	return ClientSnapshot{
+		Upstreams: collectionlist.FilterMapList(
+			collectionlist.NewList(c.upstreams.Values()...),
+			func(_ int, pool *upstreamPool) (UpstreamSnapshot, bool) {
+				if pool == nil {
+					return UpstreamSnapshot{}, false
+				}
+				return pool.snapshot(now), true
+			},
+		).Values(),
+	}
 }
 
 func (p *upstreamPool) snapshot(now time.Time) UpstreamSnapshot {
@@ -46,17 +53,15 @@ func (p *upstreamPool) snapshot(now time.Time) UpstreamSnapshot {
 		Alias:      alias,
 		Policy:     policy,
 		BlobPolicy: blobPolicy,
-		Endpoints:  make([]EndpointSnapshot, 0, len(runtimes)),
 	}
-	for i := range runtimes {
-		runtime := &runtimes[i]
+	out.Endpoints = collectionlist.MapList(collectionlist.NewList(runtimes...), func(i int, runtime upstreamRuntime) EndpointSnapshot {
 		registry := normalizeEndpointHealthRegistry(runtime.config.Registry)
-		out.Endpoints = append(out.Endpoints, EndpointSnapshot{
+		return EndpointSnapshot{
 			Registry: registry,
 			Role:     endpointRole(i, len(runtimes)),
 			Health:   p.health.Snapshot(registry, now),
-		})
-	}
+		}
+	}).Values()
 	return out
 }
 

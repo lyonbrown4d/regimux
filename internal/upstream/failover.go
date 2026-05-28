@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -182,11 +183,9 @@ func (c *Client) logBlobEndpointPlan(ctx context.Context, req failoverRequest, p
 }
 
 func runtimeRegistries(runtimes []upstreamRuntime) []string {
-	out := make([]string, 0, len(runtimes))
-	for i := range runtimes {
-		out = append(out, runtimes[i].config.Registry)
-	}
-	return out
+	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(_ int, runtime upstreamRuntime) string {
+		return runtime.config.Registry
+	}).Values()
 }
 
 func shouldFailover(err error) bool {

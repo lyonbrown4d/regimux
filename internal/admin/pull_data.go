@@ -29,15 +29,18 @@ func limitPulls(rows []PullRow, limit int) []PullRow {
 	return rows[:limit]
 }
 
+type pullTimes struct {
+	pull     time.Time
+	upstream time.Time
+}
+
 func latestPullTimes(records []meta.PullRecord) (time.Time, time.Time) {
-	var lastPullAt time.Time
-	var lastUpstreamPullAt time.Time
-	for i := range records {
-		record := &records[i]
-		lastPullAt = latestTime(lastPullAt, record.LastPullAt)
-		lastUpstreamPullAt = latestTime(lastUpstreamPullAt, record.LastUpstreamPullAt)
-	}
-	return lastPullAt, lastUpstreamPullAt
+	times := collectionlist.ReduceList(collectionlist.NewList(records...), pullTimes{}, func(acc pullTimes, _ int, record meta.PullRecord) pullTimes {
+		acc.pull = latestTime(acc.pull, record.LastPullAt)
+		acc.upstream = latestTime(acc.upstream, record.LastUpstreamPullAt)
+		return acc
+	})
+	return times.pull, times.upstream
 }
 
 func comparePullRecordRecent(left, right meta.PullRecord) int {

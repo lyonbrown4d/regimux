@@ -154,21 +154,25 @@ func (s *Service) authenticateTokenUser(ctx context.Context, req TokenRequest) (
 }
 
 func (s *Service) validateRequestedScopes(scopes []string, username string) error {
-	for _, scopeText := range scopes {
+	var validateErr error
+	collectionlist.NewList(scopes...).Range(func(_ int, scopeText string) bool {
 		scope, err := parseScope(scopeText)
 		if err != nil {
-			return err
+			validateErr = err
+			return false
 		}
 		if scope.RequiresPull() && !s.userAllows(username, scope.Name) {
-			return newHTTPAuthError(
+			validateErr = newHTTPAuthError(
 				authxhttp.ErrorCodeAccessDenied,
 				"repository access denied",
 				"resource", scope.Name,
 				"reason", "repository_not_allowed",
 			)
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return validateErr
 }
 
 func (s *Service) authenticateBasic(_ context.Context, credential BasicCredential) (authx.AuthenticationResult, error) {
@@ -221,12 +225,9 @@ func (s *Service) userAllows(username, resource string) bool {
 	if !ok {
 		return false
 	}
-	for _, pattern := range user.Repositories {
-		if repositoryPatternMatches(pattern, resource) {
-			return true
-		}
-	}
-	return false
+	return collectionlist.NewList(user.Repositories...).AnyMatch(func(_ int, pattern string) bool {
+		return repositoryPatternMatches(pattern, resource)
+	})
 }
 
 func (s *Service) AuthorizationForPath(path string, principal any) (authx.AuthorizationModel, error) {

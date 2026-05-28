@@ -33,12 +33,10 @@ func parseScope(value string) (Scope, error) {
 		Type: strings.TrimSpace(parts[0]),
 		Name: strings.Trim(strings.TrimSpace(parts[1]), "/"),
 	}
-	for action := range strings.SplitSeq(parts[2], ",") {
+	scope.Actions = collectionlist.FilterMapList(collectionlist.NewList(strings.Split(parts[2], ",")...), func(_ int, action string) (string, bool) {
 		action = strings.TrimSpace(action)
-		if action != "" {
-			scope.Actions = append(scope.Actions, action)
-		}
-	}
+		return action, action != ""
+	}).Values()
 	if scope.Type == "" || scope.Name == "" || len(scope.Actions) == 0 {
 		return Scope{}, newAuthError(authx.ErrorCodeInvalidAuthorizationModel, "registry token scope is incomplete")
 	}
@@ -46,15 +44,11 @@ func parseScope(value string) (Scope, error) {
 }
 
 func normalizeScopes(values []string) []string {
-	out := collectionset.NewOrderedSetWithCapacity[string](len(values))
-	for _, value := range values {
+	clean := collectionlist.FilterMapList(collectionlist.NewList(values...), func(_ int, value string) (string, bool) {
 		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		out.Add(value)
-	}
-	return out.Values()
+		return value, value != ""
+	})
+	return collectionset.NewOrderedSetWithCapacity[string](clean.Len(), clean.Values()...).Values()
 }
 
 func repositoryPatternMatches(pattern, resource string) bool {

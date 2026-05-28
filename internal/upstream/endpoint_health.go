@@ -1,11 +1,11 @@
 package upstream
 
 import (
-	"sort"
 	"strings"
 	"sync"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 )
 
@@ -60,9 +60,15 @@ type EndpointHealthCandidate struct {
 	State    EndpointHealthSnapshot
 }
 
+type endpointHealthCandidateRank struct {
+	candidate EndpointHealthCandidate
+	index     int
+}
+
 type endpointRuntimeCandidate struct {
 	runtime upstreamRuntime
 	state   EndpointHealthSnapshot
+	index   int
 }
 
 func NewEndpointHealthTracker(opts EndpointHealthOptions) *EndpointHealthTracker {
@@ -137,34 +143,29 @@ func (t *EndpointHealthTracker) Snapshot(registry string, now time.Time) Endpoin
 }
 
 func (t *EndpointHealthTracker) RankEndpointCandidates(registries []string, now time.Time) []EndpointHealthCandidate {
-	candidates := make([]EndpointHealthCandidate, 0, len(registries))
-	for _, registry := range registries {
+	ranked := collectionlist.MapList(collectionlist.NewList(registries...), func(index int, registry string) endpointHealthCandidateRank {
 		state := t.Snapshot(registry, now)
-		candidates = append(candidates, EndpointHealthCandidate{
-			Registry: state.Registry,
-			State:    state,
-		})
-	}
-
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return endpointStateLess(candidates[i].State, candidates[j].State)
-	})
-	return candidates
+		return endpointHealthCandidateRank{
+			candidate: EndpointHealthCandidate{
+				Registry: state.Registry,
+				State:    state,
+			},
+			index: index,
+		}
+	}).Sort(compareEndpointHealthCandidateRank)
+	return collectionlist.MapList(ranked, func(_ int, item endpointHealthCandidateRank) EndpointHealthCandidate {
+		return item.candidate
+	}).Values()
 }
 
 func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes []upstreamRuntime, now time.Time) []endpointRuntimeCandidate {
-	candidates := make([]endpointRuntimeCandidate, 0, len(runtimes))
-	for i := range runtimes {
-		candidates = append(candidates, endpointRuntimeCandidate{
-			runtime: runtimes[i],
-			state:   t.Snapshot(runtimes[i].config.Registry, now),
-		})
-	}
-
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return endpointStateLess(candidates[i].state, candidates[j].state)
-	})
-	return candidates
+	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(index int, runtime upstreamRuntime) endpointRuntimeCandidate {
+		return endpointRuntimeCandidate{
+			runtime: runtime,
+			state:   t.Snapshot(runtime.config.Registry, now),
+			index:   index,
+		}
+	}).Sort(compareEndpointRuntimeCandidate).Values()
 }
 
 func (t *EndpointHealthTracker) stateLocked(registry string) *endpointHealthState {
@@ -213,14 +214,34 @@ func (t *EndpointHealthTracker) snapshotLocked(state *endpointHealthState, now t
 	}
 }
 
-func endpointStateLess(left, right EndpointHealthSnapshot) bool {
+func compareEndpointHealthCandidateRank(left, right endpointHealthCandidateRank) int {
+	if state := compareEndpointState(left.candidate.State, right.candidate.State); state != 0 {
+		return state
+	}
+	return left.index - right.index
+}
+
+func compareEndpointRuntimeCandidate(left, right endpointRuntimeCandidate) int {
+	if state := compareEndpointState(left.state, right.state); state != 0 {
+		return state
+	}
+	return left.index - right.index
+}
+
+func compareEndpointState(left, right EndpointHealthSnapshot) int {
 	if left.InCooldown != right.InCooldown {
-		return !left.InCooldown
+		if left.InCooldown {
+			return 1
+		}
+		return -1
 	}
 	if left.Score != right.Score {
-		return left.Score < right.Score
+		if left.Score < right.Score {
+			return -1
+		}
+		return 1
 	}
-	return false
+	return 0
 }
 
 func normalizeEndpointHealthOptions(opts EndpointHealthOptions) EndpointHealthOptions {

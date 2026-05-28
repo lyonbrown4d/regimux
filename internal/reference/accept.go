@@ -5,22 +5,19 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"mime"
-	"sort"
 	"strings"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 )
 
 // NormalizeAccept canonicalizes an Accept header for use in cache keys.
 // It preserves media-range order because order can affect content negotiation.
 func NormalizeAccept(header string) string {
-	parts := splitHeaderList(header)
-	normalized := make([]string, 0, len(parts))
-	for _, part := range parts {
+	return collectionlist.FilterMapList(collectionlist.NewList(splitHeaderList(header)...), func(_ int, part string) (string, bool) {
 		item := normalizeAcceptItem(part)
-		if item != "" {
-			normalized = append(normalized, item)
-		}
-	}
-	return strings.Join(normalized, ",")
+		return item, item != ""
+	}).Join(",")
 }
 
 // AcceptKey returns a stable sha256 hex key for a normalized Accept header.
@@ -46,20 +43,20 @@ func normalizeAcceptItem(item string) string {
 			return ""
 		}
 		fallbackParams := normalizeAcceptParams(pieces[1:])
-		if len(fallbackParams) == 0 {
+		if fallbackParams.IsEmpty() {
 			return mediaType
 		}
-		return mediaType + ";" + strings.Join(fallbackParams, ";")
+		return mediaType + ";" + fallbackParams.Join(";")
 	}
 	normalized := normalizeMediaType(mediaType)
 	if normalized == "" {
 		return ""
 	}
 	paramPairs := normalizeAcceptParamMap(params)
-	if len(paramPairs) == 0 {
+	if paramPairs.IsEmpty() {
 		return normalized
 	}
-	return normalized + ";" + strings.Join(paramPairs, ";")
+	return normalized + ";" + paramPairs.Join(";")
 }
 
 func normalizeMediaType(value string) string {
@@ -71,28 +68,18 @@ func normalizeMediaType(value string) string {
 	return strings.ToLower(value)
 }
 
-func normalizeAcceptParams(rawParams []string) []string {
-	params := make([]string, 0, len(rawParams))
-	for _, raw := range rawParams {
-		param, ok := normalizeAcceptParam(raw)
-		if ok {
-			params = append(params, param)
-		}
-	}
-	sort.Strings(params)
-	return params
+func normalizeAcceptParams(rawParams []string) *collectionlist.List[string] {
+	return collectionlist.FilterMapList(collectionlist.NewList(rawParams...), func(_ int, raw string) (string, bool) {
+		return normalizeAcceptParam(raw)
+	}).Sort(strings.Compare)
 }
 
-func normalizeAcceptParamMap(params map[string]string) []string {
-	out := make([]string, 0, len(params))
-	for name, value := range params {
+func normalizeAcceptParamMap(params map[string]string) *collectionlist.List[string] {
+	return collectionlist.FilterMapList(collectionlist.NewList(collectionmapping.NewMapFrom(params).Keys()...), func(_ int, name string) (string, bool) {
+		value := params[name]
 		param, ok := normalizeAcceptParam(name + "=" + value)
-		if ok {
-			out = append(out, param)
-		}
-	}
-	sort.Strings(out)
-	return out
+		return param, ok
+	}).Sort(strings.Compare)
 }
 
 func normalizeAcceptParam(raw string) (string, bool) {

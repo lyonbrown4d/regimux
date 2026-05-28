@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -224,11 +225,9 @@ func rewriteTagsHeaders(headers http.Header, req TagRequest) http.Header {
 }
 
 func rewriteLinkHeader(header, alias, repo string) string {
-	parts := strings.Split(header, ",")
-	for i, part := range parts {
-		parts[i] = rewriteLinkPart(part, alias, repo)
-	}
-	return strings.Join(parts, ",")
+	return collectionlist.MapList(collectionlist.NewList(strings.Split(header, ",")...), func(_ int, part string) string {
+		return rewriteLinkPart(part, alias, repo)
+	}).Join(",")
 }
 
 func rewriteLinkPart(part, alias, repo string) string {

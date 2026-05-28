@@ -9,6 +9,7 @@ import (
 
 	clienthttp "github.com/arcgolabs/clientx/http"
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -30,7 +31,7 @@ type upstreamPool struct {
 	runtimes        []upstreamRuntime
 	next            int
 	nextBlob        int
-	limiters        map[string]chan struct{}
+	limiters        *collectionmapping.Map[string, chan struct{}]
 	health          *EndpointHealthTracker
 	scheduler       *layerScheduler
 	probeConfig     ProbeConfig
@@ -59,7 +60,9 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 			Cooldown: cfg.Probe.Cooldown,
 		}),
 	}
-	for _, registry := range endpointRegistries(cfg) {
+	registries := endpointRegistries(cfg)
+	runtimes := collectionlist.NewListWithCapacity[upstreamRuntime](len(registries))
+	collectionlist.NewList(registries...).Range(func(_ int, registry string) bool {
 		runtimeCfg := cfg
 		runtimeCfg.Registry = registry
 		runtime := upstreamRuntime{config: runtimeCfg}
@@ -72,8 +75,10 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 				"error", runtime.err,
 			)
 		}
-		pool.runtimes = append(pool.runtimes, runtime)
-	}
+		runtimes.Add(runtime)
+		return true
+	})
+	pool.runtimes = runtimes.Values()
 	if logger != nil {
 		logger.Debug(
 			"upstream pool initialized",
@@ -95,13 +100,14 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 
 func endpointRegistries(cfg Config) []string {
 	registries := collectionset.NewOrderedSetWithCapacity[string](len(cfg.Mirrors) + 1)
-	for _, registry := range cfg.Mirrors {
+	collectionlist.NewList(cfg.Mirrors...).Range(func(_ int, registry string) bool {
 		registry = strings.TrimRight(strings.TrimSpace(registry), "/")
 		if registry == "" {
-			continue
+			return true
 		}
 		registries.Add(registry)
-	}
+		return true
+	})
 	registry := strings.TrimRight(strings.TrimSpace(cfg.Registry), "/")
 	if registry != "" {
 		registries.Add(registry)
@@ -179,11 +185,9 @@ func (p *upstreamPool) runtimesForPolicy(policy string, blob bool) []upstreamRun
 	}
 
 	start := p.nextOffset(len(p.runtimes), blob)
-	out := collectionlist.NewListWithCapacity[upstreamRuntime](len(p.runtimes))
-	for i := range p.runtimes {
-		out.Add(p.runtimes[(start+i)%len(p.runtimes)])
-	}
-	return out.Values()
+	return collectionlist.MapList(collectionlist.NewList(p.runtimes...), func(i int, _ upstreamRuntime) upstreamRuntime {
+		return p.runtimes[(start+i)%len(p.runtimes)]
+	}).Values()
 }
 
 func (p *upstreamPool) selectLatencyBlobRuntimes(digest string) runtimeSelection {
@@ -246,12 +250,12 @@ func (p *upstreamPool) limiter(registry string) chan struct{} {
 	defer p.mu.Unlock()
 
 	if p.limiters == nil {
-		p.limiters = make(map[string]chan struct{})
+		p.limiters = collectionmapping.NewMap[string, chan struct{}]()
 	}
-	limiter := p.limiters[registry]
+	limiter, _ := p.limiters.Get(registry)
 	if limiter == nil {
 		limiter = make(chan struct{}, p.blobLimit)
-		p.limiters[registry] = limiter
+		p.limiters.Set(registry, limiter)
 	}
 	return limiter
 }

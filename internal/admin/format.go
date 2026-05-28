@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
@@ -72,13 +73,12 @@ func endpointStatus(snapshot upstream.EndpointHealthSnapshot) string {
 }
 
 func latestTime(values ...time.Time) time.Time {
-	var out time.Time
-	for _, value := range values {
+	return collectionlist.ReduceList(collectionlist.NewList(values...), time.Time{}, func(out time.Time, _ int, value time.Time) time.Time {
 		if value.After(out) {
-			out = value
+			return value
 		}
-	}
-	return out
+		return out
+	})
 }
 
 func compareTimeDesc(left, right time.Time) int {

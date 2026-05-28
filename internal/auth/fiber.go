@@ -11,6 +11,7 @@ import (
 	authxhttp "github.com/arcgolabs/authx/http"
 	authfiber "github.com/arcgolabs/authx/http/fiber"
 	authjwt "github.com/arcgolabs/authx/jwt"
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v2"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
@@ -115,14 +116,14 @@ func writeDistributionFailure(c *fiber.Ctx, status int, list *distribution.Error
 }
 
 func (s *Service) challenge(c *fiber.Ctx) string {
-	parts := []string{
-		`Bearer realm="` + escapeChallengeValue(s.realm(c)) + `"`,
-		`service="` + escapeChallengeValue(s.serviceName()) + `"`,
-	}
+	parts := collectionlist.NewList(
+		`Bearer realm="`+escapeChallengeValue(s.realm(c))+`"`,
+		`service="`+escapeChallengeValue(s.serviceName())+`"`,
+	)
 	if scope := s.ScopeForPath(c.Path()); scope != "" {
-		parts = append(parts, `scope="`+escapeChallengeValue(scope)+`"`)
+		parts.Add(`scope="` + escapeChallengeValue(scope) + `"`)
 	}
-	return strings.Join(parts, ",")
+	return parts.Join(",")
 }
 
 func (s *Service) realm(c *fiber.Ctx) string {
