@@ -37,6 +37,7 @@ upstreams {
 - `server.middleware.etag.enabled = true`，但跳过 registry `/v2` 流量
 - `server.middleware.compress.enabled = true`，但跳过 registry `/v2` 流量
 - `server.middleware.security_headers.enabled = true`，但跳过 registry `/v2` 流量
+- `server.middleware.security_headers.cross_origin_embedder_policy = "unsafe-none"`，让内置 admin UI 可以加载 CDN 静态资源
 - `server.middleware.rate_limit.enabled = false`
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`

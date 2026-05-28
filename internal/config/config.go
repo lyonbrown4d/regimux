@@ -116,6 +116,10 @@ func (c *Config) normalizeServer() {
 	}
 	c.Server.Middleware.Healthcheck.LivenessPath = normalizeHTTPPath(c.Server.Middleware.Healthcheck.LivenessPath, "/livez")
 	c.Server.Middleware.Healthcheck.ReadinessPath = normalizeHTTPPath(c.Server.Middleware.Healthcheck.ReadinessPath, "/readyz")
+	c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy = strings.ToLower(strings.TrimSpace(c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy))
+	if c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy == "" {
+		c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy = "unsafe-none"
+	}
 	c.Server.Middleware.Compress.Level = strings.ToLower(strings.TrimSpace(c.Server.Middleware.Compress.Level))
 	if c.Server.Middleware.Compress.Level == "" {
 		c.Server.Middleware.Compress.Level = "default"

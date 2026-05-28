@@ -24,6 +24,7 @@ server {
     security_headers {
       enabled = true
       content_security_policy = ""
+      cross_origin_embedder_policy = "unsafe-none"
       hsts_max_age = 0
     }
 

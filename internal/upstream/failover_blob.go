@@ -127,7 +127,7 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	remaining, inFlightRemaining, hasNext := r.finishAttempt()
 	req := failoverRequest{alias: r.alias, operation: r.operation, repository: r.repository, digest: r.digest}
 	if result.err == nil {
-		r.client.recordEndpointSuccess(r.ctx, req, r.pool, result.runtime)
+		r.client.recordEndpointSuccess(req, r.pool, result.runtime)
 		r.client.logBlobEndpointSelected(r.ctx, req, result.runtime, result.attempt, len(r.runtimes))
 		r.cancel()
 		return true, nil
@@ -140,7 +140,7 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 		return true, result.err
 	}
 
-	r.client.recordEndpointFailure(r.ctx, req, r.pool, result.runtime, result.err)
+	r.client.recordEndpointFailure(req, r.pool, result.runtime, result.err)
 	r.client.logBlobAttemptFailure(r.ctx, req, result.runtime, result.err, result.attempt, len(r.runtimes), remaining+inFlightRemaining)
 	r.client.logFailover(req, result.runtime, result.err, hasNext)
 	r.client.publishFailover(r.ctx, req, result.runtime, result.err, hasNext)

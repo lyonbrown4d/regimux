@@ -82,9 +82,10 @@ func installSecurityHeaders(app *fiber.App, cfg config.MiddlewareSecurityHeaders
 		return
 	}
 	app.Use(helmet.New(helmet.Config{
-		Next:                  skipRegistryPath,
-		ContentSecurityPolicy: cfg.ContentSecurityPolicy,
-		HSTSMaxAge:            cfg.HSTSMaxAge,
+		Next:                      skipRegistryPath,
+		ContentSecurityPolicy:     cfg.ContentSecurityPolicy,
+		CrossOriginEmbedderPolicy: cfg.CrossOriginEmbedderPolicy,
+		HSTSMaxAge:                cfg.HSTSMaxAge,
 	}))
 }
 

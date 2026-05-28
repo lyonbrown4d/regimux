@@ -6,7 +6,9 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	registryref "github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/samber/oops"
@@ -24,6 +26,7 @@ func (s *Service) syncPage(c fiber.Ctx) error {
 		return err
 	}
 	data.Sync.Form = defaultSyncForm()
+	data.Sync.Upstreams = s.syncUpstreamOptions(data.Sync.Form.UpstreamAlias)
 	return s.render(c, "sync", "layout", data)
 }
 
@@ -35,6 +38,7 @@ func (s *Service) syncSubmit(c fiber.Ctx) error {
 
 	opts, form, err := s.syncOptionsFromForm(c)
 	data.Sync.Form = form
+	data.Sync.Upstreams = s.syncUpstreamOptions(form.UpstreamAlias)
 	if err != nil {
 		data.Sync.Error = err.Error()
 		c.Status(fiber.StatusBadRequest)
@@ -131,6 +135,22 @@ func defaultSyncForm() SyncForm {
 		UpstreamAlias: "hub",
 		Reference:     "latest",
 	}
+}
+
+func (s *Service) syncUpstreamOptions(selected string) []SyncUpstreamOption {
+	if selected == "" {
+		selected = "hub"
+	}
+	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](len(s.cfg.Upstreams))
+	s.cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		options.Add(SyncUpstreamOption{
+			Alias:    alias,
+			Registry: upstreamCfg.Registry,
+			Selected: alias == selected,
+		})
+		return true
+	})
+	return options.Values()
 }
 
 func splitRepositoryReference(value string) (string, string, error) {

@@ -2,14 +2,11 @@ package upstream
 
 import (
 	"context"
-	"errors"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
-
-const endpointHealthPersistTimeout = 5 * time.Second
 
 func (c *Client) LoadEndpointHealth(ctx context.Context) error {
 	if c == nil || c.metadata == nil || c.upstreams == nil {
@@ -41,31 +38,31 @@ func (c *Client) restoreEndpointHealthRecords(records []meta.EndpointHealthRecor
 	return loaded
 }
 
-func (c *Client) recordProbeSuccess(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime, latency time.Duration) {
+func (c *Client) recordProbeSuccess(pool *upstreamPool, runtime upstreamRuntime, latency time.Duration) {
 	now := time.Now()
 	snapshot := pool.recordProbeSuccess(runtime, latency, now)
-	c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
+	c.persistEndpointHealthSnapshot(pool.alias, snapshot)
 }
 
-func (c *Client) recordProbeFailure(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) {
+func (c *Client) recordProbeFailure(pool *upstreamPool, runtime upstreamRuntime) {
 	now := time.Now()
 	snapshot := pool.recordProbeFailure(runtime, now)
-	c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
+	c.persistEndpointHealthSnapshot(pool.alias, snapshot)
 }
 
-func (c *Client) recordEndpointSuccess(ctx context.Context, req failoverRequest, pool *upstreamPool, runtime upstreamRuntime) {
+func (c *Client) recordEndpointSuccess(req failoverRequest, pool *upstreamPool, runtime upstreamRuntime) {
 	if pool == nil {
 		return
 	}
 	now := time.Now()
 	snapshot := pool.recordRequestSuccess(runtime, req.repository, now)
-	c.persistEndpointHealthSnapshot(ctx, pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
+	c.persistEndpointHealthSnapshot(pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
 	if snapshot.Repository != "" {
-		c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
+		c.persistEndpointHealthSnapshot(pool.alias, snapshot)
 	}
 }
 
-func (c *Client) recordEndpointFailure(ctx context.Context, req failoverRequest, pool *upstreamPool, runtime upstreamRuntime, err error) {
+func (c *Client) recordEndpointFailure(req failoverRequest, pool *upstreamPool, runtime upstreamRuntime, err error) {
 	if pool == nil {
 		return
 	}
@@ -76,45 +73,17 @@ func (c *Client) recordEndpointFailure(ctx context.Context, req failoverRequest,
 	} else {
 		snapshot = pool.recordRequestFailure(runtime, req.repository, now)
 	}
-	c.persistEndpointHealthSnapshot(ctx, pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
+	c.persistEndpointHealthSnapshot(pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
 	if snapshot.Repository != "" {
-		c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
+		c.persistEndpointHealthSnapshot(pool.alias, snapshot)
 	}
 }
 
-func (c *Client) persistEndpointHealthSnapshot(ctx context.Context, alias string, snapshot EndpointHealthSnapshot) {
+func (c *Client) persistEndpointHealthSnapshot(alias string, snapshot EndpointHealthSnapshot) {
 	if c == nil || c.metadata == nil || snapshot.Registry == "" {
 		return
 	}
-	persistCtx, cancel := endpointHealthPersistenceContext(ctx)
-	defer cancel()
-	if _, err := c.metadata.UpsertEndpointHealth(persistCtx, endpointHealthRecordFromSnapshot(alias, snapshot)); err != nil {
-		c.logEndpointHealthPersistError(alias, snapshot, err)
-	}
-}
-
-func endpointHealthPersistenceContext(parent context.Context) (context.Context, context.CancelFunc) {
-	if parent == nil {
-		parent = context.Background()
-	}
-	return context.WithTimeout(context.WithoutCancel(parent), endpointHealthPersistTimeout)
-}
-
-func (c *Client) logEndpointHealthPersistError(alias string, snapshot EndpointHealthSnapshot, err error) {
-	if c == nil || c.logger == nil {
-		return
-	}
-	args := []any{
-		"alias", alias,
-		"registry", snapshot.Registry,
-		"repository", snapshot.Repository,
-		"error", err,
-	}
-	if errors.Is(err, context.Canceled) {
-		c.logger.Debug("persist upstream endpoint health skipped after context cancellation", args...)
-		return
-	}
-	c.logger.Warn("persist upstream endpoint health failed", args...)
+	c.enqueueEndpointHealth(endpointHealthRecordFromSnapshot(alias, snapshot))
 }
 
 func (p *upstreamPool) hasRegistry(registry string) bool {

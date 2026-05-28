@@ -45,8 +45,11 @@ func defaultServerMiddlewareConfig() ServerMiddlewareConfig {
 			LivenessPath:  "/livez",
 			ReadinessPath: "/readyz",
 		},
-		ETag:            MiddlewareToggleConfig{Enabled: true},
-		SecurityHeaders: MiddlewareSecurityHeadersConfig{Enabled: true},
+		ETag: MiddlewareToggleConfig{Enabled: true},
+		SecurityHeaders: MiddlewareSecurityHeadersConfig{
+			Enabled:                   true,
+			CrossOriginEmbedderPolicy: "unsafe-none",
+		},
 		Compress: MiddlewareCompressConfig{
 			Enabled: true,
 			Level:   "default",

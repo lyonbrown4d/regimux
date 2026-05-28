@@ -49,9 +49,10 @@ type MiddlewareHealthcheckConfig struct {
 }
 
 type MiddlewareSecurityHeadersConfig struct {
-	Enabled               bool   `json:"enabled"                 koanf:"enabled"                 mapstructure:"enabled"`
-	ContentSecurityPolicy string `json:"content_security_policy" koanf:"content_security_policy" mapstructure:"content_security_policy"`
-	HSTSMaxAge            int    `json:"hsts_max_age"            koanf:"hsts_max_age"            mapstructure:"hsts_max_age"            validate:"min=0"`
+	Enabled                   bool   `json:"enabled"                      koanf:"enabled"                      mapstructure:"enabled"`
+	ContentSecurityPolicy     string `json:"content_security_policy"      koanf:"content_security_policy"      mapstructure:"content_security_policy"`
+	CrossOriginEmbedderPolicy string `json:"cross_origin_embedder_policy" koanf:"cross_origin_embedder_policy" mapstructure:"cross_origin_embedder_policy" validate:"omitempty,oneof=unsafe-none require-corp credentialless"`
+	HSTSMaxAge                int    `json:"hsts_max_age"                 koanf:"hsts_max_age"                 mapstructure:"hsts_max_age"                 validate:"min=0"`
 }
 
 type MiddlewareCompressConfig struct {

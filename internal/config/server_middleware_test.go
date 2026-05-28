@@ -38,6 +38,9 @@ func assertDefaultResponseMiddleware(t *testing.T, middleware config.ServerMiddl
 	if !middleware.ETag.Enabled || !middleware.SecurityHeaders.Enabled || !middleware.Compress.Enabled {
 		t.Fatalf("unexpected response middleware defaults: %#v", middleware)
 	}
+	if middleware.SecurityHeaders.CrossOriginEmbedderPolicy != "unsafe-none" {
+		t.Fatalf("unexpected COEP default: %#v", middleware.SecurityHeaders)
+	}
 }
 
 func assertOptInMiddleware(t *testing.T, middleware config.ServerMiddlewareConfig) {

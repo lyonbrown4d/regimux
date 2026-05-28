@@ -92,7 +92,7 @@ func OpenMetadataDB(ctx context.Context, opts DBOptions) (*dbx.DB, error) {
 	if err != nil {
 		return nil, wrapError(err, "open metadata db")
 	}
-	configureMetadataDBPool(core.SQLDB())
+	configureMetadataDBPool(core.SQLDB(), openConfig.driver)
 	if openConfig.driver == metaDriverSQLite {
 		err = configureSQLitePragmas(ctx, core.SQLDB())
 	}
@@ -205,8 +205,14 @@ func requireMetadataContext(ctx context.Context, operation string) error {
 	return nil
 }
 
-func configureMetadataDBPool(raw *sql.DB) {
+func configureMetadataDBPool(raw *sql.DB, driver string) {
 	if raw == nil {
+		return
+	}
+	if driver == metaDriverSQLite {
+		raw.SetMaxOpenConns(1)
+		raw.SetMaxIdleConns(1)
+		raw.SetConnMaxLifetime(0)
 		return
 	}
 	raw.SetMaxOpenConns(8)

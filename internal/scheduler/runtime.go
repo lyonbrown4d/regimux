@@ -81,6 +81,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 	if err := r.registerProbe(ctx, scheduler); err != nil {
 		return join(err, r.Stop(ctx))
 	}
+	if err := r.registerEndpointHealthFlush(ctx, scheduler); err != nil {
+		return join(err, r.Stop(ctx))
+	}
 	scheduler.Start()
 	r.logger.Info("scheduler started", "jobs", len(scheduler.Jobs()))
 	return nil

@@ -43,14 +43,19 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 		tasks.Add(c.probeTask(pool, index, &successes, &failures))
 	}
 	probeErr := worker.RunAllSettled(ctx, c.probePool(), tasks)
+	flushErr := c.FlushEndpointHealth(ctx)
+	if flushErr != nil && c.logger != nil {
+		c.logger.DebugContext(ctx, "upstream probe health flush incomplete", "alias", alias, "error", flushErr)
+	}
 	successCount := int(successes.Load())
 	failureCount := int(failures.Load())
 	if successCount > 0 {
 		c.logProbeSummary(ctx, alias, successCount, failureCount, nil)
 		return nil
 	}
+	probeErr = errors.Join(newError("probe upstream endpoints"), probeErr)
 	c.logProbeSummary(ctx, alias, successCount, failureCount, probeErr)
-	return errors.Join(newError("probe upstream endpoints"), probeErr)
+	return probeErr
 }
 
 func (c *Client) probeTask(pool *upstreamPool, index int, successes, failures *atomic.Int32) func(context.Context) error {
@@ -76,7 +81,7 @@ func (c *Client) probePool() *ants.Pool {
 
 func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) error {
 	if runtime.err != nil {
-		c.recordProbeFailure(ctx, pool, runtime)
+		c.recordProbeFailure(pool, runtime)
 		return distribution.ErrUpstream.WithDetail(runtime.err.Error())
 	}
 
@@ -92,18 +97,18 @@ func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime u
 	resp, err := c.execute(probeCtx, runtime, operationPing, http.MethodGet, requestURL)
 	latency := time.Since(startedAt)
 	if err != nil {
-		c.recordProbeFailure(ctx, pool, runtime)
+		c.recordProbeFailure(pool, runtime)
 		c.logProbeResult(ctx, pool.alias, runtime, latency, err)
 		return err
 	}
 
 	if probeStatusReachable(resp.StatusCode) {
-		c.recordProbeSuccess(ctx, pool, runtime, latency)
+		c.recordProbeSuccess(pool, runtime, latency)
 		c.logProbeResult(ctx, pool.alias, runtime, latency, nil)
 		return closeBody(resp.Body)
 	}
 
-	c.recordProbeFailure(ctx, pool, runtime)
+	c.recordProbeFailure(pool, runtime)
 	err = closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationPing))
 	c.logProbeResult(ctx, pool.alias, runtime, latency, err)
 	return err

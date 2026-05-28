@@ -23,6 +23,7 @@ server {
 
     security_headers {
       enabled = true
+      cross_origin_embedder_policy = "unsafe-none"
     }
 
     compress {

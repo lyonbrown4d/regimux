@@ -21,6 +21,7 @@ var Module = dix.NewModule("upstream",
 	),
 	dix.Hooks(
 		dix.OnStart[*Client](loadClientEndpointHealth, dix.LifecycleName("regimux.upstream_health_load"), dix.LifecyclePriority(-50)),
+		dix.OnStop[*Client](flushClientEndpointHealth, dix.LifecycleName("regimux.upstream_health_flush"), dix.LifecyclePriority(-55)),
 	),
 )
 
@@ -45,6 +46,13 @@ func loadClientEndpointHealth(ctx context.Context, client *Client) error {
 		return nil
 	}
 	return client.LoadEndpointHealth(ctx)
+}
+
+func flushClientEndpointHealth(ctx context.Context, client *Client) error {
+	if client == nil {
+		return nil
+	}
+	return client.FlushEndpointHealth(ctx)
 }
 
 // ConfigsFromUpstreamConfigs converts runtime config upstreams into client configs.

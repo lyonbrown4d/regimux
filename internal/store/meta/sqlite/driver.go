@@ -6,20 +6,26 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+const busyTimeoutMillis = "10000"
 
 func DSN(path string) (string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
 		return "", errors.New("sqlite path is required")
 	}
-	if IsMemoryOrFileURI(path) {
+	if strings.EqualFold(path, ":memory:") {
 		return path, nil
 	}
-	return filepath.Clean(path), nil
+	if IsMemoryOrFileURI(path) {
+		return appendSQLitePragmas(path), nil
+	}
+	return appendSQLitePragmas(filepath.Clean(path)), nil
 }
 
 func EnsureDirectory(path string) error {
@@ -33,12 +39,24 @@ func EnsureDirectory(path string) error {
 	return nil
 }
 
+func appendSQLitePragmas(dsn string) string {
+	values := url.Values{}
+	values.Add("_pragma", "busy_timeout="+busyTimeoutMillis)
+	values.Add("_pragma", "journal_mode(WAL)")
+	values.Add("_pragma", "synchronous(NORMAL)")
+	separator := "?"
+	if strings.Contains(dsn, "?") {
+		separator = "&"
+	}
+	return dsn + separator + values.Encode()
+}
+
 func ConfigurePragmas(ctx context.Context, raw *sql.DB) error {
 	if raw == nil {
 		return errors.New("sqlite db is required")
 	}
 	statements := []string{
-		"PRAGMA busy_timeout = 5000",
+		"PRAGMA busy_timeout = " + busyTimeoutMillis,
 		"PRAGMA journal_mode = WAL",
 		"PRAGMA synchronous = NORMAL",
 	}

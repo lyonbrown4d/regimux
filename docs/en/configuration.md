@@ -37,6 +37,7 @@ Important defaults:
 - `server.middleware.etag.enabled = true`, scoped away from registry `/v2` traffic
 - `server.middleware.compress.enabled = true`, scoped away from registry `/v2` traffic
 - `server.middleware.security_headers.enabled = true`, scoped away from registry `/v2` traffic
+- `server.middleware.security_headers.cross_origin_embedder_policy = "unsafe-none"` so the embedded admin UI can load CDN assets
 - `server.middleware.rate_limit.enabled = false`
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`

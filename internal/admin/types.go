@@ -268,6 +268,7 @@ type ConfigSourceRow struct {
 
 type SyncPageData struct {
 	Form      SyncForm
+	Upstreams []SyncUpstreamOption
 	Result    SyncResult
 	Error     string
 	HasResult bool
@@ -277,6 +278,12 @@ type SyncForm struct {
 	UpstreamAlias string
 	Repository    string
 	Reference     string
+}
+
+type SyncUpstreamOption struct {
+	Alias    string
+	Registry string
+	Selected bool
 }
 
 type SyncResult struct {

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -23,6 +24,9 @@ type Client struct {
 	events     events.Bus
 	metadata   meta.Store
 	logger     *slog.Logger
+
+	healthMu      sync.Mutex
+	healthPending *collectionmapping.ConcurrentMap[string, meta.EndpointHealthRecord]
 }
 
 const (
@@ -59,12 +63,13 @@ func NewClient(deps ClientDependencies) *Client {
 	if configs == nil {
 		logger.Info("upstream client configured", "upstreams", 0)
 		return &Client{
-			upstreams:  upstreams,
-			tokenCache: newBearerTokenCache(),
-			workers:    pools,
-			events:     bus,
-			metadata:   metadata,
-			logger:     logger,
+			upstreams:     upstreams,
+			tokenCache:    newBearerTokenCache(),
+			workers:       pools,
+			events:        bus,
+			metadata:      metadata,
+			logger:        logger,
+			healthPending: collectionmapping.NewConcurrentMap[string, meta.EndpointHealthRecord](),
 		}
 	}
 	upstreams = collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](configs.Len())
@@ -76,12 +81,13 @@ func NewClient(deps ClientDependencies) *Client {
 	logger.Info("upstream client configured", "upstreams", upstreams.Len())
 
 	return &Client{
-		upstreams:  upstreams,
-		tokenCache: newBearerTokenCache(),
-		workers:    pools,
-		events:     bus,
-		metadata:   metadata,
-		logger:     logger,
+		upstreams:     upstreams,
+		tokenCache:    newBearerTokenCache(),
+		workers:       pools,
+		events:        bus,
+		metadata:      metadata,
+		logger:        logger,
+		healthPending: collectionmapping.NewConcurrentMap[string, meta.EndpointHealthRecord](),
 	}
 }
 

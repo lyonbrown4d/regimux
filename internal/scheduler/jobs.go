@@ -13,6 +13,8 @@ import (
 	"github.com/samber/oops"
 )
 
+const endpointHealthFlushInterval = 2 * time.Second
+
 func (r *Runtime) registerCleanup(ctx context.Context, scheduler gocron.Scheduler) error {
 	cfg := r.cfg.Scheduler.Cleanup
 	if !cfg.Enabled || cfg.Interval <= 0 {
@@ -105,6 +107,28 @@ func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler)
 	return registerErr
 }
 
+func (r *Runtime) registerEndpointHealthFlush(ctx context.Context, scheduler gocron.Scheduler) error {
+	if r.upstream == nil {
+		return nil
+	}
+	options := []gocron.JobOption{
+		gocron.WithName("regimux.upstream.endpoint_health.flush"),
+		gocron.WithTags("maintenance", "upstream", "endpoint-health"),
+		gocron.WithContext(ctx),
+		gocron.WithSingletonMode(gocron.LimitModeReschedule),
+		gocron.WithDisabledDistributedJobLocker(true),
+	}
+	if _, err := scheduler.NewJob(
+		gocron.DurationJob(endpointHealthFlushInterval),
+		gocron.NewTask(r.runEndpointHealthFlush),
+		options...,
+	); err != nil {
+		return oops.Wrapf(err, "register upstream endpoint health flush job")
+	}
+	r.logger.InfoContext(ctx, "registered upstream endpoint health flush job", "interval", endpointHealthFlushInterval)
+	return nil
+}
+
 func (r *Runtime) runCleanup(ctx context.Context) error {
 	startedAt := time.Now()
 	report, err := r.cleanup.CleanupBlobs(ctx, cache.CleanupOptions{
@@ -155,6 +179,20 @@ func (r *Runtime) runProbe(ctx context.Context, alias string) error {
 	}
 	r.logger.InfoContext(ctx, "upstream probe job completed", "alias", alias, "duration_ms", time.Since(startedAt).Milliseconds())
 	r.observeJob(ctx, "probe", alias, startedAt, nil)
+	return nil
+}
+
+func (r *Runtime) runEndpointHealthFlush(ctx context.Context) error {
+	startedAt := time.Now()
+	if r.upstream == nil {
+		return nil
+	}
+	if err := r.upstream.FlushEndpointHealth(ctx); err != nil {
+		err = oops.Wrapf(err, "run upstream endpoint health flush job")
+		r.observeJob(ctx, "endpoint_health_flush", "", startedAt, err)
+		return err
+	}
+	r.observeJob(ctx, "endpoint_health_flush", "", startedAt, nil)
 	return nil
 }
 
