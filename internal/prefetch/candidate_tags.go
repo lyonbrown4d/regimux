@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/Masterminds/semver/v3"
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
@@ -17,22 +18,18 @@ type versionTag struct {
 	suffix   string
 }
 
-func parseAvailableTags(tags []string) []versionTag {
-	seen := collectionset.NewOrderedSetWithCapacity[string](len(tags))
-	parsed := make([]versionTag, 0, len(tags))
-	for _, tag := range tags {
+func parseAvailableTags(tags *collectionlist.List[string]) *collectionlist.List[versionTag] {
+	if tags == nil {
+		return collectionlist.NewList[versionTag]()
+	}
+	seen := collectionset.NewOrderedSetWithCapacity[string](tags.Len())
+	return collectionlist.FilterMapList(tags, func(_ int, tag string) (versionTag, bool) {
 		if seen.Contains(tag) {
-			continue
+			return versionTag{}, false
 		}
 		seen.Add(tag)
-
-		version, ok := parseVersionTag(tag)
-		if !ok {
-			continue
-		}
-		parsed = append(parsed, version)
-	}
-	return parsed
+		return parseVersionTag(tag)
+	})
 }
 
 func parseVersionTag(tag string) (versionTag, bool) {

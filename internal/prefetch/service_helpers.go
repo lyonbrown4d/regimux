@@ -1,9 +1,10 @@
 package prefetch
 
 import (
-	"sort"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
@@ -34,49 +35,48 @@ func normalizeRunOptions(opts RunOptions) RunOptions {
 	return opts
 }
 
-func filterPullRecords(records []meta.PullRecord, opts RunOptions) []meta.PullRecord {
-	out := make([]meta.PullRecord, 0, len(records))
-	for i := range records {
-		if records[i].Count < opts.MinPullCount || records[i].Reference == "" {
-			continue
-		}
-		out = append(out, records[i])
-	}
-	sort.Slice(out, func(i, j int) bool {
-		if !out[i].LastPullAt.Equal(out[j].LastPullAt) {
-			return out[i].LastPullAt.After(out[j].LastPullAt)
-		}
-		return out[i].Count > out[j].Count
-	})
-	if len(out) > opts.MaxRecords {
-		out = out[:opts.MaxRecords]
+func filterPullRecords(records *collectionlist.List[meta.PullRecord], opts RunOptions) *collectionlist.List[meta.PullRecord] {
+	out := collectionlist.FilterList(records, func(_ int, record meta.PullRecord) bool {
+		return record.Count >= opts.MinPullCount && record.Reference != ""
+	}).Sort(comparePullRecordPriority)
+	if out.Len() > opts.MaxRecords {
+		return out.Take(opts.MaxRecords)
 	}
 	return out
 }
 
-func groupPullRecords(records []meta.PullRecord) map[repoKey][]meta.PullRecord {
-	groups := make(map[repoKey][]meta.PullRecord)
-	for i := range records {
-		key := repoKey{alias: records[i].Alias, repo: records[i].Repository}
-		groups[key] = append(groups[key], records[i])
+func comparePullRecordPriority(left, right meta.PullRecord) int {
+	switch {
+	case left.LastPullAt.After(right.LastPullAt):
+		return -1
+	case left.LastPullAt.Before(right.LastPullAt):
+		return 1
+	case left.Count > right.Count:
+		return -1
+	case left.Count < right.Count:
+		return 1
+	default:
+		return 0
 	}
-	return groups
 }
 
-func toCandidateRecords(records []meta.PullRecord) []PullRecord {
-	out := make([]PullRecord, 0, len(records))
-	for i := range records {
-		record := records[i]
+func groupPullRecords(records *collectionlist.List[meta.PullRecord]) *collectionmapping.MultiMap[repoKey, meta.PullRecord] {
+	return collectionmapping.GroupByList(records, func(_ int, record meta.PullRecord) repoKey {
+		return repoKey{alias: record.Alias, repo: record.Repository}
+	})
+}
+
+func toCandidateRecords(records *collectionlist.List[meta.PullRecord]) *collectionlist.List[PullRecord] {
+	return collectionlist.MapList(records, func(_ int, record meta.PullRecord) PullRecord {
 		count := min(record.Count, int64(^uint(0)>>1))
-		out = append(out, PullRecord{
+		return PullRecord{
 			Alias:      record.Alias,
 			Repo:       record.Repository,
 			Tag:        record.Reference,
 			Count:      int(count),
 			LastPullAt: record.LastPullAt,
-		})
-	}
-	return out
+		}
+	})
 }
 
 func cacheError(message string) error {

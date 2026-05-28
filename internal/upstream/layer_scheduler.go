@@ -4,6 +4,9 @@ import (
 	"sort"
 	"sync"
 	"time"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 )
 
 const defaultLayerSchedulerRecentWindow = 2 * time.Second
@@ -18,9 +21,9 @@ type layerSchedulerOptions struct {
 type layerScheduler struct {
 	mu             sync.Mutex
 	opts           layerSchedulerOptions
-	inFlight       map[string]int
-	digestInFlight map[string]map[string]int
-	recent         map[string]time.Time
+	inFlight       *collectionmapping.Map[string, int]
+	digestInFlight *collectionmapping.Table[string, string, int]
+	recent         *collectionmapping.Map[string, time.Time]
 }
 
 type layerSchedulerCandidate struct {
@@ -65,30 +68,29 @@ func (s *layerScheduler) schedule(
 }
 
 func (s *layerScheduler) scoreCandidatesLocked(digest string, candidates []endpointRuntimeCandidate, now time.Time) []layerSchedulerCandidate {
-	scored := make([]layerSchedulerCandidate, 0, len(candidates))
-	for i := range candidates {
-		registry := candidates[i].runtime.config.Registry
-		score := s.scoreLocked(digest, registry, candidates[i].state, now)
-		scored = append(scored, layerSchedulerCandidate{
-			runtime: candidates[i].runtime,
-			state:   candidates[i].state,
+	return collectionlist.MapList(collectionlist.NewList(candidates...), func(i int, candidate endpointRuntimeCandidate) layerSchedulerCandidate {
+		registry := candidate.runtime.config.Registry
+		score := s.scoreLocked(digest, registry, candidate.state, now)
+		return layerSchedulerCandidate{
+			runtime: candidate.runtime,
+			state:   candidate.state,
 			score:   score,
 			index:   i,
-		})
-	}
-	return scored
+		}
+	}).Values()
 }
 
 func (s *layerScheduler) scoreLocked(digest, registry string, state EndpointHealthSnapshot, now time.Time) time.Duration {
 	registry = normalizeEndpointHealthRegistry(registry)
+	inFlight, _ := s.inFlight.Get(registry)
 	score := state.Score +
-		time.Duration(s.inFlight[registry])*s.opts.InflightPenalty +
+		time.Duration(inFlight)*s.opts.InflightPenalty +
 		s.recentPenaltyLocked(registry, now)
 	return discountDuration(score, s.sameDigestAffinityLocked(digest, registry))
 }
 
 func (s *layerScheduler) recentPenaltyLocked(registry string, now time.Time) time.Duration {
-	assignedAt, ok := s.recent[registry]
+	assignedAt, ok := s.recent.Get(registry)
 	if !ok || s.opts.RecentWindow <= 0 {
 		return 0
 	}
@@ -104,8 +106,8 @@ func (s *layerScheduler) sameDigestAffinityLocked(digest, registry string) time.
 	if digest == "" {
 		return 0
 	}
-	byRegistry := s.digestInFlight[digest]
-	if byRegistry == nil || byRegistry[registry] <= 0 {
+	count, ok := s.digestInFlight.Get(digest, registry)
+	if !ok || count <= 0 {
 		return 0
 	}
 	return s.opts.SameDigestAffinity
@@ -131,19 +133,15 @@ func layerSchedulerCandidateLess(left, right layerSchedulerCandidate) bool {
 }
 
 func scheduledRuntimes(candidates []layerSchedulerCandidate) []upstreamRuntime {
-	runtimes := make([]upstreamRuntime, 0, len(candidates))
-	for i := range candidates {
-		runtimes = append(runtimes, candidates[i].runtime)
-	}
-	return runtimes
+	return collectionlist.MapList(collectionlist.NewList(candidates...), func(_ int, candidate layerSchedulerCandidate) upstreamRuntime {
+		return candidate.runtime
+	}).Values()
 }
 
 func runtimeCandidates(candidates []endpointRuntimeCandidate) []upstreamRuntime {
-	runtimes := make([]upstreamRuntime, 0, len(candidates))
-	for i := range candidates {
-		runtimes = append(runtimes, candidates[i].runtime)
-	}
-	return runtimes
+	return collectionlist.MapList(collectionlist.NewList(candidates...), func(_ int, candidate endpointRuntimeCandidate) upstreamRuntime {
+		return candidate.runtime
+	}).Values()
 }
 
 func (s *layerScheduler) reserveLocked(
@@ -159,13 +157,14 @@ func (s *layerScheduler) reserveLocked(
 		reserveCount = len(candidates)
 	}
 
-	registries := make([]string, 0, reserveCount)
+	registries := collectionlist.NewListWithCapacity[string](reserveCount)
 	for i := range reserveCount {
 		registry := normalizeEndpointHealthRegistry(candidates[i].runtime.config.Registry)
-		s.inFlight[registry]++
-		s.recent[registry] = now
+		inFlight, _ := s.inFlight.Get(registry)
+		s.inFlight.Set(registry, inFlight+1)
+		s.recent.Set(registry, now)
 		s.reserveDigestLocked(digest, registry)
-		registries = append(registries, registry)
+		registries.Add(registry)
 	}
 
 	var once sync.Once
@@ -180,65 +179,62 @@ func (s *layerScheduler) reserveDigestLocked(digest, registry string) {
 	if digest == "" {
 		return
 	}
-	byRegistry := s.digestInFlight[digest]
-	if byRegistry == nil {
-		byRegistry = make(map[string]int)
-		s.digestInFlight[digest] = byRegistry
-	}
-	byRegistry[registry]++
+	inFlight, _ := s.digestInFlight.Get(digest, registry)
+	s.digestInFlight.Put(digest, registry, inFlight+1)
 }
 
-func (s *layerScheduler) release(digest string, registries []string) {
+func (s *layerScheduler) release(digest string, registries *collectionlist.List[string]) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for i := range registries {
-		registry := registries[i]
-		s.inFlight[registry]--
-		if s.inFlight[registry] <= 0 {
-			delete(s.inFlight, registry)
+	registries.Range(func(_ int, registry string) bool {
+		inFlight, _ := s.inFlight.Get(registry)
+		if inFlight <= 1 {
+			s.inFlight.Delete(registry)
+		} else {
+			s.inFlight.Set(registry, inFlight-1)
 		}
 		s.releaseDigestLocked(digest, registry)
-	}
+		return true
+	})
 }
 
 func (s *layerScheduler) releaseDigestLocked(digest, registry string) {
 	if digest == "" {
 		return
 	}
-	byRegistry := s.digestInFlight[digest]
-	if byRegistry == nil {
+	inFlight, ok := s.digestInFlight.Get(digest, registry)
+	if !ok {
 		return
 	}
-	byRegistry[registry]--
-	if byRegistry[registry] <= 0 {
-		delete(byRegistry, registry)
+	if inFlight <= 1 {
+		s.digestInFlight.Delete(digest, registry)
+		return
 	}
-	if len(byRegistry) == 0 {
-		delete(s.digestInFlight, digest)
-	}
+	s.digestInFlight.Put(digest, registry, inFlight-1)
 }
 
 func (s *layerScheduler) pruneRecentLocked(now time.Time) {
 	if s.opts.RecentWindow <= 0 {
 		return
 	}
-	for registry, assignedAt := range s.recent {
+	s.recent.Range(func(registry string, assignedAt time.Time) bool {
 		if now.Sub(assignedAt) >= s.opts.RecentWindow {
-			delete(s.recent, registry)
+			s.recent.Delete(registry)
 		}
-	}
+		return true
+	})
 }
 
 func (s *layerScheduler) initLocked() {
 	if s.inFlight == nil {
-		s.inFlight = make(map[string]int)
+		s.inFlight = collectionmapping.NewMap[string, int]()
 	}
 	if s.digestInFlight == nil {
-		s.digestInFlight = make(map[string]map[string]int)
+		s.digestInFlight = collectionmapping.NewTable[string, string, int]()
 	}
 	if s.recent == nil {
-		s.recent = make(map[string]time.Time)
+		s.recent = collectionmapping.NewMap[string, time.Time]()
 	}
 	if s.opts.InflightPenalty <= 0 {
 		s.opts.InflightPenalty = defaultEndpointHealthInflightPenalty

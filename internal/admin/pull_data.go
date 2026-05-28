@@ -9,9 +9,8 @@ import (
 
 func pullRows(records []meta.PullRecord) []PullRow {
 	sorted := collectionlist.NewList(records...).Sort(comparePullRecordRecent)
-	rows := collectionlist.NewListWithCapacity[PullRow](sorted.Len())
-	sorted.Range(func(_ int, record meta.PullRecord) bool {
-		rows.Add(PullRow{
+	return collectionlist.MapList(sorted, func(_ int, record meta.PullRecord) PullRow {
+		return PullRow{
 			Key:                record.Key,
 			Alias:              record.Alias,
 			Repository:         record.Repository,
@@ -19,10 +18,8 @@ func pullRows(records []meta.PullRecord) []PullRow {
 			Count:              record.Count,
 			LastPullAt:         formatTime(record.LastPullAt),
 			LastUpstreamPullAt: formatTime(record.LastUpstreamPullAt),
-		})
-		return true
-	})
-	return rows.Values()
+		}
+	}).Values()
 }
 
 func limitPulls(rows []PullRow, limit int) []PullRow {
@@ -48,10 +45,7 @@ func comparePullRecordRecent(left, right meta.PullRecord) int {
 }
 
 func mirrorCount(rows []UpstreamRow) int {
-	total := 0
-	for i := range rows {
-		row := &rows[i]
-		total += row.MirrorCount
-	}
-	return total
+	return collectionlist.ReduceList(collectionlist.NewList(rows...), 0, func(total int, _ int, row UpstreamRow) int {
+		return total + row.MirrorCount
+	})
 }

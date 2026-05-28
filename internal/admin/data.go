@@ -114,11 +114,9 @@ func upstreamSnapshotMap(snapshot upstream.ClientSnapshot) map[string]upstream.U
 }
 
 func endpointRows(snapshot upstream.UpstreamSnapshot) []EndpointRow {
-	rows := collectionlist.NewListWithCapacity[EndpointRow](len(snapshot.Endpoints))
-	for i := range snapshot.Endpoints {
-		endpoint := &snapshot.Endpoints[i]
+	return collectionlist.MapList(collectionlist.NewList(snapshot.Endpoints...), func(_ int, endpoint upstream.EndpointSnapshot) EndpointRow {
 		health := endpoint.Health
-		rows.Add(EndpointRow{
+		return EndpointRow{
 			Registry:      endpoint.Registry,
 			Role:          endpoint.Role,
 			Latency:       formatLatency(health),
@@ -129,7 +127,6 @@ func endpointRows(snapshot upstream.UpstreamSnapshot) []EndpointRow {
 			LastSuccessAt: formatTime(health.LastSuccessAt),
 			LastFailureAt: formatTime(health.LastFailureAt),
 			Status:        endpointStatus(health),
-		})
-	}
-	return rows.Values()
+		}
+	}).Values()
 }

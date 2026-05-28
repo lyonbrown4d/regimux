@@ -6,6 +6,7 @@ import (
 
 	"github.com/arcgolabs/authx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 type Scope struct {
@@ -18,12 +19,9 @@ func (s Scope) RequiresPull() bool {
 	if s.Type != ScopeTypeRepository {
 		return false
 	}
-	for _, action := range s.Actions {
-		if strings.TrimSpace(action) == ActionPull {
-			return true
-		}
-	}
-	return false
+	return collectionlist.NewList(s.Actions...).AnyMatch(func(_ int, action string) bool {
+		return strings.TrimSpace(action) == ActionPull
+	})
 }
 
 func parseScope(value string) (Scope, error) {
@@ -48,20 +46,15 @@ func parseScope(value string) (Scope, error) {
 }
 
 func normalizeScopes(values []string) []string {
-	out := make([]string, 0, len(values))
-	seen := make(map[string]struct{}, len(values))
+	out := collectionset.NewOrderedSetWithCapacity[string](len(values))
 	for _, value := range values {
 		value = strings.TrimSpace(value)
 		if value == "" {
 			continue
 		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
+		out.Add(value)
 	}
-	return out
+	return out.Values()
 }
 
 func repositoryPatternMatches(pattern, resource string) bool {

@@ -22,55 +22,43 @@ func cacheSummary(snapshot metadataSnapshot, now time.Time) CacheSummary {
 }
 
 func expiredManifestCount(records []meta.ManifestRecord, now time.Time) int {
-	count := 0
-	for i := range records {
-		record := &records[i]
+	return collectionlist.ReduceList(collectionlist.NewList(records...), 0, func(count int, _ int, record meta.ManifestRecord) int {
 		if record.Expired(now) {
-			count++
+			return count + 1
 		}
-	}
-	return count
+		return count
+	})
 }
 
 func expiredTagCount(records []meta.TagRecord, now time.Time) int {
-	count := 0
-	for i := range records {
-		record := &records[i]
+	return collectionlist.ReduceList(collectionlist.NewList(records...), 0, func(count int, _ int, record meta.TagRecord) int {
 		if !record.ExpiresAt.IsZero() && !now.Before(record.ExpiresAt) {
-			count++
+			return count + 1
 		}
-	}
-	return count
+		return count
+	})
 }
 
 func blobBytes(records []meta.BlobRecord) int64 {
-	var total int64
-	for i := range records {
-		record := &records[i]
+	return collectionlist.ReduceList(collectionlist.NewList(records...), int64(0), func(total int64, _ int, record meta.BlobRecord) int64 {
 		if record.Size > 0 {
-			total += record.Size
+			return total + record.Size
 		}
-	}
-	return total
+		return total
+	})
 }
 
 func recentBlobRows(records []meta.BlobRecord, limit int) []BlobRow {
 	sorted := collectionlist.NewList(records...).Sort(compareBlobRecordRecent)
-	out := collectionlist.NewListWithCapacity[BlobRow](min(limit, sorted.Len()))
-	sorted.Range(func(index int, record meta.BlobRecord) bool {
-		if index >= limit {
-			return false
-		}
-		out.Add(BlobRow{
+	return collectionlist.MapList(sorted.Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
+		return BlobRow{
 			Digest:       record.Digest,
 			Size:         formatBytes(record.Size),
 			MediaType:    dash(record.MediaType),
 			LastAccessAt: formatTime(record.LastAccessAt),
 			UpdatedAt:    formatTime(record.UpdatedAt),
-		})
-		return true
-	})
-	return out.Values()
+		}
+	}).Values()
 }
 
 func compareBlobRecordRecent(left, right meta.BlobRecord) int {

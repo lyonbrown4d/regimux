@@ -3,8 +3,10 @@ package prefetch
 
 import (
 	"fmt"
-	"sort"
 	"time"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 )
 
 const (
@@ -43,51 +45,72 @@ type Options struct {
 }
 
 // GenerateCandidates returns conservative tag candidates that already exist in availableTags.
-func GenerateCandidates(records []PullRecord, availableTags []string, options Options) []Candidate {
-	if len(records) == 0 || len(availableTags) == 0 {
-		return nil
+func GenerateCandidates(
+	records *collectionlist.List[PullRecord],
+	availableTags *collectionlist.List[string],
+	options Options,
+) *collectionlist.List[Candidate] {
+	if records == nil || records.IsEmpty() || availableTags == nil || availableTags.IsEmpty() {
+		return collectionlist.NewList[Candidate]()
 	}
 
 	options = normalizeOptions(options)
 	available := parseAvailableTags(availableTags)
-	if len(available) == 0 {
-		return nil
+	if available.IsEmpty() {
+		return collectionlist.NewList[Candidate]()
 	}
 
 	candidates := accumulateCandidates(records, available, options)
 	return sortedCandidates(candidates, options.MaxCandidates)
 }
 
-func accumulateCandidates(records []PullRecord, available []versionTag, options Options) map[candidateKey]candidateAccumulator {
-	candidates := make(map[candidateKey]candidateAccumulator)
-	for _, record := range records {
+func accumulateCandidates(
+	records *collectionlist.List[PullRecord],
+	available *collectionlist.List[versionTag],
+	options Options,
+) *collectionmapping.Map[candidateKey, candidateAccumulator] {
+	candidates := collectionmapping.NewMap[candidateKey, candidateAccumulator]()
+	records.Range(func(_ int, record PullRecord) bool {
 		addRecordCandidates(candidates, record, available, options)
-	}
+		return true
+	})
 	return candidates
 }
 
-func addRecordCandidates(candidates map[candidateKey]candidateAccumulator, record PullRecord, available []versionTag, options Options) {
+func addRecordCandidates(
+	candidates *collectionmapping.Map[candidateKey, candidateAccumulator],
+	record PullRecord,
+	available *collectionlist.List[versionTag],
+	options Options,
+) {
 	source, ok := parseVersionTag(record.Tag)
 	if !ok {
 		return
 	}
-	for _, target := range available {
+	available.Range(func(_ int, target versionTag) bool {
 		if !isCompatibleCandidate(source, target, options.MaxVersionDistance) {
-			continue
+			return true
 		}
 		addCandidate(candidates, record, source, target, scoreCandidate(record, source, target, options))
-	}
+		return true
+	})
 }
 
-func addCandidate(candidates map[candidateKey]candidateAccumulator, record PullRecord, source, target versionTag, score int) {
+func addCandidate(
+	candidates *collectionmapping.Map[candidateKey, candidateAccumulator],
+	record PullRecord,
+	source versionTag,
+	target versionTag,
+	score int,
+) {
 	key := candidateKey{alias: record.Alias, repo: record.Repo, tag: target.raw}
-	accumulator := candidates[key]
+	accumulator, _ := candidates.Get(key)
 	accumulator.score += score
 	if score > accumulator.bestScore {
 		accumulator.bestScore = score
 		accumulator.candidate = newCandidate(record, source, target)
 	}
-	candidates[key] = accumulator
+	candidates.Set(key, accumulator)
 }
 
 func newCandidate(record PullRecord, source, target versionTag) Candidate {
@@ -100,35 +123,62 @@ func newCandidate(record PullRecord, source, target versionTag) Candidate {
 	}
 }
 
-func sortedCandidates(candidates map[candidateKey]candidateAccumulator, limit int) []Candidate {
-	if len(candidates) == 0 {
-		return nil
+func sortedCandidates(
+	candidates *collectionmapping.Map[candidateKey, candidateAccumulator],
+	limit int,
+) *collectionlist.List[Candidate] {
+	if candidates == nil || candidates.IsEmpty() {
+		return collectionlist.NewList[Candidate]()
 	}
 
-	results := make([]Candidate, 0, len(candidates))
-	for _, accumulator := range candidates {
+	results := collectionlist.NewListWithCapacity[Candidate](candidates.Len())
+	candidates.Range(func(_ candidateKey, accumulator candidateAccumulator) bool {
 		candidate := accumulator.candidate
 		candidate.Score = accumulator.score
-		results = append(results, candidate)
-	}
-
-	sort.Slice(results, func(i, j int) bool {
-		if results[i].Score != results[j].Score {
-			return results[i].Score > results[j].Score
-		}
-		if results[i].Alias != results[j].Alias {
-			return results[i].Alias < results[j].Alias
-		}
-		if results[i].Repo != results[j].Repo {
-			return results[i].Repo < results[j].Repo
-		}
-		return compareTagNames(results[i].Tag, results[j].Tag) < 0
+		results.Add(candidate)
+		return true
 	})
+	results.Sort(compareCandidatePriority)
 
-	if len(results) > limit {
-		results = results[:limit]
+	if results.Len() > limit {
+		return results.Take(limit)
 	}
 	return results
+}
+
+func compareCandidatePriority(left, right Candidate) int {
+	if score := compareIntDesc(left.Score, right.Score); score != 0 {
+		return score
+	}
+	if alias := compareStringAsc(left.Alias, right.Alias); alias != 0 {
+		return alias
+	}
+	if repo := compareStringAsc(left.Repo, right.Repo); repo != 0 {
+		return repo
+	}
+	return compareTagNames(left.Tag, right.Tag)
+}
+
+func compareIntDesc(left, right int) int {
+	switch {
+	case left > right:
+		return -1
+	case left < right:
+		return 1
+	default:
+		return 0
+	}
+}
+
+func compareStringAsc(left, right string) int {
+	switch {
+	case left < right:
+		return -1
+	case left > right:
+		return 1
+	default:
+		return 0
+	}
 }
 
 type candidateKey struct {

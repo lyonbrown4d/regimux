@@ -22,43 +22,31 @@ func storageSummary(snapshot metadataSnapshot) StorageSummary {
 }
 
 func manifestBytes(records []meta.ManifestRecord) int64 {
-	var total int64
-	for i := range records {
-		record := &records[i]
+	return collectionlist.ReduceList(collectionlist.NewList(records...), int64(0), func(total int64, _ int, record meta.ManifestRecord) int64 {
 		if record.Size > 0 {
-			total += record.Size
+			return total + record.Size
 		}
-	}
-	return total
+		return total
+	})
 }
 
 func largeBlobRows(records []meta.BlobRecord, limit int) []BlobRow {
 	sorted := collectionlist.NewList(records...).Sort(compareBlobRecordSizeDesc)
-	out := collectionlist.NewListWithCapacity[BlobRow](min(limit, sorted.Len()))
-	sorted.Range(func(index int, record meta.BlobRecord) bool {
-		if index >= limit {
-			return false
-		}
-		out.Add(BlobRow{
+	return collectionlist.MapList(sorted.Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
+		return BlobRow{
 			Digest:       record.Digest,
 			Size:         formatBytes(record.Size),
 			MediaType:    dash(record.MediaType),
 			LastAccessAt: formatTime(record.LastAccessAt),
 			UpdatedAt:    formatTime(record.UpdatedAt),
-		})
-		return true
-	})
-	return out.Values()
+		}
+	}).Values()
 }
 
 func recentRepoBlobRows(records []meta.RepoBlobRecord, limit int) []RepoBlobRow {
 	sorted := collectionlist.NewList(records...).Sort(compareRepoBlobRecordRecent)
-	out := collectionlist.NewListWithCapacity[RepoBlobRow](min(limit, sorted.Len()))
-	sorted.Range(func(index int, record meta.RepoBlobRecord) bool {
-		if index >= limit {
-			return false
-		}
-		out.Add(RepoBlobRow{
+	return collectionlist.MapList(sorted.Take(limit), func(_ int, record meta.RepoBlobRecord) RepoBlobRow {
+		return RepoBlobRow{
 			Key:            record.Key,
 			Alias:          record.Alias,
 			Repository:     record.Repository,
@@ -67,10 +55,8 @@ func recentRepoBlobRows(records []meta.RepoBlobRecord, limit int) []RepoBlobRow 
 			LastAccessAt:   formatTime(record.LastAccessAt),
 			LastVerifiedAt: formatTime(record.LastVerifiedAt),
 			UpdatedAt:      formatTime(record.UpdatedAt),
-		})
-		return true
-	})
-	return out.Values()
+		}
+	}).Values()
 }
 
 func compareBlobRecordSizeDesc(left, right meta.BlobRecord) int {

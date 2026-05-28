@@ -1,9 +1,10 @@
 package admin
 
 import (
-	"sort"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
@@ -18,40 +19,35 @@ func auditSummary(cfg config.Config) AuditSummary {
 }
 
 func auditUserRows(users map[string]config.AuthUserConfig) []AuditUserRow {
-	usernames := make([]string, 0, len(users))
-	for username := range users {
-		usernames = append(usernames, username)
-	}
-	sort.Strings(usernames)
+	usernames := collectionlist.NewList(collectionmapping.NewMapFrom(users).Keys()...).
+		Sort(strings.Compare)
 
-	rows := make([]AuditUserRow, 0, len(usernames))
-	for _, username := range usernames {
+	rows := collectionlist.NewListWithCapacity[AuditUserRow](usernames.Len())
+	usernames.Range(func(_ int, username string) bool {
 		user := users[username]
-		rows = append(rows, AuditUserRow{
+		rows.Add(AuditUserRow{
 			Username:         username,
 			RepositoryScopes: listString(user.Repositories),
 			Groups:           listString(user.Groups),
 			Credential:       credentialKind(user),
 		})
-	}
-	return rows
+		return true
+	})
+	return rows.Values()
 }
 
 func listString(values []string) string {
 	if len(values) == 0 {
 		return "-"
 	}
-	clean := make([]string, 0, len(values))
-	for _, value := range values {
+	clean := collectionlist.FilterMapList(collectionlist.NewList(values...), func(_ int, value string) (string, bool) {
 		value = strings.TrimSpace(value)
-		if value != "" {
-			clean = append(clean, value)
-		}
-	}
-	if len(clean) == 0 {
+		return value, value != ""
+	})
+	if clean.Len() == 0 {
 		return "-"
 	}
-	return strings.Join(clean, ", ")
+	return clean.Join(", ")
 }
 
 func credentialKind(user config.AuthUserConfig) string {

@@ -74,15 +74,22 @@ func newPool(size int, logger *slog.Logger) *ants.Pool {
 	return pool
 }
 
-func RunAll(ctx context.Context, pool *ants.Pool, tasks []func(context.Context) error) error {
-	if len(tasks) == 0 {
+// TaskIterable is any ordered collection of worker tasks.
+type TaskIterable interface {
+	Len() int
+	Range(fn func(index int, task func(context.Context) error) bool)
+}
+
+func RunAll(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
+	if tasks == nil || tasks.Len() == 0 {
 		return nil
 	}
 
 	group, gctx := errgroup.WithContext(ctx)
-	for _, task := range tasks {
+	tasks.Range(func(_ int, task func(context.Context) error) bool {
 		group.Go(func() error { return runOne(gctx, pool, task) })
-	}
+		return true
+	})
 	if err := group.Wait(); err != nil {
 		return oops.Wrapf(err, "run worker tasks")
 	}

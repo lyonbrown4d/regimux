@@ -5,6 +5,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 )
 
 const (
@@ -26,7 +28,7 @@ type EndpointHealthOptions struct {
 type EndpointHealthTracker struct {
 	mu     sync.Mutex
 	opts   EndpointHealthOptions
-	states map[string]*endpointHealthState
+	states *collectionmapping.Map[string, *endpointHealthState]
 }
 
 type endpointHealthState struct {
@@ -127,7 +129,7 @@ func (t *EndpointHealthTracker) Snapshot(registry string, now time.Time) Endpoin
 	defer t.mu.Unlock()
 
 	registry = normalizeEndpointHealthRegistry(registry)
-	state := t.states[registry]
+	state, _ := t.states.Get(registry)
 	if state == nil {
 		return t.snapshotLocked(&endpointHealthState{registry: registry}, now)
 	}
@@ -167,15 +169,15 @@ func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes []upstreamRuntime
 
 func (t *EndpointHealthTracker) stateLocked(registry string) *endpointHealthState {
 	if t.states == nil {
-		t.states = make(map[string]*endpointHealthState)
+		t.states = collectionmapping.NewMap[string, *endpointHealthState]()
 	}
 	t.opts = normalizeEndpointHealthOptions(t.opts)
 
 	registry = normalizeEndpointHealthRegistry(registry)
-	state := t.states[registry]
+	state, _ := t.states.Get(registry)
 	if state == nil {
 		state = &endpointHealthState{registry: registry}
-		t.states[registry] = state
+		t.states.Set(registry, state)
 	}
 	return state
 }

@@ -14,13 +14,9 @@ func activitySummary(snapshot metadataSnapshot) ActivitySummary {
 
 func activityRowsFromPulls(records []meta.PullRecord, limit int) []ActivityRow {
 	sorted := collectionlist.NewList(records...).Sort(comparePullRecordRecent)
-	rows := collectionlist.NewListWithCapacity[ActivityRow](min(limit, sorted.Len()))
-	sorted.Range(func(index int, record meta.PullRecord) bool {
-		if index >= limit {
-			return false
-		}
+	return collectionlist.MapList(sorted.Take(limit), func(_ int, record meta.PullRecord) ActivityRow {
 		occurredAt := latestTime(record.LastPullAt, record.LastUpstreamPullAt, record.UpdatedAt, record.CreatedAt)
-		rows.Add(ActivityRow{
+		return ActivityRow{
 			OccurredAt: formatTime(occurredAt),
 			Event:      "pull",
 			Actor:      "-",
@@ -33,8 +29,6 @@ func activityRowsFromPulls(records []meta.PullRecord, limit int) []ActivityRow {
 			UpstreamAt: formatTime(record.LastUpstreamPullAt),
 			Source:     "meta.pull_records",
 			RequestID:  "-",
-		})
-		return true
-	})
-	return rows.Values()
+		}
+	}).Values()
 }

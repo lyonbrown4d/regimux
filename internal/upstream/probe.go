@@ -8,6 +8,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/panjf2000/ants/v2"
 
 	"github.com/lyonbrown4d/regimux/internal/worker"
@@ -37,9 +38,9 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 
 	var successes atomic.Int32
 	var failures atomic.Int32
-	tasks := make([]func(context.Context) error, 0, len(pool.runtimes))
+	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](len(pool.runtimes))
 	for index := range pool.runtimes {
-		tasks = append(tasks, c.probeTask(pool, index, &successes, &failures))
+		tasks.Add(c.probeTask(pool, index, &successes, &failures))
 	}
 	probeErr := worker.RunAll(ctx, c.probePool(), tasks)
 	successCount := int(successes.Load())
