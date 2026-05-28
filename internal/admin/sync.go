@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	registryref "github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/samber/oops"
@@ -18,7 +18,7 @@ type ManualSyncer interface {
 	Sync(context.Context, prefetch.SyncOptions) (*prefetch.SyncReport, error)
 }
 
-func (s *Service) syncPage(c *fiber.Ctx) error {
+func (s *Service) syncPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.sync", "sync")
 	if err != nil {
 		return err
@@ -27,7 +27,7 @@ func (s *Service) syncPage(c *fiber.Ctx) error {
 	return s.render(c, "sync", "layout", data)
 }
 
-func (s *Service) syncSubmit(c *fiber.Ctx) error {
+func (s *Service) syncSubmit(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.sync", "sync")
 	if err != nil {
 		return err
@@ -41,16 +41,16 @@ func (s *Service) syncSubmit(c *fiber.Ctx) error {
 		return s.render(c, "sync", "layout", data)
 	}
 	if s.syncer == nil {
-		data.Sync.Error = translate(data.Locale, "error.sync_unavailable")
+		data.Sync.Error = s.translate(data.Locale, "error.sync_unavailable")
 		c.Status(fiber.StatusServiceUnavailable)
 		return s.render(c, "sync", "layout", data)
 	}
 
-	ctx, cancel := context.WithTimeout(c.UserContext(), manualSyncTimeout)
+	ctx, cancel := context.WithTimeout(c.Context(), manualSyncTimeout)
 	defer cancel()
 	report, err := s.syncer.Sync(ctx, opts)
 	if err != nil {
-		data.Sync.Error = syncErrorMessage(data.Locale, err)
+		data.Sync.Error = s.syncErrorMessage(data.Locale, err)
 		if errors.Is(err, context.DeadlineExceeded) || errors.Is(ctx.Err(), context.DeadlineExceeded) {
 			c.Status(fiber.StatusGatewayTimeout)
 		} else {
@@ -64,7 +64,7 @@ func (s *Service) syncSubmit(c *fiber.Ctx) error {
 	return s.render(c, "sync", "layout", data)
 }
 
-func (s *Service) syncOptionsFromForm(c *fiber.Ctx) (prefetch.SyncOptions, SyncForm, error) {
+func (s *Service) syncOptionsFromForm(c fiber.Ctx) (prefetch.SyncOptions, SyncForm, error) {
 	form := SyncForm{
 		UpstreamAlias: strings.TrimSpace(c.FormValue("upstream_alias")),
 		Repository:    strings.TrimSpace(c.FormValue("repository")),
@@ -177,9 +177,9 @@ func syncResultFromReport(report *prefetch.SyncReport) SyncResult {
 	}
 }
 
-func syncErrorMessage(locale string, err error) string {
+func (s *Service) syncErrorMessage(locale string, err error) string {
 	if err == nil {
 		return ""
 	}
-	return translate(locale, "error.sync_failed") + ": " + err.Error()
+	return s.translate(locale, "error.sync_failed") + ": " + err.Error()
 }

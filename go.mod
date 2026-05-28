@@ -4,8 +4,8 @@ go 1.26.3
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
-	github.com/arcgolabs/authx v0.3.0
-	github.com/arcgolabs/authx/http/fiber v0.3.0
+	github.com/arcgolabs/authx v0.3.1
+	github.com/arcgolabs/authx/http/fiber v0.4.0
 	github.com/arcgolabs/authx/jwt v0.3.0
 	github.com/arcgolabs/clientx v0.1.2
 	github.com/arcgolabs/collectionx/list v0.9.0
@@ -17,8 +17,8 @@ require (
 	github.com/arcgolabs/dbx/migrate v0.1.2
 	github.com/arcgolabs/dix v0.11.0
 	github.com/arcgolabs/eventx v0.1.2
-	github.com/arcgolabs/httpx v0.1.6
-	github.com/arcgolabs/httpx/adapter/fiber v0.1.6
+	github.com/arcgolabs/httpx v0.1.7
+	github.com/arcgolabs/httpx/adapter/fiber v0.1.7
 	github.com/arcgolabs/kvx v0.3.0
 	github.com/arcgolabs/kvx/adapter/redis v0.2.1
 	github.com/arcgolabs/kvx/adapter/valkey v0.2.1
@@ -29,7 +29,7 @@ require (
 	github.com/aws/aws-sdk-go-v2/config v1.32.18
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.17
 	github.com/aws/aws-sdk-go-v2/service/s3 v1.102.0
-	github.com/danielgtaylor/huma/v2 v2.37.3
+	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/distribution/reference v0.6.0
 	github.com/dustin/go-humanize v1.0.1
 	github.com/fclairamb/afero-s3 v0.4.0
@@ -37,8 +37,8 @@ require (
 	github.com/go-co-op/gocron/v2 v2.21.1
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/go-sql-driver/mysql v1.9.3
-	github.com/gofiber/fiber/v2 v2.52.13
-	github.com/gofiber/template/html/v2 v2.1.3
+	github.com/gofiber/fiber/v3 v3.3.0
+	github.com/gofiber/template/html/v3 v3.0.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/lib/pq v1.12.3
@@ -91,7 +91,6 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
-	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
 	github.com/go-chi/chi/v5 v5.3.0 // indirect
 	github.com/go-openapi/inflect v0.19.0 // indirect
@@ -99,8 +98,10 @@ require (
 	github.com/go-playground/universal-translator v0.18.1 // indirect
 	github.com/go-redsync/redsync/v4 v4.13.0 // indirect
 	github.com/go-viper/mapstructure/v2 v2.5.0 // indirect
-	github.com/gofiber/template v1.8.3 // indirect
-	github.com/gofiber/utils v1.1.0 // indirect
+	github.com/gofiber/fiber/v2 v2.52.13 // indirect
+	github.com/gofiber/schema v1.7.1 // indirect
+	github.com/gofiber/template/v2 v2.1.0 // indirect
+	github.com/gofiber/utils/v2 v2.0.6 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
@@ -130,6 +131,7 @@ require (
 	github.com/munnerz/goautoneg v0.0.0-20191010083416-a7dc8b61c822 // indirect
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/oklog/ulid/v2 v2.1.1 // indirect
+	github.com/philhofer/fwd v1.2.0 // indirect
 	github.com/pressly/goose/v3 v3.27.0 // indirect
 	github.com/prometheus/client_golang v1.23.2 // indirect
 	github.com/prometheus/client_model v0.6.2 // indirect
@@ -149,6 +151,7 @@ require (
 	github.com/sethvargo/go-retry v0.3.0 // indirect
 	github.com/spf13/pflag v1.0.10 // indirect
 	github.com/stephenafamo/scan v0.7.0 // indirect
+	github.com/tinylib/msgp v1.6.4 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.71.0 // indirect
 	github.com/zclconf/go-cty v1.14.4 // indirect

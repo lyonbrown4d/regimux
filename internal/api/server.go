@@ -11,10 +11,10 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/arcgolabs/httpx/adapter"
 	fiberadapter "github.com/arcgolabs/httpx/adapter/fiber"
-	"github.com/gofiber/fiber/v2"
-	"github.com/gofiber/fiber/v2/middleware/adaptor"
-	"github.com/gofiber/fiber/v2/middleware/etag"
-	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/adaptor"
+	"github.com/gofiber/fiber/v3/middleware/etag"
+	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/samber/oops"
@@ -56,11 +56,14 @@ func NewServer(opts Options) *Server {
 	}
 
 	fiberApp := fiber.New(fiber.Config{
-		ReadTimeout:           opts.ReadTimeout,
-		WriteTimeout:          opts.WriteTimeout,
-		IdleTimeout:           opts.IdleTimeout,
-		DisableStartupMessage: true,
-		Views:                 opts.Views,
+		ReadTimeout:  opts.ReadTimeout,
+		WriteTimeout: opts.WriteTimeout,
+		IdleTimeout:  opts.IdleTimeout,
+		Views:        opts.Views,
+	})
+	fiberApp.Hooks().OnPreStartupMessage(func(sm *fiber.PreStartupMessageData) error {
+		sm.PreventDefault = true
+		return nil
 	})
 	fiberApp.Use(recover.New())
 	fiberApp.Use(etag.New())

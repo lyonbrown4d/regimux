@@ -87,5 +87,4 @@ RegiMux stays focused on a read-only OCI / Docker Registry V2 proxy mirror. The 
 
 ## Non-goals For Now
 
-- No legacy bbolt-to-SQLite metadata migration is planned.
 - No push/write registry support is planned; RegiMux remains read-only.

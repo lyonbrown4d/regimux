@@ -22,9 +22,9 @@ func configRows(cfg config.Config) []ConfigRow {
 	return rows.Values()
 }
 
-func configSourceRows(locale string) []ConfigSourceRow {
-	status := translate(locale, "value.unavailable")
-	detail := translate(locale, "hint.config_sources_unavailable")
+func configSourceRows(locale string, messages *Messages) []ConfigSourceRow {
+	status := messages.Translate(locale, "value.unavailable")
+	detail := messages.Translate(locale, "hint.config_sources_unavailable")
 	return []ConfigSourceRow{
 		{Name: "default", Status: status, Detail: detail},
 		{Name: "file", Status: status, Detail: detail},

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 
 	"github.com/arcgolabs/dix"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
@@ -22,6 +22,7 @@ type Dependencies struct {
 	Version  build.Version
 	Logger   *slog.Logger
 	Auth     *auth.Service
+	Messages *Messages
 	Syncer   ManualSyncer
 	Prefetch PrefetchController
 }
@@ -38,8 +39,9 @@ type baseDependencies struct {
 var Module = dix.NewModule("admin",
 	dix.Providers(
 		dix.Provider6[baseDependencies, config.Config, meta.Store, *upstream.Client, build.Version, *slog.Logger, *auth.Service](newBaseDependencies),
-		dix.Provider2[Dependencies, baseDependencies, *prefetch.Service](newDependencies),
-		dix.ProviderErr0[fiber.Views](NewTemplateEngine, dix.Into[fiber.Views](dix.Key("admin"), dix.Order(-80))),
+		dix.ProviderErr0[*Messages](NewMessages),
+		dix.Provider3[Dependencies, baseDependencies, *prefetch.Service, *Messages](newDependencies),
+		dix.ProviderErr1[fiber.Views, *Messages](NewTemplateEngine, dix.Into[fiber.Views](dix.Key("admin"), dix.Order(-80))),
 		dix.Provider1[*Service, Dependencies](NewService, dix.Into[api.FiberRoute](dix.Key("admin"), dix.Order(-80))),
 	),
 )
@@ -62,7 +64,7 @@ func newBaseDependencies(
 	}
 }
 
-func newDependencies(base baseDependencies, syncer *prefetch.Service) Dependencies {
+func newDependencies(base baseDependencies, syncer *prefetch.Service, messages *Messages) Dependencies {
 	return Dependencies{
 		Config:   base.Config,
 		Metadata: base.Metadata,
@@ -70,6 +72,7 @@ func newDependencies(base baseDependencies, syncer *prefetch.Service) Dependenci
 		Version:  base.Version,
 		Logger:   base.Logger,
 		Auth:     base.Auth,
+		Messages: messages,
 		Syncer:   syncer,
 		Prefetch: syncer,
 	}

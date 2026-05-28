@@ -12,7 +12,7 @@ import (
 	authfiber "github.com/arcgolabs/authx/http/fiber"
 	authjwt "github.com/arcgolabs/authx/jwt"
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
@@ -51,12 +51,12 @@ func (s *Service) resolveCredential(_ context.Context, req authxhttp.RequestInfo
 	return authjwt.NewTokenCredential(token), nil
 }
 
-func (s *Service) handleToken(c *fiber.Ctx) error {
+func (s *Service) handleToken(c fiber.Ctx) error {
 	username, password, ok := basicAuthFromHeader(c.Get(distribution.HeaderAuthorization))
 	if !ok {
 		return s.writeUnauthorized(c)
 	}
-	response, err := s.IssueToken(c.UserContext(), TokenRequest{
+	response, err := s.IssueToken(c.Context(), TokenRequest{
 		Username: username,
 		Password: password,
 		Service:  c.Query("service"),
@@ -76,7 +76,7 @@ func (s *Service) handleToken(c *fiber.Ctx) error {
 	return nil
 }
 
-func (s *Service) writeAuthFailure(c *fiber.Ctx, response authxhttp.ErrorResponse) error {
+func (s *Service) writeAuthFailure(c fiber.Ctx, response authxhttp.ErrorResponse) error {
 	status := response.Status
 	if status == 0 {
 		status = http.StatusUnauthorized
@@ -91,11 +91,11 @@ func (s *Service) writeAuthFailure(c *fiber.Ctx, response authxhttp.ErrorRespons
 	}
 }
 
-func (s *Service) writeUnauthorized(c *fiber.Ctx) error {
+func (s *Service) writeUnauthorized(c fiber.Ctx) error {
 	return writeDistributionFailure(c, http.StatusUnauthorized, distribution.ErrUnauthorized.WithDetail(nil), s.challenge(c))
 }
 
-func writeDistributionFailure(c *fiber.Ctx, status int, list *distribution.ErrorList, challenge string) error {
+func writeDistributionFailure(c fiber.Ctx, status int, list *distribution.ErrorList, challenge string) error {
 	if challenge != "" {
 		c.Set(distribution.HeaderWWWAuthenticate, challenge)
 	}
@@ -115,7 +115,7 @@ func writeDistributionFailure(c *fiber.Ctx, status int, list *distribution.Error
 	return nil
 }
 
-func (s *Service) challenge(c *fiber.Ctx) string {
+func (s *Service) challenge(c fiber.Ctx) string {
 	parts := collectionlist.NewList(
 		`Bearer realm="`+escapeChallengeValue(s.realm(c))+`"`,
 		`service="`+escapeChallengeValue(s.serviceName())+`"`,
@@ -126,7 +126,7 @@ func (s *Service) challenge(c *fiber.Ctx) string {
 	return parts.Join(",")
 }
 
-func (s *Service) realm(c *fiber.Ctx) string {
+func (s *Service) realm(c fiber.Ctx) string {
 	if realm := strings.TrimSpace(s.auth.Realm); realm != "" {
 		return realm
 	}
@@ -165,7 +165,7 @@ func basicAuthFromHeader(header string) (string, string, bool) {
 	return username, password, true
 }
 
-func queryScopes(c *fiber.Ctx) []string {
+func queryScopes(c fiber.Ctx) []string {
 	if c == nil {
 		return nil
 	}

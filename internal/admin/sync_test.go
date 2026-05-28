@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
@@ -82,14 +82,15 @@ func newAdminSyncTestApp(t *testing.T, syncer *fakeManualSyncer) (*fiber.App, *f
 		Metadata: metadata,
 		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), nil, nil, nil),
 		Version:  build.Version("test-version"),
+		Messages: newAdminMessages(t),
 		Syncer:   syncer,
 	})
-	views, err := admin.NewTemplateEngine()
+	views, err := admin.NewTemplateEngine(newAdminMessages(t))
 	if err != nil {
 		t.Fatalf("new template engine: %v", err)
 	}
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true, Views: views})
+	app := fiber.New(fiber.Config{Views: views})
 	service.RegisterFiber(app)
 	return app, syncer
 }

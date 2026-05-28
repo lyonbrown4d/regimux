@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	authpkg "github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
@@ -26,6 +26,7 @@ type Service struct {
 	version   build.Version
 	logger    *slog.Logger
 	auth      *authpkg.Service
+	messages  *Messages
 	syncer    ManualSyncer
 	prefetch  PrefetchController
 	startedAt time.Time
@@ -45,6 +46,7 @@ func NewService(deps Dependencies) *Service {
 		version:   deps.Version,
 		logger:    logger.With("component", "admin"),
 		auth:      deps.Auth,
+		messages:  deps.Messages,
 		syncer:    deps.Syncer,
 		prefetch:  deps.Prefetch,
 		startedAt: time.Now(),
@@ -74,7 +76,7 @@ func (s *Service) RegisterFiber(app *fiber.App) {
 	group.Get("/partials/upstream-health", s.upstreamHealthPartial)
 }
 
-func (s *Service) requireAdminAuth(c *fiber.Ctx) error {
+func (s *Service) requireAdminAuth(c fiber.Ctx) error {
 	if !s.adminAuthEnabled() {
 		if err := c.Next(); err != nil {
 			return oops.In("admin").Wrapf(err, "continue admin request")
@@ -88,7 +90,7 @@ func (s *Service) requireAdminAuth(c *fiber.Ctx) error {
 	if !ok {
 		return writeAdminUnauthorized(c)
 	}
-	if _, err := s.auth.AuthenticateBasic(c.UserContext(), username, password); err != nil {
+	if _, err := s.auth.AuthenticateBasic(c.Context(), username, password); err != nil {
 		return writeAdminUnauthorized(c)
 	}
 	if err := c.Next(); err != nil {
@@ -107,7 +109,7 @@ func (s *Service) adminAuthEnabled() bool {
 	return s.auth != nil && s.auth.Enabled()
 }
 
-func writeAdminUnauthorized(c *fiber.Ctx) error {
+func writeAdminUnauthorized(c fiber.Ctx) error {
 	c.Set(fiber.HeaderWWWAuthenticate, `Basic realm="regimux admin"`)
 	if err := c.SendStatus(http.StatusUnauthorized); err != nil {
 		return oops.In("admin").Wrapf(err, "write admin unauthorized")
@@ -131,7 +133,7 @@ func basicAuthFromHeader(header string) (string, string, bool) {
 	return username, password, true
 }
 
-func (s *Service) dashboard(c *fiber.Ctx) error {
+func (s *Service) dashboard(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.dashboard", "dashboard")
 	if err != nil {
 		return err
@@ -140,7 +142,7 @@ func (s *Service) dashboard(c *fiber.Ctx) error {
 	return s.render(c, "dashboard", "layout", data)
 }
 
-func (s *Service) upstreamsPage(c *fiber.Ctx) error {
+func (s *Service) upstreamsPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.upstreams", "upstreams")
 	if err != nil {
 		return err
@@ -148,7 +150,7 @@ func (s *Service) upstreamsPage(c *fiber.Ctx) error {
 	return s.render(c, "upstreams", "layout", data)
 }
 
-func (s *Service) pullsPage(c *fiber.Ctx) error {
+func (s *Service) pullsPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.pulls", "pulls")
 	if err != nil {
 		return err
@@ -156,7 +158,7 @@ func (s *Service) pullsPage(c *fiber.Ctx) error {
 	return s.render(c, "pulls", "layout", data)
 }
 
-func (s *Service) activityPage(c *fiber.Ctx) error {
+func (s *Service) activityPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.activity", "activity")
 	if err != nil {
 		return err
@@ -164,7 +166,7 @@ func (s *Service) activityPage(c *fiber.Ctx) error {
 	return s.render(c, "activity", "layout", data)
 }
 
-func (s *Service) cachePage(c *fiber.Ctx) error {
+func (s *Service) cachePage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.cache", "cache")
 	if err != nil {
 		return err
@@ -172,7 +174,7 @@ func (s *Service) cachePage(c *fiber.Ctx) error {
 	return s.render(c, "cache", "layout", data)
 }
 
-func (s *Service) storagePage(c *fiber.Ctx) error {
+func (s *Service) storagePage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.storage", "storage")
 	if err != nil {
 		return err
@@ -180,7 +182,7 @@ func (s *Service) storagePage(c *fiber.Ctx) error {
 	return s.render(c, "storage", "layout", data)
 }
 
-func (s *Service) schedulerPage(c *fiber.Ctx) error {
+func (s *Service) schedulerPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.scheduler", "scheduler")
 	if err != nil {
 		return err
@@ -188,7 +190,7 @@ func (s *Service) schedulerPage(c *fiber.Ctx) error {
 	return s.render(c, "scheduler", "layout", data)
 }
 
-func (s *Service) auditPage(c *fiber.Ctx) error {
+func (s *Service) auditPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.audit", "audit")
 	if err != nil {
 		return err
@@ -196,7 +198,7 @@ func (s *Service) auditPage(c *fiber.Ctx) error {
 	return s.render(c, "audit", "layout", data)
 }
 
-func (s *Service) configPage(c *fiber.Ctx) error {
+func (s *Service) configPage(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.config", "config")
 	if err != nil {
 		return err
@@ -204,7 +206,7 @@ func (s *Service) configPage(c *fiber.Ctx) error {
 	return s.render(c, "config", "layout", data)
 }
 
-func (s *Service) upstreamHealthPartial(c *fiber.Ctx) error {
+func (s *Service) upstreamHealthPartial(c fiber.Ctx) error {
 	data, err := s.pageData(c, "page.upstream_health", "upstreams")
 	if err != nil {
 		return err
@@ -212,10 +214,10 @@ func (s *Service) upstreamHealthPartial(c *fiber.Ctx) error {
 	return s.render(c, "partials/upstream_health", "", data)
 }
 
-func (s *Service) pageData(c *fiber.Ctx, titleKey, active string) (PageData, error) {
+func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, error) {
 	now := time.Now()
 	locale := localeFromRequest(c)
-	rows, err := s.metadataRows(c.UserContext(), now, active)
+	rows, err := s.metadataRows(c.Context(), now, active)
 	if err != nil {
 		return PageData{}, err
 	}
@@ -223,15 +225,15 @@ func (s *Service) pageData(c *fiber.Ctx, titleKey, active string) (PageData, err
 	cache := cacheSummary(rows)
 	pulls := pullRows(rows.pulls)
 	summary := s.summary(rows, upstreams, now)
-	scheduler, err := s.schedulerSummary(c.UserContext())
+	scheduler, err := s.schedulerSummary(c.Context())
 	if err != nil {
 		return PageData{}, err
 	}
 
 	return PageData{
-		Title:              translate(locale, titleKey),
+		Title:              s.translate(locale, titleKey),
 		Active:             active,
-		ActiveLabel:        translate(locale, "nav."+active),
+		ActiveLabel:        s.translate(locale, "nav."+active),
 		GeneratedAt:        formatTime(now),
 		BasePath:           basePath,
 		Locale:             locale,
@@ -246,11 +248,18 @@ func (s *Service) pageData(c *fiber.Ctx, titleKey, active string) (PageData, err
 		Audit:              auditSummary(s.cfg),
 		Scheduler:          scheduler,
 		ConfigRows:         configRows(s.cfg),
-		ConfigSources:      configSourceRows(locale),
+		ConfigSources:      configSourceRows(locale, s.messages),
 	}, nil
 }
 
-func (s *Service) render(c *fiber.Ctx, name, templateName string, data PageData) error {
+func (s *Service) translate(locale, key string) string {
+	if s == nil || s.messages == nil {
+		return key
+	}
+	return s.messages.Translate(locale, key)
+}
+
+func (s *Service) render(c fiber.Ctx, name, templateName string, data PageData) error {
 	c.Type("html", "utf-8")
 	var err error
 	if templateName == "" {
@@ -264,7 +273,7 @@ func (s *Service) render(c *fiber.Ctx, name, templateName string, data PageData)
 	return nil
 }
 
-func languageSwitchHref(c *fiber.Ctx, locale string) string {
+func languageSwitchHref(c fiber.Ctx, locale string) string {
 	if c == nil {
 		return basePath + "/?lang=" + locale
 	}

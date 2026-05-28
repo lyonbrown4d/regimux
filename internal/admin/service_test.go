@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
@@ -36,13 +36,14 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 		Metadata: metadata,
 		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), nil, nil, nil),
 		Version:  build.Version("test-version"),
+		Messages: newAdminMessages(t),
 	})
-	views, err := admin.NewTemplateEngine()
+	views, err := admin.NewTemplateEngine(newAdminMessages(t))
 	if err != nil {
 		t.Fatalf("new template engine: %v", err)
 	}
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true, Views: views})
+	app := fiber.New(fiber.Config{Views: views})
 	service.RegisterFiber(app)
 
 	assertAdminResponse(t, app, "/admin", "regimux admin", "test-version", "library/node")
@@ -130,15 +131,25 @@ func newAdminTestApp(t *testing.T, cfg config.Config, authService *auth.Service)
 		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), nil, nil, nil),
 		Version:  build.Version("test-version"),
 		Auth:     authService,
+		Messages: newAdminMessages(t),
 	})
-	views, err := admin.NewTemplateEngine()
+	views, err := admin.NewTemplateEngine(newAdminMessages(t))
 	if err != nil {
 		t.Fatalf("new template engine: %v", err)
 	}
 
-	app := fiber.New(fiber.Config{DisableStartupMessage: true, Views: views})
+	app := fiber.New(fiber.Config{Views: views})
 	service.RegisterFiber(app)
 	return app
+}
+
+func newAdminMessages(t *testing.T) *admin.Messages {
+	t.Helper()
+	messages, err := admin.NewMessages()
+	if err != nil {
+		t.Fatalf("new admin messages: %v", err)
+	}
+	return messages
 }
 
 func adminAuthConfig(t *testing.T) config.Config {

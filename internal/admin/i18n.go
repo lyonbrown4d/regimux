@@ -4,9 +4,10 @@ import (
 	"embed"
 	"encoding/json"
 	"strings"
-	"sync"
 
-	"github.com/gofiber/fiber/v2"
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/gofiber/fiber/v3"
 	"github.com/samber/oops"
 )
 
@@ -20,33 +21,42 @@ const (
 //go:embed locales/*.json
 var localeFS embed.FS
 
-var (
-	messagesOnce sync.Once
-	messages     map[string]map[string]string
-	messagesErr  error
-)
-
-func loadMessages() (map[string]map[string]string, error) {
-	messagesOnce.Do(func() {
-		messages = map[string]map[string]string{}
-		for _, locale := range []string{localeEN, localeZH} {
-			content, err := localeFS.ReadFile("locales/" + locale + ".json")
-			if err != nil {
-				messagesErr = oops.In("admin").With("locale", locale).Wrapf(err, "read admin locale")
-				return
-			}
-			entries := map[string]string{}
-			if err := json.Unmarshal(content, &entries); err != nil {
-				messagesErr = oops.In("admin").With("locale", locale).Wrapf(err, "parse admin locale")
-				return
-			}
-			messages[locale] = entries
-		}
-	})
-	return messages, messagesErr
+type Messages struct {
+	entries *collectionmapping.Table[string, string, string]
 }
 
-func localeFromRequest(c *fiber.Ctx) string {
+func NewMessages() (*Messages, error) {
+	locales := collectionlist.NewList(localeEN, localeZH)
+	loaded := collectionmapping.NewTable[string, string, string]()
+	var loadErr error
+	locales.Range(func(_ int, locale string) bool {
+		entries, err := readLocaleMessages(locale)
+		if err != nil {
+			loadErr = err
+			return false
+		}
+		loaded.SetRow(locale, entries)
+		return true
+	})
+	if loadErr != nil {
+		return nil, loadErr
+	}
+	return &Messages{entries: loaded}, nil
+}
+
+func readLocaleMessages(locale string) (map[string]string, error) {
+	content, err := localeFS.ReadFile("locales/" + locale + ".json")
+	if err != nil {
+		return nil, oops.In("admin").With("locale", locale).Wrapf(err, "read admin locale")
+	}
+	entries := map[string]string{}
+	if err := json.Unmarshal(content, &entries); err != nil {
+		return nil, oops.In("admin").With("locale", locale).Wrapf(err, "parse admin locale")
+	}
+	return entries, nil
+}
+
+func localeFromRequest(c fiber.Ctx) string {
 	if c == nil {
 		return localeEN
 	}
@@ -106,28 +116,34 @@ func oppositeLocale(locale string) string {
 	return localeZH
 }
 
-func translate(locale, key string) string {
-	loaded, err := loadMessages()
-	if err != nil {
+func (m *Messages) Translate(locale, key string) string {
+	if m == nil {
 		return key
 	}
-	if localized, ok := loaded[locale][key]; ok {
+	if localized, ok := m.translateLocale(locale, key); ok {
 		return localized
 	}
-	if english, ok := loaded[localeEN][key]; ok {
+	if english, ok := m.translateLocale(localeEN, key); ok {
 		return english
 	}
 	return key
 }
 
-func templateTranslate(root any, key string) string {
+func (m *Messages) translateLocale(locale, key string) (string, bool) {
+	if m == nil || m.entries == nil {
+		return "", false
+	}
+	return m.entries.Get(locale, key)
+}
+
+func (m *Messages) TemplateTranslate(root any, key string) string {
 	switch data := root.(type) {
 	case PageData:
-		return translate(data.Locale, key)
+		return m.Translate(data.Locale, key)
 	case *PageData:
 		if data != nil {
-			return translate(data.Locale, key)
+			return m.Translate(data.Locale, key)
 		}
 	}
-	return translate(localeEN, key)
+	return m.Translate(localeEN, key)
 }
