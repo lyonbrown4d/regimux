@@ -16,11 +16,13 @@ type CleanupService struct {
 }
 
 type CleanupOptions struct {
-	UnusedFor  time.Duration
-	MaxDeletes int
-	MaxScan    int
-	DryRun     bool
-	Now        time.Time
+	UnusedFor   time.Duration
+	MaxDeletes  int
+	MaxScan     int
+	MaxBytes    int64
+	TargetBytes int64
+	DryRun      bool
+	Now         time.Time
 }
 
 type CleanupReport struct {
@@ -32,7 +34,11 @@ type CleanupReport struct {
 	EligibleBlobs          int
 	DeletedBlobs           int
 	MissingObjects         int
+	BytesBefore            int64
+	BytesAfter             int64
+	BytesTarget            int64
 	BytesDeleted           int64
+	CapacityExceeded       bool
 	LimitReached           bool
 	DeletedDigests         []string
 }
@@ -67,9 +73,7 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 		return nil, err
 	}
 
-	report := &CleanupReport{
-		DryRun: opts.DryRun,
-	}
+	report := newCleanupReport(opts, blobs)
 	if err := s.cleanupBlobRecords(ctx, opts, now.Add(-opts.UnusedFor), blobs, protected, report); err != nil {
 		return nil, err
 	}
@@ -77,11 +81,8 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 }
 
 func (s *CleanupService) validateCleanup(ctx context.Context, opts CleanupOptions) error {
-	if ctx == nil {
-		return errorf("cleanup context is required")
-	}
-	if err := ctx.Err(); err != nil {
-		return wrapError(err, "cleanup context")
+	if err := validateCleanupContext(ctx); err != nil {
+		return err
 	}
 	if s == nil || s.metadata == nil {
 		return errorf("cleanup metadata store is required")
@@ -89,11 +90,34 @@ func (s *CleanupService) validateCleanup(ctx context.Context, opts CleanupOption
 	if s.objects == nil {
 		return errorf("cleanup object store is required")
 	}
+	return validateCleanupOptions(opts)
+}
+
+func validateCleanupContext(ctx context.Context) error {
+	if ctx == nil {
+		return errorf("cleanup context is required")
+	}
+	if err := ctx.Err(); err != nil {
+		return wrapError(err, "cleanup context")
+	}
+	return nil
+}
+
+func validateCleanupOptions(opts CleanupOptions) error {
 	if opts.UnusedFor <= 0 {
 		return errorf("cleanup unused duration must be positive")
 	}
 	if opts.MaxScan < 0 {
 		return errorf("cleanup scan limit cannot be negative")
+	}
+	if opts.MaxBytes < 0 {
+		return errorf("cleanup max bytes cannot be negative")
+	}
+	if opts.TargetBytes < 0 {
+		return errorf("cleanup target bytes cannot be negative")
+	}
+	if opts.MaxBytes > 0 && opts.TargetBytes > opts.MaxBytes {
+		return errorf("cleanup target bytes cannot exceed max bytes")
 	}
 	return nil
 }
@@ -114,8 +138,9 @@ func (s *CleanupService) cleanupBlobRecords(
 	protected *collectionset.Set[string],
 	report *CleanupReport,
 ) error {
-	for i := range blobs {
-		stop, err := s.cleanupBlob(ctx, opts, cutoff, &blobs[i], protected, report)
+	ordered := cleanupOrderedBlobs(blobs)
+	for i := range ordered {
+		stop, err := s.cleanupBlob(ctx, opts, cutoff, &ordered[i], protected, report)
 		if err != nil || stop {
 			return err
 		}
@@ -138,7 +163,9 @@ func (s *CleanupService) cleanupBlob(
 		return false, wrapError(err, "cleanup context")
 	}
 	report.ScannedBlobs++
-	if reason := classifyCleanupBlob(blob, cutoff, protected); reason != cleanupEligible {
+	reason := classifyCleanupBlob(blob, cutoff, protected)
+	capacityReclaim := report.needsCapacityReclaim()
+	if reason != cleanupEligible && (reason != cleanupRecent || !capacityReclaim) {
 		report.recordCleanupSkip(reason)
 		return false, nil
 	}
@@ -151,48 +178,6 @@ func (s *CleanupService) cleanupBlob(
 		return true, nil
 	}
 	return false, s.deleteBlobObject(ctx, blob, report)
-}
-
-func cleanupScanLimitReached(opts CleanupOptions, report *CleanupReport) bool {
-	if opts.MaxScan <= 0 || report.ScannedBlobs < opts.MaxScan {
-		return false
-	}
-	report.LimitReached = true
-	return true
-}
-
-func cleanupDeleteLimitReached(opts CleanupOptions, report *CleanupReport) bool {
-	if opts.MaxDeletes <= 0 || report.DeletedBlobs < opts.MaxDeletes {
-		return false
-	}
-	report.LimitReached = true
-	return true
-}
-
-func classifyCleanupBlob(blob *meta.BlobRecord, cutoff time.Time, protected *collectionset.Set[string]) cleanupSkipReason {
-	if blob == nil || blob.LastAccessAt.IsZero() {
-		return cleanupMissingAccessTime
-	}
-	if !blob.LastAccessAt.Before(cutoff) {
-		return cleanupRecent
-	}
-	if protected.Contains(blob.Digest) {
-		return cleanupProtected
-	}
-	return cleanupEligible
-}
-
-func (r *CleanupReport) recordCleanupSkip(reason cleanupSkipReason) {
-	switch reason {
-	case cleanupMissingAccessTime:
-		r.MissingAccessTimeBlobs++
-	case cleanupRecent:
-		r.RecentBlobs++
-	case cleanupProtected:
-		r.ProtectedBlobs++
-	case cleanupEligible:
-		return
-	}
 }
 
 func (s *CleanupService) protectedBlobDigests(ctx context.Context) (*collectionset.Set[string], error) {
@@ -233,5 +218,6 @@ func (s *CleanupService) deleteBlobObject(ctx context.Context, blob *meta.BlobRe
 	}
 	report.DeletedBlobs++
 	report.DeletedDigests = append(report.DeletedDigests, blob.Digest)
+	report.BytesAfter = cleanupRemainingBytes(report.BytesAfter, blob.Size)
 	return nil
 }

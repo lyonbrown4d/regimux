@@ -105,10 +105,12 @@ func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler)
 func (r *Runtime) runCleanup(ctx context.Context) error {
 	startedAt := time.Now()
 	report, err := r.cleanup.CleanupBlobs(ctx, cache.CleanupOptions{
-		UnusedFor:  r.cfg.Scheduler.Cleanup.UnusedFor,
-		MaxDeletes: r.cfg.Scheduler.Cleanup.MaxDeletes,
-		MaxScan:    r.cfg.Scheduler.Cleanup.MaxScan,
-		DryRun:     r.cfg.Scheduler.Cleanup.DryRun,
+		UnusedFor:   r.cfg.Scheduler.Cleanup.UnusedFor,
+		MaxDeletes:  r.cfg.Scheduler.Cleanup.MaxDeletes,
+		MaxScan:     r.cfg.Scheduler.Cleanup.MaxScan,
+		MaxBytes:    r.cfg.Scheduler.Cleanup.MaxBytes,
+		TargetBytes: r.cfg.Scheduler.Cleanup.TargetBytes,
+		DryRun:      r.cfg.Scheduler.Cleanup.DryRun,
 	})
 	if err != nil {
 		err = oops.Wrapf(err, "run cleanup job")
@@ -121,7 +123,11 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		"scanned_blobs", report.ScannedBlobs,
 		"eligible_blobs", report.EligibleBlobs,
 		"deleted_blobs", report.DeletedBlobs,
+		"bytes_before", report.BytesBefore,
+		"bytes_after", report.BytesAfter,
+		"bytes_target", report.BytesTarget,
 		"bytes_deleted", report.BytesDeleted,
+		"capacity_exceeded", report.CapacityExceeded,
 		"limit_reached", report.LimitReached,
 	)
 	r.observeJob(ctx, "cleanup", "", startedAt, nil)

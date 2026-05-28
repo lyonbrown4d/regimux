@@ -16,6 +16,8 @@ func (s *Service) schedulerSummary() SchedulerSummary {
 		CleanupUnusedFor:             formatDuration(cfg.Cleanup.UnusedFor),
 		CleanupMaxScan:               cfg.Cleanup.MaxScan,
 		CleanupMaxDeletes:            cfg.Cleanup.MaxDeletes,
+		CleanupMaxBytes:              formatBytes(cfg.Cleanup.MaxBytes),
+		CleanupTargetBytes:           formatBytes(cfg.Cleanup.TargetBytes),
 		CleanupDryRun:                cfg.Cleanup.DryRun,
 		PrefetchEnabled:              cfg.Prefetch.Enabled,
 		PrefetchInterval:             formatDuration(cfg.Prefetch.Interval),

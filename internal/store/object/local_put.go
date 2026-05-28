@@ -16,7 +16,7 @@ import (
 )
 
 type putSession struct {
-	store      *LocalStore
+	store      *aferoStore
 	normalized string
 	target     string
 	algorithm  string
@@ -27,7 +27,7 @@ type putSession struct {
 	keepTemp   bool
 }
 
-func newPutSession(store *LocalStore, normalized, target string) (*putSession, error) {
+func newPutSession(store *aferoStore, normalized, target string) (*putSession, error) {
 	algorithm, expected, _ := strings.Cut(normalized, ":")
 	hasher, err := newDigestHash(algorithm)
 	if err != nil {
@@ -139,7 +139,7 @@ func removeTempObject(fs afero.Fs, path string) error {
 	return nil
 }
 
-func (s *LocalStore) putDirect(ctx context.Context, normalized, target string, r io.Reader, opts PutOptions) (*Info, error) {
+func (s *aferoStore) putDirect(ctx context.Context, normalized, target string, r io.Reader, opts PutOptions) (*Info, error) {
 	algorithm, expected, _ := strings.Cut(normalized, ":")
 	hasher, err := newDigestHash(algorithm)
 	if err != nil {
@@ -181,7 +181,7 @@ func (s *LocalStore) putDirect(ctx context.Context, normalized, target string, r
 	}, nil
 }
 
-func (s *LocalStore) handleDirectCommitError(ctx context.Context, normalized, tmpName string, err error) (*Info, error) {
+func (s *aferoStore) handleDirectCommitError(ctx context.Context, normalized, tmpName string, err error) (*Info, error) {
 	existing, statErr := s.Stat(ctx, normalized)
 	if statErr == nil {
 		return existing, removeTempObject(s.fs, tmpName)

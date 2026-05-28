@@ -21,10 +21,10 @@ RegiMux stays focused on a read-only OCI / Docker Registry V2 proxy mirror. The 
 
 ### Cache cleanup and capacity control
 
-- Extend cleanup jobs with disk/object-store capacity watermarks.
-- Add orphan object detection between metadata and object storage.
+- Extend cleanup jobs with metadata-backed object-cache capacity watermarks. Done.
+- Delete orphan blob metadata when the referenced object is already missing. Done.
 - Support dry-run cleanup reports in logs and admin UI.
-- Prefer last-access based eviction for blobs and repo-to-blob links.
+- Prefer last-access based eviction for blobs and repo-to-blob links. Done for blobs.
 
 ### Registry client compatibility tests
 

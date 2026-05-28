@@ -13,6 +13,7 @@ func newConfigValidator() *validator.Validate {
 	v.RegisterStructValidation(validateCacheStruct, CacheConfig{})
 	v.RegisterStructValidation(validateStoreMetaStruct, StoreMetaConfig{})
 	v.RegisterStructValidation(validateStoreObjectStruct, StoreObjectConfig{})
+	v.RegisterStructValidation(validateSchedulerCleanupStruct, SchedulerCleanupConfig{})
 	return v
 }
 
@@ -121,6 +122,16 @@ func validateStoreObjectSFTP(sl validator.StructLevel, object StoreObjectConfig)
 	}
 	if strings.TrimSpace(object.SFTP.KnownHostsPath) == "" && strings.TrimSpace(object.SFTP.HostKey) == "" {
 		sl.ReportError(object.SFTP.KnownHostsPath, "sftp.known_hosts_path", "SFTP.KnownHostsPath", "known_hosts_or_host_key", "")
+	}
+}
+
+func validateSchedulerCleanupStruct(sl validator.StructLevel) {
+	cleanup, ok := sl.Current().Interface().(SchedulerCleanupConfig)
+	if !ok {
+		return
+	}
+	if cleanup.MaxBytes > 0 && cleanup.TargetBytes > cleanup.MaxBytes {
+		sl.ReportError(cleanup.TargetBytes, "target_bytes", "TargetBytes", "ltefield", "max_bytes")
 	}
 }
 

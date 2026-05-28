@@ -86,6 +86,13 @@ func invalidBlobProbeCases() []invalidConfigCase {
 		{name: "cleanup max_scan", mutate: func(cfg *config.Config) {
 			cfg.Scheduler.Cleanup.MaxScan = -1
 		}},
+		{name: "cleanup max bytes", mutate: func(cfg *config.Config) {
+			cfg.Scheduler.Cleanup.MaxBytes = -1
+		}},
+		{name: "cleanup target above max", mutate: func(cfg *config.Config) {
+			cfg.Scheduler.Cleanup.MaxBytes = 1024
+			cfg.Scheduler.Cleanup.TargetBytes = 2048
+		}},
 	}
 }
 

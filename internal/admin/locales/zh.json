@@ -165,6 +165,8 @@
   "field.unused_for": "未使用超过",
   "field.max_scan": "最大扫描",
   "field.max_deletes": "最大删除",
+  "field.max_bytes": "最大字节",
+  "field.target_bytes": "目标字节",
   "field.dry_run": "演练模式",
   "field.min_pull_count": "最小拉取次数",
   "field.max_records": "最大记录数",

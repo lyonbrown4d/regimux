@@ -17,11 +17,19 @@ import (
 	"github.com/spf13/afero"
 )
 
-type LocalStore struct {
+type aferoStore struct {
 	fs        afero.Fs
 	root      string
 	directPut bool
 	close     func() error
+}
+
+type LocalStore struct {
+	*aferoStore
+}
+
+type MemoryStore struct {
+	*aferoStore
 }
 
 func NewLocal(root string) (*LocalStore, error) {
@@ -33,22 +41,30 @@ func NewLocal(root string) (*LocalStore, error) {
 	if err != nil {
 		return nil, wrapError(err, "resolve object store root")
 	}
-	return newLocalWithFS(afero.NewOsFs(), abs)
+	store, err := newLocalWithFS(afero.NewOsFs(), abs)
+	if err != nil {
+		return nil, err
+	}
+	return &LocalStore{aferoStore: store}, nil
 }
 
-func NewMemory(root string) (*LocalStore, error) {
+func NewMemory(root string) (*MemoryStore, error) {
 	root = strings.TrimSpace(root)
 	if root == "" {
 		root = filepath.Join("data", "objects")
 	}
-	return newLocalWithFS(afero.NewMemMapFs(), root)
+	store, err := newLocalWithFS(afero.NewMemMapFs(), root)
+	if err != nil {
+		return nil, err
+	}
+	return &MemoryStore{aferoStore: store}, nil
 }
 
-func newLocalWithFS(fs afero.Fs, root string) (*LocalStore, error) {
+func newLocalWithFS(fs afero.Fs, root string) (*aferoStore, error) {
 	return newAferoStore(fs, root, false, true)
 }
 
-func newAferoStore(fs afero.Fs, root string, directPut, ensureRoot bool) (*LocalStore, error) {
+func newAferoStore(fs afero.Fs, root string, directPut, ensureRoot bool) (*aferoStore, error) {
 	if fs == nil {
 		return nil, errorf("object store filesystem is not configured")
 	}
@@ -59,10 +75,10 @@ func newAferoStore(fs afero.Fs, root string, directPut, ensureRoot bool) (*Local
 			return nil, wrapError(err, "create object store root")
 		}
 	}
-	return &LocalStore{fs: base, root: ".", directPut: directPut}, nil
+	return &aferoStore{fs: base, root: ".", directPut: directPut}, nil
 }
 
-func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
+func (s *aferoStore) Stat(ctx context.Context, digest string) (*Info, error) {
 	ctx = normalizeContext(ctx)
 	if err := checkContext(ctx, "stat object"); err != nil {
 		return nil, err
@@ -81,7 +97,7 @@ func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
 	return &Info{Digest: normalized, Size: stat.Size(), ETag: normalized, Path: target}, nil
 }
 
-func (s *LocalStore) Exists(ctx context.Context, digest string) (bool, error) {
+func (s *aferoStore) Exists(ctx context.Context, digest string) (bool, error) {
 	_, err := s.Stat(ctx, digest)
 	if err == nil {
 		return true, nil
@@ -92,7 +108,7 @@ func (s *LocalStore) Exists(ctx context.Context, digest string) (bool, error) {
 	return false, err
 }
 
-func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error) {
+func (s *aferoStore) Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error) {
 	ctx = normalizeContext(ctx)
 	if err := checkContext(ctx, "get object"); err != nil {
 		return nil, nil, err
@@ -123,7 +139,7 @@ func (s *LocalStore) Get(ctx context.Context, digest string, opts GetOptions) (i
 	return readCloser{Reader: io.LimitReader(file, resolved.Length()), closer: file}, &ranged, nil
 }
 
-func (s *LocalStore) Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error) {
+func (s *aferoStore) Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error) {
 	ctx = normalizeContext(ctx)
 	if err := checkContext(ctx, "put object"); err != nil {
 		return nil, err
@@ -151,7 +167,7 @@ func (s *LocalStore) Put(ctx context.Context, digest string, r io.Reader, opts P
 	return session.commit(ctx, r, opts)
 }
 
-func (s *LocalStore) Delete(ctx context.Context, digest string) error {
+func (s *aferoStore) Delete(ctx context.Context, digest string) error {
 	ctx = normalizeContext(ctx)
 	if err := checkContext(ctx, "delete object"); err != nil {
 		return err
@@ -166,14 +182,14 @@ func (s *LocalStore) Delete(ctx context.Context, digest string) error {
 	return nil
 }
 
-func (s *LocalStore) Close() error {
+func (s *aferoStore) Close() error {
 	if s == nil || s.close == nil {
 		return nil
 	}
 	return s.close()
 }
 
-func (s *LocalStore) findExisting(ctx context.Context, digest string, opts PutOptions) (*Info, bool, error) {
+func (s *aferoStore) findExisting(ctx context.Context, digest string, opts PutOptions) (*Info, bool, error) {
 	existing, err := s.Stat(ctx, digest)
 	if err == nil {
 		existing.ContentType = opts.ContentType
@@ -185,9 +201,9 @@ func (s *LocalStore) findExisting(ctx context.Context, digest string, opts PutOp
 	return nil, false, err
 }
 
-func (s *LocalStore) path(digest string) (string, string, error) {
+func (s *aferoStore) path(digest string) (string, string, error) {
 	if s == nil || s.fs == nil || s.root == "" {
-		return "", "", errorf("local object store is not configured")
+		return "", "", errorf("object store is not configured")
 	}
 	normalized, err := reference.NormalizeDigest(digest)
 	if err != nil {
@@ -242,4 +258,8 @@ func (r readCloser) Close() error {
 	return nil
 }
 
-var _ Store = (*LocalStore)(nil)
+var (
+	_ Store = (*LocalStore)(nil)
+	_ Store = (*MemoryStore)(nil)
+	_ Store = (*aferoStore)(nil)
+)

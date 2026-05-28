@@ -11,7 +11,13 @@ import (
 	aferos3 "github.com/fclairamb/afero-s3"
 )
 
-func NewS3(ctx context.Context, opts S3Options) (*LocalStore, error) {
+type S3Store struct {
+	*aferoStore
+}
+
+var _ Store = (*S3Store)(nil)
+
+func NewS3(ctx context.Context, opts S3Options) (*S3Store, error) {
 	ctx = normalizeContext(ctx)
 	if err := checkContext(ctx, "create s3 object store"); err != nil {
 		return nil, err
@@ -33,7 +39,11 @@ func NewS3(ctx context.Context, opts S3Options) (*LocalStore, error) {
 		}
 		options.UsePathStyle = opts.ForcePathStyle
 	})
-	return newAferoStore(newSlashPathFS(aferos3.NewFsFromClient(opts.Bucket, client)), s3BasePath(opts.Prefix), true, false)
+	store, err := newAferoStore(newSlashPathFS(aferos3.NewFsFromClient(opts.Bucket, client)), s3BasePath(opts.Prefix), true, false)
+	if err != nil {
+		return nil, err
+	}
+	return &S3Store{aferoStore: store}, nil
 }
 
 func normalizeS3Options(opts S3Options) S3Options {

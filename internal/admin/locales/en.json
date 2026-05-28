@@ -165,6 +165,8 @@
   "field.unused_for": "Unused for",
   "field.max_scan": "Max scan",
   "field.max_deletes": "Max deletes",
+  "field.max_bytes": "Max bytes",
+  "field.target_bytes": "Target bytes",
   "field.dry_run": "Dry run",
   "field.min_pull_count": "Min pull count",
   "field.max_records": "Max records",

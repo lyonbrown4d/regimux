@@ -173,6 +173,8 @@ type SchedulerSummary struct {
 	CleanupUnusedFor             string
 	CleanupMaxScan               int
 	CleanupMaxDeletes            int
+	CleanupMaxBytes              string
+	CleanupTargetBytes           string
 	CleanupDryRun                bool
 	PrefetchEnabled              bool
 	PrefetchInterval             string

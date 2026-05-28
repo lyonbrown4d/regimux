@@ -16,7 +16,13 @@ import (
 
 const defaultSFTPTimeout = 10 * time.Second
 
-func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*LocalStore, error) {
+type SFTPStore struct {
+	*aferoStore
+}
+
+var _ Store = (*SFTPStore)(nil)
+
+func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*SFTPStore, error) {
 	ctx = normalizeContext(ctx)
 	if err := checkContext(ctx, "create sftp object store"); err != nil {
 		return nil, err
@@ -39,7 +45,7 @@ func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*LocalStore, e
 	store.close = func() error {
 		return closeSFTPClients(client, sshClient)
 	}
-	return store, nil
+	return &SFTPStore{aferoStore: store}, nil
 }
 
 func normalizeSFTPOptions(opts SFTPOptions) SFTPOptions {

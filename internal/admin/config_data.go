@@ -93,6 +93,12 @@ func addSchedulerRows(rows *collectionlist.List[ConfigRow], cfg config.Scheduler
 	addRow(rows, "scheduler.cleanup.enabled", boolString(cfg.Cleanup.Enabled))
 	addRow(rows, "scheduler.cleanup.interval", durationString(cfg.Cleanup.Interval))
 	addRow(rows, "scheduler.cleanup.unused_for", durationString(cfg.Cleanup.UnusedFor))
+	addRow(rows, "scheduler.cleanup.max_scan", strconv.Itoa(cfg.Cleanup.MaxScan))
+	addRow(rows, "scheduler.cleanup.max_deletes", strconv.Itoa(cfg.Cleanup.MaxDeletes))
+	addRow(rows, "scheduler.cleanup.max_bytes", int64String(cfg.Cleanup.MaxBytes))
+	addRow(rows, "scheduler.cleanup.target_bytes", int64String(cfg.Cleanup.TargetBytes))
+	addRow(rows, "scheduler.cleanup.dry_run", boolString(cfg.Cleanup.DryRun))
+	addRow(rows, "scheduler.cleanup.distributed", boolString(cfg.Cleanup.Distributed))
 	addRow(rows, "scheduler.prefetch.enabled", boolString(cfg.Prefetch.Enabled))
 	addRow(rows, "scheduler.prefetch.interval", durationString(cfg.Prefetch.Interval))
 	addRow(rows, "scheduler.prefetch.min_pull_count", strconv.FormatInt(cfg.Prefetch.MinPullCount, 10))
@@ -134,6 +140,10 @@ func durationString(value time.Duration) string {
 
 func boolString(value bool) string {
 	return strconv.FormatBool(value)
+}
+
+func int64String(value int64) string {
+	return strconv.FormatInt(value, 10)
 }
 
 func mask(value string) string {

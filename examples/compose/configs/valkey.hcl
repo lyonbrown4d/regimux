@@ -40,7 +40,10 @@ scheduler {
     enabled = true
     interval = "1h"
     unused_for = "168h"
+    max_scan = 0
     max_deletes = 1000
+    max_bytes = 0
+    target_bytes = 0
     distributed = true
   }
 

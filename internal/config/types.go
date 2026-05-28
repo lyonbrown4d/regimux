@@ -149,13 +149,15 @@ type SchedulerConfig struct {
 }
 
 type SchedulerCleanupConfig struct {
-	Enabled     bool          `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
-	Interval    time.Duration `json:"interval"    koanf:"interval"    mapstructure:"interval"    validate:"min=0"`
-	MaxScan     int           `json:"max_scan"    koanf:"max_scan"    mapstructure:"max_scan"    validate:"min=0"`
-	UnusedFor   time.Duration `json:"unused_for"  koanf:"unused_for"  mapstructure:"unused_for"  validate:"min=0"`
-	MaxDeletes  int           `json:"max_deletes" koanf:"max_deletes" mapstructure:"max_deletes" validate:"min=0"`
-	DryRun      bool          `json:"dry_run"     koanf:"dry_run"     mapstructure:"dry_run"`
-	Distributed bool          `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
+	Enabled     bool          `json:"enabled"      koanf:"enabled"      mapstructure:"enabled"`
+	Interval    time.Duration `json:"interval"     koanf:"interval"     mapstructure:"interval"     validate:"min=0"`
+	MaxScan     int           `json:"max_scan"     koanf:"max_scan"     mapstructure:"max_scan"     validate:"min=0"`
+	UnusedFor   time.Duration `json:"unused_for"   koanf:"unused_for"   mapstructure:"unused_for"   validate:"min=0"`
+	MaxDeletes  int           `json:"max_deletes"  koanf:"max_deletes"  mapstructure:"max_deletes"  validate:"min=0"`
+	MaxBytes    int64         `json:"max_bytes"    koanf:"max_bytes"    mapstructure:"max_bytes"    validate:"min=0"`
+	TargetBytes int64         `json:"target_bytes" koanf:"target_bytes" mapstructure:"target_bytes" validate:"min=0"`
+	DryRun      bool          `json:"dry_run"      koanf:"dry_run"      mapstructure:"dry_run"`
+	Distributed bool          `json:"distributed"  koanf:"distributed"  mapstructure:"distributed"`
 }
 
 type SchedulerPrefetchConfig struct {

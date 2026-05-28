@@ -111,6 +111,24 @@ store {
 
 The SFTP driver uses the official `github.com/spf13/afero/sftpfs` module under `afero.NewBasePathFs`. Host key verification is required through either `known_hosts_path` or a pinned `host_key`.
 
+缓存清理和容量控制：
+
+```hcl
+scheduler {
+  cleanup {
+    enabled = true
+    interval = "1h"
+    unused_for = "168h"
+    max_deletes = 1000
+    max_bytes = 10737418240
+    target_bytes = 8589934592
+    dry_run = false
+  }
+}
+```
+
+`max_bytes = 0` 会关闭容量水位控制。开启后，清理任务会基于元数据中的 blob size 统计缓存占用，超过 `max_bytes` 后按最旧 `last_access_at` 回收到 `target_bytes`。
+
 认证：
 
 RegiMux 默认不启用入口认证。开启后会使用 Docker Registry Bearer token flow，支持 `docker login`，账号和密码可以放在配置文件中：

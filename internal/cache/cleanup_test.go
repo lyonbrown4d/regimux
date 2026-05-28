@@ -117,6 +117,56 @@ func TestCleanupServiceRespectsScanLimit(t *testing.T) {
 	}
 }
 
+func TestCleanupServiceReclaimsOldestBlobsAboveCapacity(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
+	metadata, objects := newTestStores(t)
+
+	oldest := putCleanupBlob(ctx, t, metadata, objects, []byte("1111"), now.Add(-3*time.Hour))
+	middle := putCleanupBlob(ctx, t, metadata, objects, []byte("2222"), now.Add(-2*time.Hour))
+	newest := putCleanupBlob(ctx, t, metadata, objects, []byte("3333"), now.Add(-time.Hour))
+
+	report, err := cache.NewCleanupService(metadata, objects).CleanupBlobs(ctx, cache.CleanupOptions{
+		UnusedFor:   168 * time.Hour,
+		MaxBytes:    10,
+		TargetBytes: 5,
+		Now:         now,
+	})
+	if err != nil {
+		t.Fatalf("cleanup blobs: %v", err)
+	}
+	if !report.CapacityExceeded || report.BytesBefore != 12 || report.BytesAfter != 4 || report.BytesTarget != 5 {
+		t.Fatalf("unexpected capacity report: %#v", report)
+	}
+	if report.DeletedBlobs != 2 || report.DeletedDigests[0] != oldest || report.DeletedDigests[1] != middle {
+		t.Fatalf("unexpected deleted blobs: %#v", report)
+	}
+	assertObjectsExist(ctx, t, objects, newest)
+	assertObjectMissing(ctx, t, objects, oldest)
+	assertObjectMissing(ctx, t, objects, middle)
+}
+
+func TestCleanupServiceSkipsCapacityWhenBelowMaxBytes(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
+	metadata, objects := newTestStores(t)
+
+	digest := putCleanupBlob(ctx, t, metadata, objects, []byte("small"), now.Add(-time.Hour))
+	report, err := cache.NewCleanupService(metadata, objects).CleanupBlobs(ctx, cache.CleanupOptions{
+		UnusedFor:   168 * time.Hour,
+		MaxBytes:    10,
+		TargetBytes: 5,
+		Now:         now,
+	})
+	if err != nil {
+		t.Fatalf("cleanup blobs: %v", err)
+	}
+	if report.CapacityExceeded || report.DeletedBlobs != 0 || report.BytesAfter != 5 {
+		t.Fatalf("unexpected cleanup report: %#v", report)
+	}
+	assertObjectsExist(ctx, t, objects, digest)
+}
+
 func putCleanupBlob(
 	ctx context.Context,
 	t *testing.T,

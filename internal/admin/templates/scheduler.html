@@ -28,6 +28,8 @@
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.unused_for"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupUnusedFor}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_scan"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxScan}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_deletes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxDeletes}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_bytes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxBytes}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.target_bytes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupTargetBytes}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.dry_run"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupDryRun}}</dd></div>
       </dl>
     </section>

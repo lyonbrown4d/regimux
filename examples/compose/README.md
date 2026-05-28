@@ -85,6 +85,17 @@ REGIMUX_STORE__OBJECT__SFTP__TIMEOUT=10s
 
 Use `REGIMUX_STORE__OBJECT__SFTP__HOST_KEY` instead of `known_hosts_path` when you want to pin one host public key directly from the environment.
 
+## Cleanup capacity control
+
+The cleanup job removes blobs that have not been accessed for `scheduler.cleanup.unused_for`. You can also set object-cache byte watermarks through environment variables:
+
+```text
+REGIMUX_SCHEDULER__CLEANUP__MAX_BYTES=10737418240
+REGIMUX_SCHEDULER__CLEANUP__TARGET_BYTES=8589934592
+```
+
+When metadata-reported blob bytes exceed `max_bytes`, RegiMux evicts the least recently accessed unprotected blobs until it reaches `target_bytes` or the scan/delete limits.
+
 ## Image tags
 
 The examples default to:
