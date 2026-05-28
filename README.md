@@ -19,7 +19,7 @@ This repository currently contains a runnable skeleton based on the design docum
 - Logging with `github.com/arcgolabs/logx` on top of `log/slog`.
 - Event bus wiring with `github.com/arcgolabs/eventx`.
 - `collectionx` usage for ordered upstream registry snapshots.
-- Storage uses `github.com/arcgolabs/dbx` repositories for SQLite, MySQL, or PostgreSQL metadata and local filesystem objects.
+- Storage uses `github.com/arcgolabs/dbx` repositories for SQLite, MySQL, or PostgreSQL metadata and local, memory, S3-compatible, or SFTP object storage.
 
 Run locally:
 
@@ -68,6 +68,49 @@ REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
 
 因此配置文件中的 `cache.redis.addrs` 可以用 `REGIMUX_CACHE__REDIS__ADDRS` 覆盖，`upstreams.hub.registry` 可以用 `REGIMUX_UPSTREAMS__HUB__REGISTRY` 覆盖。
 
+S3-compatible object storage:
+
+```hcl
+store {
+  object {
+    driver = "s3"
+
+    s3 {
+      bucket = "regimux-objects"
+      prefix = "cache"
+      region = "us-east-1"
+      endpoint = "http://minio:9000"
+      access_key_id = "regimux"
+      secret_access_key = "change-me"
+      force_path_style = true
+    }
+  }
+}
+```
+
+The S3 driver uses `github.com/fclairamb/afero-s3` under `afero.NewBasePathFs`, so `prefix` behaves like the object store root. AWS S3, MinIO, R2, and other S3-compatible services can be configured through the same block.
+
+SFTP object storage:
+
+```hcl
+store {
+  object {
+    driver = "sftp"
+    path = "/srv/regimux/objects"
+
+    sftp {
+      addr = "sftp.example.com:22"
+      username = "regimux"
+      password = "change-me"
+      known_hosts_path = "/etc/regimux/known_hosts"
+      timeout = "10s"
+    }
+  }
+}
+```
+
+The SFTP driver uses the official `github.com/spf13/afero/sftpfs` module under `afero.NewBasePathFs`. Host key verification is required through either `known_hosts_path` or a pinned `host_key`.
+
 认证：
 
 RegiMux 默认不启用入口认证。开启后会使用 Docker Registry Bearer token flow，支持 `docker login`，账号和密码可以放在配置文件中：
@@ -110,3 +153,5 @@ Docker Compose 示例：
 Compose 示例会读取 `examples/compose/.env.example` 和可选的 `examples/compose/.env`，可以直接用 `REGIMUX_*` 环境变量覆盖容器内配置。
 
 详见 `examples/compose/README.md`。
+
+Roadmap 见 `ROADMAP.md`。

@@ -3,12 +3,15 @@ package config
 import (
 	"net/url"
 	"strings"
+	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/samber/oops"
 )
+
+const defaultSFTPObjectTimeout = 10 * time.Second
 
 func (c *Config) normalizeStore() {
 	c.normalizeMetaStore()
@@ -35,8 +38,26 @@ func (c *Config) normalizeObjectStore() {
 		objectDriver = "local"
 	}
 	c.Store.Object.Driver = objectDriver
-	if strings.TrimSpace(c.Store.Object.Path) == "" {
+	if objectDriver != "s3" && strings.TrimSpace(c.Store.Object.Path) == "" {
 		c.Store.Object.Path = "data/objects"
+	}
+	c.Store.Object.S3.Bucket = strings.TrimSpace(c.Store.Object.S3.Bucket)
+	c.Store.Object.S3.Prefix = strings.Trim(strings.TrimSpace(c.Store.Object.S3.Prefix), "/")
+	c.Store.Object.S3.Region = strings.TrimSpace(c.Store.Object.S3.Region)
+	c.Store.Object.S3.Endpoint = strings.TrimSpace(c.Store.Object.S3.Endpoint)
+	c.Store.Object.S3.AccessKeyID = strings.TrimSpace(c.Store.Object.S3.AccessKeyID)
+	c.Store.Object.S3.SecretAccessKey = strings.TrimSpace(c.Store.Object.S3.SecretAccessKey)
+	c.Store.Object.S3.SessionToken = strings.TrimSpace(c.Store.Object.S3.SessionToken)
+	c.Store.Object.S3.Profile = strings.TrimSpace(c.Store.Object.S3.Profile)
+	c.Store.Object.SFTP.Addr = strings.TrimSpace(c.Store.Object.SFTP.Addr)
+	c.Store.Object.SFTP.Username = strings.TrimSpace(c.Store.Object.SFTP.Username)
+	c.Store.Object.SFTP.Password = strings.TrimSpace(c.Store.Object.SFTP.Password)
+	c.Store.Object.SFTP.PrivateKey = strings.TrimSpace(c.Store.Object.SFTP.PrivateKey)
+	c.Store.Object.SFTP.PrivateKeyPassphrase = strings.TrimSpace(c.Store.Object.SFTP.PrivateKeyPassphrase)
+	c.Store.Object.SFTP.KnownHostsPath = strings.TrimSpace(c.Store.Object.SFTP.KnownHostsPath)
+	c.Store.Object.SFTP.HostKey = strings.TrimSpace(c.Store.Object.SFTP.HostKey)
+	if objectDriver == "sftp" && c.Store.Object.SFTP.Timeout == 0 {
+		c.Store.Object.SFTP.Timeout = defaultSFTPObjectTimeout
 	}
 }
 

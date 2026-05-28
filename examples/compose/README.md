@@ -52,6 +52,39 @@ docker compose --env-file examples/compose/.env -f examples/compose/compose.obse
 
 Prometheus is available at `http://localhost:9090`.
 
+## S3-compatible object storage
+
+RegiMux can store blob objects in an S3-compatible backend while keeping metadata in SQLite, MySQL, or PostgreSQL. Set these values in `examples/compose/.env` or a production environment:
+
+```text
+REGIMUX_STORE__OBJECT__DRIVER=s3
+REGIMUX_STORE__OBJECT__S3__BUCKET=regimux-objects
+REGIMUX_STORE__OBJECT__S3__PREFIX=cache
+REGIMUX_STORE__OBJECT__S3__REGION=us-east-1
+REGIMUX_STORE__OBJECT__S3__ENDPOINT=http://minio:9000
+REGIMUX_STORE__OBJECT__S3__ACCESS_KEY_ID=regimux
+REGIMUX_STORE__OBJECT__S3__SECRET_ACCESS_KEY=change-me
+REGIMUX_STORE__OBJECT__S3__FORCE_PATH_STYLE=true
+```
+
+For AWS S3, leave `endpoint` empty and use the normal AWS credential chain or explicit access keys.
+
+## SFTP object storage
+
+RegiMux can also store blob objects on a shared SFTP server. Set these values in `examples/compose/.env` or a production environment:
+
+```text
+REGIMUX_STORE__OBJECT__DRIVER=sftp
+REGIMUX_STORE__OBJECT__PATH=/srv/regimux/objects
+REGIMUX_STORE__OBJECT__SFTP__ADDR=sftp.example.com:22
+REGIMUX_STORE__OBJECT__SFTP__USERNAME=regimux
+REGIMUX_STORE__OBJECT__SFTP__PASSWORD=change-me
+REGIMUX_STORE__OBJECT__SFTP__KNOWN_HOSTS_PATH=/etc/regimux/known_hosts
+REGIMUX_STORE__OBJECT__SFTP__TIMEOUT=10s
+```
+
+Use `REGIMUX_STORE__OBJECT__SFTP__HOST_KEY` instead of `known_hosts_path` when you want to pin one host public key directly from the environment.
+
 ## Image tags
 
 The examples default to:
@@ -102,10 +135,10 @@ Inside the container:
 - `/etc/regimux/regimux.hcl` is the config file.
 - `/var/lib/regimux` is the working directory and persistent data root.
 - `data/regimux.db` stores local SQLite metadata when `store.meta.driver = "sqlite"`.
-- `data/objects` stores local blob objects.
+- `data/objects` stores local blob objects when `store.object.driver = "local"`.
 
 The Compose examples mount `/var/lib/regimux` as a named volume, so cached blobs and pull metadata survive container recreation.
 
 ## Notes for replicas
 
-Redis or Valkey shares the byte cache and scheduler locks, but the current examples still use local SQLite metadata and local blob object storage per RegiMux container. Do not scale these Compose files with multiple RegiMux replicas sharing the same `/var/lib/regimux` volume. If you run multiple replicas, use `store.meta.driver = "mysql"` or `"postgres"` with a shared DSN, give each replica its own local object data volume, and put them behind an external load balancer.
+Redis or Valkey shares the byte cache and scheduler locks, but the default Compose files still use local SQLite metadata and local blob object storage per RegiMux container. Do not scale these Compose files with multiple RegiMux replicas sharing the same `/var/lib/regimux` volume. If you run multiple replicas, use `store.meta.driver = "mysql"` or `"postgres"` with a shared DSN and `store.object.driver = "s3"` or `"sftp"` with shared object storage, then put the replicas behind an external load balancer.

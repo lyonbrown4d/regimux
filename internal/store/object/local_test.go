@@ -43,6 +43,25 @@ func TestLocalStoreGetReadsObject(t *testing.T) {
 	}
 }
 
+func TestLocalStorePersistsAfterReopen(t *testing.T) {
+	ctx := context.Background()
+	root := t.TempDir()
+	body := []byte("registry object body")
+
+	store, err := object.NewLocal(root)
+	requireNoError(t, "new store", err)
+	digest, _ := putTestObject(ctx, t, store, body)
+
+	reopened, err := object.NewLocal(root)
+	requireNoError(t, "reopen store", err)
+	reader, got, err := reopened.Get(ctx, digest, object.GetOptions{})
+	requireNoError(t, "get reopened", err)
+	data := readAllAndClose(t, reader)
+	if !bytes.Equal(data, body) || got.Size != int64(len(body)) {
+		t.Fatalf("unexpected reopened read: body=%q info=%#v", data, got)
+	}
+}
+
 func TestLocalStoreGetRangeReadsPartialObject(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newLocalStore(t)

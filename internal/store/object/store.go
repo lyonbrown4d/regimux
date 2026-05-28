@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 )
@@ -23,13 +24,51 @@ type Store interface {
 }
 
 func New(driver, path string) (Store, error) {
-	switch strings.ToLower(strings.TrimSpace(driver)) {
+	return NewWithOptions(context.Background(), Options{Driver: driver, Path: path})
+}
+
+type Options struct {
+	Driver string
+	Path   string
+	S3     S3Options
+	SFTP   SFTPOptions
+}
+
+type S3Options struct {
+	Bucket          string
+	Prefix          string
+	Region          string
+	Endpoint        string
+	AccessKeyID     string
+	SecretAccessKey string
+	SessionToken    string
+	Profile         string
+	ForcePathStyle  bool
+}
+
+type SFTPOptions struct {
+	Addr                 string
+	Username             string
+	Password             string
+	PrivateKey           string
+	PrivateKeyPassphrase string
+	KnownHostsPath       string
+	HostKey              string
+	Timeout              time.Duration
+}
+
+func NewWithOptions(ctx context.Context, opts Options) (Store, error) {
+	switch strings.ToLower(strings.TrimSpace(opts.Driver)) {
 	case "", "local":
-		return NewLocal(path)
+		return NewLocal(opts.Path)
 	case "memory":
-		return NewMemory(path)
+		return NewMemory(opts.Path)
+	case "s3":
+		return NewS3(ctx, opts.S3)
+	case "sftp":
+		return NewSFTP(ctx, opts.Path, opts.SFTP)
 	default:
-		return nil, errorf("unsupported object store driver: %s", driver)
+		return nil, errorf("unsupported object store driver: %s", opts.Driver)
 	}
 }
 

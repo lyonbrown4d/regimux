@@ -91,6 +91,39 @@ store {
   object {
     driver = "local"
     path = "data/objects"
+
+    # S3-compatible object storage example:
+    #
+    # driver = "s3"
+    # path = ""
+    #
+    # s3 {
+    #   bucket = "regimux-objects"
+    #   prefix = "cache"
+    #   region = "us-east-1"
+    #   endpoint = "http://minio:9000"
+    #   access_key_id = "regimux"
+    #   secret_access_key = "change-me"
+    #   session_token = ""
+    #   profile = ""
+    #   force_path_style = true
+    # }
+
+    # SFTP object storage example:
+    #
+    # driver = "sftp"
+    # path = "/srv/regimux/objects"
+    #
+    # sftp {
+    #   addr = "sftp.example.com:22"
+    #   username = "regimux"
+    #   password = "change-me"
+    #   private_key = ""
+    #   private_key_passphrase = ""
+    #   known_hosts_path = "/etc/regimux/known_hosts"
+    #   host_key = ""
+    #   timeout = "10s"
+    # }
   }
 }
 

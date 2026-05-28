@@ -111,8 +111,33 @@ type StoreMetaConfig struct {
 }
 
 type StoreObjectConfig struct {
-	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local memory"`
-	Path   string `json:"path"   koanf:"path"   mapstructure:"path"`
+	Driver string                `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local memory s3 sftp"`
+	Path   string                `json:"path"   koanf:"path"   mapstructure:"path"`
+	S3     StoreObjectS3Config   `json:"s3"     koanf:"s3"     mapstructure:"s3"`
+	SFTP   StoreObjectSFTPConfig `json:"sftp"   koanf:"sftp"   mapstructure:"sftp"`
+}
+
+type StoreObjectS3Config struct {
+	Bucket          string `json:"bucket"            koanf:"bucket"            mapstructure:"bucket"`
+	Prefix          string `json:"prefix"            koanf:"prefix"            mapstructure:"prefix"`
+	Region          string `json:"region"            koanf:"region"            mapstructure:"region"`
+	Endpoint        string `json:"endpoint"          koanf:"endpoint"          mapstructure:"endpoint"          validate:"omitempty,url"`
+	AccessKeyID     string `json:"access_key_id"     koanf:"access_key_id"     mapstructure:"access_key_id"`
+	SecretAccessKey string `json:"secret_access_key" koanf:"secret_access_key" mapstructure:"secret_access_key"`
+	SessionToken    string `json:"session_token"     koanf:"session_token"     mapstructure:"session_token"`
+	Profile         string `json:"profile"           koanf:"profile"           mapstructure:"profile"`
+	ForcePathStyle  bool   `json:"force_path_style"  koanf:"force_path_style"  mapstructure:"force_path_style"`
+}
+
+type StoreObjectSFTPConfig struct {
+	Addr                 string        `json:"addr"                   koanf:"addr"                   mapstructure:"addr"`
+	Username             string        `json:"username"               koanf:"username"               mapstructure:"username"`
+	Password             string        `json:"password"               koanf:"password"               mapstructure:"password"`
+	PrivateKey           string        `json:"private_key"            koanf:"private_key"            mapstructure:"private_key"`
+	PrivateKeyPassphrase string        `json:"private_key_passphrase" koanf:"private_key_passphrase" mapstructure:"private_key_passphrase"`
+	KnownHostsPath       string        `json:"known_hosts_path"       koanf:"known_hosts_path"       mapstructure:"known_hosts_path"`
+	HostKey              string        `json:"host_key"               koanf:"host_key"               mapstructure:"host_key"`
+	Timeout              time.Duration `json:"timeout"                koanf:"timeout"                mapstructure:"timeout"                validate:"min=0"`
 }
 
 type SchedulerConfig struct {

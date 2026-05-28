@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	pathpkg "path"
 	"path/filepath"
 	"strings"
 
@@ -17,8 +18,10 @@ import (
 )
 
 type LocalStore struct {
-	fs   afero.Fs
-	root string
+	fs        afero.Fs
+	root      string
+	directPut bool
+	close     func() error
 }
 
 func NewLocal(root string) (*LocalStore, error) {
@@ -42,14 +45,21 @@ func NewMemory(root string) (*LocalStore, error) {
 }
 
 func newLocalWithFS(fs afero.Fs, root string) (*LocalStore, error) {
+	return newAferoStore(fs, root, false, true)
+}
+
+func newAferoStore(fs afero.Fs, root string, directPut, ensureRoot bool) (*LocalStore, error) {
 	if fs == nil {
 		return nil, errorf("object store filesystem is not configured")
 	}
 	root = filepath.Clean(root)
-	if err := fs.MkdirAll(root, 0o750); err != nil {
-		return nil, wrapError(err, "create object store root")
+	base := afero.NewBasePathFs(fs, root)
+	if ensureRoot {
+		if err := base.MkdirAll(".", 0o750); err != nil {
+			return nil, wrapError(err, "create object store root")
+		}
 	}
-	return &LocalStore{fs: fs, root: root}, nil
+	return &LocalStore{fs: base, root: ".", directPut: directPut}, nil
 }
 
 func (s *LocalStore) Stat(ctx context.Context, digest string) (*Info, error) {
@@ -131,6 +141,9 @@ func (s *LocalStore) Put(ctx context.Context, digest string, r io.Reader, opts P
 		return existing, err
 	}
 
+	if s.directPut {
+		return s.putDirect(ctx, normalized, target, r, opts)
+	}
 	session, err := newPutSession(s, normalized, target)
 	if err != nil {
 		return nil, err
@@ -151,6 +164,13 @@ func (s *LocalStore) Delete(ctx context.Context, digest string) error {
 		return wrapError(err, "delete object")
 	}
 	return nil
+}
+
+func (s *LocalStore) Close() error {
+	if s == nil || s.close == nil {
+		return nil
+	}
+	return s.close()
 }
 
 func (s *LocalStore) findExisting(ctx context.Context, digest string, opts PutOptions) (*Info, bool, error) {
@@ -174,12 +194,8 @@ func (s *LocalStore) path(digest string) (string, string, error) {
 		return "", "", wrapError(err, "normalize object digest")
 	}
 	algorithm, encoded, _ := strings.Cut(normalized, ":")
-	target := filepath.Join(s.root, "blobs", algorithm, encoded[:2], encoded)
-	rel, err := filepath.Rel(s.root, target)
-	if err != nil {
-		return "", "", wrapError(err, "resolve object path relative to root")
-	}
-	if strings.HasPrefix(rel, "..") || filepath.IsAbs(rel) {
+	target := pathpkg.Join(s.root, "blobs", algorithm, encoded[:2], encoded)
+	if strings.HasPrefix(target, "../") || pathpkg.IsAbs(target) {
 		return "", "", errorf("object digest escapes root: %s", digest)
 	}
 	return normalized, target, nil

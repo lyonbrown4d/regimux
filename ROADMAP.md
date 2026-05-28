@@ -1,0 +1,91 @@
+# RegiMux Roadmap
+
+RegiMux stays focused on a read-only OCI / Docker Registry V2 proxy mirror. The roadmap below tracks the remaining work needed to make it easier to run as a long-lived production service.
+
+## Near Term
+
+### S3-compatible object storage
+
+- Add an `object` store driver for S3-compatible services such as AWS S3, MinIO, R2, and OSS-compatible deployments. Done.
+- Keep the existing local filesystem object store as the default for single-node setups. Done.
+- Support configurable bucket, endpoint, region, credentials, path style, and object key prefix. Done.
+- Preserve digest verification on writes and reads. Done.
+- Add integration examples for MinIO in Docker Compose.
+
+### SFTP object storage
+
+- Add an `object` store driver backed by `github.com/spf13/afero/sftpfs` for shared SFTP storage. Done.
+- Reuse `afero.NewBasePathFs` so `store.object.path` is the remote object root. Done.
+- Require host key verification with either `known_hosts_path` or a pinned `host_key`. Done.
+- Add integration examples with an SFTP server container.
+
+### Cache cleanup and capacity control
+
+- Extend cleanup jobs with disk/object-store capacity watermarks.
+- Add orphan object detection between metadata and object storage.
+- Support dry-run cleanup reports in logs and admin UI.
+- Prefer last-access based eviction for blobs and repo-to-blob links.
+
+### Registry client compatibility tests
+
+- Add end-to-end tests with Docker CLI, nerdctl/containerd, and ORAS.
+- Cover Docker login, manifest HEAD/GET, blob range reads, multi-arch images, tags pagination, and referrers.
+- Keep protocol-level unit tests for edge cases, but validate behavior with real clients before releases.
+
+### Admin operations
+
+- Add manual cleanup actions for repository, tag, digest, and orphan objects.
+- Add mirror re-probe controls.
+- Add recent error views for upstream, cache, scheduler, and metadata operations.
+- Add background job history for cleanup and prefetch runs.
+
+## Mid Term
+
+### Prefetch policy controls
+
+- Add per-run byte budgets, task budgets, and repository limits.
+- Add failure backoff and retry windows for predicted images.
+- Persist prefetch run history and per-candidate outcomes.
+- Expose cancel/retry controls in admin.
+
+### Mirror scheduling improvements
+
+- Persist endpoint health snapshots so restarts do not cold-start all mirror scores.
+- Track success rate by endpoint and repository.
+- Add circuit breaker windows for repeatedly failing mirrors.
+- Add jitter to background probes to avoid synchronized bursts.
+- Detect inconsistent mirror content and temporarily downgrade affected endpoints.
+
+### Metadata model expansion
+
+- Promote upstream and repository metadata to first-class tables when admin/query features need them.
+- Keep config as the source of truth for upstream definitions unless runtime metadata is explicitly required.
+- Add repository-level aggregate stats for pulls, bytes, blob links, and last activity.
+
+## Later
+
+### Auth and policy
+
+- Split registry pull permissions from admin permissions.
+- Add password hash generation tooling.
+- Add token revocation or short-lived token rotation support.
+- Consider external identity providers such as OIDC or LDAP after the local config model is stable.
+
+### Observability
+
+- Provide a Grafana dashboard for Prometheus metrics.
+- Add slow upstream request and slow DB operation summaries.
+- Add trace support if observabilityx tracing is adopted across HTTP, cache, upstream, and DB layers.
+- Add a diagnostics export endpoint or admin action.
+
+### Deployment
+
+- Add Helm chart examples.
+- Add production deployment notes for Redis/Valkey, PostgreSQL/MySQL, and S3/MinIO.
+- Add CI coverage for supported metadata drivers and object store drivers.
+- Keep release artifacts aligned across archive, deb, rpm, Windows exe, and Docker images.
+
+## Non-goals For Now
+
+- No legacy bbolt-to-SQLite metadata migration is planned.
+- No push/write registry support is planned; RegiMux remains read-only.

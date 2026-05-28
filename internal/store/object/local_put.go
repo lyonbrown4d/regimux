@@ -7,8 +7,10 @@ import (
 	"hash"
 	"io"
 	"os"
-	"path/filepath"
+	pathpkg "path"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/afero"
 )
@@ -31,10 +33,10 @@ func newPutSession(store *LocalStore, normalized, target string) (*putSession, e
 	if err != nil {
 		return nil, err
 	}
-	if mkdirErr := store.fs.MkdirAll(filepath.Dir(target), 0o750); mkdirErr != nil {
+	if mkdirErr := store.fs.MkdirAll(pathpkg.Dir(target), 0o750); mkdirErr != nil {
 		return nil, wrapError(mkdirErr, "create object digest directory")
 	}
-	tmp, err := afero.TempFile(store.fs, filepath.Dir(target), "."+expected+".tmp-*")
+	tmp, err := afero.TempFile(store.fs, pathpkg.Dir(target), "."+expected+".tmp-*")
 	if err != nil {
 		return nil, wrapError(err, "create object temp file")
 	}
@@ -135,4 +137,65 @@ func removeTempObject(fs afero.Fs, path string) error {
 		return wrapError(err, "remove object temp file")
 	}
 	return nil
+}
+
+func (s *LocalStore) putDirect(ctx context.Context, normalized, target string, r io.Reader, opts PutOptions) (*Info, error) {
+	algorithm, expected, _ := strings.Cut(normalized, ":")
+	hasher, err := newDigestHash(algorithm)
+	if err != nil {
+		return nil, err
+	}
+	if mkdirErr := s.fs.MkdirAll(pathpkg.Dir(target), 0o750); mkdirErr != nil {
+		return nil, wrapError(mkdirErr, "create object digest directory")
+	}
+	tmpName := directTempName(target, expected)
+	file, err := s.fs.OpenFile(tmpName, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o640)
+	if err != nil {
+		return nil, wrapError(err, "create object file")
+	}
+	size, err := io.Copy(io.MultiWriter(file, hasher), r)
+	closeErr := file.Close()
+	if err != nil {
+		return nil, errors.Join(wrapError(err, "write object file"), removeTempObject(s.fs, tmpName))
+	}
+	if closeErr != nil {
+		return nil, errors.Join(wrapError(closeErr, "close object file"), removeTempObject(s.fs, tmpName))
+	}
+
+	actual := hex.EncodeToString(hasher.Sum(nil))
+	if actual != expected {
+		return nil, errors.Join(
+			errorf("%w: expected %s got %s:%s", ErrDigestMismatch, normalized, algorithm, actual),
+			removeTempObject(s.fs, tmpName),
+		)
+	}
+	if err := s.fs.Rename(tmpName, target); err != nil {
+		return s.handleDirectCommitError(ctx, normalized, tmpName, err)
+	}
+	return &Info{
+		Digest:      normalized,
+		Size:        size,
+		ContentType: opts.ContentType,
+		ETag:        normalized,
+		Path:        target,
+	}, nil
+}
+
+func (s *LocalStore) handleDirectCommitError(ctx context.Context, normalized, tmpName string, err error) (*Info, error) {
+	existing, statErr := s.Stat(ctx, normalized)
+	if statErr == nil {
+		return existing, removeTempObject(s.fs, tmpName)
+	}
+	if errors.Is(statErr, ErrNotFound) {
+		return nil, errors.Join(wrapError(err, "commit object file"), removeTempObject(s.fs, tmpName))
+	}
+	return nil, errors.Join(
+		wrapError(err, "commit object file"),
+		wrapError(statErr, "stat existing object after commit failure"),
+		removeTempObject(s.fs, tmpName),
+	)
+}
+
+func directTempName(target, expected string) string {
+	return pathpkg.Join(pathpkg.Dir(target), "."+expected+".tmp-"+strconv.FormatInt(time.Now().UnixNano(), 36))
 }

@@ -12,6 +12,7 @@ func newConfigValidator() *validator.Validate {
 	v.RegisterStructValidation(validateRegistryAuthStruct, RegistryAuthConfig{})
 	v.RegisterStructValidation(validateCacheStruct, CacheConfig{})
 	v.RegisterStructValidation(validateStoreMetaStruct, StoreMetaConfig{})
+	v.RegisterStructValidation(validateStoreObjectStruct, StoreObjectConfig{})
 	return v
 }
 
@@ -83,5 +84,48 @@ func validateStoreMetaStruct(sl validator.StructLevel) {
 		if strings.TrimSpace(meta.DSN) == "" {
 			sl.ReportError(meta.DSN, "dsn", "DSN", "required_with_external_meta", meta.Driver)
 		}
+	}
+}
+
+func validateStoreObjectStruct(sl validator.StructLevel) {
+	object, ok := sl.Current().Interface().(StoreObjectConfig)
+	if !ok {
+		return
+	}
+	validateStoreObjectS3(sl, object)
+	validateStoreObjectSFTP(sl, object)
+}
+
+func validateStoreObjectS3(sl validator.StructLevel, object StoreObjectConfig) {
+	if object.Driver != "s3" {
+		return
+	}
+	reportBlankConfigValue(sl, object.S3.Bucket, "s3.bucket", "S3.Bucket", "required_with_s3_object_store")
+	reportBlankConfigValue(sl, object.S3.Region, "s3.region", "S3.Region", "required_with_s3_object_store")
+	if strings.TrimSpace(object.S3.AccessKeyID) == "" && strings.TrimSpace(object.S3.SecretAccessKey) != "" {
+		sl.ReportError(object.S3.AccessKeyID, "s3.access_key_id", "S3.AccessKeyID", "required_with_secret_access_key", "")
+	}
+	if strings.TrimSpace(object.S3.SecretAccessKey) == "" && strings.TrimSpace(object.S3.AccessKeyID) != "" {
+		sl.ReportError(object.S3.SecretAccessKey, "s3.secret_access_key", "S3.SecretAccessKey", "required_with_access_key_id", "")
+	}
+}
+
+func validateStoreObjectSFTP(sl validator.StructLevel, object StoreObjectConfig) {
+	if object.Driver != "sftp" {
+		return
+	}
+	reportBlankConfigValue(sl, object.SFTP.Addr, "sftp.addr", "SFTP.Addr", "required_with_sftp_object_store")
+	reportBlankConfigValue(sl, object.SFTP.Username, "sftp.username", "SFTP.Username", "required_with_sftp_object_store")
+	if strings.TrimSpace(object.SFTP.Password) == "" && strings.TrimSpace(object.SFTP.PrivateKey) == "" {
+		sl.ReportError(object.SFTP.Password, "sftp.password", "SFTP.Password", "password_or_private_key", "")
+	}
+	if strings.TrimSpace(object.SFTP.KnownHostsPath) == "" && strings.TrimSpace(object.SFTP.HostKey) == "" {
+		sl.ReportError(object.SFTP.KnownHostsPath, "sftp.known_hosts_path", "SFTP.KnownHostsPath", "known_hosts_or_host_key", "")
+	}
+}
+
+func reportBlankConfigValue(sl validator.StructLevel, value, field, structField, tag string) {
+	if strings.TrimSpace(value) == "" {
+		sl.ReportError(value, field, structField, tag, "")
 	}
 }

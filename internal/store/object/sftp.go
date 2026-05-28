@@ -1,0 +1,166 @@
+package object
+
+import (
+	"context"
+	"errors"
+	"net"
+	"path"
+	"strings"
+	"time"
+
+	"github.com/pkg/sftp"
+	"github.com/spf13/afero/sftpfs"
+	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
+)
+
+const defaultSFTPTimeout = 10 * time.Second
+
+func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*LocalStore, error) {
+	ctx = normalizeContext(ctx)
+	if err := checkContext(ctx, "create sftp object store"); err != nil {
+		return nil, err
+	}
+	opts = normalizeSFTPOptions(opts)
+	if opts.Addr == "" {
+		return nil, errorf("sftp object store addr is required")
+	}
+	if opts.Username == "" {
+		return nil, errorf("sftp object store username is required")
+	}
+	client, sshClient, err := dialSFTP(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	store, err := newAferoStore(newSlashPathFS(sftpfs.New(client)), sftpBasePath(root), false, true)
+	if err != nil {
+		return nil, errors.Join(err, closeSFTPClients(client, sshClient))
+	}
+	store.close = func() error {
+		return closeSFTPClients(client, sshClient)
+	}
+	return store, nil
+}
+
+func normalizeSFTPOptions(opts SFTPOptions) SFTPOptions {
+	opts.Addr = strings.TrimSpace(opts.Addr)
+	opts.Username = strings.TrimSpace(opts.Username)
+	opts.Password = strings.TrimSpace(opts.Password)
+	opts.PrivateKey = strings.TrimSpace(opts.PrivateKey)
+	opts.PrivateKeyPassphrase = strings.TrimSpace(opts.PrivateKeyPassphrase)
+	opts.KnownHostsPath = strings.TrimSpace(opts.KnownHostsPath)
+	opts.HostKey = strings.TrimSpace(opts.HostKey)
+	if opts.Timeout == 0 {
+		opts.Timeout = defaultSFTPTimeout
+	}
+	return opts
+}
+
+func sftpBasePath(root string) string {
+	root = strings.TrimSpace(strings.ReplaceAll(root, "\\", "/"))
+	if root == "" {
+		return "data/objects"
+	}
+	return path.Clean(root)
+}
+
+func dialSFTP(ctx context.Context, opts SFTPOptions) (*sftp.Client, *ssh.Client, error) {
+	sshConfig, err := newSSHClientConfig(opts)
+	if err != nil {
+		return nil, nil, err
+	}
+	dialer := net.Dialer{Timeout: opts.Timeout}
+	conn, err := dialer.DialContext(ctx, "tcp", opts.Addr)
+	if err != nil {
+		return nil, nil, wrapError(err, "dial sftp object store")
+	}
+	sshConn, chans, reqs, err := ssh.NewClientConn(conn, opts.Addr, sshConfig)
+	if err != nil {
+		return nil, nil, errors.Join(wrapError(err, "open ssh client connection"), conn.Close())
+	}
+	sshClient := ssh.NewClient(sshConn, chans, reqs)
+	client, err := sftp.NewClient(sshClient)
+	if err != nil {
+		return nil, nil, errors.Join(wrapError(err, "open sftp client"), sshClient.Close())
+	}
+	return client, sshClient, nil
+}
+
+func newSSHClientConfig(opts SFTPOptions) (*ssh.ClientConfig, error) {
+	auth, err := sftpAuthMethods(opts)
+	if err != nil {
+		return nil, err
+	}
+	hostKeyCallback, err := sftpHostKeyCallback(opts)
+	if err != nil {
+		return nil, err
+	}
+	return &ssh.ClientConfig{
+		User:            opts.Username,
+		Auth:            auth,
+		HostKeyCallback: hostKeyCallback,
+		Timeout:         opts.Timeout,
+	}, nil
+}
+
+func sftpAuthMethods(opts SFTPOptions) ([]ssh.AuthMethod, error) {
+	auth := make([]ssh.AuthMethod, 0, 2)
+	if opts.Password != "" {
+		auth = append(auth, ssh.Password(opts.Password))
+	}
+	if opts.PrivateKey != "" {
+		signer, err := parseSFTPPrivateKey(opts.PrivateKey, opts.PrivateKeyPassphrase)
+		if err != nil {
+			return nil, err
+		}
+		auth = append(auth, ssh.PublicKeys(signer))
+	}
+	if len(auth) == 0 {
+		return nil, errorf("sftp object store password or private_key is required")
+	}
+	return auth, nil
+}
+
+func parseSFTPPrivateKey(privateKey, passphrase string) (ssh.Signer, error) {
+	if passphrase == "" {
+		signer, err := ssh.ParsePrivateKey([]byte(privateKey))
+		if err != nil {
+			return nil, wrapError(err, "parse sftp private key")
+		}
+		return signer, nil
+	}
+	signer, err := ssh.ParsePrivateKeyWithPassphrase([]byte(privateKey), []byte(passphrase))
+	if err != nil {
+		return nil, wrapError(err, "parse encrypted sftp private key")
+	}
+	return signer, nil
+}
+
+func sftpHostKeyCallback(opts SFTPOptions) (ssh.HostKeyCallback, error) {
+	if opts.HostKey != "" {
+		key, _, _, _, err := ssh.ParseAuthorizedKey([]byte(opts.HostKey))
+		if err != nil {
+			return nil, wrapError(err, "parse sftp host key")
+		}
+		return ssh.FixedHostKey(key), nil
+	}
+	if opts.KnownHostsPath == "" {
+		return nil, errorf("sftp object store known_hosts_path or host_key is required")
+	}
+	callback, err := knownhosts.New(opts.KnownHostsPath)
+	if err != nil {
+		return nil, wrapError(err, "load sftp known hosts")
+	}
+	return callback, nil
+}
+
+func closeSFTPClients(client *sftp.Client, sshClient *ssh.Client) error {
+	var err error
+	if client != nil {
+		err = errors.Join(err, client.Close())
+	}
+	if sshClient != nil {
+		err = errors.Join(err, sshClient.Close())
+	}
+	return err
+}

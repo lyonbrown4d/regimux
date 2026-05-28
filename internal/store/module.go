@@ -38,6 +38,11 @@ var Module = dix.NewModule("store",
 			dix.LifecycleName("regimux.meta_store_close"),
 			dix.LifecyclePriority(-160),
 		),
+		dix.OnStop[object.Store](
+			closeObjectStore,
+			dix.LifecycleName("regimux.object_store_close"),
+			dix.LifecyclePriority(-150),
+		),
 	),
 )
 
@@ -78,11 +83,46 @@ func metadataDBHooks(metrics *observability.Metrics, driver string) []dbx.Hook {
 }
 
 func NewObjectStore(cfg config.StoreObjectConfig) (object.Store, error) {
-	store, err := object.New(cfg.Driver, cfg.Path)
+	store, err := object.NewWithOptions(context.Background(), object.Options{
+		Driver: cfg.Driver,
+		Path:   cfg.Path,
+		S3: object.S3Options{
+			Bucket:          cfg.S3.Bucket,
+			Prefix:          cfg.S3.Prefix,
+			Region:          cfg.S3.Region,
+			Endpoint:        cfg.S3.Endpoint,
+			AccessKeyID:     cfg.S3.AccessKeyID,
+			SecretAccessKey: cfg.S3.SecretAccessKey,
+			SessionToken:    cfg.S3.SessionToken,
+			Profile:         cfg.S3.Profile,
+			ForcePathStyle:  cfg.S3.ForcePathStyle,
+		},
+		SFTP: object.SFTPOptions{
+			Addr:                 cfg.SFTP.Addr,
+			Username:             cfg.SFTP.Username,
+			Password:             cfg.SFTP.Password,
+			PrivateKey:           cfg.SFTP.PrivateKey,
+			PrivateKeyPassphrase: cfg.SFTP.PrivateKeyPassphrase,
+			KnownHostsPath:       cfg.SFTP.KnownHostsPath,
+			HostKey:              cfg.SFTP.HostKey,
+			Timeout:              cfg.SFTP.Timeout,
+		},
+	})
 	if err != nil {
 		return nil, oops.Wrapf(err, "create object store")
 	}
 	return store, nil
+}
+
+func closeObjectStore(_ context.Context, store object.Store) error {
+	closer, ok := store.(interface{ Close() error })
+	if !ok {
+		return nil
+	}
+	if err := closer.Close(); err != nil {
+		return oops.Wrapf(err, "close object store")
+	}
+	return nil
 }
 
 func closeMetadataStore(_ context.Context, store meta.Store) error {
