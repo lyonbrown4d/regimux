@@ -13,8 +13,7 @@ func activitySummary(snapshot metadataSnapshot) ActivitySummary {
 }
 
 func activityRowsFromPulls(records []meta.PullRecord, limit int) []ActivityRow {
-	sorted := collectionlist.NewList(records...).Sort(comparePullRecordRecent)
-	return collectionlist.MapList(sorted.Take(limit), func(_ int, record meta.PullRecord) ActivityRow {
+	return collectionlist.MapList(collectionlist.NewList(records...).Take(limit), func(_ int, record meta.PullRecord) ActivityRow {
 		occurredAt := latestTime(record.LastPullAt, record.LastUpstreamPullAt, record.UpdatedAt, record.CreatedAt)
 		return ActivityRow{
 			OccurredAt: formatTime(occurredAt),

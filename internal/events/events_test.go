@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"reflect"
 	"testing"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -82,6 +83,41 @@ func TestSubscriptionsRegisterAndClose(t *testing.T) {
 
 	if got != 1 {
 		t.Fatalf("handler calls = %d, want 1", got)
+	}
+}
+
+func TestSubscriptionsCloseUnsubscribesInLIFOOrder(t *testing.T) {
+	bus := events.NewBus(testLogger())
+	defer func() {
+		if err := bus.Close(); err != nil {
+			t.Fatalf("close bus: %v", err)
+		}
+	}()
+
+	var got []int
+	subscriptions := events.NewSubscriptions()
+	subscribers := collectionlist.NewList[events.Subscriber](
+		events.SubscriberFunc(func(events.Bus) (events.Unsubscribe, error) {
+			return func() { got = append(got, 1) }, nil
+		}),
+		events.SubscriberFunc(func(events.Bus) (events.Unsubscribe, error) {
+			return func() { got = append(got, 2) }, nil
+		}),
+		events.SubscriberFunc(func(events.Bus) (events.Unsubscribe, error) {
+			return func() { got = append(got, 3) }, nil
+		}),
+	)
+
+	if err := subscriptions.Register(bus, subscribers); err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if err := subscriptions.Close(); err != nil {
+		t.Fatalf("close subscriptions: %v", err)
+	}
+
+	want := []int{3, 2, 1}
+	if !reflect.DeepEqual(got, want) {
+		t.Fatalf("unsubscribe order = %v, want %v", got, want)
 	}
 }
 

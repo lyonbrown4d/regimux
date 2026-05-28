@@ -9,7 +9,7 @@ import (
 	"strings"
 	"time"
 
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/jellydator/ttlcache/v3"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -34,13 +34,8 @@ type bearerTokenCacheKey struct {
 	Username string
 }
 
-type bearerTokenCacheEntry struct {
-	Token     string
-	ExpiresAt time.Time
-}
-
 type bearerTokenCache struct {
-	entries *collectionmapping.ConcurrentMap[bearerTokenCacheKey, bearerTokenCacheEntry]
+	entries *ttlcache.Cache[bearerTokenCacheKey, string]
 }
 
 type bearerTokenResponse struct {
@@ -137,37 +132,32 @@ func normalizeChallengeValue(value string) string {
 
 func newBearerTokenCache() *bearerTokenCache {
 	return &bearerTokenCache{
-		entries: collectionmapping.NewConcurrentMap[bearerTokenCacheKey, bearerTokenCacheEntry](),
+		entries: ttlcache.New[bearerTokenCacheKey, string](
+			ttlcache.WithDisableTouchOnHit[bearerTokenCacheKey, string](),
+		),
 	}
 }
 
 func (c *bearerTokenCache) get(key bearerTokenCacheKey) (string, bool) {
-	if c == nil {
+	if c == nil || c.entries == nil {
 		return "", false
 	}
-	now := time.Now()
-	entry, ok := c.entries.Get(key)
-	if !ok {
+	item := c.entries.Get(key)
+	if item == nil {
 		return "", false
 	}
-	if !entry.ExpiresAt.After(now) {
-		deleted, deletedOK := c.entries.LoadAndDelete(key)
-		if deletedOK && deleted != entry && deleted.ExpiresAt.After(now) {
-			actual, _ := c.entries.GetOrStore(key, deleted)
-			if actual.ExpiresAt.After(now) {
-				return actual.Token, true
-			}
-		}
-		return "", false
-	}
-	return entry.Token, true
+	return item.Value(), true
 }
 
 func (c *bearerTokenCache) set(key bearerTokenCacheKey, token string, expiresAt time.Time) {
-	if c == nil || token == "" || !expiresAt.After(time.Now()) {
+	if c == nil || c.entries == nil || token == "" {
 		return
 	}
-	c.entries.Set(key, bearerTokenCacheEntry{Token: token, ExpiresAt: expiresAt})
+	ttl := time.Until(expiresAt)
+	if ttl <= 0 {
+		return
+	}
+	c.entries.Set(key, token, ttl)
 }
 
 func newBearerTokenRequest(cfg Config, challenge bearerChallenge, fallbackScope string) (bearerTokenRequest, error) {

@@ -211,14 +211,14 @@ func (s *Service) upstreamHealthPartial(c *fiber.Ctx) error {
 func (s *Service) pageData(c *fiber.Ctx, titleKey, active string) (PageData, error) {
 	now := time.Now()
 	locale := localeFromRequest(c)
-	rows, err := s.metadataRows(c.UserContext(), now)
+	rows, err := s.metadataRows(c.UserContext(), now, active)
 	if err != nil {
 		return PageData{}, err
 	}
 	upstreams := s.upstreamRows(now)
-	cache := cacheSummary(rows, now)
+	cache := cacheSummary(rows)
 	pulls := pullRows(rows.pulls)
-	summary := s.summary(rows, upstreams, pulls, now)
+	summary := s.summary(rows, upstreams, now)
 
 	return PageData{
 		Title:              translate(locale, titleKey),

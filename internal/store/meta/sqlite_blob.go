@@ -85,17 +85,47 @@ func (s *SQLiteStore) PutBlob(ctx context.Context, record BlobRecord) error {
 	return nil
 }
 
-func (s *SQLiteStore) ListBlobs(ctx context.Context) ([]BlobRecord, error) {
-	rows, err := s.blobs.List(ctx, nil)
+func (s *SQLiteStore) ListBlobs(ctx context.Context, opts ...BlobListOption) ([]BlobRecord, error) {
+	options := blobListOptions(opts...)
+	query := repository.Query(s.blobs)
+	switch options.Order {
+	case BlobListDefault:
+	case BlobListRecentFirst:
+		query = query.OrderBy(
+			sqliteBlobRows.LastAccessAt.Desc(),
+			sqliteBlobRows.UpdatedAt.Desc(),
+			sqliteBlobRows.CreatedAt.Desc(),
+			sqliteBlobRows.ID.Desc(),
+		)
+	case BlobListLargestFirst:
+		query = query.OrderBy(
+			sqliteBlobRows.Size.Desc(),
+			sqliteBlobRows.LastAccessAt.Desc(),
+			sqliteBlobRows.UpdatedAt.Desc(),
+			sqliteBlobRows.CreatedAt.Desc(),
+			sqliteBlobRows.ID.Desc(),
+		)
+	}
+	if options.Limit > 0 {
+		query = query.Limit(options.Limit)
+	}
+	rows, err := query.List(ctx)
 	if err != nil {
 		return nil, wrapError(err, "list blob metadata")
 	}
+	return blobRowsToRecords(rows), nil
+}
+
+func blobRowsToRecords(rows interface {
+	Len() int
+	Range(func(int, blobRow) bool)
+}) []BlobRecord {
 	records := make([]BlobRecord, 0, rows.Len())
 	rows.Range(func(_ int, row blobRow) bool {
 		records = append(records, *blobRowToRecord(row))
 		return true
 	})
-	return records, nil
+	return records
 }
 
 func (s *SQLiteStore) RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error) {
@@ -178,17 +208,38 @@ func (s *SQLiteStore) DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
 	return nil
 }
 
-func (s *SQLiteStore) ListRepoBlobs(ctx context.Context) ([]RepoBlobRecord, error) {
-	rows, err := s.repoBlobs.List(ctx, nil)
+func (s *SQLiteStore) ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) ([]RepoBlobRecord, error) {
+	options := repoBlobListOptions(opts...)
+	query := repository.Query(s.repoBlobs)
+	if options.RecentFirst {
+		query = query.OrderBy(
+			sqliteRepoBlobRows.LastAccessAt.Desc(),
+			sqliteRepoBlobRows.LastVerifiedAt.Desc(),
+			sqliteRepoBlobRows.UpdatedAt.Desc(),
+			sqliteRepoBlobRows.CreatedAt.Desc(),
+			sqliteRepoBlobRows.ID.Desc(),
+		)
+	}
+	if options.Limit > 0 {
+		query = query.Limit(options.Limit)
+	}
+	rows, err := query.List(ctx)
 	if err != nil {
 		return nil, wrapError(err, "list repository blob metadata")
 	}
+	return repoBlobRowsToRecords(rows), nil
+}
+
+func repoBlobRowsToRecords(rows interface {
+	Len() int
+	Range(func(int, repoBlobRow) bool)
+}) []RepoBlobRecord {
 	records := make([]RepoBlobRecord, 0, rows.Len())
 	rows.Range(func(_ int, row repoBlobRow) bool {
 		records = append(records, *repoBlobRowToRecord(row))
 		return true
 	})
-	return records, nil
+	return records
 }
 
 func (s *SQLiteStore) updateBlobRow(ctx context.Context, row blobRow) error {

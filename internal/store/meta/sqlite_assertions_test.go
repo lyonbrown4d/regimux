@@ -97,3 +97,147 @@ func assertRepoBlobList(t *testing.T, repoBlobs []meta.RepoBlobRecord) {
 		t.Fatalf("unexpected repo blobs: %#v", repoBlobs)
 	}
 }
+
+func seedStatsRecords(ctx context.Context, t *testing.T, store *meta.SQLiteStore, now time.Time) {
+	t.Helper()
+
+	upsertStatsManifest(ctx, t, store, "library/node", testDigest, 100, now.Add(-time.Hour))
+	upsertStatsManifest(ctx, t, store, "library/redis", secondTestDigest, 200, now.Add(time.Hour))
+	upsertStatsTag(ctx, t, store, "library/node", "18", testDigest, now.Add(-time.Hour))
+	upsertStatsTag(ctx, t, store, "library/redis", "7", secondTestDigest, now.Add(time.Hour))
+	upsertStatsBlob(ctx, t, store, testDigest, 100, now.Add(-3*time.Hour))
+	upsertStatsBlob(ctx, t, store, secondTestDigest, 500, now.Add(-time.Hour))
+	upsertStatsBlob(ctx, t, store, thirdTestDigest, 300, now.Add(-2*time.Hour))
+	upsertStatsRepoBlob(ctx, t, store, testDigest, now.Add(-3*time.Hour))
+	upsertStatsRepoBlob(ctx, t, store, secondTestDigest, now.Add(-time.Hour))
+	upsertStatsRepoBlob(ctx, t, store, thirdTestDigest, now.Add(-2*time.Hour))
+	recordStatsPull(ctx, t, store, "18", now.Add(-3*time.Hour))
+	recordStatsPull(ctx, t, store, "20", now.Add(-time.Hour))
+	recordStatsPull(ctx, t, store, "19", now.Add(-2*time.Hour))
+	_, err := store.RecordUpstreamPull(ctx, meta.PullKey{
+		Alias:      "hub",
+		Repository: "library/node",
+		Reference:  "19",
+	}, now.Add(-30*time.Minute))
+	requireNoError(t, "record upstream pull", err)
+}
+
+func upsertStatsManifest(
+	ctx context.Context,
+	t *testing.T,
+	store *meta.SQLiteStore,
+	repository string,
+	digest string,
+	size int64,
+	expiresAt time.Time,
+) {
+	t.Helper()
+
+	_, err := store.UpsertManifest(ctx, meta.ManifestRecord{
+		Alias:      "hub",
+		Repository: repository,
+		Digest:     digest,
+		MediaType:  "application/vnd.oci.image.manifest.v1+json",
+		Size:       size,
+		ExpiresAt:  expiresAt,
+	})
+	requireNoError(t, "upsert stats manifest", err)
+}
+
+func upsertStatsTag(
+	ctx context.Context,
+	t *testing.T,
+	store *meta.SQLiteStore,
+	repository string,
+	reference string,
+	digest string,
+	expiresAt time.Time,
+) {
+	t.Helper()
+
+	_, err := store.UpsertTag(ctx, meta.TagRecord{
+		Alias:      "hub",
+		Repository: repository,
+		Reference:  reference,
+		Digest:     digest,
+		ExpiresAt:  expiresAt,
+	})
+	requireNoError(t, "upsert stats tag", err)
+}
+
+func upsertStatsBlob(ctx context.Context, t *testing.T, store *meta.SQLiteStore, digest string, size int64, at time.Time) {
+	t.Helper()
+
+	_, err := store.UpsertBlob(ctx, meta.BlobRecord{
+		Digest:       digest,
+		Size:         size,
+		MediaType:    "application/octet-stream",
+		LastAccessAt: at,
+		UpdatedAt:    at,
+	})
+	requireNoError(t, "upsert stats blob", err)
+}
+
+func upsertStatsRepoBlob(ctx context.Context, t *testing.T, store *meta.SQLiteStore, digest string, at time.Time) {
+	t.Helper()
+
+	_, err := store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
+		Alias:          "hub",
+		Repository:     "library/node",
+		Digest:         digest,
+		SourceManifest: fourthTestDigest,
+		LastAccessAt:   at,
+		LastVerifiedAt: at,
+	})
+	requireNoError(t, "upsert stats repo blob", err)
+}
+
+func recordStatsPull(ctx context.Context, t *testing.T, store *meta.SQLiteStore, reference string, at time.Time) {
+	t.Helper()
+
+	_, err := store.RecordPull(ctx, meta.PullKey{
+		Alias:      "hub",
+		Repository: "library/node",
+		Reference:  reference,
+	}, at)
+	requireNoError(t, "record stats pull", err)
+}
+
+func assertMetadataStats(t *testing.T, stats meta.MetadataStats, now time.Time) {
+	t.Helper()
+	assertManifestStats(t, stats)
+	assertTagStats(t, stats)
+	assertBlobStats(t, stats)
+	assertPullStats(t, stats, now)
+}
+
+func assertManifestStats(t *testing.T, stats meta.MetadataStats) {
+	t.Helper()
+	if stats.ManifestCount != 2 || stats.ExpiredManifestCount != 1 || stats.ManifestBytes != 300 {
+		t.Fatalf("unexpected manifest stats: %#v", stats)
+	}
+}
+
+func assertTagStats(t *testing.T, stats meta.MetadataStats) {
+	t.Helper()
+	if stats.TagCount != 2 || stats.ExpiredTagCount != 1 {
+		t.Fatalf("unexpected tag stats: %#v", stats)
+	}
+}
+
+func assertBlobStats(t *testing.T, stats meta.MetadataStats) {
+	t.Helper()
+	if stats.BlobCount != 3 || stats.BlobBytes != 900 || stats.RepoBlobCount != 3 {
+		t.Fatalf("unexpected blob stats: %#v", stats)
+	}
+}
+
+func assertPullStats(t *testing.T, stats meta.MetadataStats, now time.Time) {
+	t.Helper()
+	if stats.PullCount != 3 || !stats.LastPullAt.Equal(now.Add(-time.Hour)) {
+		t.Fatalf("unexpected pull stats: %#v", stats)
+	}
+	if !stats.LastUpstreamPullAt.Equal(now.Add(-30 * time.Minute)) {
+		t.Fatalf("unexpected upstream pull stats: %#v", stats)
+	}
+}

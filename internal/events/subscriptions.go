@@ -3,7 +3,6 @@ package events
 import (
 	"context"
 	"log/slog"
-	"slices"
 	"sync"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -130,11 +129,7 @@ func (s *Subscriptions) closeLocked() {
 		return
 	}
 
-	for _, unsubscribe := range slices.Backward(s.entries.Values()) {
-		if unsubscribe != nil {
-			unsubscribe()
-		}
-	}
+	unsubscribeAll(s.entries)
 	s.entries = collectionlist.NewList[Unsubscribe]()
 }
 
@@ -159,7 +154,7 @@ func subscribeMany(bus Bus, subscribers ...func() (Unsubscribe, error)) (Unsubsc
 		}
 		unsubscribe, err := subscriber()
 		if err != nil {
-			unsubscribeAll(unsubscribers.Values())
+			unsubscribeAll(unsubscribers)
 			return nil, oops.In("events").Wrapf(err, "subscribe event handler")
 		}
 		if unsubscribe != nil {
@@ -167,16 +162,17 @@ func subscribeMany(bus Bus, subscribers ...func() (Unsubscribe, error)) (Unsubsc
 		}
 	}
 	return func() {
-		unsubscribeAll(unsubscribers.Values())
+		unsubscribeAll(unsubscribers)
 	}, nil
 }
 
-func unsubscribeAll(unsubscribers []Unsubscribe) {
-	for _, unsubscribe := range slices.Backward(unsubscribers) {
+func unsubscribeAll(unsubscribers *collectionlist.List[Unsubscribe]) {
+	unsubscribers.Clone().Reverse().Range(func(_ int, unsubscribe Unsubscribe) bool {
 		if unsubscribe != nil {
 			unsubscribe()
 		}
-	}
+		return true
+	})
 }
 
 func noopUnsubscribe() {}

@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/arcgolabs/observabilityx"
@@ -26,6 +27,8 @@ type Metrics struct {
 	cacheStores             observabilityx.Counter
 	apiRequests             observabilityx.Counter
 	apiRequestDuration      observabilityx.Histogram
+	dbOperations            observabilityx.Counter
+	dbOperationDuration     observabilityx.Histogram
 	schedulerJobs           observabilityx.Counter
 	schedulerJobDuration    observabilityx.Histogram
 }
@@ -77,6 +80,16 @@ func NewMetricsFromObservability(obs observabilityx.Observability, handler http.
 			"api_request_duration_seconds",
 			"API request duration in seconds.",
 			"route", "method", "result",
+		)),
+		dbOperations: obs.Counter(counterSpec(
+			"db_operations_total",
+			"Total database operations.",
+			"driver", "operation", "table", "result",
+		)),
+		dbOperationDuration: obs.Histogram(durationHistogramSpec(
+			"db_operation_duration_seconds",
+			"Database operation duration in seconds.",
+			"driver", "operation", "table", "result",
 		)),
 		schedulerJobs: obs.Counter(counterSpec(
 			"scheduler_jobs_total",
@@ -183,6 +196,25 @@ func (m *Metrics) ObserveAPIRequest(ctx context.Context, route, method string, s
 	)
 }
 
+func (m *Metrics) ObserveDBOperation(ctx context.Context, driver, operation, table string, duration time.Duration, err error) {
+	if m == nil {
+		return
+	}
+	if duration < 0 {
+		duration = 0
+	}
+
+	result := resultLabel(err, 0)
+	labels := []observabilityx.Attribute{
+		observabilityx.String("driver", labelOrUnknown(driver)),
+		observabilityx.String("operation", labelOrUnknown(operation)),
+		observabilityx.String("table", labelOrUnknown(table)),
+		observabilityx.String("result", result),
+	}
+	m.dbOperations.Add(ctx, 1, labels...)
+	m.dbOperationDuration.Record(ctx, duration.Seconds(), labels...)
+}
+
 func (m *Metrics) ObserveSchedulerJob(ctx context.Context, job, alias string, duration time.Duration, err error) {
 	if m == nil {
 		return
@@ -243,4 +275,12 @@ func boolLabel(value bool) string {
 		return "true"
 	}
 	return "false"
+}
+
+func labelOrUnknown(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }

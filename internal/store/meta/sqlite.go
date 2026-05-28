@@ -34,6 +34,8 @@ type DBOptions struct {
 	DSN    string
 	Path   string
 	Logger *slog.Logger
+	Hooks  []dbx.Hook
+	Debug  bool
 }
 
 type SQLiteOptions = DBOptions
@@ -75,7 +77,7 @@ func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLiteStore, error
 		dbx.WithDriver(openConfig.driver),
 		dbx.WithDSN(openConfig.dsn),
 		dbx.WithDialect(openConfig.dialect),
-		dbx.ApplyOptions(dbx.WithLogger(opts.Logger)),
+		dbx.ApplyOptions(dbOptions(opts)...),
 	)
 	if err != nil {
 		return nil, wrapError(err, "open metadata db")
@@ -109,6 +111,17 @@ func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLiteStore, error
 		return nil, err
 	}
 	return store, nil
+}
+
+func dbOptions(opts DBOptions) []dbx.Option {
+	dbOpts := []dbx.Option{
+		dbx.WithLogger(opts.Logger),
+		dbx.WithDebug(opts.Debug),
+	}
+	if len(opts.Hooks) > 0 {
+		dbOpts = append(dbOpts, dbx.WithHooks(opts.Hooks...))
+	}
+	return dbOpts
 }
 
 type dbOpenConfig struct {

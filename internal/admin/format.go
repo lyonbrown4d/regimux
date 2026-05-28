@@ -1,10 +1,10 @@
 package admin
 
 import (
-	"fmt"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/dustin/go-humanize"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
@@ -29,17 +29,7 @@ func formatBytes(value int64) string {
 	if value <= 0 {
 		return "0 B"
 	}
-	units := []string{"B", "KiB", "MiB", "GiB", "TiB"}
-	size := float64(value)
-	index := 0
-	for size >= 1024 && index < len(units)-1 {
-		size /= 1024
-		index++
-	}
-	if index == 0 {
-		return fmt.Sprintf("%d %s", value, units[index])
-	}
-	return fmt.Sprintf("%.1f %s", size, units[index])
+	return humanize.IBytes(uint64(value))
 }
 
 func formatLatency(snapshot upstream.EndpointHealthSnapshot) string {
@@ -79,17 +69,6 @@ func latestTime(values ...time.Time) time.Time {
 		}
 		return out
 	})
-}
-
-func compareTimeDesc(left, right time.Time) int {
-	switch {
-	case left.Equal(right):
-		return 0
-	case left.After(right):
-		return -1
-	default:
-		return 1
-	}
 }
 
 func dash(value string) string {

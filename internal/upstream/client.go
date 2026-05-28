@@ -11,11 +11,13 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
+	"golang.org/x/sync/singleflight"
 )
 
 type Client struct {
 	upstreams  *collectionmapping.OrderedMap[string, *upstreamPool]
 	tokenCache *bearerTokenCache
+	tokenGroup singleflight.Group
 	workers    *worker.Pools
 	events     events.Bus
 	logger     *slog.Logger

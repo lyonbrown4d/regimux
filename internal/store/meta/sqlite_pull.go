@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	"github.com/arcgolabs/dbx/paging"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -76,17 +77,40 @@ func (s *SQLiteStore) recordPull(ctx context.Context, key PullKey, at time.Time,
 	return &record, nil
 }
 
-func (s *SQLiteStore) ListPulls(ctx context.Context) ([]PullRecord, error) {
-	rows, err := s.pulls.List(ctx, nil)
+func (s *SQLiteStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error) {
+	options := pullListOptions(opts...)
+	query := repository.Query(s.pulls)
+	if options.RecentFirst {
+		query = query.OrderBy(
+			sqlitePullRows.LastPullAt.Desc(),
+			sqlitePullRows.UpdatedAt.Desc(),
+			sqlitePullRows.ID.Desc(),
+		)
+	}
+	if options.Limit > 0 {
+		page, err := query.ListPage(ctx, paging.NewRequest(1, options.Limit))
+		if err != nil {
+			return nil, wrapError(err, "list pull metadata")
+		}
+		return pullRowsToRecords(page.Items), nil
+	}
+	rows, err := query.List(ctx)
 	if err != nil {
 		return nil, wrapError(err, "list pull metadata")
 	}
+	return pullRowsToRecords(rows), nil
+}
+
+func pullRowsToRecords(rows interface {
+	Len() int
+	Range(func(int, pullRow) bool)
+}) []PullRecord {
 	records := make([]PullRecord, 0, rows.Len())
 	rows.Range(func(_ int, row pullRow) bool {
 		records = append(records, *pullRowToRecord(row))
 		return true
 	})
-	return records, nil
+	return records
 }
 
 func (s *SQLiteStore) updatePullRow(ctx context.Context, row pullRow) error {

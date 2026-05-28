@@ -117,7 +117,35 @@ func sortTopNCandidates(candidates []layerSchedulerCandidate, topN int) {
 	if topN <= 0 || topN > len(candidates) {
 		topN = len(candidates)
 	}
-	sort.SliceStable(candidates[:topN], func(i, j int) bool {
+	if topN == len(candidates) {
+		sortCandidates(candidates)
+		return
+	}
+
+	original := append([]layerSchedulerCandidate(nil), candidates...)
+	ranked := append([]layerSchedulerCandidate(nil), candidates...)
+	sortCandidates(ranked)
+
+	selected := make(map[int]struct{}, topN)
+	for i := range topN {
+		candidate := ranked[i]
+		candidates[i] = candidate
+		selected[candidate.index] = struct{}{}
+	}
+
+	write := topN
+	for i := range original {
+		candidate := original[i]
+		if _, ok := selected[candidate.index]; ok {
+			continue
+		}
+		candidates[write] = candidate
+		write++
+	}
+}
+
+func sortCandidates(candidates []layerSchedulerCandidate) {
+	sort.SliceStable(candidates, func(i, j int) bool {
 		return layerSchedulerCandidateLess(candidates[i], candidates[j])
 	})
 }

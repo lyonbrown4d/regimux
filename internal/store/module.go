@@ -5,12 +5,20 @@ import (
 	"context"
 	"log/slog"
 
+	"github.com/arcgolabs/dbx"
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
 )
+
+type MetadataStoreDependencies struct {
+	Config  config.StoreMetaConfig
+	Logger  *slog.Logger
+	Metrics *observability.Metrics
+}
 
 var Module = dix.NewModule("store",
 	dix.Providers(
@@ -20,7 +28,8 @@ var Module = dix.NewModule("store",
 		dix.Provider1[config.StoreObjectConfig, config.Config](func(cfg config.Config) config.StoreObjectConfig {
 			return cfg.Store.Object
 		}),
-		dix.ProviderErr2[meta.Store, config.StoreMetaConfig, *slog.Logger](NewMetadataStore, dix.Eager()),
+		dix.Provider3[MetadataStoreDependencies, config.StoreMetaConfig, *slog.Logger, *observability.Metrics](newMetadataStoreDependencies),
+		dix.ProviderErr1[meta.Store, MetadataStoreDependencies](NewMetadataStore, dix.Eager()),
 		dix.ProviderErr1[object.Store, config.StoreObjectConfig](NewObjectStore, dix.Eager()),
 	),
 	dix.Hooks(
@@ -32,7 +41,16 @@ var Module = dix.NewModule("store",
 	),
 )
 
-func NewMetadataStore(cfg config.StoreMetaConfig, logger *slog.Logger) (meta.Store, error) {
+func newMetadataStoreDependencies(cfg config.StoreMetaConfig, logger *slog.Logger, metrics *observability.Metrics) MetadataStoreDependencies {
+	return MetadataStoreDependencies{
+		Config:  cfg,
+		Logger:  logger,
+		Metrics: metrics,
+	}
+}
+
+func NewMetadataStore(deps MetadataStoreDependencies) (meta.Store, error) {
+	cfg := deps.Config
 	switch cfg.Driver {
 	case "sqlite", "mysql", "postgres":
 	default:
@@ -42,12 +60,21 @@ func NewMetadataStore(cfg config.StoreMetaConfig, logger *slog.Logger) (meta.Sto
 		Driver: cfg.Driver,
 		DSN:    cfg.DSN,
 		Path:   cfg.Path,
-		Logger: logger,
+		Logger: deps.Logger,
+		Hooks:  metadataDBHooks(deps.Metrics, cfg.Driver),
 	})
 	if err != nil {
 		return nil, oops.Wrapf(err, "open metadata store")
 	}
 	return store, nil
+}
+
+func metadataDBHooks(metrics *observability.Metrics, driver string) []dbx.Hook {
+	hook := observability.NewDBMetricsHook(metrics, driver)
+	if hook == nil {
+		return nil
+	}
+	return []dbx.Hook{hook}
 }
 
 func NewObjectStore(cfg config.StoreObjectConfig) (object.Store, error) {

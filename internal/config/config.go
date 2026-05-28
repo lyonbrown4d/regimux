@@ -34,7 +34,9 @@ func Load(ctx context.Context, path string, args ...string) (Config, error) {
 // regimux-specific normalization, then validates through configx's validator.
 func LoadWithOptions(ctx context.Context, options ...configx.Option) (Config, error) {
 	opts := append(baseLoadOptions(), options...)
-	loaded, err := configx.New(opts...).LoadConfigContext(ctx)
+	// Use the typed loader for source/default decoding, but keep validation
+	// after regimux normalization to preserve existing semantics.
+	loaded, err := configx.NewT[Config](opts...).LoadConfigContext(ctx)
 	if err != nil {
 		return Config{}, oops.In("config").Wrapf(err, "load config")
 	}

@@ -35,19 +35,35 @@ type Store interface {
 	Pull(ctx context.Context, key PullKey) (*PullRecord, bool, error)
 	RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
-	ListPulls(ctx context.Context) ([]PullRecord, error)
+	ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error)
 
 	Blob(ctx context.Context, key BlobKey) (*BlobRecord, bool, error)
 	UpsertBlob(ctx context.Context, record BlobRecord) (*BlobRecord, error)
 	DeleteBlob(ctx context.Context, key BlobKey) error
 	GetBlob(ctx context.Context, digest string) (*BlobRecord, bool, error)
 	PutBlob(ctx context.Context, record BlobRecord) error
-	ListBlobs(ctx context.Context) ([]BlobRecord, error)
+	ListBlobs(ctx context.Context, opts ...BlobListOption) ([]BlobRecord, error)
 
 	RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error)
 	UpsertRepoBlob(ctx context.Context, record RepoBlobRecord) (*RepoBlobRecord, error)
 	DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
-	ListRepoBlobs(ctx context.Context) ([]RepoBlobRecord, error)
+	ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) ([]RepoBlobRecord, error)
+
+	MetadataStats(ctx context.Context, now time.Time) (MetadataStats, error)
+}
+
+type MetadataStats struct {
+	ManifestCount        int64
+	ExpiredManifestCount int64
+	ManifestBytes        int64
+	TagCount             int64
+	ExpiredTagCount      int64
+	BlobCount            int64
+	BlobBytes            int64
+	RepoBlobCount        int64
+	PullCount            int64
+	LastPullAt           time.Time
+	LastUpstreamPullAt   time.Time
 }
 
 type Upstream struct {

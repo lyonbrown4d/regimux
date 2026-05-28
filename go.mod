@@ -26,6 +26,7 @@ require (
 	github.com/arcgolabs/observabilityx v0.4.0
 	github.com/danielgtaylor/huma/v2 v2.37.3
 	github.com/distribution/reference v0.6.0
+	github.com/dustin/go-humanize v1.0.1
 	github.com/go-co-op/gocron-redis-lock/v2 v2.2.1
 	github.com/go-co-op/gocron/v2 v2.21.1
 	github.com/go-playground/validator/v10 v10.30.2
@@ -66,7 +67,6 @@ require (
 	github.com/bmatcuk/doublestar v1.3.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/clipperhouse/uax29/v2 v2.7.0 // indirect
-	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/fsnotify/fsnotify v1.10.1 // indirect
 	github.com/fxamacker/cbor/v2 v2.9.2 // indirect
 	github.com/gabriel-vasile/mimetype v1.4.13 // indirect
