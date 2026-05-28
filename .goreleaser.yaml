@@ -8,7 +8,7 @@ before:
     - go mod download
 
 builds:
-  - id: regimuxd
+  - id: regimuxd-linux
     main: ./cmd/regimuxd
     binary: regimuxd
     env:
@@ -21,7 +21,39 @@ builds:
     mod_timestamp: "{{ .CommitTimestamp }}"
     goos:
       - linux
+    goarch:
+      - amd64
+      - arm64
+
+  - id: regimuxd-darwin
+    main: ./cmd/regimuxd
+    binary: regimuxd
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=true
+    ldflags:
+      - -s -w -buildid=
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
       - darwin
+    goarch:
+      - amd64
+      - arm64
+
+  - id: regimuxd-windows
+    main: ./cmd/regimuxd
+    binary: regimuxd
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=true
+    ldflags:
+      - -s -w -buildid=
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    goos:
       - windows
     goarch:
       - amd64
@@ -30,7 +62,7 @@ builds:
 upx:
   - enabled: true
     ids:
-      - regimuxd
+      - regimuxd-linux
     goos:
       - linux
     goarch:
@@ -42,7 +74,9 @@ upx:
 archives:
   - id: regimuxd
     ids:
-      - regimuxd
+      - regimuxd-linux
+      - regimuxd-darwin
+      - regimuxd-windows
     formats:
       - tar.gz
     format_overrides:
@@ -55,6 +89,46 @@ archives:
       - README.md
       - configs/regimux.minimal.hcl
       - configs/regimux.full.hcl
+
+  - id: regimuxd-windows-exe
+    ids:
+      - regimuxd-windows
+    formats:
+      - binary
+    name_template: >-
+      {{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}
+
+nfpms:
+  - id: regimuxd-linux-packages
+    package_name: regimuxd
+    ids:
+      - regimuxd-linux
+    vendor: RegiMux
+    homepage: https://github.com/lyonbrown4d/regimux
+    maintainer: RegiMux Maintainers <noreply@github.com>
+    description: Read-only OCI and Docker Registry V2 multi-upstream proxy mirror gateway.
+    license: UNKNOWN
+    formats:
+      - deb
+      - rpm
+    bindir: /usr/bin
+    section: utils
+    priority: optional
+    release: 1
+    contents:
+      - src: configs/regimux.minimal.hcl
+        dst: /etc/regimux/regimux.hcl
+        type: config|noreplace
+        file_info:
+          mode: 0644
+      - src: packaging/systemd/regimuxd.service
+        dst: /lib/systemd/system/regimuxd.service
+        file_info:
+          mode: 0644
+      - dst: /var/lib/regimux
+        type: dir
+        file_info:
+          mode: 0755
 
 checksum:
   name_template: checksums.txt
@@ -73,7 +147,7 @@ changelog:
 dockers_v2:
   - id: regimuxd-alpine
     ids:
-      - regimuxd
+      - regimuxd-linux
     dockerfile: docker/alpine.Dockerfile
     images:
       - "{{ .Env.REGISTRY_IMAGE }}"
@@ -103,7 +177,7 @@ dockers_v2:
 
   - id: regimuxd-debian
     ids:
-      - regimuxd
+      - regimuxd-linux
     dockerfile: docker/debian.Dockerfile
     images:
       - "{{ .Env.REGISTRY_IMAGE }}"

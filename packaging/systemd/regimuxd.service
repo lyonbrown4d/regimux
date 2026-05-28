@@ -1,0 +1,21 @@
+[Unit]
+Description=RegiMux registry proxy mirror gateway
+Documentation=https://github.com/lyonbrown4d/regimux
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+DynamicUser=true
+StateDirectory=regimux
+WorkingDirectory=/var/lib/regimux
+ExecStart=/usr/bin/regimuxd --config /etc/regimux/regimux.hcl
+Restart=on-failure
+RestartSec=5s
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/var/lib/regimux
+
+[Install]
+WantedBy=multi-user.target

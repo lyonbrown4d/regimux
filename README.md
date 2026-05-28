@@ -48,7 +48,8 @@ go run ./cmd/regimuxd --config configs/regimux.minimal.hcl --server.listen=:6000
 
 - 推送 `v*` tag 会触发 `.github/workflows/release.yml`。
 - 发布前会先执行 `go test ./...`、`golangci-lint run ./...` 和 `goreleaser check`。
-- GoReleaser 会产出 Linux / macOS / Windows 的 `amd64`、`arm64` 归档。
+- GoReleaser 会产出 Linux / macOS / Windows 的 `amd64`、`arm64` 归档；Windows zip 内包含 `regimuxd.exe`，同时会直接上传 Windows `.exe`。
+- GoReleaser 会产出 Linux `amd64`、`arm64` 的 `.deb` 和 `.rpm` 包，默认安装配置到 `/etc/regimux/regimux.hcl`。
 - GoReleaser 会自动创建 GitHub Release，并上传归档和 checksum。
 - Docker 镜像发布到 `ghcr.io/<owner>/<repo>`，Alpine 镜像使用默认标签 `latest`，Debian 镜像使用 `latest-debian` / `debian`。
 - CI 会安装 UPX，Linux 二进制会在进入 Docker 镜像前压缩。
