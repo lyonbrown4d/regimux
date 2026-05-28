@@ -133,10 +133,11 @@ func (s *SQLStore) LatestPrefetchOutcome(ctx context.Context, key PrefetchCandid
 	if err != nil {
 		return nil, false, wrapError(err, "get latest prefetch outcome metadata")
 	}
-	if rows.Len() == 0 {
+	row, ok := firstRow[prefetchOutcomeRow](rows).Get()
+	if !ok {
 		return nil, false, nil
 	}
-	record, err := s.mapper.PrefetchOutcomeRowToRecord(rows.Values()[0])
+	record, err := s.mapper.PrefetchOutcomeRowToRecord(row)
 	if err != nil {
 		return nil, false, err
 	}
@@ -167,43 +168,13 @@ func (s *SQLStore) ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOut
 }
 
 func (s *SQLStore) prefetchRunRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, prefetchRunRow) bool)
+	Values() []prefetchRunRow
 }) ([]PrefetchRunRecord, error) {
-	records := make([]PrefetchRunRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row prefetchRunRow) bool {
-		record, err := s.mapper.PrefetchRunRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.PrefetchRunRowToRecord)
 }
 
 func (s *SQLStore) prefetchOutcomeRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, prefetchOutcomeRow) bool)
+	Values() []prefetchOutcomeRow
 }) ([]PrefetchOutcomeRecord, error) {
-	records := make([]PrefetchOutcomeRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row prefetchOutcomeRow) bool {
-		record, err := s.mapper.PrefetchOutcomeRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.PrefetchOutcomeRowToRecord)
 }

@@ -17,6 +17,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func TestS3StorePutGetRangeDelete(t *testing.T) {
@@ -39,7 +40,7 @@ func TestS3StorePutGetRangeDelete(t *testing.T) {
 	body := []byte("registry s3 object body")
 	digest := digestFor(body)
 	info, err := store.Put(ctx, digest, bytes.NewReader(body), object.PutOptions{
-		ContentType: "application/octet-stream",
+		ContentType: distribution.MediaTypeOctetStream,
 	})
 	requireNoError(t, "put s3 object", err)
 	if info.Digest != digest || info.Size != int64(len(body)) || info.Path == "" {
@@ -149,7 +150,7 @@ func (s *fakeS3Server) list(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/xml")
+	w.Header().Set(distribution.HeaderContentType, "application/xml")
 	s.write(w, data)
 }
 
@@ -174,9 +175,9 @@ func (s *fakeS3Server) put(w http.ResponseWriter, r *http.Request, key string) {
 		return
 	}
 	s.mu.Lock()
-	s.objects[key] = fakeS3Object{body: body, contentType: r.Header.Get("Content-Type")}
+	s.objects[key] = fakeS3Object{body: body, contentType: r.Header.Get(distribution.HeaderContentType)}
 	s.mu.Unlock()
-	w.Header().Set("ETag", `"fake-etag"`)
+	w.Header().Set(distribution.HeaderETag, `"fake-etag"`)
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -197,7 +198,7 @@ func (s *fakeS3Server) copy(w http.ResponseWriter, source, key string) {
 	s.mu.Lock()
 	s.objects[key] = item
 	s.mu.Unlock()
-	w.Header().Set("Content-Type", "application/xml")
+	w.Header().Set(distribution.HeaderContentType, "application/xml")
 	s.write(w, []byte(`<CopyObjectResult><ETag>"fake-etag"</ETag></CopyObjectResult>`))
 }
 
@@ -207,9 +208,9 @@ func (s *fakeS3Server) head(w http.ResponseWriter, key string) {
 		w.WriteHeader(http.StatusNotFound)
 		return
 	}
-	w.Header().Set("Content-Length", strconv.Itoa(len(item.body)))
-	w.Header().Set("Content-Type", item.contentType)
-	w.Header().Set("ETag", `"fake-etag"`)
+	w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(item.body)))
+	w.Header().Set(distribution.HeaderContentType, item.contentType)
+	w.Header().Set(distribution.HeaderETag, `"fake-etag"`)
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 	w.WriteHeader(http.StatusOK)
 }
@@ -222,13 +223,13 @@ func (s *fakeS3Server) get(w http.ResponseWriter, r *http.Request, key string) {
 	}
 	body := item.body
 	status := http.StatusOK
-	if r.Header.Get("Range") != "" {
+	if r.Header.Get(distribution.HeaderRange) != "" {
 		body = body[9:11]
 		status = http.StatusPartialContent
-		w.Header().Set("Content-Range", fmt.Sprintf("bytes 9-10/%d", len(item.body)))
+		w.Header().Set(distribution.HeaderContentRange, fmt.Sprintf("bytes 9-10/%d", len(item.body)))
 	}
-	w.Header().Set("Content-Length", strconv.Itoa(len(body)))
-	w.Header().Set("Content-Type", item.contentType)
+	w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(body)))
+	w.Header().Set(distribution.HeaderContentType, item.contentType)
 	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
 	w.WriteHeader(status)
 	s.write(w, body)

@@ -89,10 +89,10 @@ func (s *recordingManifestService) Get(_ context.Context, req cache.ManifestRequ
 	s.mu.Unlock()
 	return &cache.CachedManifest{
 		Digest:    "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-		MediaType: "application/vnd.oci.image.manifest.v1+json",
+		MediaType: distribution.MediaTypeOCIManifest,
 		Size:      2,
 		Body:      []byte("{}"),
-		Headers:   http.Header{"Content-Length": {"2"}},
+		Headers:   http.Header{distribution.HeaderContentLength: {"2"}},
 		Cache:     cache.CacheBypass,
 	}, nil
 }

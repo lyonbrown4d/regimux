@@ -129,24 +129,9 @@ func (s *SQLStore) ListBlobs(ctx context.Context, opts ...BlobListOption) ([]Blo
 }
 
 func (s *SQLStore) blobRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, blobRow) bool)
+	Values() []blobRow
 }) ([]BlobRecord, error) {
-	records := make([]BlobRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row blobRow) bool {
-		record, err := s.mapper.BlobRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.BlobRowToRecord)
 }
 
 func (s *SQLStore) updateBlobRow(ctx context.Context, row blobRow) error {

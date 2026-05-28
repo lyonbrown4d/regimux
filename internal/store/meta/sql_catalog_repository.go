@@ -95,43 +95,13 @@ func (s *SQLStore) ListRepositories(ctx context.Context, opts ...RepositoryListO
 }
 
 func (s *SQLStore) upstreamRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, upstreamRow) bool)
+	Values() []upstreamRow
 }) ([]Upstream, error) {
-	records := make([]Upstream, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row upstreamRow) bool {
-		record, err := s.mapper.UpstreamRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.UpstreamRowToRecord)
 }
 
 func (s *SQLStore) repositoryRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, repositoryRow) bool)
+	Values() []repositoryRow
 }) ([]Repository, error) {
-	records := make([]Repository, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row repositoryRow) bool {
-		record, err := s.mapper.RepositoryRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.RepositoryRowToRecord)
 }

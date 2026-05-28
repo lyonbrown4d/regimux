@@ -116,24 +116,9 @@ func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]Pul
 }
 
 func (s *SQLStore) pullRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, pullRow) bool)
+	Values() []pullRow
 }) ([]PullRecord, error) {
-	records := make([]PullRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row pullRow) bool {
-		record, err := s.mapper.PullRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.PullRowToRecord)
 }
 
 func (s *SQLStore) updatePullRow(ctx context.Context, row pullRow) error {

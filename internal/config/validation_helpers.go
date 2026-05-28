@@ -88,12 +88,8 @@ func validateURL(name, value string) error {
 }
 
 func uniqueStrings(values []string) []string {
-	out := collectionset.NewOrderedSetWithCapacity[string](len(values))
-	for _, value := range values {
-		if value == "" {
-			continue
-		}
-		out.Add(value)
-	}
-	return out.Values()
+	clean := collectionlist.FilterMapList(collectionlist.NewList(values...), func(_ int, value string) (string, bool) {
+		return value, value != ""
+	})
+	return collectionset.NewOrderedSetWithCapacity[string](clean.Len(), clean.Values()...).Values()
 }

@@ -5,13 +5,14 @@ import (
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func TestNormalizeAccept(t *testing.T) {
 	t.Parallel()
 
 	got := reference.NormalizeAccept(" application/vnd.oci.image.manifest.v1+json ; q=1.0 , Application/Vnd.Docker.Distribution.Manifest.V2+JSON; charset=utf-8 ")
-	want := "application/vnd.oci.image.manifest.v1+json,application/vnd.docker.distribution.manifest.v2+json;charset=utf-8"
+	want := distribution.MediaTypeOCIManifest + "," + distribution.MediaTypeDockerManifest + ";charset=utf-8"
 	if got != want {
 		t.Fatalf("NormalizeAccept() = %q, want %q", got, want)
 	}
@@ -30,8 +31,8 @@ func TestNormalizeAcceptPreservesOrder(t *testing.T) {
 func TestAcceptKey(t *testing.T) {
 	t.Parallel()
 
-	a := reference.AcceptKey("application/json ; q=1")
-	b := reference.AcceptKey("application/json")
+	a := reference.AcceptKey(distribution.MediaTypeJSON + " ; q=1")
+	b := reference.AcceptKey(distribution.MediaTypeJSON)
 	if a != b {
 		t.Fatalf("AcceptKey should use normalized header, got %q and %q", a, b)
 	}

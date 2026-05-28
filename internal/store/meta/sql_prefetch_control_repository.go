@@ -50,16 +50,17 @@ func (s *SQLStore) ConsumePrefetchControl(ctx context.Context, action string, at
 	if err != nil {
 		return nil, false, wrapError(err, "find prefetch control metadata")
 	}
-	if rows.Len() == 0 {
+	row, ok := firstRow[prefetchControlRow](rows).Get()
+	if !ok {
 		return nil, false, nil
 	}
-	record, err := s.mapper.PrefetchControlRowToRecord(rows.Values()[0])
+	record, err := s.mapper.PrefetchControlRowToRecord(row)
 	if err != nil {
 		return nil, false, err
 	}
 	record.ConsumedAt = at.UTC()
 	record.UpdatedAt = metadataNow()
-	row, err := s.mapper.PrefetchControlRecordToRow(*record)
+	row, err = s.mapper.PrefetchControlRecordToRow(*record)
 	if err != nil {
 		return nil, false, err
 	}
@@ -94,22 +95,7 @@ func (s *SQLStore) ListPrefetchControls(ctx context.Context, opts ...PrefetchCon
 }
 
 func (s *SQLStore) prefetchControlRowsToRecords(rows interface {
-	Len() int
-	Range(func(int, prefetchControlRow) bool)
+	Values() []prefetchControlRow
 }) ([]PrefetchControlRecord, error) {
-	records := make([]PrefetchControlRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row prefetchControlRow) bool {
-		record, err := s.mapper.PrefetchControlRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.PrefetchControlRowToRecord)
 }

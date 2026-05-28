@@ -96,7 +96,7 @@ func TestServiceSyncJobPartialRendersCompletedJob(t *testing.T) {
 	}
 	app, _ := newAdminSyncTestApp(t, syncer)
 
-	assertAdminResponse(t, app, "/admin/sync/jobs/sync-test", "sync-test", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "application/vnd.oci.image.manifest.v1")
+	assertAdminResponse(t, app, "/admin/sync/jobs/sync-test", "sync-test", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", strings.ReplaceAll(distribution.MediaTypeOCIManifest, "+", "&#43;"))
 }
 
 func newAdminSyncTestApp(t *testing.T, syncer *fakeManualSyncer) (*fiber.App, *fakeManualSyncer) {

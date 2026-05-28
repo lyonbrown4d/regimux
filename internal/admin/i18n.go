@@ -67,14 +67,14 @@ func localeFromRequest(c fiber.Ctx) string {
 			Path:     basePath,
 			MaxAge:   365 * 24 * 60 * 60,
 			HTTPOnly: true,
-			SameSite: "Lax",
+			SameSite: fiber.CookieSameSiteLaxMode,
 		})
 		return locale
 	}
 	if locale, ok := normalizeLocale(c.Cookies(languageCookie)); ok {
 		return locale
 	}
-	return localeFromAcceptLanguage(c.Get("Accept-Language"))
+	return localeFromAcceptLanguage(c.Get(fiber.HeaderAcceptLanguage))
 }
 
 func normalizeLocale(value string) (string, bool) {

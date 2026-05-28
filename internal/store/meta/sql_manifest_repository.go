@@ -82,21 +82,7 @@ func (s *SQLStore) ListManifests(ctx context.Context) ([]ManifestRecord, error) 
 	if err != nil {
 		return nil, wrapError(err, "list manifest metadata")
 	}
-	records := make([]ManifestRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row manifestRow) bool {
-		record, err := s.mapper.ManifestRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.ManifestRowToRecord)
 }
 
 func (s *SQLStore) manifestByKey(ctx context.Context, key string) (*ManifestRecord, bool, error) {

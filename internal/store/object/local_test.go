@@ -13,6 +13,8 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	ocidigest "github.com/opencontainers/go-digest"
 )
 
 func TestLocalStorePutCreatesCASObject(t *testing.T) {
@@ -143,7 +145,7 @@ func putTestObject(ctx context.Context, t *testing.T, store object.Store, body [
 	t.Helper()
 	digest := digestFor(body)
 	info, err := store.Put(ctx, digest, bytes.NewReader(body), object.PutOptions{
-		ContentType: "application/octet-stream",
+		ContentType: distribution.MediaTypeOctetStream,
 	})
 	requireNoError(t, "put", err)
 
@@ -165,13 +167,14 @@ func readAllAndClose(t *testing.T, reader io.ReadCloser) []byte {
 }
 
 func expectedCASPath(root, digest string) string {
-	encoded := digest[len("sha256:"):]
-	return filepath.Join(root, "blobs", "sha256", encoded[:2], encoded)
+	algorithm := ocidigest.SHA256.String()
+	encoded := digest[len(algorithm)+1:]
+	return filepath.Join(root, "blobs", algorithm, encoded[:2], encoded)
 }
 
 func digestFor(body []byte) string {
 	sum := sha256.Sum256(body)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return ocidigest.SHA256.String() + ":" + hex.EncodeToString(sum[:])
 }
 
 func requireNoError(t *testing.T, action string, err error) {

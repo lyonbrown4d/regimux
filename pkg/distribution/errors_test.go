@@ -19,11 +19,11 @@ func TestWriteError(t *testing.T) {
 	if recorder.Code != http.StatusNotFound {
 		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusNotFound)
 	}
-	if got := recorder.Header().Get("Docker-Distribution-Api-Version"); got != distribution.APIVersion {
+	if got := recorder.Header().Get(distribution.HeaderDockerDistributionAPIVersion); got != distribution.APIVersion {
 		t.Fatalf("api version header = %q, want %q", got, distribution.APIVersion)
 	}
-	if got := recorder.Header().Get("Content-Type"); got != "application/json" {
-		t.Fatalf("content type = %q, want application/json", got)
+	if got := recorder.Header().Get(distribution.HeaderContentType); got != distribution.MediaTypeJSON {
+		t.Fatalf("content type = %q, want %s", got, distribution.MediaTypeJSON)
 	}
 
 	var response distribution.ErrorResponse

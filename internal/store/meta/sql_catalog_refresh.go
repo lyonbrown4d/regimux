@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -115,13 +116,13 @@ func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string
 		return wrapError(err, "list repository blob metadata for refresh")
 	}
 	var refreshErr error
-	seen := map[string]struct{}{}
+	seen := collectionset.NewSetWithCapacity[string](rows.Len())
 	rows.Range(func(_ int, row repoBlobRow) bool {
 		key := repositoryMetadataKey(row.Alias, row.Repository)
-		if _, ok := seen[key]; ok {
+		if seen.Contains(key) {
 			return true
 		}
-		seen[key] = struct{}{}
+		seen.Add(key)
 		if err := s.refreshRepositoryMetadata(ctx, row.Alias, row.Repository, at); err != nil {
 			refreshErr = err
 			return false

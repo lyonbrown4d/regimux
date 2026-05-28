@@ -16,6 +16,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func TestServiceRendersDashboardAndPartials(t *testing.T) {
@@ -215,7 +216,7 @@ func seedAdminMetadata(ctx context.Context, t *testing.T, store meta.Store) {
 	if _, err := store.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:       "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 		Size:         1234,
-		MediaType:    "application/octet-stream",
+		MediaType:    distribution.MediaTypeOctetStream,
 		LastAccessAt: now,
 		UpdatedAt:    now,
 	}); err != nil {
@@ -235,7 +236,7 @@ func seedAdminMetadata(ctx context.Context, t *testing.T, store meta.Store) {
 		Alias:      "hub",
 		Repository: "library/node",
 		Digest:     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		MediaType:  "application/vnd.oci.image.manifest.v1+json",
+		MediaType:  distribution.MediaTypeOCIManifest,
 		Size:       321,
 		UpdatedAt:  now,
 	}); err != nil {

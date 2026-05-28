@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/arcgolabs/dix"
+	"github.com/samber/lo"
 )
 
 type Version string
@@ -30,12 +31,10 @@ func VersionFromBuildInfo() string {
 		return version
 	}
 
-	for _, setting := range info.Settings {
-		if setting.Key == "vcs.revision" {
-			if revision := strings.TrimSpace(setting.Value); revision != "" {
-				return revision
-			}
-		}
+	if setting, ok := lo.Find(info.Settings, func(setting debug.BuildSetting) bool {
+		return setting.Key == "vcs.revision" && strings.TrimSpace(setting.Value) != ""
+	}); ok {
+		return strings.TrimSpace(setting.Value)
 	}
 
 	return fallbackVersion

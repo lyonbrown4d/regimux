@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -70,25 +71,18 @@ func (s *SQLStore) ListEndpointHealth(ctx context.Context, opts ...EndpointHealt
 	if err != nil {
 		return nil, wrapError(err, "list endpoint health metadata")
 	}
-
-	records := make([]EndpointHealthRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row endpointHealthRow) bool {
-		record, err := s.mapper.EndpointHealthRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		if options.Alias != "" && record.Alias != options.Alias {
-			return true
-		}
-		records = append(records, *record)
-		return options.Limit <= 0 || len(records) < options.Limit
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
+	records, err := mapRows(rows, s.mapper.EndpointHealthRowToRecord)
+	if err != nil {
+		return nil, err
 	}
-	return records, nil
+	filtered := collectionlist.NewList(records...).
+		Where(func(_ int, record EndpointHealthRecord) bool {
+			return options.Alias == "" || record.Alias == options.Alias
+		})
+	if options.Limit > 0 {
+		filtered = filtered.Take(options.Limit)
+	}
+	return filtered.Values(), nil
 }
 
 func (s *SQLStore) updateEndpointHealthRow(ctx context.Context, row endpointHealthRow) error {

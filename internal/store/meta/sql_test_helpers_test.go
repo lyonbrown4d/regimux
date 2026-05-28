@@ -9,6 +9,7 @@ import (
 
 	"github.com/arcgolabs/dbx"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func newSQLStore(ctx context.Context, t *testing.T) *meta.SQLStore {
@@ -73,11 +74,11 @@ func upsertManifest(
 		Alias:      "hub",
 		Repository: "library/nginx",
 		Digest:     testDigest,
-		MediaType:  "application/vnd.oci.image.manifest.v1+json",
+		MediaType:  distribution.MediaTypeOCIManifest,
 		Size:       128,
 		ObjectKey:  testDigest,
 		Headers: map[string][]string{
-			"Docker-Content-Digest": {testDigest},
+			distribution.HeaderDockerContentDigest: {testDigest},
 		},
 		ExpiresAt: expires,
 	})

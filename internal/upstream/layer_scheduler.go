@@ -7,6 +7,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 const defaultLayerSchedulerRecentWindow = 2 * time.Second
@@ -126,17 +127,17 @@ func sortTopNCandidates(candidates []layerSchedulerCandidate, topN int) {
 	ranked := append([]layerSchedulerCandidate(nil), candidates...)
 	sortCandidates(ranked)
 
-	selected := make(map[int]struct{}, topN)
+	selected := collectionset.NewSetWithCapacity[int](topN)
 	for i := range topN {
 		candidate := ranked[i]
 		candidates[i] = candidate
-		selected[candidate.index] = struct{}{}
+		selected.Add(candidate.index)
 	}
 
 	write := topN
 	for i := range original {
 		candidate := original[i]
-		if _, ok := selected[candidate.index]; ok {
+		if selected.Contains(candidate.index) {
 			continue
 		}
 		candidates[write] = candidate

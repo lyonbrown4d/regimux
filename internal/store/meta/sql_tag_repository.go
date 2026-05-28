@@ -96,21 +96,7 @@ func (s *SQLStore) ListTags(ctx context.Context) ([]TagRecord, error) {
 	if err != nil {
 		return nil, wrapError(err, "list tag metadata")
 	}
-	records := make([]TagRecord, 0, rows.Len())
-	var decodeErr error
-	rows.Range(func(_ int, row tagRow) bool {
-		record, err := s.mapper.TagRowToRecord(row)
-		if err != nil {
-			decodeErr = err
-			return false
-		}
-		records = append(records, *record)
-		return true
-	})
-	if decodeErr != nil {
-		return nil, decodeErr
-	}
-	return records, nil
+	return mapRows(rows, s.mapper.TagRowToRecord)
 }
 
 func (s *SQLStore) tagByKey(ctx context.Context, key string) (*TagRecord, bool, error) {

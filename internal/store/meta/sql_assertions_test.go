@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func assertPullRecord(t *testing.T, pull *meta.PullRecord, count int64, lastPullAt, lastUpstreamPullAt time.Time) {
@@ -159,7 +160,7 @@ func upsertStatsManifest(
 		Alias:      "hub",
 		Repository: repository,
 		Digest:     digest,
-		MediaType:  "application/vnd.oci.image.manifest.v1+json",
+		MediaType:  distribution.MediaTypeOCIManifest,
 		Size:       size,
 		ExpiresAt:  expiresAt,
 	})
@@ -193,7 +194,7 @@ func upsertStatsBlob(ctx context.Context, t *testing.T, store *meta.SQLStore, di
 	_, err := store.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:       digest,
 		Size:         size,
-		MediaType:    "application/octet-stream",
+		MediaType:    distribution.MediaTypeOctetStream,
 		LastAccessAt: at,
 		UpdatedAt:    at,
 	})

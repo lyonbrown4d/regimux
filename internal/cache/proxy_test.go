@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func newTestProxy(client upstream.RegistryClient, metadata meta.Store, objects object.Store, cacheBackend backend.Backend, cfg config.Config) *cache.Proxy {
@@ -95,7 +96,7 @@ func TestBlobProxyTouchesBlobAccessOnLocalHit(t *testing.T) {
 	_, err = metadata.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:       digest,
 		Size:         int64(len(body)),
-		MediaType:    "application/octet-stream",
+		MediaType:    distribution.MediaTypeOctetStream,
 		ObjectKey:    digest,
 		LastAccessAt: old,
 	})

@@ -4,6 +4,9 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
+
+	"github.com/samber/lo"
+	"github.com/samber/mo"
 )
 
 func (m *MetadataMapper) TagRecordToRow(record TagRecord) (tagRow, error) {
@@ -52,6 +55,33 @@ func (m *MetadataMapper) RepoBlobRowToRecord(row repoBlobRow) (*RepoBlobRecord, 
 		return nil, err
 	}
 	return &record, nil
+}
+
+type rowValues[T any] interface {
+	Values() []T
+}
+
+func mapRows[T, R any](rows rowValues[T], mapper func(T) (*R, error)) ([]R, error) {
+	records, err := lo.MapErr(rows.Values(), func(row T, _ int) (R, error) {
+		record, err := mapper(row)
+		if err != nil {
+			var zero R
+			return zero, err
+		}
+		return *record, nil
+	})
+	if err != nil {
+		return nil, wrapError(err, "map metadata rows")
+	}
+	return records, nil
+}
+
+func firstRow[T any](rows rowValues[T]) mo.Option[T] {
+	values := rows.Values()
+	if len(values) == 0 {
+		return mo.None[T]()
+	}
+	return mo.Some(values[0])
 }
 
 func encodeHeaders(headers map[string][]string) (string, error) {

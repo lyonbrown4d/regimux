@@ -14,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func newTestStores(t *testing.T) (meta.Store, object.Store) {
@@ -52,10 +53,10 @@ func assertRangeBlobMiss(t *testing.T, result *cache.BlobReadResult) {
 	if result.Cache != cache.CacheMiss || result.Status != http.StatusPartialContent || string(body) != "2345" {
 		t.Fatalf("unexpected range result: cache=%s status=%d body=%q", result.Cache, result.Status, body)
 	}
-	if got := result.Headers.Get("Content-Range"); got != "bytes 2-5/10" {
+	if got := result.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-5/10" {
 		t.Fatalf("unexpected content range %q", got)
 	}
-	if got := result.Headers.Get("Content-Length"); got != "4" {
+	if got := result.Headers.Get(distribution.HeaderContentLength); got != "4" {
 		t.Fatalf("unexpected content length %q", got)
 	}
 }
@@ -66,10 +67,10 @@ func assertRangeBlobBypass(t *testing.T, result *cache.BlobReadResult) {
 	if result.Cache != cache.CacheBypass || result.Status != http.StatusPartialContent || string(body) != "2345" {
 		t.Fatalf("unexpected range result: cache=%s status=%d body=%q", result.Cache, result.Status, body)
 	}
-	if got := result.Headers.Get("Content-Range"); got != "bytes 2-5/10" {
+	if got := result.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-5/10" {
 		t.Fatalf("unexpected content range %q", got)
 	}
-	if got := result.Headers.Get("Content-Length"); got != "4" {
+	if got := result.Headers.Get(distribution.HeaderContentLength); got != "4" {
 		t.Fatalf("unexpected content length %q", got)
 	}
 }
@@ -80,10 +81,10 @@ func assertRangeBlobHit(t *testing.T, result *cache.BlobReadResult) {
 	if result.Cache != cache.CacheHit || result.Status != http.StatusPartialContent || string(body) != "2345" {
 		t.Fatalf("unexpected range result: cache=%s status=%d body=%q", result.Cache, result.Status, body)
 	}
-	if got := result.Headers.Get("Content-Range"); got != "bytes 2-5/10" {
+	if got := result.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-5/10" {
 		t.Fatalf("unexpected content range %q", got)
 	}
-	if got := result.Headers.Get("Content-Length"); got != "4" {
+	if got := result.Headers.Get(distribution.HeaderContentLength); got != "4" {
 		t.Fatalf("unexpected content length %q", got)
 	}
 }
@@ -102,7 +103,7 @@ func assertHeadBlobHit(t *testing.T, result *cache.BlobReadResult, wantSize int)
 	if result.Cache != cache.CacheHit || len(body) != 0 {
 		t.Fatalf("unexpected head result: cache=%s body=%q", result.Cache, body)
 	}
-	if got := result.Headers.Get("Content-Length"); got != strconv.Itoa(wantSize) {
+	if got := result.Headers.Get(distribution.HeaderContentLength); got != strconv.Itoa(wantSize) {
 		t.Fatalf("unexpected head content length %q", got)
 	}
 }

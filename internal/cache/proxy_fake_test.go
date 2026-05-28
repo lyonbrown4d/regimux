@@ -57,14 +57,14 @@ func (c *fakeRegistryClient) GetManifest(_ context.Context, req upstream.GetMani
 		Digest:    testDigestFor(c.manifestBody),
 		MediaType: c.manifestMedia,
 		Size:      int64(len(c.manifestBody)),
-		Headers:   http.Header{"Content-Type": {c.manifestMedia}},
+		Headers:   http.Header{distribution.HeaderContentType: {c.manifestMedia}},
 	}, nil
 }
 
 func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequest) (*upstream.BlobResponse, error) {
 	body := c.blobBody
 	headers := http.Header{
-		"Content-Type": {distribution.MediaTypeOctetStream},
+		distribution.HeaderContentType: {distribution.MediaTypeOctetStream},
 	}
 	contentLength := len(c.blobBody)
 
@@ -82,8 +82,8 @@ func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequ
 			}
 			body = body[resolved.Start : resolved.End+1]
 			contentLength = len(body)
-			headers.Set("Content-Range", resolved.ContentRange(int64(len(c.blobBody))))
-			headers.Set("Content-Length", strconv.Itoa(contentLength))
+			headers.Set(distribution.HeaderContentRange, resolved.ContentRange(int64(len(c.blobBody))))
+			headers.Set(distribution.HeaderContentLength, strconv.Itoa(contentLength))
 			return &upstream.BlobResponse{
 				Body:       io.NopCloser(bytes.NewReader(body)),
 				Digest:     c.blobDigest,
@@ -94,7 +94,7 @@ func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequ
 		}
 	}
 
-	headers.Set("Content-Length", strconv.Itoa(contentLength))
+	headers.Set(distribution.HeaderContentLength, strconv.Itoa(contentLength))
 	return &upstream.BlobResponse{
 		Body:       io.NopCloser(bytes.NewReader(body)),
 		Digest:     c.blobDigest,
@@ -120,7 +120,7 @@ func (c *fakeRegistryClient) GetReferrers(context.Context, upstream.ReferrersReq
 	return &upstream.ReferrersResponse{
 		Body:      io.NopCloser(bytes.NewReader(c.referrersBody)),
 		MediaType: distribution.MediaTypeOCIIndex,
-		Headers:   http.Header{"Content-Type": {distribution.MediaTypeOCIIndex}},
+		Headers:   http.Header{distribution.HeaderContentType: {distribution.MediaTypeOCIIndex}},
 	}, nil
 }
 

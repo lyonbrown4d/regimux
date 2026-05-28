@@ -8,6 +8,7 @@ import (
 
 	"github.com/arcgolabs/dbx"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -27,7 +28,7 @@ func TestSQLStoreManifestCRUD(t *testing.T) {
 	assertManifestIDStableAfterUpdate(ctx, t, store, manifest)
 
 	got, ok := getManifest(ctx, t, store)
-	if !ok || got.MediaType != manifest.MediaType || got.Headers["Docker-Content-Digest"][0] != testDigest {
+	if !ok || got.MediaType != manifest.MediaType || got.Headers[distribution.HeaderDockerContentDigest][0] != testDigest {
 		t.Fatalf("unexpected manifest lookup: ok=%v record=%#v", ok, got)
 	}
 	if !got.Expired(expires.Add(time.Nanosecond)) {
@@ -74,7 +75,7 @@ func TestSQLStoreBlobCRUD(t *testing.T) {
 	blob, err := store.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:    testDigest,
 		Size:      2048,
-		MediaType: "application/octet-stream",
+		MediaType: distribution.MediaTypeOctetStream,
 		ObjectKey: testDigest,
 	})
 	requireNoError(t, "upsert blob", err)
