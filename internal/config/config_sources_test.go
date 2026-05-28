@@ -35,6 +35,86 @@ func TestLoadEnvAndDotenv(t *testing.T) {
 	}
 }
 
+func TestLoadEnvOverridesHCLFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, key := range []string{
+		"REGIMUX_SERVER__LISTEN",
+		"REGIMUX_CACHE__BACKEND",
+		"REGIMUX_CACHE__REDIS__ADDRS",
+		"REGIMUX_UPSTREAMS__HUB__REGISTRY",
+	} {
+		unsetEnv(t, key)
+	}
+
+	path := "regimux.hcl"
+	if err := os.WriteFile(path, []byte(`
+server {
+  listen = ":5000"
+}
+
+upstreams {
+  hub {
+    registry = "https://registry-1.docker.io"
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("write hcl config: %v", err)
+	}
+
+	t.Setenv("REGIMUX_SERVER__LISTEN", "127.0.0.1:8888")
+	t.Setenv("REGIMUX_CACHE__BACKEND", "redis")
+	t.Setenv("REGIMUX_CACHE__REDIS__ADDRS", "redis:6379")
+	t.Setenv("REGIMUX_UPSTREAMS__HUB__REGISTRY", "https://mirror.example.com")
+
+	cfg, err := config.Load(context.Background(), path)
+	if err != nil {
+		t.Fatalf("load env override config: %v", err)
+	}
+	if cfg.Server.Listen != "127.0.0.1:8888" {
+		t.Fatalf("unexpected env server.listen %q", cfg.Server.Listen)
+	}
+	if cfg.Cache.Backend != "redis" {
+		t.Fatalf("unexpected env cache.backend %q", cfg.Cache.Backend)
+	}
+	if len(cfg.Cache.Redis.Addrs) != 1 || cfg.Cache.Redis.Addrs[0] != "redis:6379" {
+		t.Fatalf("unexpected env redis addrs %#v", cfg.Cache.Redis.Addrs)
+	}
+	if cfg.Upstreams["hub"].Registry != "https://mirror.example.com" {
+		t.Fatalf("unexpected env upstream registry %q", cfg.Upstreams["hub"].Registry)
+	}
+}
+
+func TestLoadDotenvOverridesHCLFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	unsetEnv(t, "REGIMUX_SERVER__LISTEN")
+
+	path := "regimux.hcl"
+	if err := os.WriteFile(path, []byte(`
+server {
+  listen = ":5000"
+}
+
+upstreams {
+  hub {
+    registry = "https://registry-1.docker.io"
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("write hcl config: %v", err)
+	}
+	if err := os.WriteFile(".env", []byte("REGIMUX_SERVER__LISTEN=127.0.0.1:9999\n"), 0o600); err != nil {
+		t.Fatalf("write dotenv: %v", err)
+	}
+
+	cfg, err := config.Load(context.Background(), path)
+	if err != nil {
+		t.Fatalf("load dotenv override config: %v", err)
+	}
+	if cfg.Server.Listen != "127.0.0.1:9999" {
+		t.Fatalf("unexpected dotenv server.listen %q", cfg.Server.Listen)
+	}
+}
+
 func TestLoadCommandLineOverrides(t *testing.T) {
 	cfg, err := config.Load(context.Background(), "", "--server.listen=:7777", "--worker.probe_concurrency=7")
 	if err != nil {

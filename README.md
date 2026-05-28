@@ -44,6 +44,19 @@ curl -i -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.doc
 go run ./cmd/regimuxd --config configs/regimux.minimal.hcl --server.listen=:6000 --worker.prefetch_concurrency=4
 ```
 
+环境变量和 dotenv 覆盖配置：
+
+RegiMux 使用 `configx` 从 `.env`、`.env.local`、HCL 文件、环境变量和命令行参数加载配置。`REGIMUX_*` 环境变量和 dotenv 中的同名变量会覆盖 HCL 文件，命令行参数会继续覆盖环境变量。环境变量前缀是 `REGIMUX_`，嵌套路径使用双下划线 `__`：
+
+```bash
+REGIMUX_SERVER__LISTEN=:6000
+REGIMUX_CACHE__BACKEND=redis
+REGIMUX_CACHE__REDIS__ADDRS=redis:6379
+REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
+```
+
+因此配置文件中的 `cache.redis.addrs` 可以用 `REGIMUX_CACHE__REDIS__ADDRS` 覆盖，`upstreams.hub.registry` 可以用 `REGIMUX_UPSTREAMS__HUB__REGISTRY` 覆盖。
+
 认证：
 
 RegiMux 默认不启用入口认证。开启后会使用 Docker Registry Bearer token flow，支持 `docker login`，账号和密码可以放在配置文件中：
@@ -82,5 +95,7 @@ Docker Compose 示例：
 - `examples/compose/compose.redis.yml`：Redis 缓存和分布式调度锁。
 - `examples/compose/compose.valkey.yml`：Valkey 缓存和分布式调度锁。
 - `examples/compose/compose.observability.yml`：RegiMux + Prometheus。
+
+Compose 示例会读取 `examples/compose/.env.example` 和可选的 `examples/compose/.env`，可以直接用 `REGIMUX_*` 环境变量覆盖容器内配置。
 
 详见 `examples/compose/README.md`。
