@@ -10,7 +10,7 @@ This repository currently contains a runnable skeleton based on the design docum
 - Alias-based upstream routing such as `/v2/hub/library/alpine/manifests/latest`.
 - One alias can fan out to multiple Docker Hub mirrors with ordered failover or round-robin starting points.
 - Upstream registry client based on `github.com/arcgolabs/clientx/http` with bearer-token challenge handling.
-- Manifest cache backed by memory/Redis/Valkey plus bboltx metadata and local object storage.
+- Manifest cache backed by memory/Redis/Valkey plus dbx metadata storage and local object storage.
 - Blob cache-then-serve path with local CAS storage, digest verification, range reads, and repo-to-blob access links.
 - Tags/list and referrers response caching, including tags Link header rewrite and OCI referrers fallback tag support.
 - Embedded Fiber admin UI at `/admin` for upstream health, pull activity, cache metadata, scheduler config, and effective config.
@@ -19,7 +19,7 @@ This repository currently contains a runnable skeleton based on the design docum
 - Logging with `github.com/arcgolabs/logx` on top of `log/slog`.
 - Event bus wiring with `github.com/arcgolabs/eventx`.
 - `collectionx` usage for ordered upstream registry snapshots.
-- Storage uses `github.com/arcgolabs/storx/bboltx` for metadata and local filesystem objects for the first version.
+- Storage uses `github.com/arcgolabs/dbx` repositories for SQLite, MySQL, or PostgreSQL metadata and local filesystem objects.
 
 Run locally:
 

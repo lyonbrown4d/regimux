@@ -77,6 +77,7 @@ type ManifestKey struct {
 }
 
 type ManifestRecord struct {
+	ID         int64               `json:"id,omitempty"`
 	Key        string              `json:"key,omitempty"`
 	Alias      string              `json:"alias"`
 	Repository string              `json:"repository"`
@@ -103,6 +104,7 @@ type TagKey struct {
 }
 
 type TagRecord struct {
+	ID         int64     `json:"id,omitempty"`
 	Key        string    `json:"key,omitempty"`
 	Alias      string    `json:"alias"`
 	Repository string    `json:"repository"`
@@ -120,6 +122,7 @@ type PullKey struct {
 }
 
 type PullRecord struct {
+	ID                 int64     `json:"id,omitempty"`
 	Key                string    `json:"key,omitempty"`
 	Alias              string    `json:"alias"`
 	Repository         string    `json:"repository"`
@@ -136,6 +139,7 @@ type BlobKey struct {
 }
 
 type BlobRecord struct {
+	ID           int64     `json:"id,omitempty"`
 	Digest       string    `json:"digest"`
 	Size         int64     `json:"size"`
 	MediaType    string    `json:"media_type"`
@@ -152,6 +156,7 @@ type RepoBlobKey struct {
 }
 
 type RepoBlobRecord struct {
+	ID             int64     `json:"id,omitempty"`
 	Key            string    `json:"key,omitempty"`
 	Alias          string    `json:"alias"`
 	Repository     string    `json:"repository"`

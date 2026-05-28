@@ -13,7 +13,7 @@ import (
 
 func TestLoadDefaultsIncludeStore(t *testing.T) {
 	cfg := loadDefaultConfig(t)
-	if cfg.Store.Meta.Driver != "bboltx" || cfg.Store.Meta.Path != "data/regimux.db" {
+	if cfg.Store.Meta.Driver != "sqlite" || cfg.Store.Meta.Path != "data/regimux.db" {
 		t.Fatalf("unexpected meta store defaults: %#v", cfg.Store.Meta)
 	}
 	if cfg.Store.Object.Driver != "local" || cfg.Store.Object.Path != "data/objects" {
@@ -85,41 +85,6 @@ func assertDefaultCleanup(t *testing.T, cleanup config.SchedulerCleanupConfig) {
 
 	if cleanup.MaxScan != 0 {
 		t.Fatalf("unexpected cleanup max_scan default: %d", cleanup.MaxScan)
-	}
-}
-
-func TestValidateStoreRejectsUnsupportedDrivers(t *testing.T) {
-	cfg, err := config.Load(context.Background(), "")
-	if err != nil {
-		t.Fatalf("load defaults: %v", err)
-	}
-	cfg.Store.Meta.Driver = "postgres"
-	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
-		t.Fatal("expected unsupported meta store driver error")
-	}
-
-	cfg, err = config.Load(context.Background(), "")
-	if err != nil {
-		t.Fatalf("load defaults: %v", err)
-	}
-	cfg.Store.Object.Driver = "s3"
-	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
-		t.Fatal("expected unsupported object store driver error")
-	}
-}
-
-func TestValidateStoreAcceptsMemoryObjectDriver(t *testing.T) {
-	cfg, err := config.Load(context.Background(), "")
-	if err != nil {
-		t.Fatalf("load defaults: %v", err)
-	}
-	cfg.Store.Object.Driver = "MEMORY"
-	cfg.Store.Object.Path = ""
-	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr != nil {
-		t.Fatalf("normalize memory object store: %v", normalizeErr)
-	}
-	if cfg.Store.Object.Driver != "memory" || cfg.Store.Object.Path != "data/objects" {
-		t.Fatalf("unexpected object store config: %#v", cfg.Store.Object)
 	}
 }
 

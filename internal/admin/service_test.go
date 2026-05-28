@@ -176,9 +176,9 @@ func adminRequest(t *testing.T, app *fiber.App, path, username, password string)
 	return resp
 }
 
-func newMetadataStore(t *testing.T) *meta.BboltStore {
+func newMetadataStore(t *testing.T) *meta.SQLiteStore {
 	t.Helper()
-	store, err := meta.OpenBbolt(filepath.Join(t.TempDir(), "regimux.db"), nil)
+	store, err := meta.OpenSQLite(filepath.Join(t.TempDir(), "regimux.db"), nil)
 	if err != nil {
 		t.Fatalf("open metadata store: %v", err)
 	}

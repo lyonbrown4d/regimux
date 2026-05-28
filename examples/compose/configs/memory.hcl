@@ -14,7 +14,8 @@ cache {
 
 store {
   meta {
-    driver = "bboltx"
+    driver = "sqlite"
+    dsn = ""
     path = "data/regimux.db"
   }
 

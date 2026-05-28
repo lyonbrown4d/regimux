@@ -30,7 +30,7 @@ func assertPullLookup(t *testing.T, got *meta.PullRecord, ok bool, lastUpstreamP
 	}
 }
 
-func seedListRecords(ctx context.Context, t *testing.T, store *meta.BboltStore, expires time.Time) {
+func seedListRecords(ctx context.Context, t *testing.T, store *meta.SQLiteStore, expires time.Time) {
 	t.Helper()
 
 	upsertManifest(ctx, t, store, expires)

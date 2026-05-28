@@ -12,15 +12,16 @@ import (
 const testDigest = "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 const secondTestDigest = "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 
-func TestBboltStoreManifestCRUD(t *testing.T) {
+func TestSQLiteStoreManifestCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
 
 	manifest := upsertManifest(ctx, t, store, expires)
-	if manifest.Key != "hub/library/nginx@"+testDigest || manifest.CreatedAt.IsZero() || manifest.UpdatedAt.IsZero() {
+	if manifest.ID == 0 || manifest.Key != "hub/library/nginx@"+testDigest || manifest.CreatedAt.IsZero() || manifest.UpdatedAt.IsZero() {
 		t.Fatalf("unexpected manifest: %#v", manifest)
 	}
+	assertManifestIDStableAfterUpdate(ctx, t, store, manifest)
 
 	got, ok := getManifest(ctx, t, store)
 	if !ok || got.MediaType != manifest.MediaType || got.Headers["Docker-Content-Digest"][0] != testDigest {
@@ -31,9 +32,9 @@ func TestBboltStoreManifestCRUD(t *testing.T) {
 	}
 }
 
-func TestBboltStoreTagCRUD(t *testing.T) {
+func TestSQLiteStoreTagCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
 
 	tag, err := store.UpsertTag(ctx, meta.TagRecord{
@@ -44,8 +45,8 @@ func TestBboltStoreTagCRUD(t *testing.T) {
 		ExpiresAt:  expires,
 	})
 	requireNoError(t, "upsert tag", err)
-	if tag.Key != "hub/library/nginx:latest" {
-		t.Fatalf("unexpected tag key: %s", tag.Key)
+	if tag.ID == 0 || tag.Key != "hub/library/nginx:latest" {
+		t.Fatalf("unexpected tag: %#v", tag)
 	}
 
 	got, ok, err := store.Tag(ctx, meta.TagKey{Alias: "hub", Repository: "library/nginx", Reference: "latest"})
@@ -63,9 +64,9 @@ func TestBboltStoreTagCRUD(t *testing.T) {
 	}
 }
 
-func TestBboltStoreBlobCRUD(t *testing.T) {
+func TestSQLiteStoreBlobCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 
 	blob, err := store.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:    testDigest,
@@ -74,6 +75,9 @@ func TestBboltStoreBlobCRUD(t *testing.T) {
 		ObjectKey: testDigest,
 	})
 	requireNoError(t, "upsert blob", err)
+	if blob.ID == 0 {
+		t.Fatalf("unexpected blob id: %#v", blob)
+	}
 
 	got, ok, err := store.Blob(ctx, meta.BlobKey{Digest: testDigest})
 	requireNoError(t, "get blob", err)
@@ -82,9 +86,9 @@ func TestBboltStoreBlobCRUD(t *testing.T) {
 	}
 }
 
-func TestBboltStoreRepoBlobCRUD(t *testing.T) {
+func TestSQLiteStoreRepoBlobCRUD(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 
 	repoBlob, err := store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
 		Alias:      "hub",
@@ -92,7 +96,7 @@ func TestBboltStoreRepoBlobCRUD(t *testing.T) {
 		Digest:     testDigest,
 	})
 	requireNoError(t, "upsert repo blob", err)
-	if repoBlob.Key != "hub/library/nginx@"+testDigest || repoBlob.LastVerifiedAt.IsZero() {
+	if repoBlob.ID == 0 || repoBlob.Key != "hub/library/nginx@"+testDigest || repoBlob.LastVerifiedAt.IsZero() {
 		t.Fatalf("unexpected repo blob: %#v", repoBlob)
 	}
 
@@ -103,18 +107,25 @@ func TestBboltStoreRepoBlobCRUD(t *testing.T) {
 	}
 }
 
-func TestBboltStorePullRecords(t *testing.T) {
+func TestSQLiteStorePullRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 	first := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	second := first.Add(time.Hour)
 	key := meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}
 
 	pull, err := store.RecordPull(ctx, key, first)
 	requireNoError(t, "record pull", err)
+	if pull.ID == 0 {
+		t.Fatalf("unexpected pull id: %#v", pull)
+	}
+	firstID := pull.ID
 	assertPullRecord(t, pull, 1, first, time.Time{})
 	pull, err = store.RecordPull(ctx, key, second)
 	requireNoError(t, "record second pull", err)
+	if pull.ID != firstID {
+		t.Fatalf("unexpected pull id after second pull: first=%d next=%d", firstID, pull.ID)
+	}
 	assertPullRecord(t, pull, 2, second, time.Time{})
 	pull, err = store.RecordUpstreamPull(ctx, key, second)
 	requireNoError(t, "record upstream pull", err)
@@ -125,9 +136,9 @@ func TestBboltStorePullRecords(t *testing.T) {
 	assertPullLookup(t, got, ok, second)
 }
 
-func TestBboltStoreListsRecords(t *testing.T) {
+func TestSQLiteStoreListsRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 	expires := time.Now().UTC().Add(time.Hour)
 
 	seedListRecords(ctx, t, store, expires)
@@ -149,17 +160,17 @@ func TestBboltStoreListsRecords(t *testing.T) {
 	assertRepoBlobList(t, repoBlobs)
 }
 
-func TestBboltStorePersistsAcrossReopen(t *testing.T) {
+func TestSQLiteStorePersistsAcrossReopen(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "regimux.db")
-	store := openBboltStore(ctx, t, path)
+	store := openSQLiteStore(ctx, t, path)
 
 	_, err := store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 42})
 	requireNoError(t, "upsert blob", err)
-	closeBboltStore(t, store)
+	closeSQLiteStore(t, store)
 
-	reopened := openBboltStore(ctx, t, path)
-	t.Cleanup(func() { closeBboltStore(t, reopened) })
+	reopened := openSQLiteStore(ctx, t, path)
+	t.Cleanup(func() { closeSQLiteStore(t, reopened) })
 	got, ok, err := reopened.Blob(ctx, meta.BlobKey{Digest: testDigest})
 	requireNoError(t, "get blob", err)
 	if !ok || got.Size != 42 {
@@ -167,9 +178,9 @@ func TestBboltStorePersistsAcrossReopen(t *testing.T) {
 	}
 }
 
-func TestBboltStoreValidatesRecords(t *testing.T) {
+func TestSQLiteStoreValidatesRecords(t *testing.T) {
 	ctx := context.Background()
-	store := newBboltStore(ctx, t)
+	store := newSQLiteStore(ctx, t)
 
 	_, err := store.UpsertBlob(ctx, meta.BlobRecord{Digest: "not-a-digest"})
 	if err == nil {
@@ -186,30 +197,30 @@ func TestBboltStoreValidatesRecords(t *testing.T) {
 	}
 }
 
-func newBboltStore(ctx context.Context, t *testing.T) *meta.BboltStore {
+func newSQLiteStore(ctx context.Context, t *testing.T) *meta.SQLiteStore {
 	t.Helper()
-	store := openBboltStore(ctx, t, filepath.Join(t.TempDir(), "regimux.db"))
-	t.Cleanup(func() { closeBboltStore(t, store) })
+	store := openSQLiteStore(ctx, t, filepath.Join(t.TempDir(), "regimux.db"))
+	t.Cleanup(func() { closeSQLiteStore(t, store) })
 	return store
 }
 
-func openBboltStore(ctx context.Context, t *testing.T, path string) *meta.BboltStore {
+func openSQLiteStore(ctx context.Context, t *testing.T, path string) *meta.SQLiteStore {
 	t.Helper()
-	store, err := meta.OpenBboltWithOptions(ctx, meta.BboltOptions{Path: path})
-	requireNoError(t, "open bbolt", err)
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.SQLiteOptions{Path: path})
+	requireNoError(t, "open sqlite", err)
 	return store
 }
 
-func closeBboltStore(t *testing.T, store *meta.BboltStore) {
+func closeSQLiteStore(t *testing.T, store *meta.SQLiteStore) {
 	t.Helper()
 	err := store.Close()
-	requireNoError(t, "close bbolt", err)
+	requireNoError(t, "close sqlite", err)
 }
 
 func upsertManifest(
 	ctx context.Context,
 	t *testing.T,
-	store *meta.BboltStore,
+	store *meta.SQLiteStore,
 	expires time.Time,
 ) *meta.ManifestRecord {
 	t.Helper()
@@ -229,11 +240,22 @@ func upsertManifest(
 	return manifest
 }
 
-func getManifest(ctx context.Context, t *testing.T, store *meta.BboltStore) (*meta.ManifestRecord, bool) {
+func getManifest(ctx context.Context, t *testing.T, store *meta.SQLiteStore) (*meta.ManifestRecord, bool) {
 	t.Helper()
 	got, ok, err := store.Manifest(ctx, meta.ManifestKey{Alias: "hub", Repository: "library/nginx", Digest: testDigest})
 	requireNoError(t, "get manifest", err)
 	return got, ok
+}
+
+func assertManifestIDStableAfterUpdate(ctx context.Context, t *testing.T, store *meta.SQLiteStore, manifest *meta.ManifestRecord) {
+	t.Helper()
+	updatedManifest := *manifest
+	updatedManifest.Size = 256
+	updated, err := store.UpsertManifest(ctx, updatedManifest)
+	requireNoError(t, "upsert manifest again", err)
+	if updated.ID != manifest.ID || updated.Size != 256 {
+		t.Fatalf("unexpected manifest id after update: before=%#v after=%#v", manifest, updated)
+	}
 }
 
 func requireNoError(t *testing.T, action string, err error) {

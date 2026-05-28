@@ -18,7 +18,7 @@ import (
 
 func newTestStores(t *testing.T) (meta.Store, object.Store) {
 	t.Helper()
-	metadata, err := meta.OpenBbolt(t.TempDir()+"/regimux.db", nil)
+	metadata, err := meta.OpenSQLite(t.TempDir()+"/regimux.db", nil)
 	if err != nil {
 		t.Fatalf("open metadata store: %v", err)
 	}

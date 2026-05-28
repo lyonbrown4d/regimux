@@ -54,7 +54,7 @@ func runPrefetch(
 
 func newPrefetchMetaStore(ctx context.Context, t *testing.T) meta.Store {
 	t.Helper()
-	store, err := meta.OpenBboltWithOptions(ctx, meta.BboltOptions{
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.SQLiteOptions{
 		Path: filepath.Join(t.TempDir(), "meta.db"),
 	})
 	if err != nil {

@@ -101,11 +101,11 @@ Inside the container:
 
 - `/etc/regimux/regimux.hcl` is the config file.
 - `/var/lib/regimux` is the working directory and persistent data root.
-- `data/regimux.db` stores local metadata when using the bboltx meta store.
+- `data/regimux.db` stores local SQLite metadata when `store.meta.driver = "sqlite"`.
 - `data/objects` stores local blob objects.
 
 The Compose examples mount `/var/lib/regimux` as a named volume, so cached blobs and pull metadata survive container recreation.
 
 ## Notes for replicas
 
-Redis or Valkey shares the byte cache and scheduler locks, but the current examples still use local bboltx metadata and local blob object storage per RegiMux container. Do not scale these Compose files with multiple RegiMux replicas sharing the same `/var/lib/regimux` volume. If you run multiple replicas, give each replica its own local data volume and put them behind an external load balancer.
+Redis or Valkey shares the byte cache and scheduler locks, but the current examples still use local SQLite metadata and local blob object storage per RegiMux container. Do not scale these Compose files with multiple RegiMux replicas sharing the same `/var/lib/regimux` volume. If you run multiple replicas, use `store.meta.driver = "mysql"` or `"postgres"` with a shared DSN, give each replica its own local object data volume, and put them behind an external load balancer.

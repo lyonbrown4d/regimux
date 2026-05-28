@@ -105,7 +105,8 @@ type StoreConfig struct {
 }
 
 type StoreMetaConfig struct {
-	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=bboltx"`
+	Driver string `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=sqlite mysql postgres postgresql pg"`
+	DSN    string `json:"dsn"    koanf:"dsn"    mapstructure:"dsn"`
 	Path   string `json:"path"   koanf:"path"   mapstructure:"path"`
 }
 

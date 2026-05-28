@@ -33,7 +33,17 @@ var Module = dix.NewModule("store",
 )
 
 func NewMetadataStore(cfg config.StoreMetaConfig, logger *slog.Logger) (meta.Store, error) {
-	store, err := meta.OpenBbolt(cfg.Path, logger)
+	switch cfg.Driver {
+	case "sqlite", "mysql", "postgres":
+	default:
+		return nil, oops.In("store").With("driver", cfg.Driver).Errorf("unsupported metadata store driver")
+	}
+	store, err := meta.OpenDBWithOptions(context.Background(), meta.DBOptions{
+		Driver: cfg.Driver,
+		DSN:    cfg.DSN,
+		Path:   cfg.Path,
+		Logger: logger,
+	})
 	if err != nil {
 		return nil, oops.Wrapf(err, "open metadata store")
 	}

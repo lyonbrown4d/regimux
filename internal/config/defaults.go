@@ -65,7 +65,7 @@ func defaultCacheConfig() CacheConfig {
 
 func defaultStoreConfig() StoreConfig {
 	return StoreConfig{
-		Meta:   StoreMetaConfig{Driver: "bboltx", Path: "data/regimux.db"},
+		Meta:   StoreMetaConfig{Driver: "sqlite", Path: "data/regimux.db"},
 		Object: StoreObjectConfig{Driver: "local", Path: "data/objects"},
 	}
 }

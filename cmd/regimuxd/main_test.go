@@ -103,7 +103,7 @@ func validTestConfig(t *testing.T) config.Config {
 		},
 		Store: config.StoreConfig{
 			Meta: config.StoreMetaConfig{
-				Driver: "bboltx",
+				Driver: "sqlite",
 				Path:   filepath.Join(t.TempDir(), "regimux.db"),
 			},
 			Object: config.StoreObjectConfig{

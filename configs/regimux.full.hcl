@@ -77,8 +77,15 @@ cache {
 
 store {
   meta {
-    driver = "bboltx"
+    driver = "sqlite"
+    dsn = ""
     path = "data/regimux.db"
+    # MySQL example:
+    # driver = "mysql"
+    # dsn = "regimux:secret@tcp(mysql:3306)/regimux?parseTime=true"
+    # PostgreSQL example:
+    # driver = "postgres"
+    # dsn = "postgres://regimux:secret@postgres:5432/regimux?sslmode=disable"
   }
 
   object {
