@@ -99,6 +99,7 @@ func (c *Config) Normalize() error {
 	if c == nil {
 		return oops.In("config").Errorf("config is nil")
 	}
+	c.normalizeServer()
 	c.normalizeAuthDefaults()
 	c.normalizeCache()
 	if err := c.normalizeUpstreams(); err != nil {
@@ -106,6 +107,41 @@ func (c *Config) Normalize() error {
 	}
 	c.normalizeStore()
 	return nil
+}
+
+func (c *Config) normalizeServer() {
+	c.Server.Middleware.RequestID.Header = strings.TrimSpace(c.Server.Middleware.RequestID.Header)
+	if c.Server.Middleware.RequestID.Header == "" {
+		c.Server.Middleware.RequestID.Header = "X-Request-ID"
+	}
+	c.Server.Middleware.Healthcheck.LivenessPath = normalizeHTTPPath(c.Server.Middleware.Healthcheck.LivenessPath, "/livez")
+	c.Server.Middleware.Healthcheck.ReadinessPath = normalizeHTTPPath(c.Server.Middleware.Healthcheck.ReadinessPath, "/readyz")
+	c.Server.Middleware.Compress.Level = strings.ToLower(strings.TrimSpace(c.Server.Middleware.Compress.Level))
+	if c.Server.Middleware.Compress.Level == "" {
+		c.Server.Middleware.Compress.Level = "default"
+	}
+	if c.Server.Middleware.RateLimit.Expiration == 0 {
+		c.Server.Middleware.RateLimit.Expiration = time.Minute
+	}
+	if c.Server.Middleware.CSRF.IdleTimeout == 0 {
+		c.Server.Middleware.CSRF.IdleTimeout = 30 * time.Minute
+	}
+	c.Server.Middleware.CSRF.CookieName = strings.TrimSpace(c.Server.Middleware.CSRF.CookieName)
+	if c.Server.Middleware.CSRF.CookieName == "" {
+		c.Server.Middleware.CSRF.CookieName = "regimux_csrf"
+	}
+	c.Server.Middleware.Pprof.Prefix = strings.TrimRight(normalizeHTTPPath(c.Server.Middleware.Pprof.Prefix, ""), "/")
+}
+
+func normalizeHTTPPath(value, fallback string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return fallback
+	}
+	if strings.HasPrefix(value, "/") {
+		return value
+	}
+	return "/" + value
 }
 
 func (c *Config) normalizeAuthDefaults() {

@@ -17,14 +17,44 @@ func (e *RegistryEndpoint) SetMetrics(metrics *observability.Metrics) {
 }
 
 func (e *RegistryEndpoint) observeAPI(ctx context.Context, route, method string, out *registryOutput, duration time.Duration, err error) {
-	if e == nil || e.metrics == nil {
+	if e == nil {
 		return
 	}
-	status := http.StatusInternalServerError
-	if out != nil && out.Status != 0 {
-		status = out.Status
+	status := registryOutputStatus(out)
+	e.logAPIObservation(ctx, route, method, status, duration, err)
+	if e.metrics != nil {
+		e.metrics.ObserveAPIRequest(ctx, route, method, status, duration, err)
 	}
-	e.metrics.ObserveAPIRequest(ctx, route, method, status, duration, err)
+}
+
+func registryOutputStatus(out *registryOutput) int {
+	if out != nil && out.Status != 0 {
+		return out.Status
+	}
+	return http.StatusInternalServerError
+}
+
+func (e *RegistryEndpoint) logAPIObservation(
+	ctx context.Context,
+	route string,
+	method string,
+	status int,
+	duration time.Duration,
+	err error,
+) {
+	if e.logger == nil {
+		return
+	}
+	args := []any{"route", route, "method", method, "status", status, "duration", duration}
+	if err != nil {
+		e.logger.WarnContext(ctx, "registry request completed with error", append(args, "error", err)...)
+		return
+	}
+	if status >= http.StatusInternalServerError {
+		e.logger.WarnContext(ctx, "registry request completed with error", args...)
+		return
+	}
+	e.logger.DebugContext(ctx, "registry request completed", args...)
 }
 
 func registryRouteName(kind reference.RouteKind) string {

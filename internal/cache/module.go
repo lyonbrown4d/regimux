@@ -37,7 +37,7 @@ var Module = dix.NewModule("cache",
 		}),
 	),
 	dix.Hooks(
-		dix.OnStop[backend.Backend](
+		dix.OnStop2[backend.Backend, *slog.Logger](
 			closeBackend,
 			dix.LifecycleName("regimux.cache_close"),
 			dix.LifecyclePriority(-150),
@@ -46,6 +46,8 @@ var Module = dix.NewModule("cache",
 )
 
 func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, error) {
+	logger = componentLogger(logger, "cache")
+	logger.Info("opening cache backend", "backend", cfg.Backend, "prefix", cfg.Prefix)
 	switch cfg.Backend {
 	case "redis":
 		cache, err := backend.NewRedis(backend.KVOptions{
@@ -60,6 +62,7 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 		if err != nil {
 			return nil, oops.Wrapf(err, "create redis cache backend")
 		}
+		logger.Info("cache backend opened", "backend", "redis", "addrs", cfg.Redis.Addrs)
 		return cache, nil
 	case "valkey":
 		cache, err := backend.NewValkey(backend.KVOptions{
@@ -74,12 +77,15 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 		if err != nil {
 			return nil, oops.Wrapf(err, "create valkey cache backend")
 		}
+		logger.Info("cache backend opened", "backend", "valkey", "addrs", cfg.Valkey.Addrs)
 		return cache, nil
 	default:
-		return backend.NewMemory(backend.MemoryOptions{
+		cache := backend.NewMemory(backend.MemoryOptions{
 			MaxItems: cfg.Memory.MaxItems,
 			Prefix:   cfg.Prefix,
-		}), nil
+		})
+		logger.Info("cache backend opened", "backend", "memory", "max_items", cfg.Memory.MaxItems)
+		return cache, nil
 	}
 }
 
@@ -101,12 +107,22 @@ func newProxyDependencies(
 	}
 }
 
-func closeBackend(_ context.Context, cacheBackend backend.Backend) error {
+func closeBackend(_ context.Context, cacheBackend backend.Backend, logger *slog.Logger) error {
 	if cacheBackend == nil {
 		return nil
 	}
+	logger = componentLogger(logger, "cache")
+	logger.Info("closing cache backend")
 	if err := cacheBackend.Close(); err != nil {
 		return oops.Wrapf(err, "close cache backend")
 	}
+	logger.Info("cache backend closed")
 	return nil
+}
+
+func componentLogger(logger *slog.Logger, component string) *slog.Logger {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return logger.With("component", component)
 }

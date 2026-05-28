@@ -54,8 +54,10 @@ func NewClient(deps ClientDependencies) *Client {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	logger = logger.With("component", "upstream")
 	upstreams := collectionmapping.NewOrderedMap[string, *upstreamPool]()
 	if configs == nil {
+		logger.Info("upstream client configured", "upstreams", 0)
 		return &Client{
 			upstreams:  upstreams,
 			tokenCache: newBearerTokenCache(),
@@ -71,6 +73,7 @@ func NewClient(deps ClientDependencies) *Client {
 		upstreams.Set(alias, newUpstreamPool(cfg, logger))
 		return true
 	})
+	logger.Info("upstream client configured", "upstreams", upstreams.Len())
 
 	return &Client{
 		upstreams:  upstreams,

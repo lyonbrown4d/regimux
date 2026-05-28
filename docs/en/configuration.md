@@ -32,6 +32,14 @@ Important defaults:
 
 - `server.listen = ":5000"`
 - `server.public_url = "http://localhost:5000"`
+- `server.middleware.request_id.enabled = true`
+- `server.middleware.healthcheck.enabled = true` with `/livez` and `/readyz`
+- `server.middleware.etag.enabled = true`, scoped away from registry `/v2` traffic
+- `server.middleware.compress.enabled = true`, scoped away from registry `/v2` traffic
+- `server.middleware.security_headers.enabled = true`, scoped away from registry `/v2` traffic
+- `server.middleware.rate_limit.enabled = false`
+- `server.middleware.csrf.enabled = false`
+- `server.middleware.pprof.enabled = false`
 - `cache.backend = "memory"`
 - `store.meta.driver = "sqlite"`
 - `store.meta.path = "data/regimux.db"`
@@ -82,4 +90,3 @@ Supported object drivers:
 - `memory`
 - `s3`
 - `sftp`
-

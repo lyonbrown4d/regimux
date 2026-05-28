@@ -9,7 +9,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
-func configRows(cfg config.Config) []ConfigRow {
+func configRows(cfg config.Config) *collectionlist.List[ConfigRow] {
 	rows := collectionlist.NewList[ConfigRow]()
 	addServerRows(rows, cfg.Server)
 	addAuthRows(rows, cfg.Auth)
@@ -19,18 +19,18 @@ func configRows(cfg config.Config) []ConfigRow {
 	addSchedulerRows(rows, cfg.Scheduler)
 	addWorkerRows(rows, cfg.Worker)
 	addUpstreamRows(rows, cfg)
-	return rows.Values()
+	return rows
 }
 
-func configSourceRows(locale string, messages *Messages) []ConfigSourceRow {
+func configSourceRows(locale string, messages *Messages) *collectionlist.List[ConfigSourceRow] {
 	status := messages.Translate(locale, "value.unavailable")
 	detail := messages.Translate(locale, "hint.config_sources_unavailable")
-	return []ConfigSourceRow{
-		{Name: "default", Status: status, Detail: detail},
-		{Name: "file", Status: status, Detail: detail},
-		{Name: "env", Status: status, Detail: detail},
-		{Name: "cli", Status: status, Detail: detail},
-	}
+	return collectionlist.NewList(
+		ConfigSourceRow{Name: "default", Status: status, Detail: detail},
+		ConfigSourceRow{Name: "file", Status: status, Detail: detail},
+		ConfigSourceRow{Name: "env", Status: status, Detail: detail},
+		ConfigSourceRow{Name: "cli", Status: status, Detail: detail},
+	)
 }
 
 func addServerRows(rows *collectionlist.List[ConfigRow], cfg config.ServerConfig) {
@@ -39,6 +39,22 @@ func addServerRows(rows *collectionlist.List[ConfigRow], cfg config.ServerConfig
 	addRow(rows, "server.read_timeout", durationString(cfg.ReadTimeout))
 	addRow(rows, "server.write_timeout", durationString(cfg.WriteTimeout))
 	addRow(rows, "server.idle_timeout", durationString(cfg.IdleTimeout))
+	addServerMiddlewareRows(rows, cfg.Middleware)
+}
+
+func addServerMiddlewareRows(rows *collectionlist.List[ConfigRow], cfg config.ServerMiddlewareConfig) {
+	addRow(rows, "server.middleware.request_id.enabled", boolString(cfg.RequestID.Enabled))
+	addRow(rows, "server.middleware.request_id.header", cfg.RequestID.Header)
+	addRow(rows, "server.middleware.healthcheck.enabled", boolString(cfg.Healthcheck.Enabled))
+	addRow(rows, "server.middleware.healthcheck.liveness_path", cfg.Healthcheck.LivenessPath)
+	addRow(rows, "server.middleware.healthcheck.readiness_path", cfg.Healthcheck.ReadinessPath)
+	addRow(rows, "server.middleware.etag.enabled", boolString(cfg.ETag.Enabled))
+	addRow(rows, "server.middleware.security_headers.enabled", boolString(cfg.SecurityHeaders.Enabled))
+	addRow(rows, "server.middleware.compress.enabled", boolString(cfg.Compress.Enabled))
+	addRow(rows, "server.middleware.compress.level", cfg.Compress.Level)
+	addRow(rows, "server.middleware.rate_limit.enabled", boolString(cfg.RateLimit.Enabled))
+	addRow(rows, "server.middleware.csrf.enabled", boolString(cfg.CSRF.Enabled))
+	addRow(rows, "server.middleware.pprof.enabled", boolString(cfg.Pprof.Enabled))
 }
 
 func addAuthRows(rows *collectionlist.List[ConfigRow], cfg config.RegistryAuthConfig) {

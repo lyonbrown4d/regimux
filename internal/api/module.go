@@ -76,6 +76,7 @@ func newServer(
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
+		Middleware:   cfg.Middleware,
 		PrintRoutes:  false,
 	})
 }

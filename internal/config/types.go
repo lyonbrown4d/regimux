@@ -14,11 +14,68 @@ type Config struct {
 }
 
 type ServerConfig struct {
-	Listen       string        `json:"listen"        koanf:"listen"        mapstructure:"listen"        validate:"required"`
-	PublicURL    string        `json:"public_url"    koanf:"public_url"    mapstructure:"public_url"    validate:"omitempty,url"`
-	ReadTimeout  time.Duration `json:"read_timeout"  koanf:"read_timeout"  mapstructure:"read_timeout"  validate:"min=0"`
-	WriteTimeout time.Duration `json:"write_timeout" koanf:"write_timeout" mapstructure:"write_timeout" validate:"min=0"`
-	IdleTimeout  time.Duration `json:"idle_timeout"  koanf:"idle_timeout"  mapstructure:"idle_timeout"  validate:"min=0"`
+	Listen       string                 `json:"listen"        koanf:"listen"        mapstructure:"listen"        validate:"required"`
+	PublicURL    string                 `json:"public_url"    koanf:"public_url"    mapstructure:"public_url"    validate:"omitempty,url"`
+	ReadTimeout  time.Duration          `json:"read_timeout"  koanf:"read_timeout"  mapstructure:"read_timeout"  validate:"min=0"`
+	WriteTimeout time.Duration          `json:"write_timeout" koanf:"write_timeout" mapstructure:"write_timeout" validate:"min=0"`
+	IdleTimeout  time.Duration          `json:"idle_timeout"  koanf:"idle_timeout"  mapstructure:"idle_timeout"  validate:"min=0"`
+	Middleware   ServerMiddlewareConfig `json:"middleware"    koanf:"middleware"    mapstructure:"middleware"`
+}
+
+type ServerMiddlewareConfig struct {
+	RequestID       MiddlewareRequestIDConfig       `json:"request_id"       koanf:"request_id"       mapstructure:"request_id"`
+	Healthcheck     MiddlewareHealthcheckConfig     `json:"healthcheck"      koanf:"healthcheck"      mapstructure:"healthcheck"`
+	ETag            MiddlewareToggleConfig          `json:"etag"             koanf:"etag"             mapstructure:"etag"`
+	SecurityHeaders MiddlewareSecurityHeadersConfig `json:"security_headers" koanf:"security_headers" mapstructure:"security_headers"`
+	Compress        MiddlewareCompressConfig        `json:"compress"         koanf:"compress"         mapstructure:"compress"`
+	RateLimit       MiddlewareRateLimitConfig       `json:"rate_limit"       koanf:"rate_limit"       mapstructure:"rate_limit"`
+	CSRF            MiddlewareCSRFConfig            `json:"csrf"             koanf:"csrf"             mapstructure:"csrf"`
+	Pprof           MiddlewarePprofConfig           `json:"pprof"            koanf:"pprof"            mapstructure:"pprof"`
+}
+
+type MiddlewareToggleConfig struct {
+	Enabled bool `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
+}
+
+type MiddlewareRequestIDConfig struct {
+	Enabled bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
+	Header  string `json:"header"  koanf:"header"  mapstructure:"header"`
+}
+
+type MiddlewareHealthcheckConfig struct {
+	Enabled       bool   `json:"enabled"        koanf:"enabled"        mapstructure:"enabled"`
+	LivenessPath  string `json:"liveness_path"  koanf:"liveness_path"  mapstructure:"liveness_path"`
+	ReadinessPath string `json:"readiness_path" koanf:"readiness_path" mapstructure:"readiness_path"`
+}
+
+type MiddlewareSecurityHeadersConfig struct {
+	Enabled               bool   `json:"enabled"                 koanf:"enabled"                 mapstructure:"enabled"`
+	ContentSecurityPolicy string `json:"content_security_policy" koanf:"content_security_policy" mapstructure:"content_security_policy"`
+	HSTSMaxAge            int    `json:"hsts_max_age"            koanf:"hsts_max_age"            mapstructure:"hsts_max_age"            validate:"min=0"`
+}
+
+type MiddlewareCompressConfig struct {
+	Enabled bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
+	Level   string `json:"level"   koanf:"level"   mapstructure:"level"   validate:"omitempty,oneof=default disabled best_speed best_compression"`
+}
+
+type MiddlewareRateLimitConfig struct {
+	Enabled    bool          `json:"enabled"    koanf:"enabled"    mapstructure:"enabled"`
+	Max        int           `json:"max"        koanf:"max"        mapstructure:"max"        validate:"min=0"`
+	Expiration time.Duration `json:"expiration" koanf:"expiration" mapstructure:"expiration" validate:"min=0"`
+}
+
+type MiddlewareCSRFConfig struct {
+	Enabled        bool          `json:"enabled"         koanf:"enabled"         mapstructure:"enabled"`
+	IdleTimeout    time.Duration `json:"idle_timeout"    koanf:"idle_timeout"    mapstructure:"idle_timeout"    validate:"min=0"`
+	CookieName     string        `json:"cookie_name"     koanf:"cookie_name"     mapstructure:"cookie_name"`
+	CookieSecure   bool          `json:"cookie_secure"   koanf:"cookie_secure"   mapstructure:"cookie_secure"`
+	TrustedOrigins []string      `json:"trusted_origins" koanf:"trusted_origins" mapstructure:"trusted_origins" validate:"dive,omitempty,url"`
+}
+
+type MiddlewarePprofConfig struct {
+	Enabled bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
+	Prefix  string `json:"prefix"  koanf:"prefix"  mapstructure:"prefix"`
 }
 
 type RegistryAuthConfig struct {

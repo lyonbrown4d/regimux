@@ -85,6 +85,16 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 	if p.logger == nil {
 		p.logger = slog.Default()
 	}
+	p.logger = p.logger.With("component", "cache.proxy")
+	p.logger.Info("cache proxy configured",
+		"manifest_ttl", p.manifestTTL,
+		"manifest_stale_if_error", p.manifestStaleIfError,
+		"manifest_max_stale", p.manifestMaxStale,
+		"tags_ttl", p.tagsTTL,
+		"referrers_ttl", p.referrersTTL,
+		"blob_stream_and_cache", p.blobStreamAndCache,
+		"blob_verify_ttl", p.blobVerifyTTL,
+	)
 	return p
 }
 

@@ -9,6 +9,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	retry "github.com/sethvargo/go-retry"
 	"resty.dev/v3"
 )
 
@@ -51,13 +52,14 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, operation
 		method:    method,
 		endpoint:  endpoint,
 	}
+	backoff := upstreamRetryBackoff(runtime.config.HTTP.Retry)
 
 	for attempt := range maxAttempts {
-		resp, retry, err := c.executeAttempt(ctx, runtime, state, attempt+1, maxAttempts, opts...)
+		resp, shouldRetry, err := c.executeAttempt(ctx, runtime, state, backoff, attempt+1, maxAttempts, opts...)
 		if err != nil {
 			return upstreamResponse{}, err
 		}
-		if retry {
+		if shouldRetry {
 			continue
 		}
 		return resp, nil
@@ -78,6 +80,7 @@ func (c *Client) executeAttempt(
 	ctx context.Context,
 	runtime upstreamRuntime,
 	state requestAttemptState,
+	backoff retry.Backoff,
 	attempt int,
 	maxAttempts int,
 	opts ...requestOption,
@@ -93,7 +96,7 @@ func (c *Client) executeAttempt(
 		c.publishAttempt(ctx, runtime, state, attempt, nil)
 		return resp, false, nil
 	}
-	if err := c.prepareRetry(ctx, runtime, state, resp, attempt, maxAttempts); err != nil {
+	if err := c.prepareRetry(ctx, runtime, state, backoff, resp, attempt, maxAttempts); err != nil {
 		c.publishAttempt(ctx, runtime, state, attempt, err)
 		return upstreamResponse{}, false, err
 	}
@@ -104,6 +107,7 @@ func (c *Client) prepareRetry(
 	ctx context.Context,
 	runtime upstreamRuntime,
 	state requestAttemptState,
+	backoff retry.Backoff,
 	resp upstreamResponse,
 	attempt int,
 	maxAttempts int,
@@ -111,7 +115,10 @@ func (c *Client) prepareRetry(
 	if err := drainAndClose(resp.Body); err != nil {
 		return err
 	}
-	wait := retryBackoff(runtime.config.HTTP.Retry, attempt)
+	wait, stop := backoff.Next()
+	if stop {
+		return nil
+	}
 	c.logUpstreamRetry(ctx, runtime, state.operation, state.method, state.endpoint, resp.StatusCode, attempt, maxAttempts, wait)
 	return waitRetry(ctx, wait)
 }
@@ -146,21 +153,17 @@ func shouldRetryUpstreamStatus(status int) bool {
 	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
 }
 
-func retryBackoff(cfg HTTPRetryConfig, attempt int) time.Duration {
-	if attempt <= 0 {
-		attempt = 1
-	}
+func upstreamRetryBackoff(cfg HTTPRetryConfig) retry.Backoff {
 	wait := cfg.WaitMin
 	if wait <= 0 {
 		wait = 100 * time.Millisecond
 	}
-	for range attempt - 1 {
-		wait *= 2
+	backoff := retry.NewExponential(wait)
+	if cfg.WaitMax > 0 {
+		backoff = retry.WithCappedDuration(cfg.WaitMax, backoff)
 	}
-	if cfg.WaitMax > 0 && wait > cfg.WaitMax {
-		return cfg.WaitMax
-	}
-	return wait
+	maxRetries := max(0, cfg.MaxRetries)
+	return retry.WithMaxRetries(uint64(maxRetries), backoff)
 }
 
 func waitRetry(ctx context.Context, wait time.Duration) error {

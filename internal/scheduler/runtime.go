@@ -50,9 +50,18 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 }
 
 func (r *Runtime) Start(ctx context.Context) error {
-	if r == nil || !r.cfg.Scheduler.Enabled {
+	if r == nil {
 		return nil
 	}
+	if !r.cfg.Scheduler.Enabled {
+		r.logger.Info("scheduler disabled")
+		return nil
+	}
+	r.logger.Info("scheduler starting",
+		"cleanup_enabled", r.cfg.Scheduler.Cleanup.Enabled,
+		"prefetch_enabled", r.cfg.Scheduler.Prefetch.Enabled,
+		"distributed_lock", r.cfg.Scheduler.DistributedLock,
+	)
 	options, err := r.schedulerOptions(ctx)
 	if err != nil {
 		return err
@@ -81,6 +90,7 @@ func (r *Runtime) Stop(ctx context.Context) error {
 	if r == nil {
 		return nil
 	}
+	r.logger.Info("scheduler stopping")
 	var stopErr error
 	if r.scheduler != nil {
 		stopErr = r.scheduler.ShutdownWithContext(ctx)
@@ -91,6 +101,9 @@ func (r *Runtime) Stop(ctx context.Context) error {
 			stopErr = join(stopErr, oops.Wrapf(err, "close scheduler redis client"))
 		}
 		r.redis = nil
+	}
+	if stopErr == nil {
+		r.logger.Info("scheduler stopped")
 	}
 	return stopErr
 }

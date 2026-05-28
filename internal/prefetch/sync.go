@@ -40,6 +40,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 	}
 
 	startedAt := time.Now()
+	s.logger.InfoContext(ctx, "manual sync starting", "alias", opts.Alias, "repository", opts.Repo, "reference", opts.Reference)
 	candidate := Candidate{
 		Alias:  opts.Alias,
 		Repo:   opts.Repo,
@@ -55,13 +56,27 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 		SkipPullRecord: true,
 	})
 	if err != nil {
+		s.logger.WarnContext(ctx, "manual sync manifest failed", "alias", opts.Alias, "repository", opts.Repo, "reference", opts.Reference, "error", err)
 		return nil, cacheWrap(err, "sync manifest")
 	}
 
 	result, err := s.prefetchManifestArtifacts(ctx, RunOptions{Accept: opts.Accept}, nil, candidate, opts.Reference, manifest, 0)
 	if err != nil {
+		s.logger.WarnContext(ctx, "manual sync artifacts failed", "alias", opts.Alias, "repository", opts.Repo, "reference", opts.Reference, "error", err)
 		return nil, err
 	}
+	duration := time.Since(startedAt)
+	s.logger.InfoContext(ctx,
+		"manual sync completed",
+		"alias", opts.Alias,
+		"repository", opts.Repo,
+		"reference", opts.Reference,
+		"manifest_digest", result.manifestDigest,
+		"layers", result.layerCount,
+		"blobs", result.blobCount,
+		"child_manifests", result.childManifestCount,
+		"duration", duration,
+	)
 	return &SyncReport{
 		Alias:              opts.Alias,
 		Repo:               opts.Repo,
@@ -71,7 +86,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 		LayerCount:         result.layerCount,
 		BlobCount:          result.blobCount,
 		ChildManifestCount: result.childManifestCount,
-		Duration:           time.Since(startedAt),
+		Duration:           duration,
 	}, nil
 }
 

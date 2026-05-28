@@ -5,8 +5,11 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func pullRows(records []meta.PullRecord) []PullRow {
-	return collectionlist.MapList(collectionlist.NewList(records...), func(_ int, record meta.PullRecord) PullRow {
+func pullRows(records *collectionlist.List[meta.PullRecord]) *collectionlist.List[PullRow] {
+	if records == nil {
+		return collectionlist.NewList[PullRow]()
+	}
+	return collectionlist.MapList(records, func(_ int, record meta.PullRecord) PullRow {
 		return PullRow{
 			Key:                record.Key,
 			Alias:              record.Alias,
@@ -16,18 +19,14 @@ func pullRows(records []meta.PullRecord) []PullRow {
 			LastPullAt:         formatTime(record.LastPullAt),
 			LastUpstreamPullAt: formatTime(record.LastUpstreamPullAt),
 		}
-	}).Values()
+	})
 }
 
-func limitPulls(rows []PullRow, limit int) []PullRow {
-	if limit <= 0 || len(rows) <= limit {
-		return rows
+func mirrorCount(rows *collectionlist.List[UpstreamRow]) int {
+	if rows == nil {
+		return 0
 	}
-	return rows[:limit]
-}
-
-func mirrorCount(rows []UpstreamRow) int {
-	return collectionlist.ReduceList(collectionlist.NewList(rows...), 0, func(total int, _ int, row UpstreamRow) int {
+	return collectionlist.ReduceList(rows, 0, func(total int, _ int, row UpstreamRow) int {
 		return total + row.MirrorCount
 	})
 }

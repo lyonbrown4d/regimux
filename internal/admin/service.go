@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/csrf"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	authpkg "github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
@@ -39,7 +40,7 @@ func NewService(deps Dependencies) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return &Service{
+	service := &Service{
 		cfg:       deps.Config,
 		metadata:  deps.Metadata,
 		upstream:  deps.Upstream,
@@ -51,12 +52,15 @@ func NewService(deps Dependencies) *Service {
 		prefetch:  deps.Prefetch,
 		startedAt: time.Now(),
 	}
+	service.logger.Info("admin service configured", "base_path", basePath, "auth_enabled", service.adminAuthEnabled())
+	return service
 }
 
 func (s *Service) RegisterFiber(app *fiber.App) {
 	if s == nil || app == nil {
 		return
 	}
+	s.logger.Info("registering admin routes", "base_path", basePath)
 	app.Use(basePath, s.requireAdminAuth)
 	app.Get(basePath, s.dashboard)
 	group := app.Group(basePath)
@@ -74,6 +78,7 @@ func (s *Service) RegisterFiber(app *fiber.App) {
 	group.Get("/audit", s.auditPage)
 	group.Get("/config", s.configPage)
 	group.Get("/partials/upstream-health", s.upstreamHealthPartial)
+	s.logger.Info("admin routes registered", "base_path", basePath)
 }
 
 func (s *Service) requireAdminAuth(c fiber.Ctx) error {
@@ -138,7 +143,7 @@ func (s *Service) dashboard(c fiber.Ctx) error {
 	if err != nil {
 		return err
 	}
-	data.RecentPulls = limitPulls(data.Pulls, 10)
+	data.RecentPulls = data.Pulls
 	return s.render(c, "dashboard", "layout", data)
 }
 
@@ -239,16 +244,17 @@ func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, erro
 		Locale:             locale,
 		HTMLLang:           htmlLang(locale),
 		LanguageSwitchHref: languageSwitchHref(c, oppositeLocale(locale)),
+		CSRFToken:          csrf.TokenFromContext(c),
 		Summary:            summary,
-		Upstreams:          upstreams,
-		Pulls:              pulls,
+		Upstreams:          upstreams.Values(),
+		Pulls:              pulls.Values(),
 		Cache:              cache,
 		Activity:           activitySummary(rows),
 		Storage:            storageSummary(rows),
 		Audit:              auditSummary(s.cfg),
 		Scheduler:          scheduler,
-		ConfigRows:         configRows(s.cfg),
-		ConfigSources:      configSourceRows(locale, s.messages),
+		ConfigRows:         configRows(s.cfg).Values(),
+		ConfigSources:      configSourceRows(locale, s.messages).Values(),
 	}, nil
 }
 

@@ -3,6 +3,7 @@ package cache
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"time"
 
 	collectionset "github.com/arcgolabs/collectionx/set"
@@ -13,6 +14,7 @@ import (
 type CleanupService struct {
 	metadata meta.Store
 	objects  object.Store
+	logger   *slog.Logger
 }
 
 type CleanupOptions struct {
@@ -56,6 +58,7 @@ func NewCleanupService(metadata meta.Store, objects object.Store) *CleanupServic
 	return &CleanupService{
 		metadata: metadata,
 		objects:  objects,
+		logger:   slog.Default().With("component", "cache.cleanup"),
 	}
 }
 
@@ -63,7 +66,17 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 	if err := s.validateCleanup(ctx, opts); err != nil {
 		return nil, err
 	}
+	startedAt := time.Now()
 	now := cleanupNow(opts.Now)
+	s.logger.InfoContext(ctx,
+		"cache cleanup starting",
+		"unused_for", opts.UnusedFor,
+		"max_scan", opts.MaxScan,
+		"max_deletes", opts.MaxDeletes,
+		"max_bytes", opts.MaxBytes,
+		"target_bytes", opts.TargetBytes,
+		"dry_run", opts.DryRun,
+	)
 	blobs, err := s.metadata.ListBlobs(ctx)
 	if err != nil {
 		return nil, wrapError(err, "list blob metadata for cleanup")
@@ -77,6 +90,19 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 	if err := s.cleanupBlobRecords(ctx, opts, now.Add(-opts.UnusedFor), blobs, protected, report); err != nil {
 		return nil, err
 	}
+	s.logger.InfoContext(ctx,
+		"cache cleanup completed",
+		"duration", time.Since(startedAt),
+		"scanned_blobs", report.ScannedBlobs,
+		"eligible_blobs", report.EligibleBlobs,
+		"deleted_blobs", report.DeletedBlobs,
+		"bytes_deleted", report.BytesDeleted,
+		"bytes_before", report.BytesBefore,
+		"bytes_after", report.BytesAfter,
+		"missing_objects", report.MissingObjects,
+		"limit_reached", report.LimitReached,
+		"dry_run", report.DryRun,
+	)
 	return report, nil
 }
 
@@ -219,5 +245,6 @@ func (s *CleanupService) deleteBlobObject(ctx context.Context, blob *meta.BlobRe
 	report.DeletedBlobs++
 	report.DeletedDigests = append(report.DeletedDigests, blob.Digest)
 	report.BytesAfter = cleanupRemainingBytes(report.BytesAfter, blob.Size)
+	s.logger.DebugContext(ctx, "cache blob deleted", "digest", blob.Digest, "size", blob.Size)
 	return nil
 }

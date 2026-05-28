@@ -15,12 +15,15 @@ func cacheSummary(snapshot metadataSnapshot) CacheSummary {
 		BlobCount:            metadataCount(stats.BlobCount),
 		BlobBytes:            formatBytes(stats.BlobBytes),
 		RepoBlobCount:        metadataCount(stats.RepoBlobCount),
-		RecentBlobs:          recentBlobRows(snapshot.recentBlobs, 25),
+		RecentBlobs:          recentBlobRows(snapshot.recentBlobs, 25).Values(),
 	}
 }
 
-func recentBlobRows(records []meta.BlobRecord, limit int) []BlobRow {
-	return collectionlist.MapList(collectionlist.NewList(records...).Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
+func recentBlobRows(records *collectionlist.List[meta.BlobRecord], limit int) *collectionlist.List[BlobRow] {
+	if records == nil {
+		return collectionlist.NewList[BlobRow]()
+	}
+	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
 		return BlobRow{
 			Digest:       record.Digest,
 			Size:         formatBytes(record.Size),
@@ -28,5 +31,5 @@ func recentBlobRows(records []meta.BlobRecord, limit int) []BlobRow {
 			LastAccessAt: formatTime(record.LastAccessAt),
 			UpdatedAt:    formatTime(record.UpdatedAt),
 		}
-	}).Values()
+	})
 }

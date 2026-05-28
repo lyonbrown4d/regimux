@@ -9,6 +9,7 @@ type PageData struct {
 	Locale             string
 	HTMLLang           string
 	LanguageSwitchHref string
+	CSRFToken          string
 
 	Summary       Summary
 	Upstreams     []UpstreamRow

@@ -30,6 +30,35 @@ func defaultServerConfig() ServerConfig {
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,
+		Middleware:   defaultServerMiddlewareConfig(),
+	}
+}
+
+func defaultServerMiddlewareConfig() ServerMiddlewareConfig {
+	return ServerMiddlewareConfig{
+		RequestID: MiddlewareRequestIDConfig{
+			Enabled: true,
+			Header:  "X-Request-ID",
+		},
+		Healthcheck: MiddlewareHealthcheckConfig{
+			Enabled:       true,
+			LivenessPath:  "/livez",
+			ReadinessPath: "/readyz",
+		},
+		ETag:            MiddlewareToggleConfig{Enabled: true},
+		SecurityHeaders: MiddlewareSecurityHeadersConfig{Enabled: true},
+		Compress: MiddlewareCompressConfig{
+			Enabled: true,
+			Level:   "default",
+		},
+		RateLimit: MiddlewareRateLimitConfig{
+			Max:        60,
+			Expiration: time.Minute,
+		},
+		CSRF: MiddlewareCSRFConfig{
+			IdleTimeout: 30 * time.Minute,
+			CookieName:  "regimux_csrf",
+		},
 	}
 }
 

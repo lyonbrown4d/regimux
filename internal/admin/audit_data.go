@@ -9,22 +9,26 @@ import (
 )
 
 func auditSummary(cfg config.Config) AuditSummary {
+	users := collectionmapping.NewMapFrom(cfg.Auth.Users)
 	return AuditSummary{
 		AuthEnabled:        cfg.Auth.Enabled,
 		UserCount:          len(cfg.Auth.Users),
-		Users:              auditUserRows(cfg.Auth.Users),
+		Users:              auditUserRows(users).Values(),
 		RecentLogins:       nil,
 		LoginDataAvailable: false,
 	}
 }
 
-func auditUserRows(users map[string]config.AuthUserConfig) []AuditUserRow {
-	usernames := collectionlist.NewList(collectionmapping.NewMapFrom(users).Keys()...).
+func auditUserRows(users *collectionmapping.Map[string, config.AuthUserConfig]) *collectionlist.List[AuditUserRow] {
+	if users == nil {
+		return collectionlist.NewList[AuditUserRow]()
+	}
+	usernames := collectionlist.NewList(users.Keys()...).
 		Sort(strings.Compare)
 
 	rows := collectionlist.NewListWithCapacity[AuditUserRow](usernames.Len())
 	usernames.Range(func(_ int, username string) bool {
-		user := users[username]
+		user, _ := users.Get(username)
 		rows.Add(AuditUserRow{
 			Username:         username,
 			RepositoryScopes: listString(user.Repositories),
@@ -33,7 +37,7 @@ func auditUserRows(users map[string]config.AuthUserConfig) []AuditUserRow {
 		})
 		return true
 	})
-	return rows.Values()
+	return rows
 }
 
 func listString(values []string) string {

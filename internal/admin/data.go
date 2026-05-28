@@ -14,17 +14,17 @@ import (
 
 type metadataSnapshot struct {
 	stats        meta.MetadataStats
-	upstreams    []meta.Upstream
-	repositories []meta.Repository
-	pulls        []meta.PullRecord
-	recentBlobs  []meta.BlobRecord
-	largeBlobs   []meta.BlobRecord
-	repoBlobs    []meta.RepoBlobRecord
+	upstreams    *collectionlist.List[meta.Upstream]
+	repositories *collectionlist.List[meta.Repository]
+	pulls        *collectionlist.List[meta.PullRecord]
+	recentBlobs  *collectionlist.List[meta.BlobRecord]
+	largeBlobs   *collectionlist.List[meta.BlobRecord]
+	repoBlobs    *collectionlist.List[meta.RepoBlobRecord]
 }
 
 func (s *Service) metadataRows(ctx context.Context, now time.Time, active string) (metadataSnapshot, error) {
 	if s.metadata == nil {
-		return metadataSnapshot{}, nil
+		return newMetadataSnapshot(meta.MetadataStats{}), nil
 	}
 
 	stats, err := s.metadata.MetadataStats(ctx, now)
@@ -32,7 +32,7 @@ func (s *Service) metadataRows(ctx context.Context, now time.Time, active string
 		return metadataSnapshot{}, oops.In("admin").Wrapf(err, "load metadata stats")
 	}
 
-	rows := metadataSnapshot{stats: stats}
+	rows := newMetadataSnapshot(stats)
 	if err := s.loadPullRows(ctx, active, &rows); err != nil {
 		return metadataSnapshot{}, err
 	}
@@ -48,6 +48,18 @@ func (s *Service) metadataRows(ctx context.Context, now time.Time, active string
 	return rows, nil
 }
 
+func newMetadataSnapshot(stats meta.MetadataStats) metadataSnapshot {
+	return metadataSnapshot{
+		stats:        stats,
+		upstreams:    collectionlist.NewList[meta.Upstream](),
+		repositories: collectionlist.NewList[meta.Repository](),
+		pulls:        collectionlist.NewList[meta.PullRecord](),
+		recentBlobs:  collectionlist.NewList[meta.BlobRecord](),
+		largeBlobs:   collectionlist.NewList[meta.BlobRecord](),
+		repoBlobs:    collectionlist.NewList[meta.RepoBlobRecord](),
+	}
+}
+
 func (s *Service) loadPullRows(ctx context.Context, active string, rows *metadataSnapshot) error {
 	pullLimit := pullRowLimit(active)
 	if pullLimit < 0 {
@@ -61,7 +73,7 @@ func (s *Service) loadPullRows(ctx context.Context, active string, rows *metadat
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list pulls")
 	}
-	rows.pulls = pulls
+	rows.pulls = collectionlist.NewList(pulls...)
 	return nil
 }
 
@@ -75,7 +87,7 @@ func (s *Service) loadBlobRows(ctx context.Context, active string, rows *metadat
 		if err != nil {
 			return oops.In("admin").Wrapf(err, "list recent blobs")
 		}
-		rows.recentBlobs = recentBlobs
+		rows.recentBlobs = collectionlist.NewList(recentBlobs...)
 	}
 	if active != "storage" {
 		return nil
@@ -96,7 +108,7 @@ func (s *Service) loadRepositoryRows(ctx context.Context, active string, rows *m
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list repository metadata")
 	}
-	rows.repositories = repositories
+	rows.repositories = collectionlist.NewList(repositories...)
 	return nil
 }
 
@@ -108,7 +120,7 @@ func (s *Service) loadUpstreamMetadataRows(ctx context.Context, active string, r
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list upstream metadata")
 	}
-	rows.upstreams = upstreams
+	rows.upstreams = collectionlist.NewList(upstreams...)
 	return nil
 }
 
@@ -127,12 +139,12 @@ func (s *Service) loadStorageBlobRows(ctx context.Context, rows *metadataSnapsho
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list repo blobs")
 	}
-	rows.largeBlobs = largeBlobs
-	rows.repoBlobs = repoBlobs
+	rows.largeBlobs = collectionlist.NewList(largeBlobs...)
+	rows.repoBlobs = collectionlist.NewList(repoBlobs...)
 	return nil
 }
 
-func (s *Service) summary(snapshot metadataSnapshot, upstreams []UpstreamRow, now time.Time) Summary {
+func (s *Service) summary(snapshot metadataSnapshot, upstreams *collectionlist.List[UpstreamRow], now time.Time) Summary {
 	stats := snapshot.stats
 	return Summary{
 		Version:            string(s.version),
@@ -143,7 +155,7 @@ func (s *Service) summary(snapshot metadataSnapshot, upstreams []UpstreamRow, no
 		CacheBackend:       s.cfg.Cache.Backend,
 		SchedulerEnabled:   s.cfg.Scheduler.Enabled,
 		DistributedLock:    s.cfg.Scheduler.DistributedLock,
-		UpstreamCount:      len(upstreams),
+		UpstreamCount:      upstreams.Len(),
 		MirrorCount:        mirrorCount(upstreams),
 		ManifestCount:      metadataCount(stats.ManifestCount),
 		TagCount:           metadataCount(stats.TagCount),
@@ -204,12 +216,12 @@ func metadataCount(value int64) int {
 	return int(value)
 }
 
-func (s *Service) upstreamRows(now time.Time, metadata []meta.Upstream) []UpstreamRow {
+func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta.Upstream]) *collectionlist.List[UpstreamRow] {
 	snapshot := upstream.ClientSnapshot{}
 	if s.upstream != nil {
 		snapshot = s.upstream.Snapshot(now)
 	}
-	snapshots := upstreamSnapshotMap(snapshot)
+	snapshots := upstreamSnapshotMap(collectionlist.NewList(snapshot.Upstreams...))
 	stats := upstreamMetadataMap(metadata)
 
 	rows := collectionlist.NewListWithCapacity[UpstreamRow](len(s.cfg.Upstreams))
@@ -224,38 +236,45 @@ func (s *Service) upstreamRows(now time.Time, metadata []meta.Upstream) []Upstre
 			ProbeEnabled:     upstreamCfg.Probe.Enabled,
 			MirrorCount:      len(upstreamCfg.Mirrors),
 		}
-		if runtime, ok := stats[alias]; ok {
+		if runtime, ok := stats.Get(alias); ok {
 			row.RepositoryCount = metadataCount(runtime.RepositoryCount)
 			row.PullCount = runtime.PullCount
 			row.BlobBytes = formatBytes(runtime.BlobBytes)
 			row.LastActivityAt = formatTime(runtime.LastActivityAt)
 		}
-		row.Endpoints = endpointRows(snapshots[alias])
+		runtimeSnapshot, _ := snapshots.Get(alias)
+		row.Endpoints = endpointRows(runtimeSnapshot).Values()
 		rows.Add(row)
 		return true
 	})
-	return rows.Values()
+	return rows
 }
 
-func upstreamMetadataMap(records []meta.Upstream) map[string]meta.Upstream {
+func upstreamMetadataMap(records *collectionlist.List[meta.Upstream]) *collectionmapping.Map[string, meta.Upstream] {
+	if records == nil {
+		return collectionmapping.NewMapWithCapacity[string, meta.Upstream](0)
+	}
 	return collectionmapping.AssociateList(
-		collectionlist.NewList(records...),
+		records,
 		func(_ int, row meta.Upstream) (string, meta.Upstream) {
 			return row.Alias, row
 		},
-	).All()
+	)
 }
 
-func upstreamSnapshotMap(snapshot upstream.ClientSnapshot) map[string]upstream.UpstreamSnapshot {
+func upstreamSnapshotMap(records *collectionlist.List[upstream.UpstreamSnapshot]) *collectionmapping.Map[string, upstream.UpstreamSnapshot] {
+	if records == nil {
+		return collectionmapping.NewMapWithCapacity[string, upstream.UpstreamSnapshot](0)
+	}
 	return collectionmapping.AssociateList(
-		collectionlist.NewList(snapshot.Upstreams...),
+		records,
 		func(_ int, row upstream.UpstreamSnapshot) (string, upstream.UpstreamSnapshot) {
 			return row.Alias, row
 		},
-	).All()
+	)
 }
 
-func endpointRows(snapshot upstream.UpstreamSnapshot) []EndpointRow {
+func endpointRows(snapshot upstream.UpstreamSnapshot) *collectionlist.List[EndpointRow] {
 	return collectionlist.MapList(collectionlist.NewList(snapshot.Endpoints...), func(_ int, endpoint upstream.EndpointSnapshot) EndpointRow {
 		health := endpoint.Health
 		return EndpointRow{
@@ -273,5 +292,5 @@ func endpointRows(snapshot upstream.UpstreamSnapshot) []EndpointRow {
 			LastFailureAt: formatTime(health.LastFailureAt),
 			Status:        endpointStatus(health),
 		}
-	}).Values()
+	})
 }

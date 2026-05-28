@@ -5,6 +5,7 @@
       <p class="mt-1 text-xs text-zinc-500">{{t . "hint.manual_sync"}}</p>
     </div>
     <form method="post" action="{{.BasePath}}/sync" class="grid gap-4 p-4">
+      {{if .CSRFToken}}<input type="hidden" name="_csrf" value="{{.CSRFToken}}">{{end}}
       <label class="grid gap-1.5 text-sm">
         <span class="text-zinc-400">{{t . "field.alias"}}</span>
         <input name="upstream_alias" value="{{.Sync.Form.UpstreamAlias}}" placeholder="hub" class="rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none ring-cyan-500/30 focus:ring-2">

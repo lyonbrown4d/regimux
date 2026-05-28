@@ -14,15 +14,18 @@ func storageSummary(snapshot metadataSnapshot) StorageSummary {
 		BlobCount:     metadataCount(stats.BlobCount),
 		ManifestCount: metadataCount(stats.ManifestCount),
 		RepoBlobCount: metadataCount(stats.RepoBlobCount),
-		RecentBlobs:   recentBlobRows(snapshot.recentBlobs, 10),
-		LargeBlobs:    largeBlobRows(snapshot.largeBlobs, 10),
-		Repositories:  repositoryRows(snapshot.repositories, 25),
-		RepoBlobLinks: recentRepoBlobRows(snapshot.repoBlobs, 25),
+		RecentBlobs:   recentBlobRows(snapshot.recentBlobs, 10).Values(),
+		LargeBlobs:    largeBlobRows(snapshot.largeBlobs, 10).Values(),
+		Repositories:  repositoryRows(snapshot.repositories, 25).Values(),
+		RepoBlobLinks: recentRepoBlobRows(snapshot.repoBlobs, 25).Values(),
 	}
 }
 
-func largeBlobRows(records []meta.BlobRecord, limit int) []BlobRow {
-	return collectionlist.MapList(collectionlist.NewList(records...).Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
+func largeBlobRows(records *collectionlist.List[meta.BlobRecord], limit int) *collectionlist.List[BlobRow] {
+	if records == nil {
+		return collectionlist.NewList[BlobRow]()
+	}
+	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
 		return BlobRow{
 			Digest:       record.Digest,
 			Size:         formatBytes(record.Size),
@@ -30,11 +33,14 @@ func largeBlobRows(records []meta.BlobRecord, limit int) []BlobRow {
 			LastAccessAt: formatTime(record.LastAccessAt),
 			UpdatedAt:    formatTime(record.UpdatedAt),
 		}
-	}).Values()
+	})
 }
 
-func recentRepoBlobRows(records []meta.RepoBlobRecord, limit int) []RepoBlobRow {
-	return collectionlist.MapList(collectionlist.NewList(records...).Take(limit), func(_ int, record meta.RepoBlobRecord) RepoBlobRow {
+func recentRepoBlobRows(records *collectionlist.List[meta.RepoBlobRecord], limit int) *collectionlist.List[RepoBlobRow] {
+	if records == nil {
+		return collectionlist.NewList[RepoBlobRow]()
+	}
+	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.RepoBlobRecord) RepoBlobRow {
 		return RepoBlobRow{
 			Key:            record.Key,
 			Alias:          record.Alias,
@@ -45,11 +51,14 @@ func recentRepoBlobRows(records []meta.RepoBlobRecord, limit int) []RepoBlobRow 
 			LastVerifiedAt: formatTime(record.LastVerifiedAt),
 			UpdatedAt:      formatTime(record.UpdatedAt),
 		}
-	}).Values()
+	})
 }
 
-func repositoryRows(records []meta.Repository, limit int) []RepositoryRow {
-	return collectionlist.MapList(collectionlist.NewList(records...).Take(limit), func(_ int, record meta.Repository) RepositoryRow {
+func repositoryRows(records *collectionlist.List[meta.Repository], limit int) *collectionlist.List[RepositoryRow] {
+	if records == nil {
+		return collectionlist.NewList[RepositoryRow]()
+	}
+	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.Repository) RepositoryRow {
 		return RepositoryRow{
 			Alias:            record.Alias,
 			Repository:       record.Name,
@@ -60,5 +69,5 @@ func repositoryRows(records []meta.Repository, limit int) []RepositoryRow {
 			LastBlobAccessAt: formatTime(record.LastBlobAccessAt),
 			LastActivityAt:   formatTime(record.LastActivityAt),
 		}
-	}).Values()
+	})
 }

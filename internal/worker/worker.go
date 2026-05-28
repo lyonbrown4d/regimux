@@ -19,8 +19,10 @@ func NewPoolsConfig(probeConcurrency, prefetchConcurrency int, logger *slog.Logg
 	if logger == nil {
 		logger = slog.Default()
 	}
+	logger = logger.With("component", "worker")
+	logger.Info("creating worker pools", "probe_concurrency", probeConcurrency, "prefetch_concurrency", prefetchConcurrency)
 	return &Pools{
-		logger:       logger.With("component", "worker"),
+		logger:       logger,
 		probePool:    newPool(probeConcurrency, logger.With("type", "probe")),
 		prefetchPool: newPool(prefetchConcurrency, logger.With("type", "prefetch")),
 	}
@@ -57,6 +59,9 @@ func (p *Pools) Close() {
 
 func newPool(size int, logger *slog.Logger) *ants.Pool {
 	if size <= 0 {
+		if logger != nil {
+			logger.Info("worker pool disabled", "size", size)
+		}
 		return nil
 	}
 	pool, err := ants.NewPool(size, ants.WithPanicHandler(func(recovered any) {
@@ -70,6 +75,9 @@ func newPool(size int, logger *slog.Logger) *ants.Pool {
 			logger.Error("create worker pool failed", "size", size, "error", err)
 		}
 		return nil
+	}
+	if logger != nil {
+		logger.Info("worker pool created", "size", size)
 	}
 	return pool
 }

@@ -15,6 +15,7 @@ func (s *Service) CancelPrefetch(ctx context.Context) (*ControlReport, error) {
 	cancel, active := s.activeCancel()
 	if active {
 		cancel()
+		s.logger.InfoContext(ctx, "active prefetch run cancel requested", "at", at)
 		return &ControlReport{Action: prefetchControlCancel, ActiveRun: true, At: at}, nil
 	}
 	if _, err := s.metadata.RequestPrefetchControl(ctx, meta.PrefetchControlRecord{
@@ -24,6 +25,7 @@ func (s *Service) CancelPrefetch(ctx context.Context) (*ControlReport, error) {
 	}); err != nil {
 		return nil, cacheWrap(err, "request prefetch cancel")
 	}
+	s.logger.InfoContext(ctx, "prefetch cancel requested", "at", at)
 	return &ControlReport{Action: prefetchControlCancel, At: at}, nil
 }
 
@@ -39,6 +41,7 @@ func (s *Service) RetryPrefetch(ctx context.Context) (*ControlReport, error) {
 	}); err != nil {
 		return nil, cacheWrap(err, "request prefetch retry")
 	}
+	s.logger.InfoContext(ctx, "prefetch retry requested", "at", at)
 	return &ControlReport{Action: prefetchControlRetry, At: at}, nil
 }
 
@@ -63,6 +66,7 @@ func (s *Service) setActiveCancel(runID int64, cancel context.CancelFunc) {
 	defer s.activeMu.Unlock()
 	s.activeRunID = runID
 	s.activeRunCancel = cancel
+	s.logger.Debug("active prefetch cancel registered", "run_id", runID)
 }
 
 func (s *Service) clearActiveCancel(runID int64) {
@@ -74,6 +78,7 @@ func (s *Service) clearActiveCancel(runID int64) {
 	if s.activeRunID == runID {
 		s.activeRunID = 0
 		s.activeRunCancel = nil
+		s.logger.Debug("active prefetch cancel cleared", "run_id", runID)
 	}
 }
 

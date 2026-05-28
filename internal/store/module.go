@@ -20,6 +20,11 @@ type MetadataStoreDependencies struct {
 	Metrics *observability.Metrics
 }
 
+type ObjectStoreDependencies struct {
+	Config config.StoreObjectConfig
+	Logger *slog.Logger
+}
+
 var Module = dix.NewModule("store",
 	dix.Providers(
 		dix.Provider1[config.StoreMetaConfig, config.Config](func(cfg config.Config) config.StoreMetaConfig {
@@ -29,18 +34,19 @@ var Module = dix.NewModule("store",
 			return cfg.Store.Object
 		}),
 		dix.Provider3[MetadataStoreDependencies, config.StoreMetaConfig, *slog.Logger, *observability.Metrics](newMetadataStoreDependencies),
+		dix.Provider2[ObjectStoreDependencies, config.StoreObjectConfig, *slog.Logger](newObjectStoreDependencies),
 		dix.Provider0[*meta.MetadataMapper](meta.NewMetadataMapper),
 		dix.ProviderErr1[*dbx.DB, MetadataStoreDependencies](NewMetadataDB, dix.Eager()),
 		dix.Provider2[meta.Store, *dbx.DB, *meta.MetadataMapper](NewMetadataStore, dix.Eager()),
-		dix.ProviderErr1[object.Store, config.StoreObjectConfig](NewObjectStore, dix.Eager()),
+		dix.ProviderErr1[object.Store, ObjectStoreDependencies](NewObjectStore, dix.Eager()),
 	),
 	dix.Hooks(
-		dix.OnStop[*dbx.DB](
+		dix.OnStop2[*dbx.DB, *slog.Logger](
 			closeMetadataDB,
 			dix.LifecycleName("regimux.metadata_db_close"),
 			dix.LifecyclePriority(-160),
 		),
-		dix.OnStop[object.Store](
+		dix.OnStop2[object.Store, *slog.Logger](
 			closeObjectStore,
 			dix.LifecycleName("regimux.object_store_close"),
 			dix.LifecyclePriority(-150),
@@ -56,8 +62,17 @@ func newMetadataStoreDependencies(cfg config.StoreMetaConfig, logger *slog.Logge
 	}
 }
 
+func newObjectStoreDependencies(cfg config.StoreObjectConfig, logger *slog.Logger) ObjectStoreDependencies {
+	return ObjectStoreDependencies{
+		Config: cfg,
+		Logger: logger,
+	}
+}
+
 func NewMetadataDB(deps MetadataStoreDependencies) (*dbx.DB, error) {
 	cfg := deps.Config
+	logger := storeLogger(deps.Logger, "store.meta")
+	logger.Info("opening metadata store", "driver", cfg.Driver, "path", cfg.Path, "dsn_configured", cfg.DSN != "")
 	switch cfg.Driver {
 	case "sqlite", "mysql", "postgres":
 	default:
@@ -73,6 +88,7 @@ func NewMetadataDB(deps MetadataStoreDependencies) (*dbx.DB, error) {
 	if err != nil {
 		return nil, oops.Wrapf(err, "open metadata store")
 	}
+	logger.Info("metadata store opened", "driver", cfg.Driver)
 	return db, nil
 }
 
@@ -88,7 +104,10 @@ func metadataDBHooks(metrics *observability.Metrics, driver string) []dbx.Hook {
 	return []dbx.Hook{hook}
 }
 
-func NewObjectStore(cfg config.StoreObjectConfig) (object.Store, error) {
+func NewObjectStore(deps ObjectStoreDependencies) (object.Store, error) {
+	cfg := deps.Config
+	logger := storeLogger(deps.Logger, "store.object")
+	logger.Info("opening object store", "driver", cfg.Driver, "path", cfg.Path, "s3_bucket", cfg.S3.Bucket, "sftp_addr_configured", cfg.SFTP.Addr != "")
 	store, err := object.NewWithOptions(context.Background(), object.Options{
 		Driver: cfg.Driver,
 		Path:   cfg.Path,
@@ -117,26 +136,40 @@ func NewObjectStore(cfg config.StoreObjectConfig) (object.Store, error) {
 	if err != nil {
 		return nil, oops.Wrapf(err, "create object store")
 	}
+	logger.Info("object store opened", "driver", cfg.Driver)
 	return store, nil
 }
 
-func closeObjectStore(_ context.Context, store object.Store) error {
+func closeObjectStore(_ context.Context, store object.Store, logger *slog.Logger) error {
 	closer, ok := store.(interface{ Close() error })
 	if !ok {
 		return nil
 	}
+	logger = storeLogger(logger, "store.object")
+	logger.Info("closing object store")
 	if err := closer.Close(); err != nil {
 		return oops.Wrapf(err, "close object store")
 	}
+	logger.Info("object store closed")
 	return nil
 }
 
-func closeMetadataDB(_ context.Context, db *dbx.DB) error {
+func closeMetadataDB(_ context.Context, db *dbx.DB, logger *slog.Logger) error {
 	if db == nil {
 		return nil
 	}
+	logger = storeLogger(logger, "store.meta")
+	logger.Info("closing metadata db")
 	if err := db.Close(); err != nil {
 		return oops.Wrapf(err, "close metadata db")
 	}
+	logger.Info("metadata db closed")
 	return nil
+}
+
+func storeLogger(logger *slog.Logger, component string) *slog.Logger {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return logger.With("component", component)
 }

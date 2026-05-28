@@ -32,6 +32,14 @@ upstreams {
 
 - `server.listen = ":5000"`
 - `server.public_url = "http://localhost:5000"`
+- `server.middleware.request_id.enabled = true`
+- `server.middleware.healthcheck.enabled = true`，提供 `/livez` 和 `/readyz`
+- `server.middleware.etag.enabled = true`，但跳过 registry `/v2` 流量
+- `server.middleware.compress.enabled = true`，但跳过 registry `/v2` 流量
+- `server.middleware.security_headers.enabled = true`，但跳过 registry `/v2` 流量
+- `server.middleware.rate_limit.enabled = false`
+- `server.middleware.csrf.enabled = false`
+- `server.middleware.pprof.enabled = false`
 - `cache.backend = "memory"`
 - `store.meta.driver = "sqlite"`
 - `store.meta.path = "data/regimux.db"`
@@ -82,4 +90,3 @@ regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=deb
 - `memory`
 - `s3`
 - `sftp`
-

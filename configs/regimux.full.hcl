@@ -4,6 +4,53 @@ server {
   read_timeout = "30s"
   write_timeout = "0s"
   idle_timeout = "120s"
+
+  middleware {
+    request_id {
+      enabled = true
+      header = "X-Request-ID"
+    }
+
+    healthcheck {
+      enabled = true
+      liveness_path = "/livez"
+      readiness_path = "/readyz"
+    }
+
+    etag {
+      enabled = true
+    }
+
+    security_headers {
+      enabled = true
+      content_security_policy = ""
+      hsts_max_age = 0
+    }
+
+    compress {
+      enabled = true
+      level = "default"
+    }
+
+    rate_limit {
+      enabled = false
+      max = 60
+      expiration = "1m"
+    }
+
+    csrf {
+      enabled = false
+      idle_timeout = "30m"
+      cookie_name = "regimux_csrf"
+      cookie_secure = false
+      trusted_origins = []
+    }
+
+    pprof {
+      enabled = false
+      prefix = ""
+    }
+  }
 }
 
 auth {

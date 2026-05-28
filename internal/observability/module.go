@@ -48,6 +48,7 @@ func closeLogger(_ context.Context, logger *slog.Logger) error {
 	if logger == nil {
 		return nil
 	}
+	logger.Info("closing logger")
 	if err := logx.Close(logger); err != nil {
 		return oops.Wrapf(err, "close logger")
 	}

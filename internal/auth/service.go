@@ -40,6 +40,7 @@ func NewService(cfg config.Config, logger *slog.Logger) (*Service, error) {
 		service.tokenTTL = 15 * time.Minute
 	}
 	if !service.Enabled() {
+		service.logger.Info("registry auth disabled")
 		return service, nil
 	}
 
@@ -59,6 +60,7 @@ func NewService(cfg config.Config, logger *slog.Logger) (*Service, error) {
 		authx.WithAuthorizer(authx.AuthorizerFunc(service.authorize)),
 		authx.WithLogger(logger),
 	)
+	service.logger.Info("registry auth enabled", "users", len(cfg.Auth.Users), "service", service.serviceName(), "issuer", service.issuer(), "token_ttl", service.tokenTTL)
 	return service, nil
 }
 
@@ -78,10 +80,15 @@ func (s *Service) IssueToken(ctx context.Context, req TokenRequest) (TokenRespon
 		return TokenResponse{}, err
 	}
 	scopes := normalizeScopes(req.Scopes)
-	if err := s.validateRequestedScopes(scopes, principal.ID); err != nil {
+	if scopeErr := s.validateRequestedScopes(scopes, principal.ID); scopeErr != nil {
+		return TokenResponse{}, scopeErr
+	}
+	token, err := s.signToken(principal, scopes)
+	if err != nil {
 		return TokenResponse{}, err
 	}
-	return s.signToken(principal, scopes)
+	s.logger.DebugContext(ctx, "registry token issued", "subject", principal.ID, "scopes", len(scopes), "expires_in", token.ExpiresIn)
+	return token, nil
 }
 
 // AuthenticateBasic validates configured registry credentials and returns the
@@ -95,12 +102,14 @@ func (s *Service) AuthenticateBasic(ctx context.Context, username, password stri
 		Password: password,
 	})
 	if err != nil {
+		s.logger.DebugContext(ctx, "basic authentication failed", "username", username, "error", err)
 		return authx.Principal{}, wrapAuthError(err, authx.ErrorCodeUnauthenticated, "check basic credential")
 	}
 	principal, ok := authx.PrincipalFromAny(result.Principal)
 	if !ok {
 		return authx.Principal{}, newAuthError(authx.ErrorCodeUnauthenticated, "basic credential did not produce a principal")
 	}
+	s.logger.DebugContext(ctx, "basic authentication succeeded", "username", principal.ID)
 	return principal, nil
 }
 

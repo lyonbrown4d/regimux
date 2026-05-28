@@ -4,6 +4,32 @@ server {
   read_timeout = "30s"
   write_timeout = "0s"
   idle_timeout = "120s"
+
+  middleware {
+    request_id {
+      enabled = true
+      header = "X-Request-ID"
+    }
+
+    healthcheck {
+      enabled = true
+      liveness_path = "/livez"
+      readiness_path = "/readyz"
+    }
+
+    etag {
+      enabled = true
+    }
+
+    security_headers {
+      enabled = true
+    }
+
+    compress {
+      enabled = true
+      level = "default"
+    }
+  }
 }
 
 auth {

@@ -92,28 +92,30 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 		return nil, err
 	}
 	opts = normalizeRunOptions(opts)
+	startedAt := time.Now()
+	s.logger.InfoContext(ctx,
+		"prefetch run starting",
+		"max_records", opts.MaxRecords,
+		"min_pull_count", opts.MinPullCount,
+		"max_candidates_per_repo", opts.MaxCandidatesPerRepo,
+		"max_version_distance", opts.MaxVersionDistance,
+		"max_bytes", opts.MaxBytes,
+		"max_tasks", opts.MaxTasks,
+		"max_repositories", opts.MaxRepositories,
+	)
 	run, err := s.startRunRecord(ctx, opts)
 	if err != nil {
 		return nil, err
 	}
 	report := &RunReport{}
-	retryRequested, err := s.consumeRunControl(ctx, prefetchControlRetry, opts.Now)
-	if err != nil {
-		finishErr := s.finishRunRecord(ctx, run, report, err)
-		return nil, errors.Join(err, finishErr)
-	}
+	retryRequested, cancelRequested, err := s.consumeRunControls(ctx, opts.Now)
 	report.RetryRequested = retryRequested
-	cancelRequested, err := s.consumeRunControl(ctx, prefetchControlCancel, opts.Now)
 	if err != nil {
 		finishErr := s.finishRunRecord(ctx, run, report, err)
 		return nil, errors.Join(err, finishErr)
 	}
 	if cancelRequested {
-		report.Canceled = true
-		if finishErr := s.finishRunRecord(ctx, run, report, nil); finishErr != nil {
-			return nil, finishErr
-		}
-		return report, nil
+		return s.finishCanceledRun(ctx, run, report)
 	}
 
 	runCtx, cancel := context.WithCancel(ctx)
@@ -130,11 +132,47 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 	}
 	finishErr := s.finishRunRecord(ctx, run, report, err)
 	if err != nil {
+		s.logger.WarnContext(ctx, "prefetch run failed", "run_id", run.ID, "duration", time.Since(startedAt), "error", err)
 		return report, errors.Join(err, finishErr)
 	}
 	if finishErr != nil {
 		return report, finishErr
 	}
+	s.logger.InfoContext(ctx,
+		"prefetch run completed",
+		"run_id", run.ID,
+		"duration", time.Since(startedAt),
+		"scanned_records", report.ScannedRecords,
+		"repositories", report.Repositories,
+		"candidates", report.Candidates,
+		"prefetched", report.Prefetched,
+		"failed", report.Failed,
+		"skipped_candidates", report.SkippedCandidates,
+		"bytes_warmed", report.BytesWarmed,
+		"retry_requested", report.RetryRequested,
+		"canceled", report.Canceled,
+	)
+	return report, nil
+}
+
+func (s *Service) consumeRunControls(ctx context.Context, at time.Time) (bool, bool, error) {
+	retryRequested, err := s.consumeRunControl(ctx, prefetchControlRetry, at)
+	if err != nil {
+		return false, false, err
+	}
+	cancelRequested, err := s.consumeRunControl(ctx, prefetchControlCancel, at)
+	if err != nil {
+		return retryRequested, false, err
+	}
+	return retryRequested, cancelRequested, nil
+}
+
+func (s *Service) finishCanceledRun(ctx context.Context, run *meta.PrefetchRunRecord, report *RunReport) (*RunReport, error) {
+	report.Canceled = true
+	if finishErr := s.finishRunRecord(ctx, run, report, nil); finishErr != nil {
+		return nil, finishErr
+	}
+	s.logger.InfoContext(ctx, "prefetch run canceled before execution", "run_id", run.ID)
 	return report, nil
 }
 

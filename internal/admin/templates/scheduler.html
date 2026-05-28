@@ -39,9 +39,11 @@
         <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_job"}}</h2>
         <div class="flex items-center gap-2">
           <form method="post" action="{{.BasePath}}/prefetch/cancel">
+            {{if .CSRFToken}}<input type="hidden" name="_csrf" value="{{.CSRFToken}}">{{end}}
             <button class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800" type="submit">{{t . "action.cancel_prefetch"}}</button>
           </form>
           <form method="post" action="{{.BasePath}}/prefetch/retry">
+            {{if .CSRFToken}}<input type="hidden" name="_csrf" value="{{.CSRFToken}}">{{end}}
             <button class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800" type="submit">{{t . "action.retry_prefetch"}}</button>
           </form>
         </div>

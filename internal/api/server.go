@@ -13,9 +13,8 @@ import (
 	fiberadapter "github.com/arcgolabs/httpx/adapter/fiber"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/adaptor"
-	"github.com/gofiber/fiber/v3/middleware/etag"
-	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/lyonbrown4d/regimux/internal/auth"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/samber/oops"
 )
@@ -42,6 +41,7 @@ type Options struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
+	Middleware   config.ServerMiddlewareConfig
 	PrintRoutes  bool
 }
 
@@ -65,8 +65,7 @@ func NewServer(opts Options) *Server {
 		sm.PreventDefault = true
 		return nil
 	})
-	fiberApp.Use(recover.New())
-	fiberApp.Use(etag.New())
+	installFiberMiddleware(fiberApp, opts.Middleware, logger)
 	if opts.Metrics != nil {
 		fiberApp.Get("/metrics", adaptor.HTTPHandler(opts.Metrics.Handler()))
 	}
@@ -141,6 +140,7 @@ func (s *Server) Stop(ctx context.Context) error {
 	case <-ctx.Done():
 		return oops.Wrapf(ctx.Err(), "wait for http server shutdown")
 	}
+	s.logger.Info("http server stopped", "listen", s.listen)
 	return nil
 }
 
