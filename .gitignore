@@ -12,10 +12,10 @@ logs/
 data/
 
 # Go build and test artifacts
-bin/
-dist/
-build/
-tmp/
+/bin/
+/dist/
+/build/
+/tmp/
 *.exe
 *.test
 *.out
