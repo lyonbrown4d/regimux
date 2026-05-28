@@ -2,7 +2,9 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 
 	"github.com/panjf2000/ants/v2"
 	"github.com/samber/oops"
@@ -100,6 +102,34 @@ func RunAll(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
 	})
 	if err := group.Wait(); err != nil {
 		return oops.Wrapf(err, "run worker tasks")
+	}
+	return nil
+}
+
+func RunAllSettled(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
+	if tasks == nil || tasks.Len() == 0 {
+		return nil
+	}
+
+	var group errgroup.Group
+	var mu sync.Mutex
+	var runErr error
+	tasks.Range(func(_ int, task func(context.Context) error) bool {
+		group.Go(func() error {
+			if err := runOne(ctx, pool, task); err != nil {
+				mu.Lock()
+				runErr = errors.Join(runErr, err)
+				mu.Unlock()
+			}
+			return nil
+		})
+		return true
+	})
+	if err := group.Wait(); err != nil {
+		return oops.Wrapf(err, "run worker tasks")
+	}
+	if runErr != nil {
+		return oops.Wrapf(runErr, "run worker tasks")
 	}
 	return nil
 }

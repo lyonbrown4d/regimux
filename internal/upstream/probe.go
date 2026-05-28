@@ -42,7 +42,7 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 	for index := range pool.runtimes {
 		tasks.Add(c.probeTask(pool, index, &successes, &failures))
 	}
-	probeErr := worker.RunAll(ctx, c.probePool(), tasks)
+	probeErr := worker.RunAllSettled(ctx, c.probePool(), tasks)
 	successCount := int(successes.Load())
 	failureCount := int(failures.Load())
 	if successCount > 0 {

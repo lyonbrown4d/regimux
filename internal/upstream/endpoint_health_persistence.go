@@ -2,11 +2,14 @@ package upstream
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
+
+const endpointHealthPersistTimeout = 5 * time.Second
 
 func (c *Client) LoadEndpointHealth(ctx context.Context) error {
 	if c == nil || c.metadata == nil || c.upstreams == nil {
@@ -83,17 +86,35 @@ func (c *Client) persistEndpointHealthSnapshot(ctx context.Context, alias string
 	if c == nil || c.metadata == nil || snapshot.Registry == "" {
 		return
 	}
-	if _, err := c.metadata.UpsertEndpointHealth(ctx, endpointHealthRecordFromSnapshot(alias, snapshot)); err != nil {
-		if c.logger != nil {
-			c.logger.WarnContext(ctx,
-				"persist upstream endpoint health failed",
-				"alias", alias,
-				"registry", snapshot.Registry,
-				"repository", snapshot.Repository,
-				"error", err,
-			)
-		}
+	persistCtx, cancel := endpointHealthPersistenceContext(ctx)
+	defer cancel()
+	if _, err := c.metadata.UpsertEndpointHealth(persistCtx, endpointHealthRecordFromSnapshot(alias, snapshot)); err != nil {
+		c.logEndpointHealthPersistError(alias, snapshot, err)
 	}
+}
+
+func endpointHealthPersistenceContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), endpointHealthPersistTimeout)
+}
+
+func (c *Client) logEndpointHealthPersistError(alias string, snapshot EndpointHealthSnapshot, err error) {
+	if c == nil || c.logger == nil {
+		return
+	}
+	args := []any{
+		"alias", alias,
+		"registry", snapshot.Registry,
+		"repository", snapshot.Repository,
+		"error", err,
+	}
+	if errors.Is(err, context.Canceled) {
+		c.logger.Debug("persist upstream endpoint health skipped after context cancellation", args...)
+		return
+	}
+	c.logger.Warn("persist upstream endpoint health failed", args...)
 }
 
 func (p *upstreamPool) hasRegistry(registry string) bool {
