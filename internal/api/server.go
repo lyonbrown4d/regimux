@@ -35,6 +35,8 @@ type Options struct {
 	PublicURL    string
 	Logger       *slog.Logger
 	Endpoints    []httpx.Endpoint
+	FiberRoutes  []FiberRoute
+	Views        fiber.Views
 	Metrics      *observability.Metrics
 	Auth         *auth.Service
 	ReadTimeout  time.Duration
@@ -58,11 +60,17 @@ func NewServer(opts Options) *Server {
 		WriteTimeout:          opts.WriteTimeout,
 		IdleTimeout:           opts.IdleTimeout,
 		DisableStartupMessage: true,
+		Views:                 opts.Views,
 	})
 	fiberApp.Use(recover.New())
 	fiberApp.Use(etag.New())
 	if opts.Metrics != nil {
 		fiberApp.Get("/metrics", adaptor.HTTPHandler(opts.Metrics.Handler()))
+	}
+	for _, route := range opts.FiberRoutes {
+		if route != nil {
+			route.RegisterFiber(fiberApp)
+		}
 	}
 	if opts.Auth != nil {
 		opts.Auth.RegisterFiber(fiberApp)

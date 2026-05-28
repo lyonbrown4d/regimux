@@ -13,6 +13,7 @@ This repository currently contains a runnable skeleton based on the design docum
 - Manifest cache backed by memory/Redis/Valkey plus bboltx metadata and local object storage.
 - Blob cache-then-serve path with local CAS storage, digest verification, range reads, and repo-to-blob access links.
 - Tags/list and referrers response caching, including tags Link header rewrite and OCI referrers fallback tag support.
+- Embedded Fiber admin UI at `/admin` for upstream health, pull activity, cache metadata, scheduler config, and effective config.
 - DI and lifecycle wiring with `github.com/arcgolabs/dix`, including endpoint collection injection into the HTTP server.
 - Config loading with `github.com/arcgolabs/configx`.
 - Logging with `github.com/arcgolabs/logx` on top of `log/slog`.
@@ -33,6 +34,16 @@ curl -i http://localhost:5000/v2/
 curl -i -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
   http://localhost:5000/v2/hub/library/alpine/manifests/latest
 ```
+
+Admin UI:
+
+```text
+http://localhost:5000/admin
+```
+
+The admin templates and i18n resources are embedded into the `regimuxd` binary and rendered through Fiber's template engine. The UI uses Tailwind CSS and htmx from CDN, supports `?lang=zh` / `?lang=en`, and follows the browser's light/dark color-scheme preference.
+
+Admin pages currently include dashboard, upstream health, pull/activity records, cache and storage summaries, scheduler config, manual sync, auth audit, and effective config. Manual sync can warm a configured upstream image such as `gitlab/gitlab-ce:latest` or `library/node:20` through the existing manifest/blob cache path. When `auth.enabled = true`, `/admin` is protected with HTTP Basic using the same configured users as Docker Registry auth.
 
 配置文件示例：
 - 最小化：`configs/regimux.minimal.hcl`（只覆盖启动监听和 `hub` 上游）

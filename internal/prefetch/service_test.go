@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -92,4 +93,34 @@ func TestServiceRunCountsMissingBlobService(t *testing.T) {
 		t.Fatalf("run prefetch: %v", err)
 	}
 	assertReport(t, report, 0, 1)
+}
+
+func TestServiceSyncPrefetchesImageManifestBlobs(t *testing.T) {
+	ctx := context.Background()
+	manifestDigest := testDigest("7")
+	configDigest := testDigest("8")
+	layerDigest := testDigest("9")
+	manifests := newFakeManifestService(map[string]*cache.CachedManifest{
+		targetTag: cachedManifest(manifestDigest, distribution.MediaTypeOCIManifest, imageManifestBody(t, configDigest, layerDigest)),
+	})
+	blobs := &fakeBlobService{}
+	service := prefetch.NewService(prefetch.ServiceDependencies{
+		Manifests: manifests,
+		Blobs:     blobs,
+	})
+
+	report, err := service.Sync(ctx, prefetch.SyncOptions{
+		Alias:     testAlias,
+		Repo:      testRepo,
+		Reference: targetTag,
+	})
+	if err != nil {
+		t.Fatalf("sync prefetch: %v", err)
+	}
+	if report.ManifestDigest != manifestDigest || report.BlobCount != 2 || report.LayerCount != 1 {
+		t.Fatalf("unexpected sync report: %#v", report)
+	}
+	assertManifestReferences(t, manifests.requestSnapshot(), []string{targetTag})
+	assertBlobRequests(t, blobs.requestSnapshot(), []string{configDigest, layerDigest})
+	assertClosedBlobReaders(t, blobs.closedSnapshot(), []string{configDigest, layerDigest})
 }

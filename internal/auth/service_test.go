@@ -78,6 +78,18 @@ func TestServiceDeniesPullWithUnscopedToken(t *testing.T) {
 	}
 }
 
+func TestServiceAuthenticatesBasicCredential(t *testing.T) {
+	service := newTestService(t)
+
+	principal, err := service.AuthenticateBasic(context.Background(), "alice", "secret")
+	if err != nil {
+		t.Fatalf("authenticate basic: %v", err)
+	}
+	if principal.ID != "alice" {
+		t.Fatalf("principal ID = %q, want alice", principal.ID)
+	}
+}
+
 func TestServiceChallengeUsesDefaultNamespaceScope(t *testing.T) {
 	service := newTestService(t)
 

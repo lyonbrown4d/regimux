@@ -84,6 +84,26 @@ func (s *Service) IssueToken(ctx context.Context, req TokenRequest) (TokenRespon
 	return s.signToken(principal, scopes)
 }
 
+// AuthenticateBasic validates configured registry credentials and returns the
+// authenticated principal.
+func (s *Service) AuthenticateBasic(ctx context.Context, username, password string) (authx.Principal, error) {
+	if !s.Enabled() || s.engine == nil {
+		return authx.Principal{}, oops.In("auth").Errorf("registry auth is not enabled")
+	}
+	result, err := s.engine.Check(ctx, BasicCredential{
+		Username: username,
+		Password: password,
+	})
+	if err != nil {
+		return authx.Principal{}, wrapAuthError(err, authx.ErrorCodeUnauthenticated, "check basic credential")
+	}
+	principal, ok := authx.PrincipalFromAny(result.Principal)
+	if !ok {
+		return authx.Principal{}, newAuthError(authx.ErrorCodeUnauthenticated, "basic credential did not produce a principal")
+	}
+	return principal, nil
+}
+
 func (s *Service) signToken(principal authx.Principal, scopes []string) (TokenResponse, error) {
 	now := time.Now().UTC()
 	expiresAt := now.Add(s.tokenTTL)
@@ -130,18 +150,7 @@ func (s *Service) validateTokenService(service string) error {
 }
 
 func (s *Service) authenticateTokenUser(ctx context.Context, req TokenRequest) (authx.Principal, error) {
-	result, err := s.engine.Check(ctx, BasicCredential{
-		Username: req.Username,
-		Password: req.Password,
-	})
-	if err != nil {
-		return authx.Principal{}, wrapAuthError(err, authx.ErrorCodeUnauthenticated, "check basic credential")
-	}
-	principal, ok := authx.PrincipalFromAny(result.Principal)
-	if !ok {
-		return authx.Principal{}, newAuthError(authx.ErrorCodeUnauthenticated, "basic credential did not produce a principal")
-	}
-	return principal, nil
+	return s.AuthenticateBasic(ctx, req.Username, req.Password)
 }
 
 func (s *Service) validateRequestedScopes(scopes []string, username string) error {

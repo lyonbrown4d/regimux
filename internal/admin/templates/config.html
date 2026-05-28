@@ -1,0 +1,57 @@
+<section class="space-y-5">
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.config_sources"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "hint.config_sources_unavailable"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.source"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.status"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.detail"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .ConfigSources}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-mono text-xs text-cyan-200">{{.Name}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Status}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Detail}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="3" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.config_sources"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.effective_configuration"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "read_only"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="w-1/3 px-4 py-2 font-medium">{{t . "field.path"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.value"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .ConfigRows}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-mono text-xs text-cyan-200">{{.Path}}</td>
+            <td class="whitespace-pre-wrap px-4 py-2 font-mono text-xs text-zinc-300">{{.Value}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="2" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.config_rows"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

@@ -1,0 +1,82 @@
+<section class="space-y-5">
+  <div class="grid gap-3 md:grid-cols-3">
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.scheduler"}}</div>
+      <div class="mt-1 text-lg font-semibold text-zinc-50">{{.Scheduler.Enabled}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "label.lock"}} {{.Scheduler.DistributedLock}} / {{t . "label.ttl"}} {{.Scheduler.LockTTL}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.cleanup"}}</div>
+      <div class="mt-1 text-lg font-semibold text-zinc-50">{{.Scheduler.CleanupEnabled}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "label.every"}} {{.Scheduler.CleanupInterval}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.prefetch"}}</div>
+      <div class="mt-1 text-lg font-semibold text-zinc-50">{{.Scheduler.PrefetchEnabled}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "label.every"}} {{.Scheduler.PrefetchInterval}}</div>
+    </div>
+  </div>
+
+  <div class="grid gap-5 xl:grid-cols-2">
+    <section class="rounded border border-zinc-800 bg-zinc-900/50">
+      <div class="border-b border-zinc-800 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.cleanup_job"}}</h2>
+      </div>
+      <dl class="divide-y divide-zinc-800 text-sm">
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.enabled"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupEnabled}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.interval"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupInterval}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.unused_for"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupUnusedFor}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_scan"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxScan}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_deletes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxDeletes}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.dry_run"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupDryRun}}</dd></div>
+      </dl>
+    </section>
+
+    <section class="rounded border border-zinc-800 bg-zinc-900/50">
+      <div class="border-b border-zinc-800 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_job"}}</h2>
+      </div>
+      <dl class="divide-y divide-zinc-800 text-sm">
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.enabled"}}</dt><dd class="text-zinc-100">{{.Scheduler.PrefetchEnabled}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.interval"}}</dt><dd class="text-zinc-100">{{.Scheduler.PrefetchInterval}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.min_pull_count"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMinPullCount}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_records"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxRecords}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_candidates_per_repo"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxCandidatesPerRepo}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_version_distance"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxVersionDistance}}</dd></div>
+      </dl>
+    </section>
+  </div>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.probe_jobs"}}</h2>
+      <span class="text-xs text-zinc-500">{{len .Scheduler.ProbeJobs}} {{t . "jobs"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.alias"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.enabled"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.interval"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.timeout"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.cooldown"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Scheduler.ProbeJobs}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Enabled}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Interval}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Timeout}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Cooldown}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.probe_jobs"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

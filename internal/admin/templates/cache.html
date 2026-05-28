@@ -1,0 +1,62 @@
+<section class="space-y-5">
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.manifests"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Cache.ManifestCount}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{.Cache.ExpiredManifestCount}} {{t . "label.expired"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.tags"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Cache.TagCount}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{.Cache.ExpiredTagCount}} {{t . "label.expired"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.blobs"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Cache.BlobCount}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{.Cache.RepoBlobCount}} {{t . "label.repo_links"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.blob_bytes"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Cache.BlobBytes}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.stored_bytes"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.recent_blobs"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len .Cache.RecentBlobs}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.latest_records"}}</div>
+    </div>
+  </div>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.recent_blobs"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "hint.recent_blobs"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.digest"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.size"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.media_type"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_access"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.updated"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Cache.RecentBlobs}}
+          <tr class="hover:bg-zinc-900">
+            <td class="max-w-xl truncate px-4 py-2 font-mono text-xs text-zinc-300">{{.Digest}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Size}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.MediaType}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.LastAccessAt}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.UpdatedAt}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.blobs"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

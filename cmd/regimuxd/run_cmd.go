@@ -6,6 +6,7 @@ import (
 
 	"github.com/arcgolabs/configx"
 	"github.com/arcgolabs/dix"
+	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
@@ -47,6 +48,7 @@ func buildApp(configPath string, args ...string) *dix.App {
 	storeModule := storemodule.Module
 	cacheModule := cache.Module
 	schedulerModule := scheduler.Module
+	adminModule := admin.Module
 	endpointModule := api.EndpointsModule
 	apiModule := api.Module
 
@@ -55,6 +57,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux registry proxy mirror gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, observabilityModule, authModule, eventsModule, workerModule, upstreamModule, storeModule, cacheModule, schedulerModule, endpointModule, apiModule),
+		dix.Modules(configModule, buildModule, observabilityModule, authModule, eventsModule, workerModule, upstreamModule, storeModule, cacheModule, schedulerModule, adminModule, endpointModule, apiModule),
 	)
 }

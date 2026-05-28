@@ -1,0 +1,42 @@
+<section class="space-y-5">
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.upstream_configuration"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "read_only"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.alias"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.registry"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.namespace"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.auth"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.mirror_policy"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.blob_policy"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.probe"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.mirrors"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Upstreams}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Registry}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.DefaultNamespace}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.AuthType}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.MirrorPolicy}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.BlobPolicy}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.ProbeEnabled}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.MirrorCount}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="8" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstreams"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  {{template "partials/upstream_health" .}}
+</section>

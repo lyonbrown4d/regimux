@@ -1,0 +1,130 @@
+<section class="space-y-5">
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.version"}}</div>
+      <div class="mt-1 truncate text-lg font-semibold text-zinc-50">{{.Summary.Version}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "label.uptime"}} {{.Summary.Uptime}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.listen"}}</div>
+      <div class="mt-1 truncate text-lg font-semibold text-zinc-50">{{.Summary.Listen}}</div>
+      <div class="mt-1 truncate text-xs text-zinc-500">{{.Summary.PublicURL}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.cache_backend"}}</div>
+      <div class="mt-1 truncate text-lg font-semibold text-zinc-50">{{.Summary.CacheBackend}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "label.auth"}} {{.Summary.AuthEnabled}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.scheduler"}}</div>
+      <div class="mt-1 truncate text-lg font-semibold text-zinc-50">{{.Summary.SchedulerEnabled}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "label.lock"}} {{.Summary.DistributedLock}}</div>
+    </div>
+  </div>
+
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+    <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
+      <div class="text-xs text-zinc-500">{{t . "nav.upstreams"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.UpstreamCount}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
+      <div class="text-xs text-zinc-500">{{t . "field.mirrors"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.MirrorCount}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.manifests"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.ManifestCount}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.tags"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.TagCount}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
+      <div class="text-xs text-zinc-500">{{t . "nav.pulls"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.PullCount}}</div>
+    </div>
+  </div>
+
+  <div class="grid gap-5 xl:grid-cols-3">
+    <section class="xl:col-span-2 rounded border border-zinc-800 bg-zinc-900/50">
+      <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.upstreams"}}</h2>
+        <span class="text-xs text-zinc-500">{{.Summary.UpstreamCount}} {{t . "total"}}</span>
+      </div>
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
+          <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+            <tr>
+              <th class="px-4 py-2 font-medium">{{t . "field.alias"}}</th>
+              <th class="px-4 py-2 font-medium">{{t . "field.registry"}}</th>
+              <th class="px-4 py-2 font-medium">{{t . "field.namespace"}}</th>
+              <th class="px-4 py-2 font-medium">{{t . "field.mirrors"}}</th>
+              <th class="px-4 py-2 font-medium">{{t . "field.mirror_policy"}}</th>
+            </tr>
+          </thead>
+          <tbody class="divide-y divide-zinc-800">
+            {{range .Upstreams}}
+            <tr class="hover:bg-zinc-900">
+              <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}</td>
+              <td class="px-4 py-2 text-zinc-300">{{.Registry}}</td>
+              <td class="px-4 py-2 text-zinc-400">{{.DefaultNamespace}}</td>
+              <td class="px-4 py-2 tabular-nums text-zinc-300">{{.MirrorCount}}</td>
+              <td class="px-4 py-2 text-zinc-400">{{.MirrorPolicy}} / {{.BlobPolicy}}</td>
+            </tr>
+            {{else}}
+            <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstreams"}}</td></tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="rounded border border-zinc-800 bg-zinc-900/50">
+      <div class="border-b border-zinc-800 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.cache_totals"}}</h2>
+      </div>
+      <dl class="divide-y divide-zinc-800 text-sm">
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.blobs"}}</dt><dd class="tabular-nums text-zinc-100">{{.Summary.BlobCount}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.repo_blobs"}}</dt><dd class="tabular-nums text-zinc-100">{{.Summary.RepoBlobCount}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.blob_bytes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Summary.BlobBytes}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.last_pull"}}</dt><dd class="text-right text-zinc-100">{{.Summary.LastPullAt}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.last_upstream_pull"}}</dt><dd class="text-right text-zinc-100">{{.Summary.LastUpstreamPullAt}}</dd></div>
+      </dl>
+    </section>
+  </div>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.recent_pulls"}}</h2>
+      <a href="{{.BasePath}}/pulls" class="text-xs text-cyan-300 hover:text-cyan-200">{{t . "view_all"}}</a>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.repository"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.reference"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.alias"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.count"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_pull"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_upstream_pull"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .RecentPulls}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Repository}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Reference}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Alias}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Count}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.LastPullAt}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.LastUpstreamPullAt}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.pulls"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

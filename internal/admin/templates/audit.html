@@ -1,0 +1,81 @@
+<section class="space-y-5">
+  <div class="grid gap-3 sm:grid-cols-3">
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.auth"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Audit.AuthEnabled}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.registry_auth"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.users"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Audit.UserCount}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.sensitive_hidden"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.recent_logins"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len .Audit.RecentLogins}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.login_data_unavailable"}}</div>
+    </div>
+  </div>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.auth_users"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "hint.sensitive_hidden"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.username"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.repository_scopes"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.groups"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.credential"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Audit.Users}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Username}}</td>
+            <td class="px-4 py-2 font-mono text-xs text-zinc-300">{{.RepositoryScopes}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Groups}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Credential}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="4" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.auth_users"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.recent_logins"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "hint.login_data_unavailable"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.username"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.remote"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.user_agent"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.at"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Audit.RecentLogins}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Username}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Remote}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.UserAgent}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.At}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="4" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.recent_logins"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

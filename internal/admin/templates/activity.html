@@ -1,0 +1,62 @@
+<section class="space-y-5">
+  <div class="grid gap-3 sm:grid-cols-3">
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.activity_records"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len .Activity.Rows}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.activity_from_pulls"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.request_audit"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Activity.RequestAuditAvailable}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.request_audit_unavailable"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.last_pull"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.LastPullAt}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.future_request_fields"}}</div>
+    </div>
+  </div>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.request_activity"}}</h2>
+      <span class="text-xs text-zinc-500">{{t . "hint.activity_from_pulls"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.occurred_at"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.event"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.actor"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.method"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.path"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.repository"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.reference"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.count"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.source"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.request_id"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Activity.Rows}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 text-zinc-400">{{.OccurredAt}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Event}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Actor}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Method}}</td>
+            <td class="px-4 py-2 font-mono text-xs text-zinc-400">{{.Path}}</td>
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}/{{.Repository}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Reference}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Count}}</td>
+            <td class="px-4 py-2 font-mono text-xs text-cyan-200">{{.Source}}</td>
+            <td class="px-4 py-2 font-mono text-xs text-zinc-400">{{.RequestID}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="10" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.activity"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+</section>

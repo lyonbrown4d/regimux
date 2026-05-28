@@ -1,0 +1,70 @@
+{{define "layout"}}
+<!doctype html>
+<html lang="{{.HTMLLang}}">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{.Title}}</title>
+  <meta name="color-scheme" content="light dark">
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  <style>
+    @media (prefers-color-scheme: light) {
+      body { background: #f8fafc !important; color: #18181b !important; }
+      .bg-zinc-950 { background-color: #f8fafc !important; }
+      .bg-zinc-950\/90 { background-color: rgb(248 250 252 / 0.92) !important; }
+      .bg-zinc-900, .bg-zinc-900\/50, .bg-zinc-900\/60, .bg-zinc-900\/70 { background-color: #fff !important; }
+      .border-zinc-800, .border-zinc-700 { border-color: #e4e4e7 !important; }
+      .text-zinc-50, .text-zinc-100, .text-zinc-200, .text-zinc-300 { color: #18181b !important; }
+      .text-zinc-400, .text-zinc-500 { color: #71717a !important; }
+      .hover\:bg-zinc-900:hover { background-color: #f4f4f5 !important; }
+      .bg-cyan-500\/15 { background-color: rgb(207 250 254 / 0.9) !important; }
+      .text-cyan-200, .text-cyan-300 { color: #0369a1 !important; }
+      .ring-cyan-500\/30 { --tw-ring-color: rgb(6 182 212 / 0.35) !important; }
+    }
+  </style>
+</head>
+<body class="min-h-screen bg-zinc-950 text-zinc-100 antialiased">
+  <div class="flex min-h-screen">
+    <aside class="w-56 shrink-0 border-r border-zinc-800 bg-zinc-950">
+      <div class="border-b border-zinc-800 px-4 py-4">
+        <div class="text-sm font-semibold tracking-wide text-zinc-100">regimux admin</div>
+        <div class="mt-1 text-xs text-zinc-500">{{t . "brand.subtitle"}}</div>
+      </div>
+      <nav class="space-y-1 px-2 py-3 text-sm">
+        <a href="{{.BasePath}}/" class="block rounded px-3 py-2 {{if eq .Active "dashboard"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.dashboard"}}</a>
+        <a href="{{.BasePath}}/upstreams" class="block rounded px-3 py-2 {{if eq .Active "upstreams"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.upstreams"}}</a>
+        <a href="{{.BasePath}}/pulls" class="block rounded px-3 py-2 {{if eq .Active "pulls"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.pulls"}}</a>
+        <a href="{{.BasePath}}/activity" class="block rounded px-3 py-2 {{if eq .Active "activity"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.activity"}}</a>
+        <a href="{{.BasePath}}/cache" class="block rounded px-3 py-2 {{if eq .Active "cache"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.cache"}}</a>
+        <a href="{{.BasePath}}/storage" class="block rounded px-3 py-2 {{if eq .Active "storage"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.storage"}}</a>
+        <a href="{{.BasePath}}/scheduler" class="block rounded px-3 py-2 {{if eq .Active "scheduler"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.scheduler"}}</a>
+        <a href="{{.BasePath}}/sync" class="block rounded px-3 py-2 {{if eq .Active "sync"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.sync"}}</a>
+        <a href="{{.BasePath}}/audit" class="block rounded px-3 py-2 {{if eq .Active "audit"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.audit"}}</a>
+        <a href="{{.BasePath}}/config" class="block rounded px-3 py-2 {{if eq .Active "config"}}bg-cyan-500/15 text-cyan-200 ring-1 ring-cyan-500/30{{else}}text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100{{end}}">{{t . "nav.config"}}</a>
+      </nav>
+    </aside>
+
+    <main class="min-w-0 flex-1">
+      <header class="sticky top-0 z-10 border-b border-zinc-800 bg-zinc-950/90 px-6 py-3 backdrop-blur">
+        <div class="flex items-center justify-between gap-4">
+          <div>
+            <h1 class="text-base font-semibold text-zinc-50">{{.Title}}</h1>
+            <p class="mt-0.5 text-xs text-zinc-500">{{t . "generated"}} {{.GeneratedAt}}</p>
+          </div>
+          <div class="flex items-center gap-2">
+            <span class="rounded border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">{{t . "theme.auto"}}</span>
+            <a href="{{.LanguageSwitchHref}}" class="rounded border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-cyan-300 hover:text-cyan-200">{{t . "language.switch"}}</a>
+            <span class="rounded border border-zinc-800 bg-zinc-900 px-2.5 py-1 text-xs text-zinc-400">{{.ActiveLabel}}</span>
+          </div>
+        </div>
+      </header>
+
+      <div class="px-6 py-5">
+        {{embed}}
+      </div>
+    </main>
+  </div>
+</body>
+</html>
+{{end}}
