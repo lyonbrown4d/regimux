@@ -1,0 +1,38 @@
+<section id="sync-result" class="rounded border border-zinc-800 bg-zinc-900/50" {{if .Sync.Job.Poll}}hx-get="{{.BasePath}}/sync/jobs/{{.Sync.Job.ID}}" hx-trigger="load delay:1s, every 2s" hx-swap="outerHTML"{{end}}>
+  <div class="border-b border-zinc-800 px-4 py-3">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.sync_result"}}</h2>
+      {{if .Sync.HasJob}}<span class="rounded border border-zinc-800 px-2 py-1 text-xs text-zinc-400">{{.Sync.Job.Status}}</span>{{end}}
+    </div>
+  </div>
+  {{if .Sync.Error}}
+    <div class="m-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{{.Sync.Error}}</div>
+  {{else if .Sync.HasJob}}
+    <dl class="divide-y divide-zinc-800 text-sm">
+      <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.job_id"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.ID}}</dd></div>
+      <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.target"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Target}}</dd></div>
+      <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.created_at"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.CreatedAt}}</dd></div>
+      {{if .Sync.Job.StartedAt}}<div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.started_at"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.StartedAt}}</dd></div>{{end}}
+      {{if .Sync.Job.FinishedAt}}<div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.finished_at"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.FinishedAt}}</dd></div>{{end}}
+    </dl>
+    {{if .Sync.Job.Poll}}
+      <div class="m-4 rounded border border-cyan-500/20 bg-cyan-500/10 px-4 py-3 text-sm text-cyan-200">{{t . "hint.sync_polling"}}</div>
+    {{else if .Sync.Job.Error}}
+      <div class="m-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{{.Sync.Job.Error}}</div>
+    {{else if .Sync.Job.HasResult}}
+      <dl class="mt-3 divide-y divide-zinc-800 border-t border-zinc-800 text-sm">
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.alias"}}</dt><dd class="text-right text-zinc-100">{{.Sync.Job.Result.Alias}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.repository"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.Repository}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.reference"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.Reference}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.digest"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.ManifestDigest}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.media_type"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.MediaType}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.layers"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.LayerCount}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.blobs"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.BlobCount}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.child_manifests"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.ChildManifestCount}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.duration"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.Duration}}</dd></div>
+      </dl>
+    {{end}}
+  {{else}}
+    <div class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.sync_result"}}</div>
+  {{end}}
+</section>

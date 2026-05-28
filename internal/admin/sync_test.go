@@ -58,15 +58,45 @@ func TestServiceSyncSubmitCallsSyncer(t *testing.T) {
 		t.Fatalf("sync options = %+v", fake.opts)
 	}
 	for _, value := range []string{
-		"sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"sync-test",
 		"library/node",
 		"20",
-		"application/vnd.oci.image.manifest.v1",
+		"queued",
 	} {
 		if !strings.Contains(body, value) {
 			t.Fatalf("response did not contain %q: %s", value, body)
 		}
 	}
+}
+
+func TestServiceSyncJobPartialRendersCompletedJob(t *testing.T) {
+	syncer := &fakeManualSyncer{jobs: map[string]prefetch.SyncJob{}}
+	syncer.jobs["sync-test"] = prefetch.SyncJob{
+		ID:     "sync-test",
+		Status: prefetch.SyncJobStatusSucceeded,
+		Options: prefetch.SyncOptions{
+			Alias:     "hub",
+			Repo:      "library/node",
+			Reference: "20",
+		},
+		Result: &prefetch.SyncReport{
+			Alias:              "hub",
+			Repo:               "library/node",
+			Reference:          "20",
+			ManifestDigest:     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			MediaType:          distribution.MediaTypeOCIManifest,
+			LayerCount:         3,
+			BlobCount:          4,
+			ChildManifestCount: 0,
+			Duration:           1500 * time.Millisecond,
+		},
+		CreatedAt:  time.Now().UTC(),
+		StartedAt:  time.Now().UTC(),
+		FinishedAt: time.Now().UTC(),
+	}
+	app, _ := newAdminSyncTestApp(t, syncer)
+
+	assertAdminResponse(t, app, "/admin/sync/jobs/sync-test", "sync-test", "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", "application/vnd.oci.image.manifest.v1")
 }
 
 func newAdminSyncTestApp(t *testing.T, syncer *fakeManualSyncer) (*fiber.App, *fakeManualSyncer) {
@@ -111,9 +141,6 @@ func adminPostForm(t *testing.T, app *fiber.App, path string, form url.Values) (
 	if err != nil {
 		t.Fatalf("read body: %v", err)
 	}
-	if err := resp.Body.Close(); err != nil {
-		t.Fatalf("close body: %v", err)
-	}
 	return resp, string(body)
 }
 
@@ -121,23 +148,32 @@ type fakeManualSyncer struct {
 	called bool
 	opts   prefetch.SyncOptions
 	err    error
+	jobs   map[string]prefetch.SyncJob
 }
 
-func (f *fakeManualSyncer) Sync(_ context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
+func (f *fakeManualSyncer) SubmitSync(_ context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
 	f.called = true
 	f.opts = opts
 	if f.err != nil {
-		return nil, f.err
+		return prefetch.SyncJob{}, f.err
 	}
-	return &prefetch.SyncReport{
-		Alias:              opts.Alias,
-		Repo:               opts.Repo,
-		Reference:          opts.Reference,
-		ManifestDigest:     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		MediaType:          distribution.MediaTypeOCIManifest,
-		LayerCount:         3,
-		BlobCount:          4,
-		ChildManifestCount: 0,
-		Duration:           1500 * time.Millisecond,
-	}, nil
+	job := prefetch.SyncJob{
+		ID:        "sync-test",
+		Status:    prefetch.SyncJobStatusQueued,
+		Options:   opts,
+		CreatedAt: time.Now().UTC(),
+	}
+	if f.jobs == nil {
+		f.jobs = map[string]prefetch.SyncJob{}
+	}
+	f.jobs[job.ID] = job
+	return job, nil
+}
+
+func (f *fakeManualSyncer) SyncJob(id string) (prefetch.SyncJob, bool) {
+	if f.jobs == nil {
+		return prefetch.SyncJob{}, false
+	}
+	job, ok := f.jobs[id]
+	return job, ok
 }

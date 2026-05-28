@@ -75,6 +75,7 @@ func (s *Service) RegisterFiber(app *fiber.App) {
 	group.Post("/prefetch/retry", s.prefetchRetrySubmit)
 	group.Get("/sync", s.syncPage)
 	group.Post("/sync", s.syncSubmit)
+	group.Get("/sync/jobs/:id", s.syncJobPartial)
 	group.Get("/audit", s.auditPage)
 	group.Get("/config", s.configPage)
 	group.Get("/partials/upstream-health", s.upstreamHealthPartial)

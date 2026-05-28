@@ -4,7 +4,7 @@
       <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.manual_sync"}}</h2>
       <p class="mt-1 text-xs text-zinc-500">{{t . "hint.manual_sync"}}</p>
     </div>
-    <form method="post" action="{{.BasePath}}/sync" class="grid gap-4 p-4">
+    <form method="post" action="{{.BasePath}}/sync" hx-post="{{.BasePath}}/sync" hx-target="#sync-result" hx-swap="outerHTML" hx-disabled-elt="button[type='submit']" class="grid gap-4 p-4">
       {{if .CSRFToken}}<input type="hidden" name="_csrf" value="{{.CSRFToken}}">{{end}}
       <label class="grid gap-1.5 text-sm">
         <span class="text-zinc-400">{{t . "field.alias"}}</span>
@@ -29,26 +29,5 @@
     </form>
   </section>
 
-  <section class="rounded border border-zinc-800 bg-zinc-900/50">
-    <div class="border-b border-zinc-800 px-4 py-3">
-      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.sync_result"}}</h2>
-    </div>
-    {{if .Sync.Error}}
-      <div class="m-4 rounded border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-200">{{.Sync.Error}}</div>
-    {{else if .Sync.HasResult}}
-      <dl class="divide-y divide-zinc-800 text-sm">
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.alias"}}</dt><dd class="text-right text-zinc-100">{{.Sync.Result.Alias}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.repository"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Result.Repository}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.reference"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Result.Reference}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.digest"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Result.ManifestDigest}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.media_type"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Result.MediaType}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.layers"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Result.LayerCount}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.blobs"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Result.BlobCount}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.child_manifests"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Result.ChildManifestCount}}</dd></div>
-        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.duration"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Result.Duration}}</dd></div>
-      </dl>
-    {{else}}
-      <div class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.sync_result"}}</div>
-    {{end}}
-  </section>
+  {{template "partials/sync_result" .}}
 </div>
