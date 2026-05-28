@@ -20,6 +20,7 @@ type blobFailoverRunner struct {
 	cancel     context.CancelFunc
 	alias      string
 	operation  string
+	repository string
 	digest     string
 	pool       *upstreamPool
 	runtimes   []upstreamRuntime
@@ -55,6 +56,7 @@ func (c *Client) doWithConcurrentFailover(
 		cancel:      cancel,
 		alias:       req.alias,
 		operation:   req.operation,
+		repository:  req.repository,
 		digest:      req.digest,
 		pool:        pool,
 		runtimes:    runtimes,
@@ -96,7 +98,7 @@ func (r *blobFailoverRunner) startNext() bool {
 	if !ok {
 		return false
 	}
-	req := failoverRequest{alias: r.alias, operation: r.operation, digest: r.digest}
+	req := failoverRequest{alias: r.alias, operation: r.operation, repository: r.repository, digest: r.digest}
 	r.client.logBlobAttempt(r.ctx, req, runtime, attempt, len(r.runtimes), r.maxAttempts)
 	go func() {
 		r.results <- attemptResult{
@@ -123,8 +125,9 @@ func (r *blobFailoverRunner) nextRuntime() (upstreamRuntime, int, bool) {
 
 func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	remaining, inFlightRemaining, hasNext := r.finishAttempt()
-	req := failoverRequest{alias: r.alias, operation: r.operation, digest: r.digest}
+	req := failoverRequest{alias: r.alias, operation: r.operation, repository: r.repository, digest: r.digest}
 	if result.err == nil {
+		r.client.recordEndpointSuccess(r.ctx, req, r.pool, result.runtime)
 		r.client.logBlobEndpointSelected(r.ctx, req, result.runtime, result.attempt, len(r.runtimes))
 		r.cancel()
 		return true, nil
@@ -137,7 +140,7 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 		return true, result.err
 	}
 
-	r.pool.recordProbeFailure(result.runtime)
+	r.client.recordEndpointFailure(r.ctx, req, r.pool, result.runtime, result.err)
 	r.client.logBlobAttemptFailure(r.ctx, req, result.runtime, result.err, result.attempt, len(r.runtimes), remaining+inFlightRemaining)
 	r.client.logFailover(req, result.runtime, result.err, hasNext)
 	r.client.publishFailover(r.ctx, req, result.runtime, result.err, hasNext)

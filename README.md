@@ -10,6 +10,7 @@ This repository currently contains a runnable skeleton based on the design docum
 - Alias-based upstream routing such as `/v2/hub/library/alpine/manifests/latest`.
 - One alias can fan out to multiple Docker Hub mirrors with ordered failover or round-robin starting points.
 - Upstream registry client based on `github.com/arcgolabs/clientx/http` with bearer-token challenge handling.
+- Mirror health snapshots persist in metadata, with endpoint/repository success-rate scoring, circuit-breaker cooldowns, jittered probes, and short downgrade windows for digest-inconsistent mirrors.
 - Manifest cache backed by memory/Redis/Valkey plus dbx metadata storage and local object storage.
 - Blob cache-then-serve path with local CAS storage, digest verification, range reads, and repo-to-blob access links.
 - Tags/list and referrers response caching, including tags Link header rewrite and OCI referrers fallback tag support.
@@ -128,6 +129,26 @@ scheduler {
 ```
 
 `max_bytes = 0` 会关闭容量水位控制。开启后，清理任务会基于元数据中的 blob size 统计缓存占用，超过 `max_bytes` 后按最旧 `last_access_at` 回收到 `target_bytes`。
+
+预拉取策略控制：
+
+```hcl
+scheduler {
+  prefetch {
+    enabled = true
+    interval = "30m"
+    max_records = 200
+    max_candidates_per_repo = 3
+    max_bytes = 1073741824
+    max_tasks = 50
+    max_repositories = 20
+    failure_backoff = "1h"
+    retry_window = "24h"
+  }
+}
+```
+
+`max_bytes`、`max_tasks` 和 `max_repositories` 为 0 时表示不限制。失败的预测候选会写入 metadata，并在 `failure_backoff` 计算出的 `next_retry_at` 之前跳过；admin 的 Scheduler 页面会展示最近 prefetch run/outcome，并提供 cancel/retry 控制。Cancel 会取消当前运行，若当前没有运行则会让下一次预拉取直接标记为 canceled；Retry 会让下一次运行忽略失败退避。
 
 认证：
 

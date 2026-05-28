@@ -20,6 +20,7 @@ const (
 	defaultUpstreamProbeInterval   = 30 * time.Second
 	defaultUpstreamProbeTimeout    = 3 * time.Second
 	defaultUpstreamProbeCooldown   = 2 * time.Minute
+	defaultUpstreamProbeJitter     = 5 * time.Second
 )
 
 func Load(ctx context.Context, path string, args ...string) (Config, error) {

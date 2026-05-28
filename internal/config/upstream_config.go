@@ -110,6 +110,7 @@ func normalizeUpstreamProbeConfig(alias string, probeCfg UpstreamProbeConfig) (U
 		{probeCfg.Interval < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.interval cannot be negative", alias)},
 		{probeCfg.Timeout < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.timeout cannot be negative", alias)},
 		{probeCfg.Cooldown < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.cooldown cannot be negative", alias)},
+		{probeCfg.Jitter < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.jitter cannot be negative", alias)},
 	}
 	for _, check := range checks {
 		if check.invalid {
@@ -124,6 +125,12 @@ func normalizeUpstreamProbeConfig(alias string, probeCfg UpstreamProbeConfig) (U
 	}
 	if probeCfg.Cooldown == 0 {
 		probeCfg.Cooldown = defaultUpstreamProbeCooldown
+	}
+	if probeCfg.Jitter == 0 {
+		probeCfg.Jitter = defaultUpstreamProbeJitter
+	}
+	if probeCfg.Interval > 0 && probeCfg.Jitter > probeCfg.Interval {
+		probeCfg.Jitter = probeCfg.Interval
 	}
 	return probeCfg, nil
 }

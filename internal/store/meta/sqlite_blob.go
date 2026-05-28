@@ -45,6 +45,9 @@ func (s *SQLiteStore) UpsertBlob(ctx context.Context, record BlobRecord) (*BlobR
 	if err := s.writeBlobRow(ctx, &record, row); err != nil {
 		return nil, err
 	}
+	if err := s.refreshRepositoriesForBlob(ctx, key.Digest, record.UpdatedAt); err != nil {
+		return nil, err
+	}
 	return &record, nil
 }
 
@@ -70,6 +73,9 @@ func (s *SQLiteStore) DeleteBlob(ctx context.Context, key BlobKey) error {
 	_, err = repository.By(s.blobs, sqliteBlobRows.Digest).Delete(ctx, key.Digest)
 	if err != nil {
 		return wrapError(err, "delete blob metadata")
+	}
+	if err := s.refreshRepositoriesForBlob(ctx, key.Digest, sqliteNow()); err != nil {
+		return err
 	}
 	return nil
 }
@@ -158,6 +164,9 @@ func (s *SQLiteStore) UpsertRepoBlob(ctx context.Context, record RepoBlobRecord)
 	if err := s.writeRepoBlobRow(ctx, &record, row); err != nil {
 		return nil, err
 	}
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, record.UpdatedAt); err != nil {
+		return nil, err
+	}
 	return &record, nil
 }
 
@@ -204,6 +213,9 @@ func (s *SQLiteStore) DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
 	_, err = repository.By(s.repoBlobs, sqliteRepoBlobRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete repository blob metadata")
+	}
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, sqliteNow()); err != nil {
+		return err
 	}
 	return nil
 }

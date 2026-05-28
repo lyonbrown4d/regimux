@@ -15,6 +15,7 @@ type prefetchResult struct {
 	layerCount         int
 	blobCount          int
 	childManifestCount int
+	bytesWarmed        int64
 }
 
 type blobDescriptor struct {
@@ -35,12 +36,14 @@ func (r prefetchResult) add(next prefetchResult) prefetchResult {
 	r.layerCount += next.layerCount
 	r.blobCount += next.blobCount
 	r.childManifestCount += next.childManifestCount
+	r.bytesWarmed += next.bytesWarmed
 	return r
 }
 
 func (s *Service) prefetchManifestArtifacts(
 	ctx context.Context,
 	opts RunOptions,
+	execution *runExecution,
 	candidate Candidate,
 	reference string,
 	manifest *cache.CachedManifest,
@@ -50,10 +53,10 @@ func (s *Service) prefetchManifestArtifacts(
 	mediaType := cachedManifestMediaType(manifest)
 	switch {
 	case isImageManifestMediaType(mediaType):
-		next, err := s.prefetchImageManifestBlobs(ctx, candidate, manifest)
+		next, err := s.prefetchImageManifestBlobs(ctx, execution, candidate, manifest)
 		return result.add(next), err
 	case isIndexManifestMediaType(mediaType):
-		next, err := s.prefetchIndexManifests(ctx, opts, candidate, manifest, depth)
+		next, err := s.prefetchIndexManifests(ctx, opts, execution, candidate, manifest, depth)
 		return result.add(next), err
 	case mediaType == "":
 		s.logSkippedManifest(ctx, candidate, reference, result.manifestDigest, mediaType, "empty media type")
@@ -65,6 +68,7 @@ func (s *Service) prefetchManifestArtifacts(
 
 func (s *Service) prefetchImageManifestBlobs(
 	ctx context.Context,
+	execution *runExecution,
 	candidate Candidate,
 	manifest *cache.CachedManifest,
 ) (prefetchResult, error) {
@@ -79,14 +83,20 @@ func (s *Service) prefetchImageManifestBlobs(
 	if err != nil {
 		return result, err
 	}
-	warmed, err := s.prefetchBlobDescriptors(ctx, candidate, result.manifestDigest, descriptors)
+	plannedBytes := descriptorByteSize(descriptors)
+	if !execution.reserveBytes(plannedBytes) {
+		return result, errPrefetchBudgetExceeded
+	}
+	warmed, bytesWarmed, err := s.prefetchBlobDescriptors(ctx, candidate, result.manifestDigest, descriptors)
 	result.blobCount = warmed
+	result.bytesWarmed = bytesWarmed
 	return result, err
 }
 
 func (s *Service) prefetchIndexManifests(
 	ctx context.Context,
 	opts RunOptions,
+	execution *runExecution,
 	candidate Candidate,
 	manifest *cache.CachedManifest,
 	depth int,
@@ -110,7 +120,7 @@ func (s *Service) prefetchIndexManifests(
 			s.logSkippedManifest(ctx, candidate, string(child.Digest), string(child.Digest), child.MediaType, "unsupported child manifest descriptor")
 			continue
 		}
-		childResult, err := s.prefetchChildManifest(ctx, opts, candidate, child, depth)
+		childResult, err := s.prefetchChildManifest(ctx, opts, execution, candidate, child, depth)
 		result.childManifestCount++
 		result = result.add(childResult)
 		if err != nil {
@@ -123,6 +133,7 @@ func (s *Service) prefetchIndexManifests(
 func (s *Service) prefetchChildManifest(
 	ctx context.Context,
 	opts RunOptions,
+	execution *runExecution,
 	candidate Candidate,
 	child ocispec.Descriptor,
 	depth int,
@@ -139,7 +150,7 @@ func (s *Service) prefetchChildManifest(
 	if err != nil {
 		return prefetchResult{manifestDigest: reference}, cacheWrap(err, "prefetch child manifest")
 	}
-	return s.prefetchManifestArtifacts(ctx, opts, candidate, reference, manifest, depth+1)
+	return s.prefetchManifestArtifacts(ctx, opts, execution, candidate, reference, manifest, depth+1)
 }
 
 func (s *Service) prefetchBlobDescriptors(
@@ -147,23 +158,26 @@ func (s *Service) prefetchBlobDescriptors(
 	candidate Candidate,
 	manifestDigest string,
 	descriptors []blobDescriptor,
-) (int, error) {
+) (int, int64, error) {
 	warmed := 0
+	bytesWarmed := int64(0)
 	for i := range descriptors {
 		if err := ctx.Err(); err != nil {
-			return warmed, cacheWrap(err, "prefetch blob context")
+			return warmed, bytesWarmed, cacheWrap(err, "prefetch blob context")
 		}
 		descriptor := descriptors[i]
 		if descriptor.digest == "" {
 			s.logSkippedBlob(ctx, candidate, manifestDigest, descriptor, "empty digest")
 			continue
 		}
-		if err := s.prefetchBlob(ctx, candidate, manifestDigest, descriptor); err != nil {
-			return warmed, err
+		size, err := s.prefetchBlob(ctx, candidate, manifestDigest, descriptor)
+		if err != nil {
+			return warmed, bytesWarmed, err
 		}
 		warmed++
+		bytesWarmed += size
 	}
-	return warmed, nil
+	return warmed, bytesWarmed, nil
 }
 
 func (s *Service) prefetchBlob(
@@ -171,7 +185,7 @@ func (s *Service) prefetchBlob(
 	candidate Candidate,
 	manifestDigest string,
 	descriptor blobDescriptor,
-) error {
+) (int64, error) {
 	result, err := s.blobs.Get(ctx, cache.BlobRequest{
 		UpstreamAlias: candidate.Alias,
 		Repo:          candidate.Repo,
@@ -190,9 +204,16 @@ func (s *Service) prefetchBlob(
 			"kind", descriptor.kind,
 			"error", err,
 		)
-		return cacheWrap(err, "prefetch blob")
+		return 0, cacheWrap(err, "prefetch blob")
 	}
-	return closePrefetchBlob(result)
+	if err := closePrefetchBlob(result); err != nil {
+		return 0, err
+	}
+	size := descriptor.size
+	if size <= 0 {
+		size = result.Size
+	}
+	return size, nil
 }
 
 func (s *Service) logSkippedManifest(ctx context.Context, candidate Candidate, reference, digest, mediaType, reason string) {
@@ -218,4 +239,14 @@ func (s *Service) logSkippedBlob(ctx context.Context, candidate Candidate, manif
 		"kind", descriptor.kind,
 		"reason", reason,
 	)
+}
+
+func descriptorByteSize(descriptors []blobDescriptor) int64 {
+	total := int64(0)
+	for i := range descriptors {
+		if descriptors[i].size > 0 {
+			total += descriptors[i].size
+		}
+	}
+	return total
 }

@@ -27,6 +27,7 @@ type Service struct {
 	logger    *slog.Logger
 	auth      *authpkg.Service
 	syncer    ManualSyncer
+	prefetch  PrefetchController
 	startedAt time.Time
 }
 
@@ -45,6 +46,7 @@ func NewService(deps Dependencies) *Service {
 		logger:    logger.With("component", "admin"),
 		auth:      deps.Auth,
 		syncer:    deps.Syncer,
+		prefetch:  deps.Prefetch,
 		startedAt: time.Now(),
 	}
 }
@@ -63,6 +65,8 @@ func (s *Service) RegisterFiber(app *fiber.App) {
 	group.Get("/cache", s.cachePage)
 	group.Get("/storage", s.storagePage)
 	group.Get("/scheduler", s.schedulerPage)
+	group.Post("/prefetch/cancel", s.prefetchCancelSubmit)
+	group.Post("/prefetch/retry", s.prefetchRetrySubmit)
 	group.Get("/sync", s.syncPage)
 	group.Post("/sync", s.syncSubmit)
 	group.Get("/audit", s.auditPage)
@@ -215,10 +219,14 @@ func (s *Service) pageData(c *fiber.Ctx, titleKey, active string) (PageData, err
 	if err != nil {
 		return PageData{}, err
 	}
-	upstreams := s.upstreamRows(now)
+	upstreams := s.upstreamRows(now, rows.upstreams)
 	cache := cacheSummary(rows)
 	pulls := pullRows(rows.pulls)
 	summary := s.summary(rows, upstreams, now)
+	scheduler, err := s.schedulerSummary(c.UserContext())
+	if err != nil {
+		return PageData{}, err
+	}
 
 	return PageData{
 		Title:              translate(locale, titleKey),
@@ -236,7 +244,7 @@ func (s *Service) pageData(c *fiber.Ctx, titleKey, active string) (PageData, err
 		Activity:           activitySummary(rows),
 		Storage:            storageSummary(rows),
 		Audit:              auditSummary(s.cfg),
-		Scheduler:          s.schedulerSummary(),
+		Scheduler:          scheduler,
 		ConfigRows:         configRows(s.cfg),
 		ConfigSources:      configSourceRows(locale),
 	}, nil

@@ -1,21 +1,26 @@
 package upstream
 
 import (
+	"context"
 	"log/slog"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
 var Module = dix.NewModule("upstream",
 	dix.Providers(
 		dix.Provider1[*Client, ClientDependencies](NewClient, dix.As[RegistryClient]()),
-		dix.Provider4[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus](
+		dix.Provider5[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus, meta.Store](
 			newClientDependencies,
 		),
+	),
+	dix.Hooks(
+		dix.OnStart[*Client](loadClientEndpointHealth, dix.LifecycleName("regimux.upstream_health_load"), dix.LifecyclePriority(-50)),
 	),
 )
 
@@ -24,13 +29,22 @@ func newClientDependencies(
 	logger *slog.Logger,
 	pools *worker.Pools,
 	bus events.Bus,
+	metadata meta.Store,
 ) ClientDependencies {
 	return ClientDependencies{
-		Configs: ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()),
-		Logger:  logger,
-		Pools:   pools,
-		Bus:     bus,
+		Configs:  ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()),
+		Logger:   logger,
+		Pools:    pools,
+		Bus:      bus,
+		Metadata: metadata,
 	}
+}
+
+func loadClientEndpointHealth(ctx context.Context, client *Client) error {
+	if client == nil {
+		return nil
+	}
+	return client.LoadEndpointHealth(ctx)
 }
 
 // ConfigsFromUpstreamConfigs converts runtime config upstreams into client configs.
@@ -66,6 +80,7 @@ func ConfigFromUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 			Interval: cfg.Probe.Interval,
 			Timeout:  cfg.Probe.Timeout,
 			Cooldown: cfg.Probe.Cooldown,
+			Jitter:   cfg.Probe.Jitter,
 		},
 		Auth: AuthConfig{
 			Type:     cfg.Auth.Type,

@@ -50,6 +50,7 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 	assertAdminResponse(t, app, "/admin/upstreams", "Upstream Configuration", "registry-1.docker.io")
 	assertAdminResponse(t, app, "/admin/activity", "Request Activity", "meta.pull_records", "library/node")
 	assertAdminResponse(t, app, "/admin/storage", "Storage", "Repository Blob Links", "1.2 KiB")
+	assertAdminResponse(t, app, "/admin/scheduler", "Prefetch Runs", "Cancel", "Retry failed")
 	assertAdminResponse(t, app, "/admin/audit", "Auth Users", "alice", "hub/library/*")
 	assertAdminResponse(t, app, "/admin/config", "Configuration Sources", "source metadata unavailable")
 	assertAdminResponse(t, app, "/admin/partials/upstream-health", "Upstream Health", "hub")

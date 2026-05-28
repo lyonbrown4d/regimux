@@ -41,13 +41,19 @@ type DBOptions struct {
 type SQLiteOptions = DBOptions
 
 type SQLiteStore struct {
-	driver    string
-	db        *dbx.DB
-	manifest  *repository.Base[manifestRow, manifestRowSchema]
-	tags      *repository.Base[tagRow, tagRowSchema]
-	pulls     *repository.Base[pullRow, pullRowSchema]
-	blobs     *repository.Base[blobRow, blobRowSchema]
-	repoBlobs *repository.Base[repoBlobRow, repoBlobRowSchema]
+	driver           string
+	db               *dbx.DB
+	upstreams        *repository.Base[upstreamRow, upstreamRowSchema]
+	repositories     *repository.Base[repositoryRow, repositoryRowSchema]
+	manifest         *repository.Base[manifestRow, manifestRowSchema]
+	tags             *repository.Base[tagRow, tagRowSchema]
+	pulls            *repository.Base[pullRow, pullRowSchema]
+	blobs            *repository.Base[blobRow, blobRowSchema]
+	repoBlobs        *repository.Base[repoBlobRow, repoBlobRowSchema]
+	endpointHealth   *repository.Base[endpointHealthRow, endpointHealthRowSchema]
+	prefetchRuns     *repository.Base[prefetchRunRow, prefetchRunRowSchema]
+	prefetchOutcomes *repository.Base[prefetchOutcomeRow, prefetchOutcomeRowSchema]
+	prefetchControls *repository.Base[prefetchControlRow, prefetchControlRowSchema]
 }
 
 func OpenSQLite(path string, logger *slog.Logger) (*SQLiteStore, error) {
@@ -95,13 +101,19 @@ func OpenDBWithOptions(ctx context.Context, opts DBOptions) (*SQLiteStore, error
 	}
 
 	store := &SQLiteStore{
-		driver:    openConfig.driver,
-		db:        core,
-		manifest:  repository.New[manifestRow](core, sqliteManifestRows),
-		tags:      repository.New[tagRow](core, sqliteTagRows),
-		pulls:     repository.New[pullRow](core, sqlitePullRows),
-		blobs:     repository.New[blobRow](core, sqliteBlobRows),
-		repoBlobs: repository.New[repoBlobRow](core, sqliteRepoBlobRows),
+		driver:           openConfig.driver,
+		db:               core,
+		upstreams:        repository.New[upstreamRow](core, sqliteUpstreamRows),
+		repositories:     repository.New[repositoryRow](core, sqliteRepositoryRows),
+		manifest:         repository.New[manifestRow](core, sqliteManifestRows),
+		tags:             repository.New[tagRow](core, sqliteTagRows),
+		pulls:            repository.New[pullRow](core, sqlitePullRows),
+		blobs:            repository.New[blobRow](core, sqliteBlobRows),
+		repoBlobs:        repository.New[repoBlobRow](core, sqliteRepoBlobRows),
+		endpointHealth:   repository.New[endpointHealthRow](core, sqliteEndpointHealthRows),
+		prefetchRuns:     repository.New[prefetchRunRow](core, sqlitePrefetchRunRows),
+		prefetchOutcomes: repository.New[prefetchOutcomeRow](core, sqlitePrefetchOutcomeRows),
+		prefetchControls: repository.New[prefetchControlRow](core, sqlitePrefetchControlRows),
 	}
 	if err := store.migrate(ctx); err != nil {
 		closeErr := core.Close()
@@ -253,14 +265,6 @@ func (s *SQLiteStore) migrate(ctx context.Context) error {
 		return wrapError(err, "migrate metadata schema")
 	}
 	return nil
-}
-
-func (s *SQLiteStore) UpstreamByAlias(context.Context, string) (*Upstream, error) {
-	return nil, ErrNotFound
-}
-
-func (s *SQLiteStore) RepositoryByName(context.Context, int64, string) (*Repository, error) {
-	return nil, ErrNotFound
 }
 
 func (s *SQLiteStore) Close() error {

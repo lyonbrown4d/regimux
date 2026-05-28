@@ -7,6 +7,62 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/reference"
 )
 
+func normalizeEndpointHealthRecord(record EndpointHealthRecord) (EndpointHealthKey, EndpointHealthRecord, error) {
+	key, err := normalizeEndpointHealthKey(EndpointHealthKey{
+		Alias:      record.Alias,
+		Registry:   record.Registry,
+		Repository: record.Repository,
+	})
+	if err != nil {
+		return EndpointHealthKey{}, EndpointHealthRecord{}, err
+	}
+	if record.LatencyEWMA < 0 {
+		return EndpointHealthKey{}, EndpointHealthRecord{}, errorf("%w: endpoint health latency cannot be negative", ErrInvalidValue)
+	}
+	if record.LatencySamples < 0 {
+		return EndpointHealthKey{}, EndpointHealthRecord{}, errorf("%w: endpoint health latency samples cannot be negative", ErrInvalidValue)
+	}
+	if record.ConsecutiveFailures < 0 {
+		return EndpointHealthKey{}, EndpointHealthRecord{}, errorf("%w: endpoint health consecutive failures cannot be negative", ErrInvalidValue)
+	}
+	if record.SuccessCount < 0 || record.FailureCount < 0 || record.ContentMismatchCount < 0 {
+		return EndpointHealthKey{}, EndpointHealthRecord{}, errorf("%w: endpoint health counters cannot be negative", ErrInvalidValue)
+	}
+	record.Key = key.String()
+	record.Alias = key.Alias
+	record.Registry = key.Registry
+	record.Repository = key.Repository
+	return key, record, nil
+}
+
+func normalizeEndpointHealthKey(key EndpointHealthKey) (EndpointHealthKey, error) {
+	alias, err := required("alias", key.Alias)
+	if err != nil {
+		return EndpointHealthKey{}, err
+	}
+	registry := strings.TrimRight(strings.TrimSpace(key.Registry), "/")
+	if registry == "" {
+		return EndpointHealthKey{}, errorf("%w: endpoint health registry is required", ErrInvalidKey)
+	}
+	return EndpointHealthKey{
+		Alias:      alias,
+		Registry:   registry,
+		Repository: normalizeRepository(key.Repository),
+	}, nil
+}
+
+func normalizeUpstreamAlias(alias string) (string, error) {
+	return required("alias", alias)
+}
+
+func normalizeRepositoryName(name string) (string, error) {
+	return required("repository", name)
+}
+
+func repositoryMetadataKey(alias, name string) string {
+	return alias + "/" + name
+}
+
 func normalizeManifestRecord(record ManifestRecord) (ManifestKey, ManifestRecord, error) {
 	key, err := normalizeManifestKey(ManifestKey{
 		Alias:      record.Alias,
@@ -140,6 +196,44 @@ func normalizeRepoBlobKey(key RepoBlobKey) (RepoBlobKey, error) {
 	return RepoBlobKey{Alias: alias, Repository: repo, Digest: digest}, nil
 }
 
+func normalizePrefetchCandidateKey(key PrefetchCandidateKey) (PrefetchCandidateKey, error) {
+	alias, err := required("alias", key.Alias)
+	if err != nil {
+		return PrefetchCandidateKey{}, err
+	}
+	repo, err := required("repository", key.Repository)
+	if err != nil {
+		return PrefetchCandidateKey{}, err
+	}
+	ref, err := required("reference", key.Reference)
+	if err != nil {
+		return PrefetchCandidateKey{}, err
+	}
+	return PrefetchCandidateKey{Alias: alias, Repository: repo, Reference: ref}, nil
+}
+
+func normalizePrefetchOutcomeRecord(record PrefetchOutcomeRecord) (PrefetchCandidateKey, PrefetchOutcomeRecord, error) {
+	key, err := normalizePrefetchCandidateKey(PrefetchCandidateKey{
+		Alias:      record.Alias,
+		Repository: record.Repository,
+		Reference:  record.Reference,
+	})
+	if err != nil {
+		return PrefetchCandidateKey{}, PrefetchOutcomeRecord{}, err
+	}
+	if record.RunID < 0 {
+		return PrefetchCandidateKey{}, PrefetchOutcomeRecord{}, errorf("%w: prefetch run id cannot be negative", ErrInvalidValue)
+	}
+	if record.BytesWarmed < 0 {
+		return PrefetchCandidateKey{}, PrefetchOutcomeRecord{}, errorf("%w: prefetch bytes warmed cannot be negative", ErrInvalidValue)
+	}
+	record.Alias = key.Alias
+	record.Repository = key.Repository
+	record.Reference = key.Reference
+	record.CandidateKey = key.String()
+	return key, record, nil
+}
+
 func normalizeBlobKey(key BlobKey) (BlobKey, error) {
 	digest, err := normalizeDigest(key.Digest)
 	if err != nil {
@@ -154,6 +248,10 @@ func required(name, value string) (string, error) {
 		return "", errorf("%w: %s is required", ErrInvalidKey, name)
 	}
 	return value, nil
+}
+
+func normalizeRepository(value string) string {
+	return strings.Trim(strings.TrimSpace(value), "/")
 }
 
 func normalizeDigest(value string) (string, error) {

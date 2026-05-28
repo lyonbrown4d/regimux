@@ -27,6 +27,7 @@ func (s *SQLiteStore) MetadataStats(ctx context.Context, now time.Time) (Metadat
 		s.loadBlobStats,
 		s.loadRepositoryBlobStats,
 		s.loadPullStats,
+		s.loadRepositoryStats,
 	} {
 		if err := load(ctx, now, &stats); err != nil {
 			return MetadataStats{}, err
@@ -103,6 +104,20 @@ func (s *SQLiteStore) loadPullStats(ctx context.Context, _ time.Time, stats *Met
 	stats.PullCount = count
 	stats.LastPullAt = lastPullAt
 	stats.LastUpstreamPullAt = lastUpstreamPullAt
+	return nil
+}
+
+func (s *SQLiteStore) loadRepositoryStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
+	count, err := s.repositories.CountSpec(ctx)
+	if err != nil {
+		return wrapError(err, "count repository metadata")
+	}
+	bytes, err := s.sumInt64(ctx, sqliteRepositoryRows, sqliteRepositoryRows.BlobBytes, "repository metadata bytes")
+	if err != nil {
+		return err
+	}
+	stats.RepositoryCount = count
+	stats.RepositoryBytes = bytes
 	return nil
 }
 

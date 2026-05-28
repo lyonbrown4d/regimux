@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS `meta_repo_blobs` (
+	`id` BIGINT NOT NULL,
+	`key` VARCHAR(512) NOT NULL,
+	`alias` VARCHAR(128) NOT NULL,
+	`repository` VARCHAR(255) NOT NULL,
+	`digest` VARCHAR(128) NOT NULL,
+	`source_manifest` VARCHAR(128) NOT NULL,
+	`created_at` BIGINT NOT NULL,
+	`updated_at` BIGINT NOT NULL,
+	`last_access_at` BIGINT NOT NULL,
+	`last_verified_at` BIGINT NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `idx_meta_repo_blobs_key` (`key`),
+	KEY `idx_meta_repo_blobs_alias` (`alias`),
+	KEY `idx_meta_repo_blobs_repository` (`repository`),
+	KEY `idx_meta_repo_blobs_digest` (`digest`),
+	KEY `idx_meta_repo_blobs_source_manifest` (`source_manifest`),
+	KEY `idx_meta_repo_blobs_created_at` (`created_at`),
+	KEY `idx_meta_repo_blobs_updated_at` (`updated_at`),
+	KEY `idx_meta_repo_blobs_last_access_at` (`last_access_at`),
+	KEY `idx_meta_repo_blobs_last_verified_at` (`last_verified_at`),
+	KEY `idx_meta_repo_blobs_repo` (`alias`, `repository`)
+)

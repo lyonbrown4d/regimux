@@ -32,12 +32,18 @@ func (s *SQLiteStore) UpsertManifest(ctx context.Context, record ManifestRecord)
 		if err := s.updateManifestRow(ctx, row); err != nil {
 			return nil, err
 		}
+		if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, record.UpdatedAt); err != nil {
+			return nil, err
+		}
 		return &record, nil
 	}
 	if err := s.manifest.Create(ctx, &row); err != nil {
 		return nil, wrapError(err, "upsert manifest metadata")
 	}
 	record.ID = row.ID
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, record.UpdatedAt); err != nil {
+		return nil, err
+	}
 	return &record, nil
 }
 
@@ -49,6 +55,9 @@ func (s *SQLiteStore) DeleteManifest(ctx context.Context, key ManifestKey) error
 	_, err = repository.By(s.manifest, sqliteManifestRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete manifest metadata")
+	}
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, sqliteNow()); err != nil {
+		return err
 	}
 	return nil
 }

@@ -68,6 +68,8 @@ github.com/arcgolabs/kvx/adapter/valkey v0.2.1 h1:exAkfEPCWki08z6Ec8LsEQLjJiMcU9
 github.com/arcgolabs/kvx/adapter/valkey v0.2.1/go.mod h1:z/m43UDENFSaXnqoxNrTuAmZl1kybKndpUl+ZpHDAHU=
 github.com/arcgolabs/logx v0.1.2 h1:+VJF7T/mfI482CpbIQ4tSBXbxTVcOkmBaTOj+DaCom0=
 github.com/arcgolabs/logx v0.1.2/go.mod h1:GgVdUPfBZ3Hao7h5ahdGwqHDXY9q5mhMmnS7t3NNqzU=
+github.com/arcgolabs/mapper v0.2.0 h1:SbaWAb1USdGNg2vAvrk5yYimPV5gQ4wf+FglFbV7RIg=
+github.com/arcgolabs/mapper v0.2.0/go.mod h1:zd+mapJHQ5R0ZikEYyVeZU3O4T1G+LfQw5ynaQ1vnFk=
 github.com/arcgolabs/observabilityx v0.4.0 h1:7ihfQev5KSV8xcO+6DcbMcUYSDVsYhnENH2ZbHB5IxY=
 github.com/arcgolabs/observabilityx v0.4.0/go.mod h1:yZeU3QmYUwhd051UnoD4cFu89sdLjPYGU15QKX+TVac=
 github.com/arcgolabs/pkg/option v0.0.3 h1:SS7WDMUAr7XW2/sOZkaqDrIUrygJK8u1gdPs9A4K5+A=

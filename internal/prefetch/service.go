@@ -2,13 +2,9 @@ package prefetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"log/slog"
-	"net/http"
-	"strconv"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -16,7 +12,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
-	"github.com/panjf2000/ants/v2"
 )
 
 const (
@@ -27,12 +22,15 @@ const (
 )
 
 type Service struct {
-	metadata  meta.Store
-	tags      cache.TagService
-	manifests cache.ManifestService
-	blobs     cache.BlobService
-	workers   *worker.Pools
-	logger    *slog.Logger
+	metadata        meta.Store
+	tags            cache.TagService
+	manifests       cache.ManifestService
+	blobs           cache.BlobService
+	workers         *worker.Pools
+	logger          *slog.Logger
+	activeMu        sync.Mutex
+	activeRunID     int64
+	activeRunCancel context.CancelFunc
 }
 
 type RunOptions struct {
@@ -42,17 +40,27 @@ type RunOptions struct {
 	MaxCandidatesPerRepo int
 	MaxVersionDistance   int
 	Accept               string
+	MaxBytes             int64
+	MaxTasks             int
+	MaxRepositories      int
+	FailureBackoff       time.Duration
+	RetryWindow          time.Duration
 	Now                  time.Time
 }
 
 type RunReport struct {
-	ScannedRecords   int
-	SkippedRecords   int
-	Repositories     int
-	Candidates       int
-	Prefetched       int
-	Failed           int
-	PrefetchedRoutes []string
+	ScannedRecords      int
+	SkippedRecords      int
+	Repositories        int
+	SkippedRepositories int
+	Candidates          int
+	Prefetched          int
+	Failed              int
+	SkippedCandidates   int
+	BytesWarmed         int64
+	RetryRequested      bool
+	Canceled            bool
+	PrefetchedRoutes    []string
 }
 
 type ServiceDependencies struct {
@@ -84,7 +92,53 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 		return nil, err
 	}
 	opts = normalizeRunOptions(opts)
+	run, err := s.startRunRecord(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	report := &RunReport{}
+	retryRequested, err := s.consumeRunControl(ctx, prefetchControlRetry, opts.Now)
+	if err != nil {
+		finishErr := s.finishRunRecord(ctx, run, report, err)
+		return nil, errors.Join(err, finishErr)
+	}
+	report.RetryRequested = retryRequested
+	cancelRequested, err := s.consumeRunControl(ctx, prefetchControlCancel, opts.Now)
+	if err != nil {
+		finishErr := s.finishRunRecord(ctx, run, report, err)
+		return nil, errors.Join(err, finishErr)
+	}
+	if cancelRequested {
+		report.Canceled = true
+		if finishErr := s.finishRunRecord(ctx, run, report, nil); finishErr != nil {
+			return nil, finishErr
+		}
+		return report, nil
+	}
 
+	runCtx, cancel := context.WithCancel(ctx)
+	s.setActiveCancel(run.ID, cancel)
+	defer s.clearActiveCancel(run.ID)
+	defer cancel()
+
+	execution := newRunExecution(s.metadata, run.ID, opts, retryRequested)
+	runReport, err := s.run(runCtx, opts, execution)
+	if runReport != nil {
+		report = runReport
+		report.RetryRequested = retryRequested
+		report.BytesWarmed = execution.bytesWarmedSnapshot()
+	}
+	finishErr := s.finishRunRecord(ctx, run, report, err)
+	if err != nil {
+		return report, errors.Join(err, finishErr)
+	}
+	if finishErr != nil {
+		return report, finishErr
+	}
+	return report, nil
+}
+
+func (s *Service) run(ctx context.Context, opts RunOptions, execution *runExecution) (*RunReport, error) {
 	records, err := s.metadata.ListPulls(ctx)
 	if err != nil {
 		return nil, cacheWrap(err, "list pull records for prefetch")
@@ -98,7 +152,7 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 	}
 	groups := groupPullRecords(filteredRecords)
 	report.Repositories = groups.Len()
-	if err := s.prefetchGroups(ctx, groups, opts, report); err != nil {
+	if err := s.prefetchGroups(ctx, groups, opts, execution, report); err != nil {
 		return nil, err
 	}
 	return report, nil
@@ -121,164 +175,35 @@ func (s *Service) prefetchGroups(
 	ctx context.Context,
 	groups *collectionmapping.MultiMap[repoKey, meta.PullRecord],
 	opts RunOptions,
+	execution *runExecution,
 	report *RunReport,
 ) error {
 	var runErr error
+	processedRepositories := 0
 	groups.RangeView(func(route repoKey, group []meta.PullRecord) bool {
 		if err := ctx.Err(); err != nil {
 			runErr = cacheWrap(err, "prefetch context")
 			return false
 		}
-		prefetchedRoutes, candidates, failed, err := s.prefetchRepository(ctx, route, collectionlist.NewList(group...), opts)
+		if opts.MaxRepositories > 0 && processedRepositories >= opts.MaxRepositories {
+			report.SkippedRepositories++
+			return true
+		}
+		processedRepositories++
+		repositoryReport, err := s.prefetchRepository(ctx, route, collectionlist.NewList(group...), opts, execution)
 		if err != nil {
 			runErr = err
 			return false
 		}
-		report.Prefetched += prefetchedRoutes.Len()
-		report.Candidates += candidates
-		report.Failed += failed
-		report.PrefetchedRoutes = append(report.PrefetchedRoutes, prefetchedRoutes.Values()...)
+		report.Prefetched += repositoryReport.prefetched.Len()
+		report.Candidates += repositoryReport.candidates
+		report.Failed += repositoryReport.failed
+		report.SkippedCandidates += repositoryReport.skipped
+		report.PrefetchedRoutes = append(report.PrefetchedRoutes, repositoryReport.prefetched.Values()...)
 		return true
 	})
 	if runErr != nil {
 		return runErr
 	}
 	return nil
-}
-
-func (s *Service) prefetchRepository(
-	ctx context.Context,
-	route repoKey,
-	records *collectionlist.List[meta.PullRecord],
-	opts RunOptions,
-) (*collectionlist.List[string], int, int, error) {
-	tags, err := s.availableTags(ctx, route, opts.TagsPageSize)
-	if err != nil {
-		s.logger.WarnContext(ctx, "prefetch tags discovery failed", "alias", route.alias, "repository", route.repo, "error", err)
-		return nil, 0, 1, nil
-	}
-	candidates := GenerateCandidates(toCandidateRecords(records), tags, Options{
-		MaxCandidates:      opts.MaxCandidatesPerRepo,
-		MaxVersionDistance: opts.MaxVersionDistance,
-		Now:                opts.Now,
-	})
-
-	prefetched := collectionlist.NewListWithCapacity[string](candidates.Len())
-	var failed atomic.Int32
-	var mu sync.Mutex
-	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](candidates.Len())
-	candidates.Range(func(_ int, candidate Candidate) bool {
-		tasks.Add(s.prefetchTask(opts, candidate, &failed, &mu, prefetched))
-		return true
-	})
-	if err := worker.RunAll(ctx, s.prefetchPool(), tasks); err != nil {
-		if isContextError(err) {
-			return nil, candidates.Len(), int(failed.Load()), cacheWrap(err, "prefetch repository")
-		}
-		s.logger.DebugContext(ctx, "prefetch repository completed with failures", "error", err)
-	}
-	return prefetched, candidates.Len(), int(failed.Load()), nil
-}
-
-func (s *Service) prefetchTask(
-	opts RunOptions,
-	candidate Candidate,
-	failed *atomic.Int32,
-	mu *sync.Mutex,
-	prefetched *collectionlist.List[string],
-) func(context.Context) error {
-	return func(taskCtx context.Context) error {
-		result, err := s.prefetchCandidate(taskCtx, opts, candidate)
-		if err != nil {
-			failed.Add(1)
-			s.logPrefetchFailure(taskCtx, candidate, result, err)
-			if isContextError(err) {
-				return err
-			}
-			return nil
-		}
-		mu.Lock()
-		prefetched.Add(candidate.Alias + "/" + candidate.Repo + ":" + candidate.Tag)
-		mu.Unlock()
-		s.logPrefetchSuccess(taskCtx, candidate, result)
-		return nil
-	}
-}
-
-func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, candidate Candidate) (prefetchResult, error) {
-	manifest, err := s.manifests.Get(ctx, cache.ManifestRequest{
-		UpstreamAlias:  candidate.Alias,
-		Repo:           candidate.Repo,
-		Reference:      candidate.Tag,
-		Accept:         opts.Accept,
-		Method:         http.MethodGet,
-		SkipPullRecord: true,
-	})
-	if err != nil {
-		return prefetchResult{}, cacheWrap(err, "prefetch manifest")
-	}
-	return s.prefetchManifestArtifacts(ctx, opts, candidate, candidate.Tag, manifest, 0)
-}
-
-func (s *Service) logPrefetchFailure(ctx context.Context, candidate Candidate, result prefetchResult, err error) {
-	s.logger.WarnContext(ctx, "prefetch candidate failed",
-		"alias", candidate.Alias,
-		"repository", candidate.Repo,
-		"reference", candidate.Tag,
-		"digest", result.manifestDigest,
-		"layer_count", result.layerCount,
-		"blob_count", result.blobCount,
-		"child_manifest_count", result.childManifestCount,
-		"reason", candidate.Reason,
-		"score", candidate.Score,
-		"error", err,
-	)
-}
-
-func (s *Service) logPrefetchSuccess(ctx context.Context, candidate Candidate, result prefetchResult) {
-	s.logger.InfoContext(ctx, "prefetched manifest artifacts",
-		"alias", candidate.Alias,
-		"repository", candidate.Repo,
-		"reference", candidate.Tag,
-		"digest", result.manifestDigest,
-		"layer_count", result.layerCount,
-		"blob_count", result.blobCount,
-		"child_manifest_count", result.childManifestCount,
-		"reason", candidate.Reason,
-		"score", candidate.Score,
-	)
-}
-
-func (s *Service) prefetchPool() *ants.Pool {
-	if s == nil || s.workers == nil {
-		return nil
-	}
-	return s.workers.PrefetchPool()
-}
-
-func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int) (*collectionlist.List[string], error) {
-	result, err := s.tags.List(ctx, cache.TagRequest{
-		UpstreamAlias: route.alias,
-		Repo:          route.repo,
-		N:             strconv.Itoa(pageSize),
-	})
-	if err != nil {
-		return nil, cacheWrap(err, "list tags for prefetch")
-	}
-	var body struct {
-		Tags []string `json:"tags"`
-	}
-	if err := json.Unmarshal(result.Body, &body); err != nil {
-		return nil, cacheWrap(err, "decode tags response for prefetch")
-	}
-	return collectionlist.NewList(body.Tags...), nil
-}
-
-type repoKey struct {
-	alias string
-	repo  string
-}
-
-func isContextError(err error) bool {
-	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }

@@ -76,7 +76,7 @@ func (c *Client) probePool() *ants.Pool {
 
 func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) error {
 	if runtime.err != nil {
-		pool.recordProbeFailure(runtime)
+		c.recordProbeFailure(ctx, pool, runtime)
 		return distribution.ErrUpstream.WithDetail(runtime.err.Error())
 	}
 
@@ -92,18 +92,18 @@ func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime u
 	resp, err := c.execute(probeCtx, runtime, operationPing, http.MethodGet, requestURL)
 	latency := time.Since(startedAt)
 	if err != nil {
-		pool.recordProbeFailure(runtime)
+		c.recordProbeFailure(ctx, pool, runtime)
 		c.logProbeResult(ctx, pool.alias, runtime, latency, err)
 		return err
 	}
 
 	if probeStatusReachable(resp.StatusCode) {
-		pool.recordProbeSuccess(runtime, latency)
+		c.recordProbeSuccess(ctx, pool, runtime, latency)
 		c.logProbeResult(ctx, pool.alias, runtime, latency, nil)
 		return closeBody(resp.Body)
 	}
 
-	pool.recordProbeFailure(runtime)
+	c.recordProbeFailure(ctx, pool, runtime)
 	err = closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationPing))
 	c.logProbeResult(ctx, pool.alias, runtime, latency, err)
 	return err

@@ -49,6 +49,7 @@ type ProbeConfig struct {
 	Interval time.Duration `json:"interval" koanf:"interval" yaml:"interval"`
 	Timeout  time.Duration `json:"timeout"  koanf:"timeout"  yaml:"timeout"`
 	Cooldown time.Duration `json:"cooldown" koanf:"cooldown" yaml:"cooldown"`
+	Jitter   time.Duration `json:"jitter"   koanf:"jitter"   yaml:"jitter"`
 }
 
 type HTTPConfig struct {

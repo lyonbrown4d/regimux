@@ -2,6 +2,8 @@ package scheduler
 
 import (
 	"context"
+	"crypto/rand"
+	"math/big"
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
@@ -96,6 +98,7 @@ func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler)
 			"interval", probeCfg.Interval,
 			"timeout", probeCfg.Timeout,
 			"cooldown", probeCfg.Cooldown,
+			"jitter", probeCfg.Jitter,
 		)
 		return true
 	})
@@ -141,6 +144,10 @@ func (r *Runtime) runProbe(ctx context.Context, alias string) error {
 		r.observeJob(ctx, "probe", alias, startedAt, err)
 		return err
 	}
+	if err := r.waitProbeJitter(ctx, alias); err != nil {
+		r.observeJob(ctx, "probe", alias, startedAt, err)
+		return err
+	}
 	if err := r.upstream.ProbeAlias(ctx, alias); err != nil {
 		err = oops.Wrapf(err, "run upstream probe job")
 		r.observeJob(ctx, "probe", alias, startedAt, err)
@@ -151,6 +158,42 @@ func (r *Runtime) runProbe(ctx context.Context, alias string) error {
 	return nil
 }
 
+func (r *Runtime) waitProbeJitter(ctx context.Context, alias string) error {
+	if r == nil {
+		return nil
+	}
+	upstreamCfg, ok := r.cfg.Upstreams[alias]
+	if !ok || upstreamCfg.Probe.Jitter <= 0 {
+		return nil
+	}
+	delay := randomProbeJitterDelay(upstreamCfg.Probe.Jitter)
+	if delay <= 0 {
+		return nil
+	}
+	if r.logger != nil {
+		r.logger.DebugContext(ctx, "applying upstream probe jitter", "alias", alias, "delay", delay)
+	}
+	timer := time.NewTimer(delay)
+	defer timer.Stop()
+	select {
+	case <-timer.C:
+		return nil
+	case <-ctx.Done():
+		return oops.Wrapf(ctx.Err(), "wait upstream probe jitter")
+	}
+}
+
+func randomProbeJitterDelay(maxDelay time.Duration) time.Duration {
+	if maxDelay <= 0 {
+		return 0
+	}
+	value, err := rand.Int(rand.Reader, big.NewInt(int64(maxDelay)))
+	if err != nil {
+		return 0
+	}
+	return time.Duration(value.Int64())
+}
+
 func (r *Runtime) runPrefetch(ctx context.Context) error {
 	startedAt := time.Now()
 	report, err := r.prefetch.Run(ctx, prefetch.RunOptions{
@@ -159,6 +202,11 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		TagsPageSize:         r.cfg.Scheduler.Prefetch.TagsPageSize,
 		MaxCandidatesPerRepo: r.cfg.Scheduler.Prefetch.MaxCandidatesPerRepo,
 		MaxVersionDistance:   r.cfg.Scheduler.Prefetch.MaxVersionDistance,
+		MaxBytes:             r.cfg.Scheduler.Prefetch.MaxBytes,
+		MaxTasks:             r.cfg.Scheduler.Prefetch.MaxTasks,
+		MaxRepositories:      r.cfg.Scheduler.Prefetch.MaxRepositories,
+		FailureBackoff:       r.cfg.Scheduler.Prefetch.FailureBackoff,
+		RetryWindow:          r.cfg.Scheduler.Prefetch.RetryWindow,
 		Accept:               r.cfg.Scheduler.Prefetch.Accept,
 	})
 	if err != nil {
@@ -171,9 +219,13 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		"scanned_records", report.ScannedRecords,
 		"skipped_records", report.SkippedRecords,
 		"repositories", report.Repositories,
+		"skipped_repositories", report.SkippedRepositories,
 		"candidates", report.Candidates,
 		"prefetched", report.Prefetched,
 		"failed", report.Failed,
+		"skipped_candidates", report.SkippedCandidates,
+		"bytes_warmed", report.BytesWarmed,
+		"retry_requested", report.RetryRequested,
 	)
 	r.observeJob(ctx, "prefetch", "", startedAt, nil)
 	return nil

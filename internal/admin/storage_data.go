@@ -16,6 +16,7 @@ func storageSummary(snapshot metadataSnapshot) StorageSummary {
 		RepoBlobCount: metadataCount(stats.RepoBlobCount),
 		RecentBlobs:   recentBlobRows(snapshot.recentBlobs, 10),
 		LargeBlobs:    largeBlobRows(snapshot.largeBlobs, 10),
+		Repositories:  repositoryRows(snapshot.repositories, 25),
 		RepoBlobLinks: recentRepoBlobRows(snapshot.repoBlobs, 25),
 	}
 }
@@ -43,6 +44,21 @@ func recentRepoBlobRows(records []meta.RepoBlobRecord, limit int) []RepoBlobRow 
 			LastAccessAt:   formatTime(record.LastAccessAt),
 			LastVerifiedAt: formatTime(record.LastVerifiedAt),
 			UpdatedAt:      formatTime(record.UpdatedAt),
+		}
+	}).Values()
+}
+
+func repositoryRows(records []meta.Repository, limit int) []RepositoryRow {
+	return collectionlist.MapList(collectionlist.NewList(records...).Take(limit), func(_ int, record meta.Repository) RepositoryRow {
+		return RepositoryRow{
+			Alias:            record.Alias,
+			Repository:       record.Name,
+			PullCount:        record.PullCount,
+			BlobBytes:        formatBytes(record.BlobBytes),
+			BlobLinkCount:    record.BlobLinkCount,
+			LastPullAt:       formatTime(record.LastPullAt),
+			LastBlobAccessAt: formatTime(record.LastBlobAccessAt),
+			LastActivityAt:   formatTime(record.LastActivityAt),
 		}
 	}).Values()
 }

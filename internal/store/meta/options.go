@@ -1,5 +1,62 @@
 package meta
 
+type EndpointHealthListOption func(*EndpointHealthListOptions)
+
+type EndpointHealthListOptions struct {
+	Alias string
+	Limit int
+}
+
+func EndpointHealthListAlias(alias string) EndpointHealthListOption {
+	return func(opts *EndpointHealthListOptions) {
+		opts.Alias = alias
+	}
+}
+
+func EndpointHealthListLimit(limit int) EndpointHealthListOption {
+	return func(opts *EndpointHealthListOptions) {
+		opts.Limit = limit
+	}
+}
+
+type UpstreamListOption func(*UpstreamListOptions)
+
+type UpstreamListOptions struct {
+	Limit       int
+	RecentFirst bool
+}
+
+func UpstreamListLimit(limit int) UpstreamListOption {
+	return func(opts *UpstreamListOptions) {
+		opts.Limit = limit
+	}
+}
+
+func UpstreamListRecentFirst() UpstreamListOption {
+	return func(opts *UpstreamListOptions) {
+		opts.RecentFirst = true
+	}
+}
+
+type RepositoryListOption func(*RepositoryListOptions)
+
+type RepositoryListOptions struct {
+	Limit       int
+	RecentFirst bool
+}
+
+func RepositoryListLimit(limit int) RepositoryListOption {
+	return func(opts *RepositoryListOptions) {
+		opts.Limit = limit
+	}
+}
+
+func RepositoryListRecentFirst() RepositoryListOption {
+	return func(opts *RepositoryListOptions) {
+		opts.RecentFirst = true
+	}
+}
+
 type PullListOption func(*PullListOptions)
 
 type PullListOptions struct {
@@ -99,6 +156,45 @@ func blobListOptions(opts ...BlobListOption) BlobListOptions {
 
 func repoBlobListOptions(opts ...RepoBlobListOption) RepoBlobListOptions {
 	out := RepoBlobListOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&out)
+		}
+	}
+	if out.Limit < 0 {
+		out.Limit = 0
+	}
+	return out
+}
+
+func endpointHealthListOptions(opts ...EndpointHealthListOption) EndpointHealthListOptions {
+	out := EndpointHealthListOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&out)
+		}
+	}
+	if out.Limit < 0 {
+		out.Limit = 0
+	}
+	return out
+}
+
+func upstreamListOptions(opts ...UpstreamListOption) UpstreamListOptions {
+	out := UpstreamListOptions{}
+	for _, opt := range opts {
+		if opt != nil {
+			opt(&out)
+		}
+	}
+	if out.Limit < 0 {
+		out.Limit = 0
+	}
+	return out
+}
+
+func repositoryListOptions(opts ...RepositoryListOption) RepositoryListOptions {
+	out := RepositoryListOptions{}
 	for _, opt := range opts {
 		if opt != nil {
 			opt(&out)

@@ -23,6 +23,7 @@ type Dependencies struct {
 	Logger   *slog.Logger
 	Auth     *auth.Service
 	Syncer   ManualSyncer
+	Prefetch PrefetchController
 }
 
 type baseDependencies struct {
@@ -70,5 +71,6 @@ func newDependencies(base baseDependencies, syncer *prefetch.Service) Dependenci
 		Logger:   base.Logger,
 		Auth:     base.Auth,
 		Syncer:   syncer,
+		Prefetch: syncer,
 	}
 }

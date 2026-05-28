@@ -38,6 +38,9 @@ func (s *SQLiteStore) UpsertTag(ctx context.Context, record TagRecord) (*TagReco
 	if err := s.writeTagRow(ctx, &record, row); err != nil {
 		return nil, err
 	}
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, record.UpdatedAt); err != nil {
+		return nil, err
+	}
 	return &record, nil
 }
 
@@ -63,6 +66,9 @@ func (s *SQLiteStore) DeleteTag(ctx context.Context, key TagKey) error {
 	_, err = repository.By(s.tags, sqliteTagRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete tag metadata")
+	}
+	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, sqliteNow()); err != nil {
+		return err
 	}
 	return nil
 }

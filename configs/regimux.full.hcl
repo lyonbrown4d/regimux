@@ -152,6 +152,11 @@ scheduler {
     tags_page_size = 1000
     max_candidates_per_repo = 3
     max_version_distance = 5
+    max_bytes = 0
+    max_tasks = 0
+    max_repositories = 0
+    failure_backoff = "1h"
+    retry_window = "24h"
     distributed = true
   }
 }
@@ -187,6 +192,7 @@ upstreams {
       interval = "30s"
       timeout = "3s"
       cooldown = "2m"
+      jitter = "5s"
     }
 
     auth {

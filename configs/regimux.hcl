@@ -169,6 +169,7 @@ upstreams {
       interval = "30s"
       timeout = "3s"
       cooldown = "2m"
+      jitter = "5s"
     }
 
     auth {

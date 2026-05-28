@@ -16,7 +16,13 @@ type Store interface {
 	Close() error
 
 	UpstreamByAlias(ctx context.Context, alias string) (*Upstream, error)
+	ListUpstreams(ctx context.Context, opts ...UpstreamListOption) ([]Upstream, error)
 	RepositoryByName(ctx context.Context, upstreamID int64, name string) (*Repository, error)
+	ListRepositories(ctx context.Context, opts ...RepositoryListOption) ([]Repository, error)
+
+	EndpointHealth(ctx context.Context, key EndpointHealthKey) (*EndpointHealthRecord, bool, error)
+	UpsertEndpointHealth(ctx context.Context, record EndpointHealthRecord) (*EndpointHealthRecord, error)
+	ListEndpointHealth(ctx context.Context, opts ...EndpointHealthListOption) ([]EndpointHealthRecord, error)
 
 	Manifest(ctx context.Context, key ManifestKey) (*ManifestRecord, bool, error)
 	UpsertManifest(ctx context.Context, record ManifestRecord) (*ManifestRecord, error)
@@ -49,6 +55,16 @@ type Store interface {
 	DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
 	ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) ([]RepoBlobRecord, error)
 
+	CreatePrefetchRun(ctx context.Context, record PrefetchRunRecord) (*PrefetchRunRecord, error)
+	UpdatePrefetchRun(ctx context.Context, record PrefetchRunRecord) (*PrefetchRunRecord, error)
+	ListPrefetchRuns(ctx context.Context, opts ...PrefetchRunListOption) ([]PrefetchRunRecord, error)
+	CreatePrefetchOutcome(ctx context.Context, record PrefetchOutcomeRecord) (*PrefetchOutcomeRecord, error)
+	LatestPrefetchOutcome(ctx context.Context, key PrefetchCandidateKey) (*PrefetchOutcomeRecord, bool, error)
+	ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOutcomeListOption) ([]PrefetchOutcomeRecord, error)
+	RequestPrefetchControl(ctx context.Context, record PrefetchControlRecord) (*PrefetchControlRecord, error)
+	ConsumePrefetchControl(ctx context.Context, action string, at time.Time) (*PrefetchControlRecord, bool, error)
+	ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) ([]PrefetchControlRecord, error)
+
 	MetadataStats(ctx context.Context, now time.Time) (MetadataStats, error)
 }
 
@@ -62,28 +78,37 @@ type MetadataStats struct {
 	BlobBytes            int64
 	RepoBlobCount        int64
 	PullCount            int64
+	RepositoryCount      int64
+	RepositoryBytes      int64
 	LastPullAt           time.Time
 	LastUpstreamPullAt   time.Time
 }
 
 type Upstream struct {
-	ID               int64
-	Alias            string
-	RegistryURL      string
-	DefaultNamespace string
-	AuthType         string
-	Enabled          bool
-	TagTTL           time.Duration
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
+	ID              int64     `json:"id,omitempty"`
+	Alias           string    `json:"alias"`
+	RepositoryCount int64     `json:"repository_count"`
+	PullCount       int64     `json:"pull_count"`
+	BlobBytes       int64     `json:"blob_bytes"`
+	BlobLinkCount   int64     `json:"blob_link_count"`
+	LastActivityAt  time.Time `json:"last_activity_at,omitzero"`
+	CreatedAt       time.Time `json:"created_at"`
+	UpdatedAt       time.Time `json:"updated_at"`
 }
 
 type Repository struct {
-	ID         int64
-	UpstreamID int64
-	Name       string
-	CreatedAt  time.Time
-	LastPullAt *time.Time
+	ID               int64     `json:"id,omitempty"`
+	UpstreamID       int64     `json:"upstream_id"`
+	Alias            string    `json:"alias"`
+	Name             string    `json:"name"`
+	PullCount        int64     `json:"pull_count"`
+	BlobBytes        int64     `json:"blob_bytes"`
+	BlobLinkCount    int64     `json:"blob_link_count"`
+	LastPullAt       time.Time `json:"last_pull_at,omitzero"`
+	LastBlobAccessAt time.Time `json:"last_blob_access_at,omitzero"`
+	LastActivityAt   time.Time `json:"last_activity_at,omitzero"`
+	CreatedAt        time.Time `json:"created_at"`
+	UpdatedAt        time.Time `json:"updated_at"`
 }
 
 type ManifestKey struct {

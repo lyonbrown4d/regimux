@@ -11,9 +11,10 @@ import (
 )
 
 type failoverRequest struct {
-	alias     string
-	operation string
-	digest    string
+	alias      string
+	operation  string
+	repository string
+	digest     string
 }
 
 func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn func(upstreamRuntime) error) (func(), error) {
@@ -21,7 +22,7 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 	if err != nil {
 		return nil, err
 	}
-	selection := pool.selectRuntimes(req.operation, req.digest)
+	selection := pool.selectRuntimes(req.operation, req.repository, req.digest)
 
 	runtimes := selection.runtimes
 	if len(runtimes) == 0 {
@@ -52,6 +53,7 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverReque
 		runtime := runtimes[i]
 		lastErr = runAgainstRuntime(ctx, pool, req.operation, runtime, fn)
 		if lastErr == nil {
+			c.recordEndpointSuccess(ctx, req, pool, runtime)
 			return nil
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -60,9 +62,7 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverReque
 		if !shouldFailover(lastErr) {
 			return lastErr
 		}
-		if req.operation == operationBlob {
-			pool.recordProbeFailure(runtime)
-		}
+		c.recordEndpointFailure(ctx, req, pool, runtime, lastErr)
 		c.logFailover(req, runtime, lastErr, i < len(runtimes)-1)
 		c.publishFailover(ctx, req, runtime, lastErr, i < len(runtimes)-1)
 	}

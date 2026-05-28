@@ -1,0 +1,21 @@
+CREATE TABLE IF NOT EXISTS `meta_tags` (
+	`id` BIGINT NOT NULL,
+	`key` VARCHAR(512) NOT NULL,
+	`alias` VARCHAR(128) NOT NULL,
+	`repository` VARCHAR(255) NOT NULL,
+	`reference` VARCHAR(255) NOT NULL,
+	`digest` VARCHAR(128) NOT NULL,
+	`expires_at` BIGINT NOT NULL,
+	`created_at` BIGINT NOT NULL,
+	`updated_at` BIGINT NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `idx_meta_tags_key` (`key`),
+	KEY `idx_meta_tags_alias` (`alias`),
+	KEY `idx_meta_tags_repository` (`repository`),
+	KEY `idx_meta_tags_reference` (`reference`),
+	KEY `idx_meta_tags_digest` (`digest`),
+	KEY `idx_meta_tags_expires_at` (`expires_at`),
+	KEY `idx_meta_tags_created_at` (`created_at`),
+	KEY `idx_meta_tags_updated_at` (`updated_at`),
+	KEY `idx_meta_tags_repo` (`alias`, `repository`)
+)

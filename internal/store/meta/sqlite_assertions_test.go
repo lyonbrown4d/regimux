@@ -30,6 +30,28 @@ func assertPullLookup(t *testing.T, got *meta.PullRecord, ok bool, lastUpstreamP
 	}
 }
 
+func assertRepositoryAggregate(
+	t *testing.T,
+	repository *meta.Repository,
+	pullCount int64,
+	blobBytes int64,
+	blobLinkCount int64,
+	lastPullAt time.Time,
+	lastBlobAccessAt time.Time,
+) {
+	t.Helper()
+
+	if repository.PullCount != pullCount || repository.BlobBytes != blobBytes || repository.BlobLinkCount != blobLinkCount {
+		t.Fatalf("unexpected repository aggregate counters: %#v", repository)
+	}
+	if !repository.LastPullAt.Equal(lastPullAt) || !repository.LastBlobAccessAt.Equal(lastBlobAccessAt) {
+		t.Fatalf("unexpected repository aggregate times: %#v", repository)
+	}
+	if repository.LastActivityAt.IsZero() {
+		t.Fatalf("expected repository last activity: %#v", repository)
+	}
+}
+
 func seedListRecords(ctx context.Context, t *testing.T, store *meta.SQLiteStore, expires time.Time) {
 	t.Helper()
 

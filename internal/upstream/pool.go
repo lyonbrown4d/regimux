@@ -158,22 +158,22 @@ func (s runtimeSelection) Release() {
 	}
 }
 
-func (p *upstreamPool) selectRuntimes(operation, digest string) runtimeSelection {
+func (p *upstreamPool) selectRuntimes(operation, repository, digest string) runtimeSelection {
 	if p == nil {
 		return newRuntimeSelection(nil, nil)
 	}
 	if operation == operationBlob {
-		return p.selectBlobRuntimes(digest)
+		return p.selectBlobRuntimes(repository, digest)
 	}
 	return newRuntimeSelection(p.runtimesForPolicy(p.policy, false), nil)
 }
 
-func (p *upstreamPool) selectBlobRuntimes(digest string) runtimeSelection {
+func (p *upstreamPool) selectBlobRuntimes(repository, digest string) runtimeSelection {
 	switch p.blobPolicy {
 	case mirrorPolicyRoundRobin:
 		return newRuntimeSelection(p.runtimesForPolicy(mirrorPolicyRoundRobin, true), nil)
 	case mirrorPolicyLatency:
-		return p.selectLatencyBlobRuntimes(digest)
+		return p.selectLatencyBlobRuntimes(repository, digest)
 	default:
 		return newRuntimeSelection(p.runtimesForPolicy(mirrorPolicyOrdered, true), nil)
 	}
@@ -190,12 +190,12 @@ func (p *upstreamPool) runtimesForPolicy(policy string, blob bool) []upstreamRun
 	}).Values()
 }
 
-func (p *upstreamPool) selectLatencyBlobRuntimes(digest string) runtimeSelection {
+func (p *upstreamPool) selectLatencyBlobRuntimes(repository, digest string) runtimeSelection {
 	if len(p.runtimes) <= 1 {
 		return newRuntimeSelection(p.runtimes, nil)
 	}
 	now := time.Now()
-	candidates := p.health.rankRuntimeCandidates(p.runtimes, now)
+	candidates := p.health.rankRuntimeCandidates(p.runtimes, repository, now)
 	return p.scheduler.schedule(digest, candidates, p.blobTopN, p.blobAttemptConcurrency(), now)
 }
 
@@ -258,29 +258,4 @@ func (p *upstreamPool) limiter(registry string) chan struct{} {
 		p.limiters.Set(registry, limiter)
 	}
 	return limiter
-}
-
-func (p *upstreamPool) recordProbeSuccess(runtime upstreamRuntime, latency time.Duration) {
-	if p == nil {
-		return
-	}
-	p.health.RecordProbeSuccess(runtime.config.Registry, latency, time.Now())
-}
-
-func (p *upstreamPool) recordProbeFailure(runtime upstreamRuntime) {
-	if p == nil {
-		return
-	}
-	p.health.RecordProbeFailure(runtime.config.Registry, time.Now())
-}
-
-func (p *upstreamPool) probeEnabled() bool {
-	return p != nil && p.probeConfig.Enabled
-}
-
-func (p *upstreamPool) blobAttemptConcurrency() int {
-	if p == nil || p.blobMaxAttempts <= 0 {
-		return 1
-	}
-	return p.blobMaxAttempts
 }

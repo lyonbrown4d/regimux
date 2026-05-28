@@ -8,6 +8,7 @@ import (
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
@@ -20,6 +21,7 @@ type Client struct {
 	tokenGroup singleflight.Group
 	workers    *worker.Pools
 	events     events.Bus
+	metadata   meta.Store
 	logger     *slog.Logger
 }
 
@@ -36,10 +38,11 @@ const (
 )
 
 type ClientDependencies struct {
-	Configs *collectionmapping.OrderedMap[string, Config]
-	Logger  *slog.Logger
-	Pools   *worker.Pools
-	Bus     events.Bus
+	Configs  *collectionmapping.OrderedMap[string, Config]
+	Logger   *slog.Logger
+	Pools    *worker.Pools
+	Bus      events.Bus
+	Metadata meta.Store
 }
 
 func NewClient(deps ClientDependencies) *Client {
@@ -47,6 +50,7 @@ func NewClient(deps ClientDependencies) *Client {
 	logger := deps.Logger
 	pools := deps.Pools
 	bus := deps.Bus
+	metadata := deps.Metadata
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -57,6 +61,7 @@ func NewClient(deps ClientDependencies) *Client {
 			tokenCache: newBearerTokenCache(),
 			workers:    pools,
 			events:     bus,
+			metadata:   metadata,
 			logger:     logger,
 		}
 	}
@@ -72,6 +77,7 @@ func NewClient(deps ClientDependencies) *Client {
 		tokenCache: newBearerTokenCache(),
 		workers:    pools,
 		events:     bus,
+		metadata:   metadata,
 		logger:     logger,
 	}
 }
@@ -111,7 +117,7 @@ func (c *Client) Ping(ctx context.Context, alias string) error {
 
 func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*ManifestResponse, error) {
 	var out *ManifestResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationManifest}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationManifest, repository: req.Repo}, func(runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
 		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointManifest, req.Reference)
 		var opts []requestOption
@@ -143,7 +149,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 
 func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse, error) {
 	var out *BlobResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationBlob, digest: req.Digest}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationBlob, repository: req.Repo, digest: req.Digest}, func(runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
 		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointBlob, req.Digest)
 		var opts []requestOption
@@ -154,16 +160,11 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 		if err != nil {
 			return err
 		}
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationBlob))
+		blob, err := blobResponseFromUpstream(resp, req.Digest)
+		if err != nil {
+			return err
 		}
-		out = &BlobResponse{
-			Body:       resp.Body,
-			Digest:     lo.CoalesceOrEmpty(resp.Header.Get(distribution.HeaderDockerContentDigest), req.Digest),
-			Size:       contentLength(resp.Header),
-			StatusCode: resp.StatusCode,
-			Headers:    resp.Header.Clone(),
-		}
+		out = blob
 		return nil
 	})
 	if err != nil {
@@ -179,7 +180,7 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 
 func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsResponse, error) {
 	var out *TagsResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationTags}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationTags, repository: req.Repo}, func(runtime upstreamRuntime) error {
 		requestURL, err := tagsURL(runtime.config.Registry, req)
 		if err != nil {
 			return err
@@ -202,9 +203,26 @@ func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsRespon
 	return out, nil
 }
 
+func blobResponseFromUpstream(resp upstreamResponse, expectedDigest string) (*BlobResponse, error) {
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationBlob))
+	}
+	actualDigest := resp.Header.Get(distribution.HeaderDockerContentDigest)
+	if err := validateUpstreamContentDigest(expectedDigest, actualDigest); err != nil {
+		return nil, closeBodyWithError(resp.Body, err)
+	}
+	return &BlobResponse{
+		Body:       resp.Body,
+		Digest:     lo.CoalesceOrEmpty(actualDigest, expectedDigest),
+		Size:       contentLength(resp.Header),
+		StatusCode: resp.StatusCode,
+		Headers:    resp.Header.Clone(),
+	}, nil
+}
+
 func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*ReferrersResponse, error) {
 	var out *ReferrersResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationReferrers}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationReferrers, repository: req.Repo}, func(runtime upstreamRuntime) error {
 		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointReferrers, req.Digest)
 		resp, err := c.do(ctx, runtime, operationReferrers, http.MethodGet, requestURL, pullRepositoryScope(req.Repo))
 		if err != nil {

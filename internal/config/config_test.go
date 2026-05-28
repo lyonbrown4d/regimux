@@ -38,6 +38,7 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	assertDefaultUpstreamProbe(t, hub.Probe)
 	assertDefaultWorker(t, cfg.Worker)
 	assertDefaultCleanup(t, cfg.Scheduler.Cleanup)
+	assertDefaultPrefetch(t, cfg.Scheduler.Prefetch)
 	if cfg.Cache.Blob.VerifyTTL != 0 {
 		t.Fatalf("unexpected blob verify ttl default: %s", cfg.Cache.Blob.VerifyTTL)
 	}
@@ -67,7 +68,8 @@ func assertDefaultUpstreamBlob(t *testing.T, blob config.UpstreamBlobConfig) {
 func assertDefaultUpstreamProbe(t *testing.T, probe config.UpstreamProbeConfig) {
 	t.Helper()
 
-	if probe.Enabled || probe.Interval != 30*time.Second || probe.Timeout != 3*time.Second || probe.Cooldown != 2*time.Minute {
+	if probe.Enabled || probe.Interval != 30*time.Second || probe.Timeout != 3*time.Second ||
+		probe.Cooldown != 2*time.Minute || probe.Jitter != 5*time.Second {
 		t.Fatalf("unexpected upstream probe defaults: %#v", probe)
 	}
 }
@@ -85,6 +87,17 @@ func assertDefaultCleanup(t *testing.T, cleanup config.SchedulerCleanupConfig) {
 
 	if cleanup.MaxScan != 0 {
 		t.Fatalf("unexpected cleanup max_scan default: %d", cleanup.MaxScan)
+	}
+}
+
+func assertDefaultPrefetch(t *testing.T, prefetch config.SchedulerPrefetchConfig) {
+	t.Helper()
+
+	if prefetch.MaxBytes != 0 || prefetch.MaxTasks != 0 || prefetch.MaxRepositories != 0 {
+		t.Fatalf("unexpected prefetch policy limits: %#v", prefetch)
+	}
+	if prefetch.FailureBackoff != time.Hour || prefetch.RetryWindow != 24*time.Hour {
+		t.Fatalf("unexpected prefetch retry defaults: %#v", prefetch)
 	}
 }
 
@@ -129,6 +142,7 @@ upstreams {
       interval = "45s"
       timeout = "4s"
       cooldown = "90s"
+      jitter = "7s"
     }
   }
 }
@@ -207,7 +221,8 @@ func assertLoadedHCLBlob(t *testing.T, blob config.UpstreamBlobConfig) {
 func assertLoadedHCLProbe(t *testing.T, probe config.UpstreamProbeConfig) {
 	t.Helper()
 
-	if !probe.Enabled || probe.Interval != 45*time.Second || probe.Timeout != 4*time.Second || probe.Cooldown != 90*time.Second {
+	if !probe.Enabled || probe.Interval != 45*time.Second || probe.Timeout != 4*time.Second ||
+		probe.Cooldown != 90*time.Second || probe.Jitter != 7*time.Second {
 		t.Fatalf("unexpected probe config: %#v", probe)
 	}
 }

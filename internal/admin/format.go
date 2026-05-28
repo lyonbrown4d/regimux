@@ -49,10 +49,29 @@ func formatCooldown(snapshot upstream.EndpointHealthSnapshot) string {
 	return "expired"
 }
 
+func formatDegraded(snapshot upstream.EndpointHealthSnapshot) string {
+	if snapshot.DegradedUntil.IsZero() {
+		return "-"
+	}
+	if snapshot.InDegraded {
+		return "until " + formatTime(snapshot.DegradedUntil)
+	}
+	return "expired"
+}
+
+func formatSuccessRate(snapshot upstream.EndpointHealthSnapshot) string {
+	if !snapshot.HasSuccessRate {
+		return "-"
+	}
+	return humanize.FormatFloat("#,###.##", snapshot.SuccessRate*100) + "%"
+}
+
 func endpointStatus(snapshot upstream.EndpointHealthSnapshot) string {
 	switch {
 	case snapshot.InCooldown:
 		return "cooldown"
+	case snapshot.InDegraded:
+		return "degraded"
 	case snapshot.HasLatency:
 		return "healthy"
 	case !snapshot.LastFailureAt.IsZero():

@@ -1,0 +1,20 @@
+CREATE TABLE IF NOT EXISTS `meta_upstreams` (
+	`id` BIGINT NOT NULL,
+	`alias` VARCHAR(128) NOT NULL,
+	`repository_count` BIGINT NOT NULL,
+	`pull_count` BIGINT NOT NULL,
+	`blob_bytes` BIGINT NOT NULL,
+	`blob_link_count` BIGINT NOT NULL,
+	`last_activity_at` BIGINT NOT NULL,
+	`created_at` BIGINT NOT NULL,
+	`updated_at` BIGINT NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `idx_meta_upstreams_alias` (`alias`),
+	KEY `idx_meta_upstreams_repository_count` (`repository_count`),
+	KEY `idx_meta_upstreams_pull_count` (`pull_count`),
+	KEY `idx_meta_upstreams_blob_bytes` (`blob_bytes`),
+	KEY `idx_meta_upstreams_blob_link_count` (`blob_link_count`),
+	KEY `idx_meta_upstreams_last_activity_at` (`last_activity_at`),
+	KEY `idx_meta_upstreams_created_at` (`created_at`),
+	KEY `idx_meta_upstreams_updated_at` (`updated_at`)
+)

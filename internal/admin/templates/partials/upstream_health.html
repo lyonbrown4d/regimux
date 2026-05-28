@@ -15,7 +15,10 @@
           <th class="px-4 py-2 font-medium">{{t . "field.score"}}</th>
           <th class="px-4 py-2 font-medium">{{t . "field.inflight"}}</th>
           <th class="px-4 py-2 font-medium">{{t . "field.failures"}}</th>
+          <th class="px-4 py-2 font-medium">{{t . "field.success_rate"}}</th>
+          <th class="px-4 py-2 font-medium">{{t . "field.mismatches"}}</th>
           <th class="px-4 py-2 font-medium">{{t . "field.cooldown"}}</th>
+          <th class="px-4 py-2 font-medium">{{t . "field.degraded"}}</th>
           <th class="px-4 py-2 font-medium">{{t . "field.last_success"}}</th>
           <th class="px-4 py-2 font-medium">{{t . "field.last_failure"}}</th>
         </tr>
@@ -35,18 +38,21 @@
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Score}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Inflight}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Failures}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.SuccessRate}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Mismatches}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Cooldown}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Degraded}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.LastSuccessAt}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.LastFailureAt}}</td>
           </tr>
           {{else}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{$alias}}</td>
-            <td colspan="10" class="px-4 py-2 text-zinc-500">{{t . "none.endpoints"}}</td>
+            <td colspan="13" class="px-4 py-2 text-zinc-500">{{t . "none.endpoints"}}</td>
           </tr>
           {{end}}
         {{else}}
-        <tr><td colspan="11" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstream_health"}}</td></tr>
+        <tr><td colspan="14" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstream_health"}}</td></tr>
         {{end}}
       </tbody>
     </table>

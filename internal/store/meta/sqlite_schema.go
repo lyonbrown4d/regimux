@@ -8,6 +8,65 @@ import (
 	schemax "github.com/arcgolabs/dbx/schema"
 )
 
+type upstreamRow struct {
+	ID              int64  `dbx:"id"`
+	Alias           string `dbx:"alias"`
+	RepositoryCount int64  `dbx:"repository_count"`
+	PullCount       int64  `dbx:"pull_count"`
+	BlobBytes       int64  `dbx:"blob_bytes"`
+	BlobLinkCount   int64  `dbx:"blob_link_count"`
+	LastActivityAt  int64  `dbx:"last_activity_at"`
+	CreatedAt       int64  `dbx:"created_at"`
+	UpdatedAt       int64  `dbx:"updated_at"`
+}
+
+type upstreamRowSchema struct {
+	schemax.Schema[upstreamRow]
+	ID              columnx.IDColumn[upstreamRow, int64, idgen.IDSnowflake] `dbx:"id,pk"`
+	Alias           columnx.Column[upstreamRow, string]                     `dbx:"alias,unique"`
+	RepositoryCount columnx.Column[upstreamRow, int64]                      `dbx:"repository_count,index"`
+	PullCount       columnx.Column[upstreamRow, int64]                      `dbx:"pull_count,index"`
+	BlobBytes       columnx.Column[upstreamRow, int64]                      `dbx:"blob_bytes,index"`
+	BlobLinkCount   columnx.Column[upstreamRow, int64]                      `dbx:"blob_link_count,index"`
+	LastActivityAt  columnx.Column[upstreamRow, int64]                      `dbx:"last_activity_at,index"`
+	CreatedAt       columnx.Column[upstreamRow, int64]                      `dbx:"created_at,index"`
+	UpdatedAt       columnx.Column[upstreamRow, int64]                      `dbx:"updated_at,index"`
+}
+
+type repositoryRow struct {
+	ID               int64  `dbx:"id"`
+	Key              string `dbx:"key"`
+	UpstreamID       int64  `dbx:"upstream_id"`
+	Alias            string `dbx:"alias"`
+	Name             string `dbx:"name"`
+	PullCount        int64  `dbx:"pull_count"`
+	BlobBytes        int64  `dbx:"blob_bytes"`
+	BlobLinkCount    int64  `dbx:"blob_link_count"`
+	LastPullAt       int64  `dbx:"last_pull_at"`
+	LastBlobAccessAt int64  `dbx:"last_blob_access_at"`
+	LastActivityAt   int64  `dbx:"last_activity_at"`
+	CreatedAt        int64  `dbx:"created_at"`
+	UpdatedAt        int64  `dbx:"updated_at"`
+}
+
+type repositoryRowSchema struct {
+	schemax.Schema[repositoryRow]
+	ID               columnx.IDColumn[repositoryRow, int64, idgen.IDSnowflake] `dbx:"id,pk"`
+	Key              columnx.Column[repositoryRow, string]                     `dbx:"key,unique"`
+	UpstreamID       columnx.Column[repositoryRow, int64]                      `dbx:"upstream_id,index"`
+	Alias            columnx.Column[repositoryRow, string]                     `dbx:"alias,index"`
+	Name             columnx.Column[repositoryRow, string]                     `dbx:"name,index"`
+	PullCount        columnx.Column[repositoryRow, int64]                      `dbx:"pull_count,index"`
+	BlobBytes        columnx.Column[repositoryRow, int64]                      `dbx:"blob_bytes,index"`
+	BlobLinkCount    columnx.Column[repositoryRow, int64]                      `dbx:"blob_link_count,index"`
+	LastPullAt       columnx.Column[repositoryRow, int64]                      `dbx:"last_pull_at,index"`
+	LastBlobAccessAt columnx.Column[repositoryRow, int64]                      `dbx:"last_blob_access_at,index"`
+	LastActivityAt   columnx.Column[repositoryRow, int64]                      `dbx:"last_activity_at,index"`
+	CreatedAt        columnx.Column[repositoryRow, int64]                      `dbx:"created_at,index"`
+	UpdatedAt        columnx.Column[repositoryRow, int64]                      `dbx:"updated_at,index"`
+	RepositoryIndex  schemax.Index[repositoryRow]                              `idx:"name=idx_meta_repositories_upstream_name,columns=upstream_id|name"`
+}
+
 type manifestRow struct {
 	ID         int64  `dbx:"id"`
 	Key        string `dbx:"key"`
@@ -150,11 +209,17 @@ type repoBlobRowSchema struct {
 }
 
 var (
-	sqliteManifestRows = schemax.MustSchema("meta_manifests", manifestRowSchema{})
-	sqliteTagRows      = schemax.MustSchema("meta_tags", tagRowSchema{})
-	sqlitePullRows     = schemax.MustSchema("meta_pulls", pullRowSchema{})
-	sqliteBlobRows     = schemax.MustSchema("meta_blobs", blobRowSchema{})
-	sqliteRepoBlobRows = schemax.MustSchema("meta_repo_blobs", repoBlobRowSchema{})
+	sqliteUpstreamRows        = schemax.MustSchema("meta_upstreams", upstreamRowSchema{})
+	sqliteRepositoryRows      = schemax.MustSchema("meta_repositories", repositoryRowSchema{})
+	sqliteManifestRows        = schemax.MustSchema("meta_manifests", manifestRowSchema{})
+	sqliteTagRows             = schemax.MustSchema("meta_tags", tagRowSchema{})
+	sqlitePullRows            = schemax.MustSchema("meta_pulls", pullRowSchema{})
+	sqliteBlobRows            = schemax.MustSchema("meta_blobs", blobRowSchema{})
+	sqliteRepoBlobRows        = schemax.MustSchema("meta_repo_blobs", repoBlobRowSchema{})
+	sqlitePrefetchRunRows     = schemax.MustSchema("meta_prefetch_runs", prefetchRunRowSchema{})
+	sqlitePrefetchOutcomeRows = schemax.MustSchema("meta_prefetch_outcomes", prefetchOutcomeRowSchema{})
+	sqlitePrefetchControlRows = schemax.MustSchema("meta_prefetch_controls", prefetchControlRowSchema{})
+	sqliteEndpointHealthRows  = schemax.MustSchema("meta_endpoint_health", endpointHealthRowSchema{})
 )
 
 func unixNano(t time.Time) int64 {

@@ -33,8 +33,9 @@ func TestEndpointHealthFailureEntersCooldown(t *testing.T) {
 
 	now := time.Unix(200, 0)
 	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{
-		Cooldown:       time.Minute,
-		FailurePenalty: 50 * time.Millisecond,
+		Cooldown:         time.Minute,
+		FailurePenalty:   50 * time.Millisecond,
+		FailureThreshold: 1,
 	})
 	tracker.RecordProbeSuccess("https://failed.example", 5*time.Millisecond, now)
 	tracker.RecordProbeSuccess("https://healthy.example", 100*time.Millisecond, now)
@@ -110,6 +111,64 @@ func TestEndpointHealthEWMADoesNotJumpOnSingleSample(t *testing.T) {
 	}
 	if snapshot.LatencyEWMA >= time.Second {
 		t.Fatalf("latency EWMA jumped to latest sample: %v", snapshot.LatencyEWMA)
+	}
+}
+
+func TestEndpointHealthCircuitBreakerRequiresRepeatedFailures(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(500, 0)
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{
+		Cooldown:         time.Minute,
+		FailureThreshold: 3,
+	})
+
+	first := tracker.RecordProbeFailure("https://mirror.example", now)
+	second := tracker.RecordProbeFailure("https://mirror.example", now.Add(time.Second))
+	third := tracker.RecordProbeFailure("https://mirror.example", now.Add(2*time.Second))
+
+	if first.InCooldown || second.InCooldown {
+		t.Fatalf("endpoint entered cooldown before threshold: first=%#v second=%#v", first, second)
+	}
+	if !third.InCooldown || third.CooldownUntil != now.Add(2*time.Second).Add(time.Minute) {
+		t.Fatalf("unexpected circuit breaker snapshot: %#v", third)
+	}
+}
+
+func TestEndpointHealthTracksRepositorySuccessRate(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(600, 0)
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{})
+	tracker.RecordRequestSuccess("https://mirror.example", "library/nginx", now)
+	snapshot := tracker.RecordRequestFailure("https://mirror.example", "library/nginx", now.Add(time.Second))
+
+	if !snapshot.HasSuccessRate || snapshot.SuccessCount != 1 || snapshot.FailureCount != 1 {
+		t.Fatalf("unexpected repository counters: %#v", snapshot)
+	}
+	if snapshot.SuccessRate != 0.5 {
+		t.Fatalf("success rate = %v, want 0.5", snapshot.SuccessRate)
+	}
+	endpoint := tracker.Snapshot("https://mirror.example", now.Add(time.Second))
+	if endpoint.SuccessCount != 1 || endpoint.FailureCount != 1 {
+		t.Fatalf("endpoint counters were not updated: %#v", endpoint)
+	}
+}
+
+func TestEndpointHealthContentMismatchDegradesEndpoint(t *testing.T) {
+	t.Parallel()
+
+	now := time.Unix(700, 0)
+	tracker := upstream.NewEndpointHealthTracker(upstream.EndpointHealthOptions{
+		ContentMismatchCooldown: time.Minute,
+	})
+	snapshot := tracker.RecordContentInconsistent("https://mirror.example", "library/nginx", now)
+
+	if !snapshot.InDegraded || snapshot.DegradedUntil != now.Add(time.Minute) {
+		t.Fatalf("endpoint not degraded after content mismatch: %#v", snapshot)
+	}
+	if snapshot.ContentMismatchCount != 1 || snapshot.FailureCount != 1 {
+		t.Fatalf("content mismatch counters were not updated: %#v", snapshot)
 	}
 }
 

@@ -88,6 +88,8 @@ func defaultSchedulerConfig() SchedulerConfig {
 			TagsPageSize:         1000,
 			MaxCandidatesPerRepo: 3,
 			MaxVersionDistance:   5,
+			FailureBackoff:       time.Hour,
+			RetryWindow:          24 * time.Hour,
 			Distributed:          true,
 		},
 	}
@@ -119,6 +121,7 @@ func defaultHubUpstreamConfig() UpstreamConfig {
 			Interval: 30 * time.Second,
 			Timeout:  3 * time.Second,
 			Cooldown: 2 * time.Minute,
+			Jitter:   5 * time.Second,
 		},
 		Auth: AuthConfig{Type: "anonymous"},
 		HTTP: HTTPConfig{

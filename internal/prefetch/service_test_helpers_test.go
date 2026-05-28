@@ -38,18 +38,45 @@ func runPrefetch(
 		Blobs:     blobs,
 		Logger:    slog.New(slog.DiscardHandler),
 	})
-	report, err := service.Run(ctx, prefetch.RunOptions{
+	report, err := service.Run(ctx, defaultRunOptions())
+	if err != nil {
+		return nil, fmt.Errorf("run prefetch service: %w", err)
+	}
+	return report, nil
+}
+
+func runPrefetchWithOptions(
+	ctx context.Context,
+	t *testing.T,
+	store meta.Store,
+	manifests cache.ManifestService,
+	blobs cache.BlobService,
+	opts prefetch.RunOptions,
+) (*prefetch.RunReport, error) {
+	t.Helper()
+	service := prefetch.NewService(prefetch.ServiceDependencies{
+		Metadata:  store,
+		Tags:      fakeTagService{tags: []string{sourceTag, targetTag}},
+		Manifests: manifests,
+		Blobs:     blobs,
+		Logger:    slog.New(slog.DiscardHandler),
+	})
+	report, err := service.Run(ctx, opts)
+	if err != nil {
+		return nil, fmt.Errorf("run prefetch service: %w", err)
+	}
+	return report, nil
+}
+
+func defaultRunOptions() prefetch.RunOptions {
+	return prefetch.RunOptions{
 		MaxRecords:           10,
 		MinPullCount:         1,
 		TagsPageSize:         100,
 		MaxCandidatesPerRepo: 1,
 		MaxVersionDistance:   10,
 		Now:                  time.Date(2026, 5, 27, 12, 0, 0, 0, time.UTC),
-	})
-	if err != nil {
-		return nil, fmt.Errorf("run prefetch service: %w", err)
 	}
-	return report, nil
 }
 
 func newPrefetchMetaStore(ctx context.Context, t *testing.T) meta.Store {

@@ -3,52 +3,19 @@ package meta
 import (
 	"encoding/json"
 	"strings"
+	"time"
 )
 
 func manifestRecordToRow(record ManifestRecord) (manifestRow, error) {
-	headers, err := encodeHeaders(record.Headers)
-	if err != nil {
-		return manifestRow{}, err
-	}
-	return manifestRow{
-		ID:         record.ID,
-		Key:        record.Key,
-		Alias:      record.Alias,
-		Repository: record.Repository,
-		Reference:  record.Reference,
-		AcceptKey:  record.AcceptKey,
-		Digest:     record.Digest,
-		MediaType:  record.MediaType,
-		Size:       record.Size,
-		ObjectKey:  record.ObjectKey,
-		Headers:    headers,
-		ExpiresAt:  unixNano(record.ExpiresAt),
-		CreatedAt:  unixNano(record.CreatedAt),
-		UpdatedAt:  unixNano(record.UpdatedAt),
-	}, nil
+	return mapMetadata[manifestRow](record)
 }
 
 func manifestRowToRecord(row manifestRow) (*ManifestRecord, error) {
-	headers, err := decodeHeaders(row.Headers)
+	record, err := mapMetadata[ManifestRecord](row)
 	if err != nil {
 		return nil, err
 	}
-	return &ManifestRecord{
-		ID:         row.ID,
-		Key:        row.Key,
-		Alias:      row.Alias,
-		Repository: row.Repository,
-		Reference:  row.Reference,
-		AcceptKey:  row.AcceptKey,
-		Digest:     row.Digest,
-		MediaType:  row.MediaType,
-		Size:       row.Size,
-		ObjectKey:  row.ObjectKey,
-		Headers:    headers,
-		ExpiresAt:  timeFromUnixNano(row.ExpiresAt),
-		CreatedAt:  timeFromUnixNano(row.CreatedAt),
-		UpdatedAt:  timeFromUnixNano(row.UpdatedAt),
-	}, nil
+	return &record, nil
 }
 
 func tagRecordToRow(record TagRecord) tagRow {
@@ -186,4 +153,22 @@ func decodeHeaders(value string) (map[string][]string, error) {
 		return nil, wrapError(err, "decode manifest headers")
 	}
 	return cloneHeaders(headers), nil
+}
+
+func durationFromInt64(value int64) time.Duration {
+	if value <= 0 {
+		return 0
+	}
+	return time.Duration(value)
+}
+
+func intFromInt64(value int64) int {
+	if value <= 0 {
+		return 0
+	}
+	maxInt := int64(^uint(0) >> 1)
+	if value > maxInt {
+		return int(maxInt)
+	}
+	return int(value)
 }

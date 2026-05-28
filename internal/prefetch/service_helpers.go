@@ -11,6 +11,18 @@ import (
 )
 
 func normalizeRunOptions(opts RunOptions) RunOptions {
+	opts = normalizeRunScanOptions(opts)
+	opts = normalizeRunBudgetOptions(opts)
+	if opts.Accept == "" {
+		opts.Accept = distribution.DefaultManifestAccept
+	}
+	if opts.Now.IsZero() {
+		opts.Now = time.Now().UTC()
+	}
+	return opts
+}
+
+func normalizeRunScanOptions(opts RunOptions) RunOptions {
 	if opts.MaxRecords <= 0 {
 		opts.MaxRecords = defaultMaxRecords
 	}
@@ -26,11 +38,24 @@ func normalizeRunOptions(opts RunOptions) RunOptions {
 	if opts.MaxVersionDistance <= 0 {
 		opts.MaxVersionDistance = defaultMaxVersionDistance
 	}
-	if opts.Accept == "" {
-		opts.Accept = distribution.DefaultManifestAccept
+	return opts
+}
+
+func normalizeRunBudgetOptions(opts RunOptions) RunOptions {
+	if opts.MaxBytes < 0 {
+		opts.MaxBytes = 0
 	}
-	if opts.Now.IsZero() {
-		opts.Now = time.Now().UTC()
+	if opts.MaxTasks < 0 {
+		opts.MaxTasks = 0
+	}
+	if opts.MaxRepositories < 0 {
+		opts.MaxRepositories = 0
+	}
+	if opts.FailureBackoff < 0 {
+		opts.FailureBackoff = 0
+	}
+	if opts.RetryWindow < 0 {
+		opts.RetryWindow = 0
 	}
 	return opts
 }

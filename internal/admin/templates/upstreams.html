@@ -16,6 +16,9 @@
             <th class="px-4 py-2 font-medium">{{t . "field.blob_policy"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.probe"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.mirrors"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.repositories"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.pulls"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_activity"}}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
@@ -29,9 +32,12 @@
             <td class="px-4 py-2 text-zinc-400">{{.BlobPolicy}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.ProbeEnabled}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.MirrorCount}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.RepositoryCount}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.PullCount}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.LastActivityAt}}</td>
           </tr>
           {{else}}
-          <tr><td colspan="8" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstreams"}}</td></tr>
+          <tr><td colspan="11" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstreams"}}</td></tr>
           {{end}}
         </tbody>
       </table>

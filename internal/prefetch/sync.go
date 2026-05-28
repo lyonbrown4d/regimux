@@ -58,7 +58,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 		return nil, cacheWrap(err, "sync manifest")
 	}
 
-	result, err := s.prefetchManifestArtifacts(ctx, RunOptions{Accept: opts.Accept}, candidate, opts.Reference, manifest, 0)
+	result, err := s.prefetchManifestArtifacts(ctx, RunOptions{Accept: opts.Accept}, nil, candidate, opts.Reference, manifest, 0)
 	if err != nil {
 		return nil, err
 	}

@@ -1,0 +1,23 @@
+CREATE TABLE IF NOT EXISTS `meta_pulls` (
+	`id` BIGINT NOT NULL,
+	`key` VARCHAR(512) NOT NULL,
+	`alias` VARCHAR(128) NOT NULL,
+	`repository` VARCHAR(255) NOT NULL,
+	`reference` VARCHAR(255) NOT NULL,
+	`count` BIGINT NOT NULL,
+	`last_pull_at` BIGINT NOT NULL,
+	`last_upstream_pull_at` BIGINT NOT NULL,
+	`created_at` BIGINT NOT NULL,
+	`updated_at` BIGINT NOT NULL,
+	PRIMARY KEY (`id`),
+	UNIQUE KEY `idx_meta_pulls_key` (`key`),
+	KEY `idx_meta_pulls_alias` (`alias`),
+	KEY `idx_meta_pulls_repository` (`repository`),
+	KEY `idx_meta_pulls_reference` (`reference`),
+	KEY `idx_meta_pulls_count` (`count`),
+	KEY `idx_meta_pulls_last_pull_at` (`last_pull_at`),
+	KEY `idx_meta_pulls_last_upstream_pull_at` (`last_upstream_pull_at`),
+	KEY `idx_meta_pulls_created_at` (`created_at`),
+	KEY `idx_meta_pulls_updated_at` (`updated_at`),
+	KEY `idx_meta_pulls_repo` (`alias`, `repository`)
+)

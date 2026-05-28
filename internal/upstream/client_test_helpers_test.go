@@ -9,6 +9,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
@@ -20,6 +21,10 @@ func requireNoError(t *testing.T, err error, msg string) {
 }
 
 func newTestClient(configs map[string]upstream.Config) *upstream.Client {
+	return newTestClientWithMetadata(configs, nil)
+}
+
+func newTestClientWithMetadata(configs map[string]upstream.Config, metadata meta.Store) *upstream.Client {
 	ordered := collectionmapping.NewOrderedMapWithCapacity[string, upstream.Config](len(configs))
 	aliases := collectionlist.NewList(collectionmapping.NewMapFrom(configs).Keys()...).
 		Sort(strings.Compare).
@@ -27,7 +32,10 @@ func newTestClient(configs map[string]upstream.Config) *upstream.Client {
 	for _, alias := range aliases {
 		ordered.Set(alias, configs[alias])
 	}
-	return upstream.NewClientFromConfigs(ordered, nil, nil, nil)
+	return upstream.NewClient(upstream.ClientDependencies{
+		Configs:  ordered,
+		Metadata: metadata,
+	})
 }
 
 func requireEqual[T comparable](t *testing.T, got, want T, label string) {

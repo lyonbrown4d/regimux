@@ -64,17 +64,24 @@ func (s *SQLiteStore) recordPull(ctx context.Context, key PullKey, at time.Time,
 		record.LastPullAt = now
 	}
 	row := pullRecordToRow(record)
+	if err := s.writePullRecord(ctx, key, &record, row, now); err != nil {
+		return nil, err
+	}
+	return &record, nil
+}
+
+func (s *SQLiteStore) writePullRecord(ctx context.Context, key PullKey, record *PullRecord, row pullRow, at time.Time) error {
 	if record.ID != 0 {
 		if err := s.updatePullRow(ctx, row); err != nil {
-			return nil, err
+			return err
 		}
-		return &record, nil
+		return s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, at)
 	}
 	if err := s.pulls.Create(ctx, &row); err != nil {
-		return nil, wrapError(err, "record pull metadata")
+		return wrapError(err, "record pull metadata")
 	}
 	record.ID = row.ID
-	return &record, nil
+	return s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, at)
 }
 
 func (s *SQLiteStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error) {

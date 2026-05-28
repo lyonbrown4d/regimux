@@ -35,9 +35,23 @@
     </section>
 
     <section class="rounded border border-zinc-800 bg-zinc-900/50">
-      <div class="border-b border-zinc-800 px-4 py-3">
+      <div class="flex items-center justify-between gap-3 border-b border-zinc-800 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_job"}}</h2>
+        <div class="flex items-center gap-2">
+          <form method="post" action="{{.BasePath}}/prefetch/cancel">
+            <button class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800" type="submit">{{t . "action.cancel_prefetch"}}</button>
+          </form>
+          <form method="post" action="{{.BasePath}}/prefetch/retry">
+            <button class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800" type="submit">{{t . "action.retry_prefetch"}}</button>
+          </form>
+        </div>
       </div>
+      {{if .Scheduler.PrefetchControlMessage}}
+      <div class="border-b border-zinc-800 px-4 py-2 text-xs text-cyan-300">{{.Scheduler.PrefetchControlMessage}}</div>
+      {{end}}
+      {{if .Scheduler.PrefetchControlError}}
+      <div class="border-b border-zinc-800 px-4 py-2 text-xs text-red-300">{{.Scheduler.PrefetchControlError}}</div>
+      {{end}}
       <dl class="divide-y divide-zinc-800 text-sm">
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.enabled"}}</dt><dd class="text-zinc-100">{{.Scheduler.PrefetchEnabled}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.interval"}}</dt><dd class="text-zinc-100">{{.Scheduler.PrefetchInterval}}</dd></div>
@@ -45,9 +59,88 @@
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_records"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxRecords}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_candidates_per_repo"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxCandidatesPerRepo}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_version_distance"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxVersionDistance}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_bytes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxBytes}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_tasks"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxTasks}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_repositories"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchMaxRepositories}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.failure_backoff"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchFailureBackoff}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.retry_window"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.PrefetchRetryWindow}}</dd></div>
       </dl>
     </section>
   </div>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_runs"}}</h2>
+      <span class="text-xs text-zinc-500">{{len .Scheduler.PrefetchRuns}} {{t . "total"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.started_at"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.status"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.repositories"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.candidates"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.prefetched"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.failed"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.skipped"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.bytes_warmed"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Scheduler.PrefetchRuns}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 text-zinc-300">{{.StartedAt}}</td>
+            <td class="px-4 py-2 text-zinc-100">{{.Status}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.Repositories}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.Candidates}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.Prefetched}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.Failed}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.SkippedCandidates}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.BytesWarmed}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="8" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.prefetch_runs"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="rounded border border-zinc-800 bg-zinc-900/50">
+    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_outcomes"}}</h2>
+      <span class="text-xs text-zinc-500">{{len .Scheduler.PrefetchOutcomes}} {{t . "total"}}</span>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="min-w-full text-left text-sm">
+        <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
+          <tr>
+            <th class="px-4 py-2 font-medium">{{t . "field.candidate"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.status"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.attempt"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.next_retry"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.bytes_warmed"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.detail"}}</th>
+          </tr>
+        </thead>
+        <tbody class="divide-y divide-zinc-800">
+          {{range .Scheduler.PrefetchOutcomes}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.Candidate}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Status}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.Attempt}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.NextRetryAt}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-400">{{.BytesWarmed}}</td>
+            <td class="max-w-xl px-4 py-2 text-zinc-500">{{if .SkipReason}}{{.SkipReason}}{{else if .Error}}{{.Error}}{{else}}{{.Reason}}{{end}}</td>
+          </tr>
+          {{else}}
+          <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.prefetch_outcomes"}}</td></tr>
+          {{end}}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <section class="rounded border border-zinc-800 bg-zinc-900/50">
     <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
@@ -63,6 +156,7 @@
             <th class="px-4 py-2 font-medium">{{t . "field.interval"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.timeout"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.cooldown"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.jitter"}}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
@@ -73,9 +167,10 @@
             <td class="px-4 py-2 text-zinc-400">{{.Interval}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Timeout}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Cooldown}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.Jitter}}</td>
           </tr>
           {{else}}
-          <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.probe_jobs"}}</td></tr>
+          <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.probe_jobs"}}</td></tr>
           {{end}}
         </tbody>
       </table>

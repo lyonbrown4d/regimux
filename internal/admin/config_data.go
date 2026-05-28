@@ -102,6 +102,16 @@ func addSchedulerRows(rows *collectionlist.List[ConfigRow], cfg config.Scheduler
 	addRow(rows, "scheduler.prefetch.enabled", boolString(cfg.Prefetch.Enabled))
 	addRow(rows, "scheduler.prefetch.interval", durationString(cfg.Prefetch.Interval))
 	addRow(rows, "scheduler.prefetch.min_pull_count", strconv.FormatInt(cfg.Prefetch.MinPullCount, 10))
+	addRow(rows, "scheduler.prefetch.max_records", strconv.Itoa(cfg.Prefetch.MaxRecords))
+	addRow(rows, "scheduler.prefetch.tags_page_size", strconv.Itoa(cfg.Prefetch.TagsPageSize))
+	addRow(rows, "scheduler.prefetch.max_candidates_per_repo", strconv.Itoa(cfg.Prefetch.MaxCandidatesPerRepo))
+	addRow(rows, "scheduler.prefetch.max_version_distance", strconv.Itoa(cfg.Prefetch.MaxVersionDistance))
+	addRow(rows, "scheduler.prefetch.max_bytes", int64String(cfg.Prefetch.MaxBytes))
+	addRow(rows, "scheduler.prefetch.max_tasks", strconv.Itoa(cfg.Prefetch.MaxTasks))
+	addRow(rows, "scheduler.prefetch.max_repositories", strconv.Itoa(cfg.Prefetch.MaxRepositories))
+	addRow(rows, "scheduler.prefetch.failure_backoff", durationString(cfg.Prefetch.FailureBackoff))
+	addRow(rows, "scheduler.prefetch.retry_window", durationString(cfg.Prefetch.RetryWindow))
+	addRow(rows, "scheduler.prefetch.distributed", boolString(cfg.Prefetch.Distributed))
 }
 
 func addWorkerRows(rows *collectionlist.List[ConfigRow], cfg config.WorkerConfig) {

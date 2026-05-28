@@ -23,6 +23,7 @@ require (
 	github.com/arcgolabs/kvx/adapter/redis v0.2.1
 	github.com/arcgolabs/kvx/adapter/valkey v0.2.1
 	github.com/arcgolabs/logx v0.1.2
+	github.com/arcgolabs/mapper v0.2.0
 	github.com/arcgolabs/observabilityx v0.4.0
 	github.com/aws/aws-sdk-go-v2 v1.41.7
 	github.com/aws/aws-sdk-go-v2/config v1.32.18
@@ -104,6 +105,7 @@ require (
 	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
+	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
 	github.com/hashicorp/hcl v1.0.0 // indirect
 	github.com/hashicorp/hcl/v2 v2.13.0 // indirect
 	github.com/inconshreveable/mousetrap v1.1.0 // indirect

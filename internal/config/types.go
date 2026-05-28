@@ -168,6 +168,11 @@ type SchedulerPrefetchConfig struct {
 	TagsPageSize         int           `json:"tags_page_size"          koanf:"tags_page_size"          mapstructure:"tags_page_size"          validate:"min=0"`
 	MaxCandidatesPerRepo int           `json:"max_candidates_per_repo" koanf:"max_candidates_per_repo" mapstructure:"max_candidates_per_repo" validate:"min=0"`
 	MaxVersionDistance   int           `json:"max_version_distance"    koanf:"max_version_distance"    mapstructure:"max_version_distance"    validate:"min=0"`
+	MaxBytes             int64         `json:"max_bytes"               koanf:"max_bytes"               mapstructure:"max_bytes"               validate:"min=0"`
+	MaxTasks             int           `json:"max_tasks"               koanf:"max_tasks"               mapstructure:"max_tasks"               validate:"min=0"`
+	MaxRepositories      int           `json:"max_repositories"        koanf:"max_repositories"        mapstructure:"max_repositories"        validate:"min=0"`
+	FailureBackoff       time.Duration `json:"failure_backoff"         koanf:"failure_backoff"         mapstructure:"failure_backoff"         validate:"min=0"`
+	RetryWindow          time.Duration `json:"retry_window"            koanf:"retry_window"            mapstructure:"retry_window"            validate:"min=0"`
 	Accept               string        `json:"accept"                  koanf:"accept"                  mapstructure:"accept"`
 	Distributed          bool          `json:"distributed"             koanf:"distributed"             mapstructure:"distributed"`
 }
@@ -202,6 +207,7 @@ type UpstreamProbeConfig struct {
 	Interval time.Duration `json:"interval" koanf:"interval" mapstructure:"interval" validate:"min=0"`
 	Timeout  time.Duration `json:"timeout"  koanf:"timeout"  mapstructure:"timeout"  validate:"min=0"`
 	Cooldown time.Duration `json:"cooldown" koanf:"cooldown" mapstructure:"cooldown" validate:"min=0"`
+	Jitter   time.Duration `json:"jitter"   koanf:"jitter"   mapstructure:"jitter"   validate:"min=0"`
 }
 
 type AuthConfig struct {

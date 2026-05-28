@@ -39,6 +39,8 @@ type Summary struct {
 	TagCount           int
 	BlobCount          int
 	RepoBlobCount      int
+	RepositoryCount    int
+	RepositoryBytes    string
 	BlobBytes          string
 	PullCount          int
 	LastPullAt         string
@@ -54,6 +56,10 @@ type UpstreamRow struct {
 	BlobPolicy       string
 	ProbeEnabled     bool
 	MirrorCount      int
+	RepositoryCount  int
+	PullCount        int64
+	BlobBytes        string
+	LastActivityAt   string
 	Endpoints        []EndpointRow
 }
 
@@ -64,7 +70,10 @@ type EndpointRow struct {
 	Score         string
 	Inflight      int
 	Failures      int
+	SuccessRate   string
+	Mismatches    int64
 	Cooldown      string
+	Degraded      string
 	LastSuccessAt string
 	LastFailureAt string
 	Status        string
@@ -128,7 +137,19 @@ type StorageSummary struct {
 	RepoBlobCount int
 	RecentBlobs   []BlobRow
 	LargeBlobs    []BlobRow
+	Repositories  []RepositoryRow
 	RepoBlobLinks []RepoBlobRow
+}
+
+type RepositoryRow struct {
+	Alias            string
+	Repository       string
+	PullCount        int64
+	BlobBytes        string
+	BlobLinkCount    int64
+	LastPullAt       string
+	LastBlobAccessAt string
+	LastActivityAt   string
 }
 
 type RepoBlobRow struct {
@@ -182,7 +203,46 @@ type SchedulerSummary struct {
 	PrefetchMaxRecords           int
 	PrefetchMaxCandidatesPerRepo int
 	PrefetchMaxVersionDistance   int
+	PrefetchMaxBytes             string
+	PrefetchMaxTasks             int
+	PrefetchMaxRepositories      int
+	PrefetchFailureBackoff       string
+	PrefetchRetryWindow          string
+	PrefetchRuns                 []PrefetchRunRow
+	PrefetchOutcomes             []PrefetchOutcomeRow
+	PrefetchControlMessage       string
+	PrefetchControlError         string
 	ProbeJobs                    []ProbeJobRow
+}
+
+type PrefetchRunRow struct {
+	ID                  int64
+	Status              string
+	StartedAt           string
+	FinishedAt          string
+	ScannedRecords      int
+	Repositories        int
+	SkippedRepositories int
+	Candidates          int
+	Prefetched          int
+	Failed              int
+	SkippedCandidates   int
+	BytesWarmed         string
+	RetryRequested      bool
+	Error               string
+}
+
+type PrefetchOutcomeRow struct {
+	Candidate      string
+	Status         string
+	Attempt        int
+	Reason         string
+	SkipReason     string
+	Error          string
+	NextRetryAt    string
+	FinishedAt     string
+	BytesWarmed    string
+	ManifestDigest string
 }
 
 type ProbeJobRow struct {
@@ -191,6 +251,7 @@ type ProbeJobRow struct {
 	Interval string
 	Timeout  string
 	Cooldown string
+	Jitter   string
 }
 
 type ConfigRow struct {
