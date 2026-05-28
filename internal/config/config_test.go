@@ -21,6 +21,16 @@ func TestLoadDefaultsIncludeStore(t *testing.T) {
 	}
 }
 
+func TestLoadDefaultsDisableRegistryAuth(t *testing.T) {
+	cfg := loadDefaultConfig(t)
+	if cfg.Auth.Enabled {
+		t.Fatal("expected registry auth to be disabled by default")
+	}
+	if cfg.Auth.Service != "regimux" || cfg.Auth.Issuer != "regimux" || cfg.Auth.TokenTTL != 15*time.Minute {
+		t.Fatalf("unexpected auth defaults: %#v", cfg.Auth)
+	}
+}
+
 func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	cfg := loadDefaultConfig(t)
 	hub := cfg.Upstreams["hub"]
@@ -120,6 +130,22 @@ server {
   listen = "127.0.0.1:5555"
 }
 
+auth {
+  enabled = true
+  service = "regimux"
+  issuer = "regimux"
+  token_secret = "test-secret"
+  token_ttl = "10m"
+
+  users {
+    alice {
+      password = "secret"
+      repositories = ["local/*"]
+      groups = ["developers"]
+    }
+  }
+}
+
 upstreams {
   local {
     registry = "https://example.com"
@@ -163,8 +189,24 @@ func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 	if cfg.Server.Listen != "127.0.0.1:5555" {
 		t.Fatalf("unexpected listen %q", cfg.Server.Listen)
 	}
+	assertLoadedHCLAuth(t, cfg.Auth)
 	assertLoadedHCLUpstream(t, cfg.Upstreams["local"])
 	assertLoadedHCLWorker(t, cfg.Worker)
+}
+
+func assertLoadedHCLAuth(t *testing.T, auth config.RegistryAuthConfig) {
+	t.Helper()
+
+	if !auth.Enabled || auth.Service != "regimux" || auth.Issuer != "regimux" || auth.TokenTTL != 10*time.Minute {
+		t.Fatalf("unexpected auth config: %#v", auth)
+	}
+	user, ok := auth.Users["alice"]
+	if !ok {
+		t.Fatalf("missing auth user alice: %#v", auth.Users)
+	}
+	if user.Password != "secret" || len(user.Repositories) != 1 || user.Repositories[0] != "local/*" {
+		t.Fatalf("unexpected auth user: %#v", user)
+	}
 }
 
 func assertLoadedHCLUpstream(t *testing.T, upstreamCfg config.UpstreamConfig) {

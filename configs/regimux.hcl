@@ -6,6 +6,15 @@ server {
   idle_timeout = "120s"
 }
 
+auth {
+  enabled = false
+  service = "regimux"
+  issuer = "regimux"
+  realm = ""
+  token_secret = ""
+  token_ttl = "15m"
+}
+
 log {
   level = "info"
   console = true

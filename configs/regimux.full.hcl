@@ -6,6 +6,25 @@ server {
   idle_timeout = "120s"
 }
 
+auth {
+  enabled = false
+  service = "regimux"
+  issuer = "regimux"
+  realm = ""
+  token_secret = ""
+  token_ttl = "15m"
+
+  # Example:
+  #
+  # users {
+  #   alice {
+  #     password_hash = "$2a$12$replace-with-bcrypt-hash"
+  #     repositories = ["hub/*", "ghcr/my-org/*"]
+  #     groups = ["developers"]
+  #   }
+  # }
+}
+
 log {
   level = "info"
   console = true

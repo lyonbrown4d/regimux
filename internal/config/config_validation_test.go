@@ -24,6 +24,36 @@ func TestValidateUpstreamBlobAndProbeRejectsInvalidValues(t *testing.T) {
 	}
 }
 
+func TestValidateAuthRejectsInvalidEnabledConfig(t *testing.T) {
+	for _, tt := range []invalidConfigCase{
+		{name: "missing secret", mutate: func(cfg *config.Config) {
+			cfg.Auth.Enabled = true
+			cfg.Auth.Users = map[string]config.AuthUserConfig{
+				"alice": {Password: "secret", Repositories: []string{"hub/*"}},
+			}
+		}},
+		{name: "missing users", mutate: func(cfg *config.Config) {
+			cfg.Auth.Enabled = true
+			cfg.Auth.TokenSecret = "secret"
+		}},
+		{name: "missing password", mutate: func(cfg *config.Config) {
+			cfg.Auth.Enabled = true
+			cfg.Auth.TokenSecret = "secret"
+			cfg.Auth.Users = map[string]config.AuthUserConfig{
+				"alice": {Repositories: []string{"hub/*"}},
+			}
+		}},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := loadDefaultConfig(t)
+			tt.mutate(&cfg)
+			if err := cfg.NormalizeAndValidate(); err == nil {
+				t.Fatal("expected auth validation error")
+			}
+		})
+	}
+}
+
 func invalidBlobProbeCases() []invalidConfigCase {
 	return []invalidConfigCase{
 		{name: "blob policy", mutate: mutateHub(func(upstreamCfg *config.UpstreamConfig) {

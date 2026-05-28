@@ -1,0 +1,33 @@
+services:
+  regimux:
+    image: ${REGIMUX_IMAGE:-ghcr.io/lyonbrown4d/regimux:latest}
+    container_name: regimux
+    restart: unless-stopped
+    ports:
+      - "${REGIMUX_HTTP_PORT:-5000}:5000"
+    volumes:
+      - regimux-data:/var/lib/regimux
+      - ./configs/memory.hcl:/etc/regimux/regimux.hcl:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:5000/healthz >/dev/null"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: regimux-prometheus
+    restart: unless-stopped
+    depends_on:
+      regimux:
+        condition: service_healthy
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+
+volumes:
+  regimux-data:
+  prometheus-data:

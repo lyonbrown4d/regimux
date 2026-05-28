@@ -83,6 +83,9 @@ func (c *Config) NormalizeAndValidate() error {
 	if err := c.validateRoot(); err != nil {
 		return err
 	}
+	if err := c.validateAuth(); err != nil {
+		return err
+	}
 	if err := c.validateCache(); err != nil {
 		return err
 	}
@@ -113,6 +116,62 @@ func (c *Config) validateRoot() error {
 	}
 	if err := validateURL("server.public_url", c.Server.PublicURL); err != nil {
 		return err
+	}
+	return nil
+}
+
+func (c *Config) validateAuth() error {
+	c.normalizeAuthDefaults()
+	if c.Auth.TokenTTL < 0 {
+		return oops.In("config").Errorf("auth.token_ttl cannot be negative")
+	}
+	if !c.Auth.Enabled {
+		return nil
+	}
+	return c.validateEnabledAuth()
+}
+
+func (c *Config) normalizeAuthDefaults() {
+	c.Auth.Service = strings.TrimSpace(c.Auth.Service)
+	if c.Auth.Service == "" {
+		c.Auth.Service = "regimux"
+	}
+	c.Auth.Realm = strings.TrimSpace(c.Auth.Realm)
+	c.Auth.Issuer = strings.TrimSpace(c.Auth.Issuer)
+	if c.Auth.Issuer == "" {
+		c.Auth.Issuer = c.Auth.Service
+	}
+	if c.Auth.TokenTTL == 0 {
+		c.Auth.TokenTTL = 15 * time.Minute
+	}
+}
+
+func (c *Config) validateEnabledAuth() error {
+	if strings.TrimSpace(c.Auth.TokenSecret) == "" {
+		return oops.In("config").Errorf("auth.token_secret is required when auth.enabled is true")
+	}
+	if len(c.Auth.Users) == 0 {
+		return oops.In("config").Errorf("auth.users is required when auth.enabled is true")
+	}
+	for username, user := range c.Auth.Users {
+		if err := validateAuthUser(strings.TrimSpace(username), user); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func validateAuthUser(username string, user AuthUserConfig) error {
+	if username == "" {
+		return oops.In("config").Errorf("auth.users key cannot be empty")
+	}
+	if strings.TrimSpace(user.Password) == "" && strings.TrimSpace(user.PasswordHash) == "" {
+		return oops.In("config").With("username", username).Errorf("auth.users.%s.password or password_hash is required", username)
+	}
+	for _, repo := range user.Repositories {
+		if strings.TrimSpace(repo) == "" {
+			return oops.In("config").With("username", username).Errorf("auth.users.%s.repositories cannot contain empty entries", username)
+		}
 	}
 	return nil
 }

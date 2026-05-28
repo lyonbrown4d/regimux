@@ -4,6 +4,9 @@ go 1.26.3
 
 require (
 	github.com/Masterminds/semver/v3 v3.5.0
+	github.com/arcgolabs/authx v0.3.0
+	github.com/arcgolabs/authx/http/fiber v0.3.0
+	github.com/arcgolabs/authx/jwt v0.3.0
 	github.com/arcgolabs/clientx v0.1.2
 	github.com/arcgolabs/collectionx/list v0.9.0
 	github.com/arcgolabs/collectionx/mapping v0.9.0
@@ -28,6 +31,7 @@ require (
 	github.com/go-co-op/gocron/v2 v2.21.1
 	github.com/go-playground/validator/v10 v10.30.2
 	github.com/gofiber/fiber/v2 v2.52.13
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
@@ -40,6 +44,7 @@ require (
 	github.com/spf13/cobra v1.10.2
 	github.com/valkey-io/valkey-go v1.0.75
 	go.etcd.io/bbolt v1.4.3
+	golang.org/x/crypto v0.52.0
 	golang.org/x/sync v0.20.0
 	resty.dev/v3 v3.0.0-beta.6
 )
@@ -102,7 +107,6 @@ require (
 	go.opentelemetry.io/otel/trace v1.43.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	go.yaml.in/yaml/v2 v2.4.3 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
 	golang.org/x/net v0.54.0 // indirect
 	golang.org/x/sys v0.45.0 // indirect
 	golang.org/x/text v0.37.0 // indirect

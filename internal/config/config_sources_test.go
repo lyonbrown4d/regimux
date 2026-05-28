@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
@@ -44,6 +45,21 @@ func TestLoadCommandLineOverrides(t *testing.T) {
 	}
 	if cfg.Worker.ProbeConcurrency != 7 {
 		t.Fatalf("unexpected worker.probe_concurrency %d", cfg.Worker.ProbeConcurrency)
+	}
+}
+
+func TestLoadDockerComposeExampleConfigs(t *testing.T) {
+	exampleDir := filepath.Join("..", "..", "examples", "compose", "configs")
+	for _, name := range []string{"memory.hcl", "redis.hcl", "valkey.hcl"} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := config.Load(context.Background(), filepath.Join(exampleDir, name))
+			if err != nil {
+				t.Fatalf("load example config: %v", err)
+			}
+			if len(cfg.Upstreams) == 0 {
+				t.Fatal("expected at least one upstream")
+			}
+		})
 	}
 }
 

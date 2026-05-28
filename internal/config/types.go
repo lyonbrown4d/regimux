@@ -4,6 +4,7 @@ import "time"
 
 type Config struct {
 	Server    ServerConfig              `json:"server"    koanf:"server"    mapstructure:"server"    validate:"required"`
+	Auth      RegistryAuthConfig        `json:"auth"      koanf:"auth"      mapstructure:"auth"`
 	Log       LogConfig                 `json:"log"       koanf:"log"       mapstructure:"log"`
 	Cache     CacheConfig               `json:"cache"     koanf:"cache"     mapstructure:"cache"     validate:"required"`
 	Store     StoreConfig               `json:"store"     koanf:"store"     mapstructure:"store"     validate:"required"`
@@ -18,6 +19,23 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration `json:"read_timeout"  koanf:"read_timeout"  mapstructure:"read_timeout"  validate:"min=0"`
 	WriteTimeout time.Duration `json:"write_timeout" koanf:"write_timeout" mapstructure:"write_timeout" validate:"min=0"`
 	IdleTimeout  time.Duration `json:"idle_timeout"  koanf:"idle_timeout"  mapstructure:"idle_timeout"  validate:"min=0"`
+}
+
+type RegistryAuthConfig struct {
+	Enabled     bool                      `json:"enabled"      koanf:"enabled"      mapstructure:"enabled"`
+	Service     string                    `json:"service"      koanf:"service"      mapstructure:"service"`
+	Realm       string                    `json:"realm"        koanf:"realm"        mapstructure:"realm"        validate:"omitempty,url"`
+	Issuer      string                    `json:"issuer"       koanf:"issuer"       mapstructure:"issuer"`
+	TokenSecret string                    `json:"token_secret" koanf:"token_secret" mapstructure:"token_secret"`
+	TokenTTL    time.Duration             `json:"token_ttl"    koanf:"token_ttl"    mapstructure:"token_ttl"    validate:"min=0"`
+	Users       map[string]AuthUserConfig `json:"users"        koanf:"users"        mapstructure:"users"`
+}
+
+type AuthUserConfig struct {
+	Password     string   `json:"password"      koanf:"password"      mapstructure:"password"`
+	PasswordHash string   `json:"password_hash" koanf:"password_hash" mapstructure:"password_hash"`
+	Repositories []string `json:"repositories"  koanf:"repositories"  mapstructure:"repositories"`
+	Groups       []string `json:"groups"        koanf:"groups"        mapstructure:"groups"`
 }
 
 type LogConfig struct {

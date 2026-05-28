@@ -8,6 +8,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/httpx"
+	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/observability"
@@ -31,7 +32,7 @@ var Module = dix.NewModule("api",
 		dix.Provider1[config.ServerConfig, config.Config](func(cfg config.Config) config.ServerConfig {
 			return cfg.Server
 		}),
-		dix.Provider4[*Server, config.ServerConfig, *slog.Logger, *collectionlist.List[httpx.Endpoint], *observability.Metrics](
+		dix.Provider5[*Server, config.ServerConfig, *slog.Logger, *collectionlist.List[httpx.Endpoint], *observability.Metrics, *auth.Service](
 			newServer,
 			dix.Eager(),
 		),
@@ -47,6 +48,7 @@ func newServer(
 	logger *slog.Logger,
 	endpoints *collectionlist.List[httpx.Endpoint],
 	metrics *observability.Metrics,
+	authService *auth.Service,
 ) *Server {
 	var values []httpx.Endpoint
 	if endpoints != nil {
@@ -58,6 +60,7 @@ func newServer(
 		Logger:       logger,
 		Endpoints:    values,
 		Metrics:      metrics,
+		Auth:         authService,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,

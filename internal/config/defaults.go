@@ -5,12 +5,21 @@ import "time"
 func defaultConfig() Config {
 	return Config{
 		Server:    defaultServerConfig(),
+		Auth:      defaultRegistryAuthConfig(),
 		Log:       defaultLogConfig(),
 		Cache:     defaultCacheConfig(),
 		Store:     defaultStoreConfig(),
 		Scheduler: defaultSchedulerConfig(),
 		Worker:    defaultWorkerConfig(),
 		Upstreams: defaultUpstreamsConfig(),
+	}
+}
+
+func defaultRegistryAuthConfig() RegistryAuthConfig {
+	return RegistryAuthConfig{
+		Service:  "regimux",
+		Issuer:   "regimux",
+		TokenTTL: 15 * time.Minute,
 	}
 }
 

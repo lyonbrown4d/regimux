@@ -44,6 +44,28 @@ curl -i -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.doc
 go run ./cmd/regimuxd --config configs/regimux.minimal.hcl --server.listen=:6000 --worker.prefetch_concurrency=4
 ```
 
+认证：
+
+RegiMux 默认不启用入口认证。开启后会使用 Docker Registry Bearer token flow，支持 `docker login`，账号和密码可以放在配置文件中：
+
+```hcl
+auth {
+  enabled = true
+  service = "regimux"
+  token_secret = "change-me"
+  token_ttl = "15m"
+
+  users {
+    alice {
+      password_hash = "$2a$12$replace-with-bcrypt-hash"
+      repositories = ["hub/*", "ghcr/my-org/*"]
+    }
+  }
+}
+```
+
+开发环境也可以使用 `password = "plain-text"`，生产配置建议只使用 `password_hash`。`repositories` 使用 RegiMux 路径空间，例如 `hub/library/alpine` 或 `hub/*`。
+
 发布：
 
 - 推送 `v*` tag 会触发 `.github/workflows/release.yml`。
@@ -53,3 +75,12 @@ go run ./cmd/regimuxd --config configs/regimux.minimal.hcl --server.listen=:6000
 - GoReleaser 会自动创建 GitHub Release，并上传归档和 checksum。
 - Docker 镜像发布到 `ghcr.io/<owner>/<repo>`，Alpine 镜像使用默认标签 `latest`，Debian 镜像使用 `latest-debian` / `debian`。
 - CI 会安装 UPX，Linux 二进制会在进入 Docker 镜像前压缩。
+
+Docker Compose 示例：
+
+- `examples/compose/compose.memory.yml`：单机内存缓存。
+- `examples/compose/compose.redis.yml`：Redis 缓存和分布式调度锁。
+- `examples/compose/compose.valkey.yml`：Valkey 缓存和分布式调度锁。
+- `examples/compose/compose.observability.yml`：RegiMux + Prometheus。
+
+详见 `examples/compose/README.md`。

@@ -8,6 +8,12 @@ github.com/Microsoft/go-winio v0.6.2 h1:F2VQgta7ecxGYO8k3ZZz3RS8fVIXVxONVUPlNERo
 github.com/Microsoft/go-winio v0.6.2/go.mod h1:yd8OoFMLzJbo9gZq8j5qaps8bJ9aShtEA8Ipt1oGCvU=
 github.com/andybalholm/brotli v1.2.1 h1:R+f5xP285VArJDRgowrfb9DqL18yVK0gKAW/F+eTWro=
 github.com/andybalholm/brotli v1.2.1/go.mod h1:rzTDkvFWvIrjDXZHkuS16NPggd91W3kUSvPlQ1pLaKY=
+github.com/arcgolabs/authx v0.3.0 h1:kANG6cmKa7zkdJLwdVksdnZP39EI8evQ0AHELZeq/2g=
+github.com/arcgolabs/authx v0.3.0/go.mod h1:hOI2UOhRxUMw7wu3Ueof1idC148lD3qj0ppMjtlKiao=
+github.com/arcgolabs/authx/http/fiber v0.3.0 h1:+gOBMQGtgNNjfpcmBN8G0In9z/97BhsaLH1U3v8MUkE=
+github.com/arcgolabs/authx/http/fiber v0.3.0/go.mod h1:Q3bkjPGZZK7beqfR4g06XW1FLVFb1V2f8+rPoX1GuIg=
+github.com/arcgolabs/authx/jwt v0.3.0 h1:KlH2JeZ0B5lT9vJGjUT9YsjwL8TFFf1kOTSXFQoBLSI=
+github.com/arcgolabs/authx/jwt v0.3.0/go.mod h1:BJHOyngenkCXkVSpjTxjiUBoitOa03RQdAN7e34rCr0=
 github.com/arcgolabs/clientx v0.1.2 h1:W+h6iBVyb1OgHn1Uz4A3PNGHtDuzDCPFkyHCJwiYuUs=
 github.com/arcgolabs/clientx v0.1.2/go.mod h1:4/IB6J0wq43MKPw24DWiqEjzqA0MWVZkhjYOocTVwP4=
 github.com/arcgolabs/collectionx/graph v0.9.0 h1:wpOevcDwHq49F1Ei5oyoq+7Xiln8iPipPRsxrzyLQGw=
@@ -56,6 +62,8 @@ github.com/arcgolabs/storx/observer v0.1.0 h1:xVGpjNgNCe38jiIS9Ssofqg9EVHGaRDUDZ
 github.com/arcgolabs/storx/observer v0.1.0/go.mod h1:LS9mjg3VnyowgCE89SG5kusejAXgBypWS2wfJUssAes=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
+github.com/brianvoe/gofakeit/v7 v7.14.1 h1:a7fe3fonbj0cW3wgl5VwIKfZtiH9C3cLnwcIXWT7sow=
+github.com/brianvoe/gofakeit/v7 v7.14.1/go.mod h1:QXuPeBw164PJCzCUZVmgpgHJ3Llj49jSLVkKPMtxtxA=
 github.com/bsm/ginkgo/v2 v2.12.0 h1:Ny8MWAHyOepLGlLKYmXG4IEkioBysk6GpaRTLC8zwWs=
 github.com/bsm/ginkgo/v2 v2.12.0/go.mod h1:SwYbGRRDovPVboqFv0tPTcG1sN61LM1Z4ARdbAV9g4c=
 github.com/bsm/gomega v1.27.10 h1:yeMWxP2pV2fG3FgAODIY8EiRE3dy0aeFYt4l7wh6yKA=
@@ -136,6 +144,8 @@ github.com/gofiber/fiber/v2 v2.52.13 h1:TOKP64iqC9b5P49VrBW5tHhUOvDyrtJ0xePEfzJb
 github.com/gofiber/fiber/v2 v2.52.13/go.mod h1:YEcBbO/FB+5M1IZNBP9FO3J9281zgPAreiI1oqg8nDw=
 github.com/gogo/protobuf v1.3.2 h1:Ov1cvc58UF3b5XjBnZv7+opcTcQFZebYjWzi34vdm4Q=
 github.com/gogo/protobuf v1.3.2/go.mod h1:P1XiOD3dCwIKUDQYPy72D8LYyHL2YPYrpS2s69NZV8Q=
+github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63YCY=
+github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/gomodule/redigo v1.8.9 h1:Sl3u+2BI/kk+VEatbj0scLdrFhjPmbxOc1myhDP41ws=
 github.com/gomodule/redigo v1.8.9/go.mod h1:7ArFNvsTjH8GMMzB4uy1snslv2BwmginuMs06a1uzZE=
 github.com/google/go-cmp v0.7.0 h1:wk8382ETsv4JYUZwIsn6YpYiWiBsYLSJiTsyBybVuN8=

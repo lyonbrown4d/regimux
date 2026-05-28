@@ -15,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/adaptor"
 	"github.com/gofiber/fiber/v2/middleware/etag"
 	"github.com/gofiber/fiber/v2/middleware/recover"
+	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/samber/oops"
 )
@@ -35,6 +36,7 @@ type Options struct {
 	Logger       *slog.Logger
 	Endpoints    []httpx.Endpoint
 	Metrics      *observability.Metrics
+	Auth         *auth.Service
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
@@ -61,6 +63,9 @@ func NewServer(opts Options) *Server {
 	fiberApp.Use(etag.New())
 	if opts.Metrics != nil {
 		fiberApp.Get("/metrics", adaptor.HTTPHandler(opts.Metrics.Handler()))
+	}
+	if opts.Auth != nil {
+		opts.Auth.RegisterFiber(fiberApp)
 	}
 
 	fiberAdapter := fiberadapter.New(fiberApp, adapter.HumaOptions{
