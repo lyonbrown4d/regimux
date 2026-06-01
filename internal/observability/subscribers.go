@@ -12,17 +12,17 @@ func NewUpstreamMetricsSubscriber(metrics *Metrics) events.Subscriber {
 		return nil
 	}
 	return events.NewSubscriber(func(ctx context.Context, event events.UpstreamRequest) error {
-		metrics.ObserveUpstreamRequest(
-			ctx,
-			event.Alias,
-			event.Operation,
-			event.Method,
-			event.Registry,
-			event.Status,
-			event.Attempts,
-			event.Duration,
-			errorFromMessage(event.Error),
-		)
+		metrics.ObserveUpstreamRequest(ctx, UpstreamRequestMetric{
+			Alias:     event.Alias,
+			Operation: event.Operation,
+			Method:    event.Method,
+			Registry:  event.Registry,
+			Status:    event.Status,
+			Attempts:  event.Attempts,
+			Duration:  event.Duration,
+			Size:      event.Size,
+			Err:       errorFromMessage(event.Error),
+		})
 		return nil
 	})
 }

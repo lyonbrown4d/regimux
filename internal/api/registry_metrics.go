@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/observability"
@@ -23,7 +24,7 @@ func (e *RegistryEndpoint) observeAPI(ctx context.Context, route, method string,
 	status := registryOutputStatus(out)
 	e.logAPIObservation(ctx, route, method, status, duration, err)
 	if e.metrics != nil {
-		e.metrics.ObserveAPIRequest(ctx, route, method, status, duration, err)
+		e.metrics.ObserveAPIRequest(ctx, route, method, status, duration, registryOutputSize(out), err)
 	}
 }
 
@@ -32,6 +33,17 @@ func registryOutputStatus(out *registryOutput) int {
 		return out.Status
 	}
 	return http.StatusInternalServerError
+}
+
+func registryOutputSize(out *registryOutput) int64 {
+	if out == nil || out.ContentLength == "" {
+		return -1
+	}
+	size, err := strconv.ParseInt(out.ContentLength, 10, 64)
+	if err != nil {
+		return -1
+	}
+	return size
 }
 
 func (e *RegistryEndpoint) logAPIObservation(

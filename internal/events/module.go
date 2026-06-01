@@ -28,6 +28,11 @@ var Module = dix.NewModule("events",
 			dix.LifecycleName("events.subscribers_start"),
 			dix.LifecyclePriority(-150),
 		),
+		dix.OnStart2[config.Config, *slog.Logger](
+			logRuntimeAccess,
+			dix.LifecycleName("regimux.runtime_access"),
+			dix.LifecyclePriority(10),
+		),
 		dix.OnStart2[Bus, build.Version](publishStarted, dix.LifecycleName("regimux.application_started"), dix.LifecyclePriority(100)),
 		dix.OnStop2[Bus, build.Version](publishStopping, dix.LifecycleName("regimux.application_stopping"), dix.LifecyclePriority(100)),
 		dix.OnStop[*Subscriptions](
@@ -50,17 +55,6 @@ func startSubscribers(_ context.Context, bus Bus, subscriptions *Subscriptions, 
 
 func stopSubscribers(_ context.Context, subscriptions *Subscriptions) error {
 	return subscriptions.Close()
-}
-
-func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, version build.Version) error {
-	ordered := cfg.OrderedUpstreams()
-	logger.Info("regimuxd starting",
-		"version", string(version),
-		"listen", cfg.Server.Listen,
-		"upstream_count", ordered.Len(),
-		"upstreams", ordered.Keys(),
-	)
-	return nil
 }
 
 func publishStarting(ctx context.Context, bus Bus, version build.Version) error {

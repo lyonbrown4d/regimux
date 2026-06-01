@@ -3,6 +3,7 @@ package api
 import (
 	"bytes"
 	"net/http"
+	"strconv"
 	"strings"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
@@ -97,6 +98,7 @@ func errorOutput(err error) *registryOutput {
 	return &registryOutput{
 		Status:                       status,
 		ContentType:                  distribution.MediaTypeJSON,
+		ContentLength:                strconv.Itoa(len(body)),
 		DockerDistributionAPIVersion: distribution.APIVersion,
 		Body:                         streamWithStatus(status, httpx.StreamReader(bytes.NewReader(body))),
 	}

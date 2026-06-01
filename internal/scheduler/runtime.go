@@ -85,6 +85,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 		return join(err, r.Stop(ctx))
 	}
 	scheduler.Start()
+	if r.metrics != nil {
+		r.metrics.ObserveSchedulerRuntime(ctx, len(scheduler.Jobs()))
+	}
 	r.logger.Info("scheduler started", "jobs", len(scheduler.Jobs()))
 	return nil
 }

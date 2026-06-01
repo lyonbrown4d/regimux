@@ -65,7 +65,7 @@ func TestRegistryEndpointInvalidDigestReturnsDigestInvalid(t *testing.T) {
 
 func TestServerExposesPrometheusText(t *testing.T) {
 	metrics := observability.NewMetrics(nil)
-	metrics.ObserveAPIRequest(context.Background(), "registry.manifest", http.MethodGet, http.StatusOK, time.Millisecond, nil)
+	metrics.ObserveAPIRequest(context.Background(), "registry.manifest", http.MethodGet, http.StatusOK, time.Millisecond, 2, nil)
 	baseURL := startAPIServerWithOptions(t, api.Options{Metrics: metrics})
 
 	resp := httpGet(t, baseURL+"/metrics")

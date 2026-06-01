@@ -48,6 +48,7 @@ type metricRecord struct {
 
 type metricsRecorder struct {
 	counters   []metricRecord
+	gauges     []metricRecord
 	histograms []metricRecord
 }
 
@@ -75,8 +76,7 @@ func (r *metricsRecorder) Histogram(spec observabilityx.HistogramSpec) observabi
 }
 
 func (r *metricsRecorder) Gauge(spec observabilityx.GaugeSpec) observabilityx.Gauge {
-	_ = spec
-	return metricGauge{}
+	return metricGauge{recorder: r, name: spec.Name}
 }
 
 type metricCounter struct {
@@ -109,9 +109,18 @@ type metricUpDownCounter struct{}
 
 func (metricUpDownCounter) Add(context.Context, int64, ...observabilityx.Attribute) {}
 
-type metricGauge struct{}
+type metricGauge struct {
+	recorder *metricsRecorder
+	name     string
+}
 
-func (metricGauge) Set(context.Context, float64, ...observabilityx.Attribute) {}
+func (g metricGauge) Set(_ context.Context, value float64, attrs ...observabilityx.Attribute) {
+	g.recorder.gauges = append(g.recorder.gauges, metricRecord{
+		name:  g.name,
+		value: value,
+		attrs: metricAttrs(attrs),
+	})
+}
 
 type metricsSpan struct{}
 

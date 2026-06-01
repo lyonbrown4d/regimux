@@ -157,6 +157,7 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 		"capacity_exceeded", report.CapacityExceeded,
 		"limit_reached", report.LimitReached,
 	)
+	r.observeCleanupReport(ctx, report)
 	r.observeJob(ctx, "cleanup", "", startedAt, nil)
 	return nil
 }
@@ -175,9 +176,11 @@ func (r *Runtime) runProbe(ctx context.Context, alias string) error {
 	if err := r.upstream.ProbeAlias(ctx, alias); err != nil {
 		err = oops.Wrapf(err, "run upstream probe job")
 		r.observeJob(ctx, "probe", alias, startedAt, err)
+		r.observeUpstreamSnapshot(ctx)
 		return err
 	}
 	r.logger.InfoContext(ctx, "upstream probe job completed", "alias", alias, "duration_ms", time.Since(startedAt).Milliseconds())
+	r.observeUpstreamSnapshot(ctx)
 	r.observeJob(ctx, "probe", alias, startedAt, nil)
 	return nil
 }
@@ -190,8 +193,10 @@ func (r *Runtime) runEndpointHealthFlush(ctx context.Context) error {
 	if err := r.upstream.FlushEndpointHealth(ctx); err != nil {
 		err = oops.Wrapf(err, "run upstream endpoint health flush job")
 		r.observeJob(ctx, "endpoint_health_flush", "", startedAt, err)
+		r.observeUpstreamSnapshot(ctx)
 		return err
 	}
+	r.observeUpstreamSnapshot(ctx)
 	r.observeJob(ctx, "endpoint_health_flush", "", startedAt, nil)
 	return nil
 }
@@ -265,13 +270,7 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		"bytes_warmed", report.BytesWarmed,
 		"retry_requested", report.RetryRequested,
 	)
+	r.observePrefetchReport(ctx, report)
 	r.observeJob(ctx, "prefetch", "", startedAt, nil)
 	return nil
-}
-
-func (r *Runtime) observeJob(ctx context.Context, job, alias string, startedAt time.Time, err error) {
-	if r == nil || r.metrics == nil {
-		return
-	}
-	r.metrics.ObserveSchedulerJob(ctx, job, alias, time.Since(startedAt), err)
 }

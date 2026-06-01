@@ -98,6 +98,7 @@ type UpstreamRequest struct {
 	Status    int
 	Attempts  int
 	Duration  time.Duration
+	Size      int64
 	Error     string
 }
 

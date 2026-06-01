@@ -51,6 +51,7 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, operation
 		operation: operation,
 		method:    method,
 		endpoint:  endpoint,
+		size:      -1,
 	}
 	backoff := upstreamRetryBackoff(runtime.config.HTTP.Retry)
 
@@ -74,6 +75,7 @@ type requestAttemptState struct {
 	method    string
 	endpoint  string
 	status    int
+	size      int64
 }
 
 func (c *Client) executeAttempt(
@@ -92,6 +94,7 @@ func (c *Client) executeAttempt(
 	}
 
 	state.status = resp.StatusCode
+	state.size = contentLength(resp.Header)
 	if !shouldRetryUpstreamStatus(resp.StatusCode) || attempt >= maxAttempts {
 		c.publishAttempt(ctx, runtime, state, attempt, nil)
 		return resp, false, nil
@@ -124,7 +127,7 @@ func (c *Client) prepareRetry(
 }
 
 func (c *Client) publishAttempt(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, attempts int, err error) {
-	c.publishUpstreamRequest(ctx, runtime, state.operation, state.method, state.endpoint, state.status, attempts, time.Since(state.startedAt), err)
+	c.publishUpstreamRequest(ctx, runtime, state, attempts, time.Since(state.startedAt), err)
 }
 
 func (c *Client) executeOnce(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
@@ -180,7 +183,7 @@ func waitRetry(ctx context.Context, wait time.Duration) error {
 	}
 }
 
-func (c *Client) publishUpstreamRequest(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint string, status, attempts int, duration time.Duration, err error) {
+func (c *Client) publishUpstreamRequest(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, attempts int, duration time.Duration, err error) {
 	if c == nil || c.events == nil {
 		return
 	}
@@ -190,13 +193,14 @@ func (c *Client) publishUpstreamRequest(ctx context.Context, runtime upstreamRun
 	}
 	if publishErr := events.Publish(ctx, c.events, events.UpstreamRequest{
 		Alias:     runtime.config.Alias,
-		Operation: operation,
+		Operation: state.operation,
 		Registry:  runtime.config.Registry,
-		Method:    strings.ToUpper(method),
-		Path:      requestPath(endpoint),
-		Status:    status,
+		Method:    strings.ToUpper(state.method),
+		Path:      requestPath(state.endpoint),
+		Status:    state.status,
 		Attempts:  attempts,
 		Duration:  duration,
+		Size:      state.size,
 		Error:     message,
 	}); publishErr != nil && c.logger != nil {
 		c.logger.DebugContext(ctx, "publish upstream request event failed", "error", publishErr)

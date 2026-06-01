@@ -42,15 +42,16 @@ curl -i http://localhost:5000/v2/
 docker pull localhost:5000/hub/library/busybox:latest
 ```
 
-## Prometheus scraping
+## Prometheus and Grafana
 
-The observability example starts RegiMux and Prometheus. RegiMux exposes Prometheus metrics at `/metrics`.
+The observability example starts RegiMux, Prometheus, and Grafana. RegiMux exposes Prometheus metrics at `/metrics`, and Grafana auto-loads the `RegiMux Overview` dashboard from `examples/compose/grafana/dashboards/regimux-overview.json`.
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.observability.yml up -d
 ```
 
 Prometheus is available at `http://localhost:9090`.
+Grafana is available at `http://localhost:3000`; anonymous read-only access is enabled for local use. The default admin password is `regimux` unless `GRAFANA_ADMIN_PASSWORD` is set in `.env`.
 
 ## S3-compatible object storage
 
