@@ -43,7 +43,7 @@ type upstreamRuntime struct {
 	err    error
 }
 
-func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
+func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes []upstreamRuntime) *upstreamPool {
 	policy := normalizeMirrorPolicy(cfg.MirrorPolicy)
 	pool := &upstreamPool{
 		alias:           cfg.Alias,
@@ -60,25 +60,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 			Cooldown: cfg.Probe.Cooldown,
 		}),
 	}
-	registries := endpointRegistries(cfg)
-	runtimes := collectionlist.NewListWithCapacity[upstreamRuntime](len(registries))
-	collectionlist.NewList(registries...).Range(func(_ int, registry string) bool {
-		runtimeCfg := cfg
-		runtimeCfg.Registry = registry
-		runtime := upstreamRuntime{config: runtimeCfg}
-		runtime.client, runtime.err = newHTTPClient(runtimeCfg)
-		if runtime.err != nil && logger != nil {
-			logger.Warn(
-				"create upstream http client failed",
-				"alias", cfg.Alias,
-				"registry", registry,
-				"error", runtime.err,
-			)
-		}
-		runtimes.Add(runtime)
-		return true
-	})
-	pool.runtimes = runtimes.Values()
+	pool.runtimes = collectionlist.NewList(runtimes...).Values()
 	if logger != nil {
 		logger.Debug(
 			"upstream pool initialized",

@@ -42,11 +42,12 @@ const (
 )
 
 type ClientDependencies struct {
-	Configs  *collectionmapping.OrderedMap[string, Config]
-	Logger   *slog.Logger
-	Pools    *worker.Pools
-	Bus      events.Bus
-	Metadata meta.Store
+	Configs         *collectionmapping.OrderedMap[string, Config]
+	Logger          *slog.Logger
+	Pools           *worker.Pools
+	Bus             events.Bus
+	Metadata        meta.Store
+	EndpointClients *EndpointClients
 }
 
 func NewClient(deps ClientDependencies) *Client {
@@ -59,8 +60,12 @@ func NewClient(deps ClientDependencies) *Client {
 		logger = slog.Default()
 	}
 	logger = logger.With("component", "upstream")
+	endpointClients := deps.EndpointClients
+	if endpointClients == nil {
+		endpointClients = newEndpointClientsFromConfigs(configs, logger)
+	}
 	upstreams := collectionmapping.NewOrderedMap[string, *upstreamPool]()
-	if configs == nil {
+	if endpointClients.Len() == 0 {
 		logger.Info("upstream client configured", "upstreams", 0)
 		return &Client{
 			upstreams:     upstreams,
@@ -72,10 +77,10 @@ func NewClient(deps ClientDependencies) *Client {
 			healthPending: collectionmapping.NewConcurrentMap[string, meta.EndpointHealthRecord](),
 		}
 	}
-	upstreams = collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](configs.Len())
-	configs.Range(func(alias string, cfg Config) bool {
+	upstreams = collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](endpointClients.Len())
+	endpointClients.Range(func(alias string, cfg Config, runtimes []upstreamRuntime) bool {
 		cfg.Alias = alias
-		upstreams.Set(alias, newUpstreamPool(cfg, logger))
+		upstreams.Set(alias, newUpstreamPool(cfg, logger, runtimes))
 		return true
 	})
 	logger.Info("upstream client configured", "upstreams", upstreams.Len())

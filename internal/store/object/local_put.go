@@ -91,7 +91,7 @@ func (s *putSession) validateDigest() error {
 	if actual == s.expected {
 		return nil
 	}
-	return errorf("%w: expected %s got %s:%s", ErrDigestMismatch, s.normalized, s.algorithm, actual)
+	return NewDigestMismatch(s.normalized, s.algorithm+":"+actual)
 }
 
 func (s *putSession) rename(ctx context.Context, size int64, opts PutOptions) (*Info, error) {
@@ -165,7 +165,7 @@ func (s *aferoStore) putDirect(ctx context.Context, normalized, target string, r
 	actual := hex.EncodeToString(hasher.Sum(nil))
 	if actual != expected {
 		return nil, errors.Join(
-			errorf("%w: expected %s got %s:%s", ErrDigestMismatch, normalized, algorithm, actual),
+			NewDigestMismatch(normalized, algorithm+":"+actual),
 			removeTempObject(s.fs, tmpName),
 		)
 	}

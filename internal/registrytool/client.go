@@ -4,15 +4,14 @@ package registrytool
 
 import (
 	"context"
+	"errors"
+	"io"
 	"net/http"
 	"net/url"
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/google/go-containerregistry/pkg/authn"
-	gcrname "github.com/google/go-containerregistry/pkg/name"
-	gcrremote "github.com/google/go-containerregistry/pkg/v1/remote"
-	"github.com/opencontainers/go-digest"
+	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/oops"
 	orasremote "oras.land/oras-go/v2/registry/remote"
 	orasauth "oras.land/oras-go/v2/registry/remote/auth"
@@ -65,29 +64,33 @@ func NewClient() *Client {
 }
 
 func (c *Client) Head(ctx context.Context, ref Reference) (Descriptor, error) {
-	parsed, opts, err := ref.containerReference(ctx, c.userAgent)
+	repo, err := c.ORASRepository(ref.repositoryRef())
 	if err != nil {
 		return Descriptor{}, err
 	}
-	desc, err := gcrremote.Head(parsed, opts...)
+	desc, err := repo.Resolve(ctx, normalizeReference(ref.Reference))
 	if err != nil {
 		return Descriptor{}, oops.In("registrytool").Wrapf(err, "head registry reference")
 	}
-	return descriptorFromGCR(string(desc.MediaType), desc.Digest.String(), desc.Size), nil
+	return descriptorFromOCI(desc), nil
 }
 
 func (c *Client) FetchManifest(ctx context.Context, ref Reference) (Manifest, error) {
-	parsed, opts, err := ref.containerReference(ctx, c.userAgent)
+	repo, err := c.ORASRepository(ref.repositoryRef())
 	if err != nil {
 		return Manifest{}, err
 	}
-	desc, err := gcrremote.Get(parsed, opts...)
+	desc, rc, err := repo.FetchReference(ctx, normalizeReference(ref.Reference))
 	if err != nil {
 		return Manifest{}, oops.In("registrytool").Wrapf(err, "fetch registry manifest")
 	}
+	content, err := readAndCloseManifest(rc)
+	if err != nil {
+		return Manifest{}, err
+	}
 	return Manifest{
-		Descriptor: descriptorFromGCR(string(desc.MediaType), desc.Digest.String(), desc.Size),
-		Content:    desc.Manifest,
+		Descriptor: descriptorFromOCI(desc),
+		Content:    content,
 	}, nil
 }
 
@@ -122,6 +125,16 @@ func (c *Client) ORASRepository(ref RepositoryRef) (*orasremote.Repository, erro
 	return repo, nil
 }
 
+func (ref Reference) repositoryRef() RepositoryRef {
+	return RepositoryRef{
+		Registry:   ref.Registry,
+		Repository: ref.Repository,
+		Auth:       ref.Auth,
+		PlainHTTP:  ref.PlainHTTP,
+		PageSize:   ref.PageSize,
+	}
+}
+
 func (c *Client) orasAuthClient(host string, cfg AuthConfig) *orasauth.Client {
 	client := &orasauth.Client{
 		Client: http.DefaultClient,
@@ -133,34 +146,6 @@ func (c *Client) orasAuthClient(host string, cfg AuthConfig) *orasauth.Client {
 		client.Credential = orasauth.StaticCredential(host, credential)
 	}
 	return client
-}
-
-func (ref Reference) containerReference(ctx context.Context, userAgent string) (gcrname.Reference, []gcrremote.Option, error) {
-	host, plainHTTP, err := normalizeRegistry(ref.Registry, ref.PlainHTTP)
-	if err != nil {
-		return nil, nil, err
-	}
-	imageRef := host + "/" + strings.Trim(ref.Repository, "/") + referenceSuffix(ref.Reference)
-	nameOpts := []gcrname.Option{gcrname.WeakValidation}
-	if plainHTTP {
-		nameOpts = append(nameOpts, gcrname.Insecure)
-	}
-	parsed, err := gcrname.ParseReference(imageRef, nameOpts...)
-	if err != nil {
-		return nil, nil, oops.In("registrytool").With("reference", imageRef).Wrapf(err, "parse registry reference")
-	}
-	remoteOpts := []gcrremote.Option{
-		gcrremote.WithContext(ctx),
-		gcrremote.WithUserAgent(userAgent),
-		gcrremote.WithAuth(containerAuthenticator(ref.Auth)),
-	}
-	if ref.Jobs > 0 {
-		remoteOpts = append(remoteOpts, gcrremote.WithJobs(ref.Jobs))
-	}
-	if ref.PageSize > 0 {
-		remoteOpts = append(remoteOpts, gcrremote.WithPageSize(ref.PageSize))
-	}
-	return parsed, remoteOpts, nil
 }
 
 func normalizeRegistry(registry string, plainHTTP bool) (string, bool, error) {
@@ -181,29 +166,12 @@ func normalizeRegistry(registry string, plainHTTP bool) (string, bool, error) {
 	return registry, plainHTTP, nil
 }
 
-func referenceSuffix(reference string) string {
+func normalizeReference(reference string) string {
 	reference = strings.TrimSpace(reference)
 	if reference == "" {
-		reference = "latest"
+		return "latest"
 	}
-	if _, err := digest.Parse(reference); err == nil {
-		return "@" + reference
-	}
-	return ":" + reference
-}
-
-func containerAuthenticator(cfg AuthConfig) authn.Authenticator {
-	switch strings.ToLower(strings.TrimSpace(cfg.Type)) {
-	case "basic", "dockerhub":
-		if cfg.Username != "" || cfg.Password != "" {
-			return &authn.Basic{Username: cfg.Username, Password: cfg.Password}
-		}
-	case "bearer":
-		if cfg.Token != "" {
-			return &authn.Bearer{Token: cfg.Token}
-		}
-	}
-	return authn.Anonymous
+	return reference
 }
 
 func orasCredential(cfg AuthConfig) orasauth.Credential {
@@ -220,6 +188,19 @@ func orasCredential(cfg AuthConfig) orasauth.Credential {
 	return orasauth.EmptyCredential
 }
 
-func descriptorFromGCR(mediaType, digestValue string, size int64) Descriptor {
-	return Descriptor{MediaType: mediaType, Digest: digestValue, Size: size}
+func readAndCloseManifest(rc io.ReadCloser) ([]byte, error) {
+	content, err := io.ReadAll(rc)
+	closeErr := rc.Close()
+	if err != nil || closeErr != nil {
+		return nil, oops.In("registrytool").Wrapf(errors.Join(err, closeErr), "read registry manifest")
+	}
+	return content, nil
+}
+
+func descriptorFromOCI(desc ocispec.Descriptor) Descriptor {
+	return Descriptor{
+		MediaType: desc.MediaType,
+		Digest:    desc.Digest.String(),
+		Size:      desc.Size,
+	}
 }

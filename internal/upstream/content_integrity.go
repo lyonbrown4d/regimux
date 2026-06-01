@@ -38,10 +38,7 @@ func validateUpstreamContentDigest(expected, actual string) error {
 	return &contentInconsistentError{
 		expected: expected,
 		actual:   actual,
-		err: distribution.ErrDigestMismatch.WithDetail(map[string]string{
-			"expected": expected,
-			"actual":   actual,
-		}),
+		err:      distribution.DigestMismatch(expected, actual),
 	}
 }
 

@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"crypto/tls"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -18,23 +19,20 @@ const (
 	tagsPath               = "tags/list"
 )
 
-func newHTTPClient(cfg Config) (clienthttp.Client, error) {
+func newHTTPClient(cfg Config, logger *slog.Logger) (clienthttp.Client, error) {
 	httpClient, err := clienthttp.New(clienthttp.Config{
 		BaseURL:   strings.TrimRight(cfg.Registry, "/"),
 		Timeout:   cfg.HTTP.Timeout,
 		UserAgent: defaultUserAgent,
-		Retry: clientx.RetryConfig{
-			Enabled:    cfg.HTTP.Retry.Enabled,
-			MaxRetries: cfg.HTTP.Retry.MaxRetries,
-			WaitMin:    cfg.HTTP.Retry.WaitMin,
-			WaitMax:    cfg.HTTP.Retry.WaitMax,
-		},
+		// RegiMux handles upstream retries in request.go so status-based retry,
+		// body draining, metrics, and failover all share one attempt model.
+		Retry: clientx.RetryConfig{Enabled: false},
 		TLS: clientx.TLSConfig{
 			Enabled:            cfg.HTTP.TLS.Enabled,
 			InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
 			ServerName:         cfg.HTTP.TLS.ServerName,
 		},
-	})
+	}, upstreamHTTPClientOptions(logger)...)
 	if err != nil {
 		return nil, wrapError(err, "create upstream http client")
 	}
@@ -47,6 +45,18 @@ func newHTTPClient(cfg Config) (clienthttp.Client, error) {
 	configureHTTP2(rawClient, cfg.HTTP.HTTP2.Enabled)
 	rawClient.CheckRedirect = stripAuthOnCrossHostRedirect
 	return httpClient, nil
+}
+
+func upstreamHTTPClientOptions(logger *slog.Logger) []clienthttp.Option {
+	if logger == nil {
+		return nil
+	}
+	return []clienthttp.Option{
+		clienthttp.WithHooks(clientx.NewLoggingHook(
+			logger.With("component", "upstream.clientx"),
+			clientx.WithLoggingHookAddress(false),
+		)),
+	}
 }
 
 func configureHTTP2(client *http.Client, enabled bool) {

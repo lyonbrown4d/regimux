@@ -179,10 +179,7 @@ func (p blobProxy) verifyRepoBlob(ctx context.Context, req BlobRequest) error {
 		return closeErr
 	}
 	if resp.Digest != "" && resp.Digest != req.Digest {
-		return distribution.ErrDigestMismatch.WithDetail(map[string]string{
-			"expected": req.Digest,
-			"actual":   resp.Digest,
-		})
+		return distribution.DigestMismatch(req.Digest, resp.Digest)
 	}
 
 	stat, err := p.objects.Stat(ctx, req.Digest)

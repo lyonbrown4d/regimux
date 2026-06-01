@@ -117,10 +117,7 @@ func streamWithStatus(status int, stream httpx.ResponseStream) httpx.ResponseStr
 }
 
 func unsupported(method, path string) *distribution.ErrorList {
-	return distribution.ErrUnsupported.WithDetail(map[string]string{
-		"method": method,
-		"path":   path,
-	})
+	return distribution.Unsupported(method, path)
 }
 
 func endpointSpec(tags ...string) httpx.EndpointSpec {

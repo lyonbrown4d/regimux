@@ -14,16 +14,22 @@ import (
 
 var Module = dix.NewModule("upstream",
 	dix.Providers(
+		dix.Provider2[*EndpointClients, config.Config, *slog.Logger](newEndpointClients),
 		dix.Provider1[*Client, ClientDependencies](NewClient, dix.As[RegistryClient]()),
-		dix.Provider5[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus, meta.Store](
+		dix.Provider6[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus, meta.Store, *EndpointClients](
 			newClientDependencies,
 		),
 	),
 	dix.Hooks(
 		dix.OnStart[*Client](loadClientEndpointHealth, dix.LifecycleName("regimux.upstream_health_load"), dix.LifecyclePriority(-50)),
 		dix.OnStop[*Client](flushClientEndpointHealth, dix.LifecycleName("regimux.upstream_health_flush"), dix.LifecyclePriority(-55)),
+		dix.OnStop[*EndpointClients](closeEndpointClients, dix.LifecycleName("regimux.upstream_endpoint_clients_close"), dix.LifecyclePriority(-60)),
 	),
 )
+
+func newEndpointClients(cfg config.Config, logger *slog.Logger) *EndpointClients {
+	return newEndpointClientsFromConfigs(ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), logger)
+}
 
 func newClientDependencies(
 	cfg config.Config,
@@ -31,13 +37,15 @@ func newClientDependencies(
 	pools *worker.Pools,
 	bus events.Bus,
 	metadata meta.Store,
+	endpointClients *EndpointClients,
 ) ClientDependencies {
 	return ClientDependencies{
-		Configs:  ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()),
-		Logger:   logger,
-		Pools:    pools,
-		Bus:      bus,
-		Metadata: metadata,
+		Configs:         ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()),
+		Logger:          logger,
+		Pools:           pools,
+		Bus:             bus,
+		Metadata:        metadata,
+		EndpointClients: endpointClients,
 	}
 }
 
@@ -53,6 +61,13 @@ func flushClientEndpointHealth(ctx context.Context, client *Client) error {
 		return nil
 	}
 	return client.FlushEndpointHealth(ctx)
+}
+
+func closeEndpointClients(_ context.Context, clients *EndpointClients) error {
+	if clients == nil {
+		return nil
+	}
+	return clients.Close()
 }
 
 // ConfigsFromUpstreamConfigs converts runtime config upstreams into client configs.

@@ -60,10 +60,7 @@ func verifyDigestBody(expected string, body []byte) error {
 	}
 	if !verifier.Verified() {
 		actual := expectedDigest.Algorithm().FromBytes(body).String()
-		return distribution.ErrDigestMismatch.WithDetail(map[string]string{
-			"expected": expected,
-			"actual":   actual,
-		})
+		return distribution.DigestMismatch(expected, actual)
 	}
 	return nil
 }

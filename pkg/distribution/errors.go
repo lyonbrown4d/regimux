@@ -120,16 +120,16 @@ var statusByCode = map[ErrorCode]int{
 }
 
 func ManifestUnknown(repo, reference string) *ErrorList {
-	return ErrManifestUnknown.WithDetail(map[string]string{
-		"repo":      repo,
-		"reference": reference,
+	return ErrManifestUnknown.WithDetail(ManifestUnknownDetail{
+		Repository: repo,
+		Reference:  reference,
 	})
 }
 
 func BlobUnknown(repo, digest string) *ErrorList {
-	return ErrBlobUnknown.WithDetail(map[string]string{
-		"repo":   repo,
-		"digest": digest,
+	return ErrBlobUnknown.WithDetail(BlobUnknownDetail{
+		Repository: repo,
+		Digest:     digest,
 	})
 }
 

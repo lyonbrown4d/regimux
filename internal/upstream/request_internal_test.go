@@ -72,7 +72,7 @@ func newFetchTokenCoalescingFixture(t *testing.T) fetchTokenCoalescingFixture {
 	t.Cleanup(authServer.Close)
 	t.Cleanup(func() { closeReleaseToken.Do(func() { close(releaseToken) }) })
 
-	httpClient, err := newHTTPClient(Config{Registry: authServer.URL})
+	httpClient, err := newHTTPClient(Config{Registry: authServer.URL}, nil)
 	if err != nil {
 		t.Fatalf("newHTTPClient: %v", err)
 	}

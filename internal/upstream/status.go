@@ -41,9 +41,9 @@ func MapStatus(status int, kind string) error {
 		return withUpstreamStatus(status, distribution.ErrTooManyRequests)
 	default:
 		if status >= 500 {
-			return withUpstreamStatus(status, distribution.ErrUpstream.WithDetail(status))
+			return withUpstreamStatus(status, distribution.UpstreamStatus(status, kind))
 		}
-		return withUpstreamStatus(status, distribution.ErrUpstream.WithDetail(map[string]any{"status": status, "kind": kind}))
+		return withUpstreamStatus(status, distribution.UpstreamStatus(status, kind))
 	}
 }
 

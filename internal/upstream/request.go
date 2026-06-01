@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/arcgolabs/clientx"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	retry "github.com/sethvargo/go-retry"
@@ -89,8 +90,7 @@ func (c *Client) executeAttempt(
 ) (upstreamResponse, bool, error) {
 	resp, err := c.executeOnce(ctx, runtime, state.method, state.endpoint, opts...)
 	if err != nil {
-		c.publishAttempt(ctx, runtime, state, attempt, err)
-		return upstreamResponse{}, false, err
+		return c.handleAttemptError(ctx, runtime, state, backoff, attempt, maxAttempts, err)
 	}
 
 	state.status = resp.StatusCode
@@ -99,9 +99,29 @@ func (c *Client) executeAttempt(
 		c.publishAttempt(ctx, runtime, state, attempt, nil)
 		return resp, false, nil
 	}
-	if err := c.prepareRetry(ctx, runtime, state, backoff, resp, attempt, maxAttempts); err != nil {
+	if err := c.prepareRetry(ctx, runtime, state, backoff, &resp, nil, attempt, maxAttempts); err != nil {
 		c.publishAttempt(ctx, runtime, state, attempt, err)
 		return upstreamResponse{}, false, err
+	}
+	return upstreamResponse{}, true, nil
+}
+
+func (c *Client) handleAttemptError(
+	ctx context.Context,
+	runtime upstreamRuntime,
+	state requestAttemptState,
+	backoff retry.Backoff,
+	attempt int,
+	maxAttempts int,
+	err error,
+) (upstreamResponse, bool, error) {
+	if !shouldRetryUpstreamError(err) || attempt >= maxAttempts {
+		c.publishAttempt(ctx, runtime, state, attempt, err)
+		return upstreamResponse{}, false, err
+	}
+	if retryErr := c.prepareRetry(ctx, runtime, state, backoff, nil, err, attempt, maxAttempts); retryErr != nil {
+		c.publishAttempt(ctx, runtime, state, attempt, retryErr)
+		return upstreamResponse{}, false, retryErr
 	}
 	return upstreamResponse{}, true, nil
 }
@@ -111,18 +131,21 @@ func (c *Client) prepareRetry(
 	runtime upstreamRuntime,
 	state requestAttemptState,
 	backoff retry.Backoff,
-	resp upstreamResponse,
+	resp *upstreamResponse,
+	cause error,
 	attempt int,
 	maxAttempts int,
 ) error {
-	if err := drainAndClose(resp.Body); err != nil {
-		return err
+	if resp != nil {
+		if err := drainAndClose(resp.Body); err != nil {
+			return err
+		}
 	}
 	wait, stop := backoff.Next()
 	if stop {
 		return nil
 	}
-	c.logUpstreamRetry(ctx, runtime, state.operation, state.method, state.endpoint, resp.StatusCode, attempt, maxAttempts, wait)
+	c.logUpstreamRetry(ctx, runtime, state, cause, attempt, maxAttempts, wait)
 	return waitRetry(ctx, wait)
 }
 
@@ -154,6 +177,17 @@ func maxUpstreamAttempts(cfg HTTPRetryConfig) int {
 
 func shouldRetryUpstreamStatus(status int) bool {
 	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
+}
+
+func shouldRetryUpstreamError(err error) bool {
+	switch clientx.KindOf(err) {
+	case clientx.ErrorKindTimeout, clientx.ErrorKindTemporary, clientx.ErrorKindConnRefused, clientx.ErrorKindDNS, clientx.ErrorKindNetwork:
+		return true
+	case clientx.ErrorKindUnknown, clientx.ErrorKindCanceled, clientx.ErrorKindTLS, clientx.ErrorKindClosed, clientx.ErrorKindCodec:
+		return false
+	default:
+		return false
+	}
 }
 
 func upstreamRetryBackoff(cfg HTTPRetryConfig) retry.Backoff {
@@ -207,22 +241,27 @@ func (c *Client) publishUpstreamRequest(ctx context.Context, runtime upstreamRun
 	}
 }
 
-func (c *Client) logUpstreamRetry(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint string, status, attempt, maxAttempts int, wait time.Duration) {
+func (c *Client) logUpstreamRetry(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, err error, attempt, maxAttempts int, wait time.Duration) {
 	if c == nil || c.logger == nil {
 		return
 	}
-	c.logger.WarnContext(ctx,
-		"retrying upstream request",
+	attrs := []any{
 		"alias", runtime.config.Alias,
-		"operation", operation,
-		"method", method,
+		"operation", state.operation,
+		"method", state.method,
 		"registry", runtime.config.Registry,
-		"path", requestPath(endpoint),
-		"status", status,
+		"path", requestPath(state.endpoint),
 		"attempt", attempt,
 		"max_attempts", maxAttempts,
 		"wait", wait,
-	)
+	}
+	if state.status > 0 {
+		attrs = append(attrs, "status", state.status)
+	}
+	if err != nil {
+		attrs = append(attrs, "error", err, "error_kind", clientx.KindOf(err))
+	}
+	c.logger.WarnContext(ctx, "retrying upstream request", attrs...)
 }
 
 func requestPath(endpoint string) string {

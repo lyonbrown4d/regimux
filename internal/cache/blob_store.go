@@ -63,10 +63,7 @@ func validateStoredBlobDigest(expected, actual string) error {
 	if actual == "" || actual == expected {
 		return nil
 	}
-	return distribution.ErrDigestMismatch.WithDetail(map[string]string{
-		"expected": expected,
-		"actual":   actual,
-	})
+	return distribution.DigestMismatch(expected, actual)
 }
 
 func (p blobProxy) putBlobObject(ctx context.Context, req BlobRequest, resp *upstream.BlobResponse, mediaType string) (*object.Info, error) {
@@ -76,6 +73,10 @@ func (p blobProxy) putBlobObject(ctx context.Context, req BlobRequest, resp *ups
 	if err == nil {
 		p.storeSmallBlobCache(ctx, req.Digest, mediaType, info.Size, recorder.Bytes(info.Size))
 		return info, nil
+	}
+	var mismatch *object.DigestMismatchError
+	if errors.As(err, &mismatch) {
+		return nil, distribution.DigestMismatch(mismatch.Expected, mismatch.Actual)
 	}
 	if errors.Is(err, object.ErrDigestMismatch) {
 		return nil, distribution.ErrDigestMismatch.WithDetail(err.Error())
