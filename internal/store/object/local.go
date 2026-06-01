@@ -241,7 +241,7 @@ func checkContext(ctx context.Context, operation string) error {
 
 func closeFileAfterError(file afero.File, err error) error {
 	if closeErr := file.Close(); closeErr != nil {
-		return errors.Join(err, wrapError(closeErr, "close object file"))
+		return joinError("close object file after error", err, wrapError(closeErr, "close object file"))
 	}
 	return err
 }

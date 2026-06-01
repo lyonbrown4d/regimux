@@ -17,6 +17,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 	"github.com/samber/mo"
 )
 
@@ -202,11 +203,7 @@ func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route
 		return errorOutput(distribution.FromError(err))
 	}
 
-	status := result.Status
-	if status == 0 {
-		status = http.StatusOK
-	}
-	out := newRegistryOutput(status, result.Headers)
+	out := newRegistryOutput(lo.CoalesceOrEmpty(result.Status, http.StatusOK), result.Headers)
 	out.ContentType = distribution.MediaTypeOctetStream
 	out.DockerContentDigest = result.Digest
 	out.AcceptRanges = distribution.RangeUnitBytes

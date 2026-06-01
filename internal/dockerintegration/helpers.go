@@ -2,10 +2,10 @@ package dockerintegration
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 )
 
 func nextImageEvent(ctx context.Context, imageEvents <-chan ImageEvent, errs <-chan error) (ImageEvent, bool, error) {
@@ -28,12 +28,15 @@ func drainAndClosePullStream(body io.ReadCloser) error {
 	}
 	var err error
 	if _, copyErr := io.Copy(io.Discard, body); copyErr != nil {
-		err = errors.Join(err, oops.In("docker").Wrapf(copyErr, "read docker image pull stream"))
+		err = multierr.Append(err, oops.In("docker").Wrapf(copyErr, "read docker image pull stream"))
 	}
 	if closeErr := body.Close(); closeErr != nil {
-		err = errors.Join(err, oops.In("docker").Wrapf(closeErr, "close docker image pull stream"))
+		err = multierr.Append(err, oops.In("docker").Wrapf(closeErr, "close docker image pull stream"))
 	}
-	return err
+	if err != nil {
+		return oops.In("docker").Wrapf(err, "drain docker image pull stream")
+	}
+	return nil
 }
 
 func dockerHostLabel(host string) string {

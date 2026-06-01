@@ -3,7 +3,6 @@ package dockerintegration
 
 import (
 	"context"
-	"errors"
 	"io"
 
 	dockerevents "github.com/docker/docker/api/types/events"
@@ -11,7 +10,9 @@ import (
 	dockerimage "github.com/docker/docker/api/types/image"
 	"github.com/docker/docker/client"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 )
 
 type daemonClient interface {
@@ -49,7 +50,7 @@ func (dockerConnector) Connect(ctx context.Context, cfg config.DockerConfig) (da
 	ping, err := cli.Ping(ctx)
 	if err != nil {
 		if closeErr := cli.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
+			err = multierr.Combine(err, closeErr)
 		}
 		return nil, daemonStatus{}, oops.In("docker").Wrapf(err, "ping docker daemon")
 	}
@@ -127,10 +128,10 @@ func imageEventFromDocker(message dockerevents.Message) ImageEvent {
 }
 
 func dockerEventRef(message dockerevents.Message) string {
-	for _, key := range []string{"name", "ref", "image"} {
-		if value := message.Actor.Attributes[key]; value != "" {
-			return value
-		}
-	}
-	return message.Actor.ID
+	return lo.CoalesceOrEmpty(
+		message.Actor.Attributes["name"],
+		message.Actor.Attributes["ref"],
+		message.Actor.Attributes["image"],
+		message.Actor.ID,
+	)
 }

@@ -58,7 +58,7 @@ func (s *putSession) commit(ctx context.Context, r io.Reader, opts PutOptions) (
 			return
 		}
 		if cleanupErr := removeTempObject(s.store.fs, s.tmpName); cleanupErr != nil {
-			err = errors.Join(err, cleanupErr)
+			err = joinError("cleanup object temp file after put", err, cleanupErr)
 		}
 	}()
 
@@ -119,7 +119,7 @@ func (s *putSession) handleRenameError(ctx context.Context, err error) (*Info, e
 	if errors.Is(statErr, ErrNotFound) {
 		return nil, wrapError(err, "commit object file")
 	}
-	return nil, errors.Join(
+	return nil, joinError("commit object file and stat existing object",
 		wrapError(err, "commit object file"),
 		wrapError(statErr, "stat existing object after commit failure"),
 	)
@@ -127,7 +127,7 @@ func (s *putSession) handleRenameError(ctx context.Context, err error) (*Info, e
 
 func (s *putSession) closeWithError(err error) error {
 	if closeErr := s.tmp.Close(); closeErr != nil {
-		return errors.Join(err, wrapError(closeErr, "close object temp file"))
+		return joinError("close object temp file after error", err, wrapError(closeErr, "close object temp file"))
 	}
 	return err
 }
@@ -156,15 +156,15 @@ func (s *aferoStore) putDirect(ctx context.Context, normalized, target string, r
 	size, err := io.Copy(io.MultiWriter(file, hasher), r)
 	closeErr := file.Close()
 	if err != nil {
-		return nil, errors.Join(wrapError(err, "write object file"), removeTempObject(s.fs, tmpName))
+		return nil, joinError("write object file and remove temp file", wrapError(err, "write object file"), removeTempObject(s.fs, tmpName))
 	}
 	if closeErr != nil {
-		return nil, errors.Join(wrapError(closeErr, "close object file"), removeTempObject(s.fs, tmpName))
+		return nil, joinError("close object file and remove temp file", wrapError(closeErr, "close object file"), removeTempObject(s.fs, tmpName))
 	}
 
 	actual := hex.EncodeToString(hasher.Sum(nil))
 	if actual != expected {
-		return nil, errors.Join(
+		return nil, joinError("remove object temp file after digest mismatch",
 			NewDigestMismatch(normalized, algorithm+":"+actual),
 			removeTempObject(s.fs, tmpName),
 		)
@@ -187,9 +187,9 @@ func (s *aferoStore) handleDirectCommitError(ctx context.Context, normalized, tm
 		return existing, removeTempObject(s.fs, tmpName)
 	}
 	if errors.Is(statErr, ErrNotFound) {
-		return nil, errors.Join(wrapError(err, "commit object file"), removeTempObject(s.fs, tmpName))
+		return nil, joinError("commit object file and remove temp file", wrapError(err, "commit object file"), removeTempObject(s.fs, tmpName))
 	}
-	return nil, errors.Join(
+	return nil, joinError("commit object file, stat existing object, and remove temp file",
 		wrapError(err, "commit object file"),
 		wrapError(statErr, "stat existing object after commit failure"),
 		removeTempObject(s.fs, tmpName),

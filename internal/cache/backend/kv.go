@@ -2,7 +2,6 @@ package backend
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -51,7 +50,7 @@ func NewRedis(opts KVOptions) (*KV, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if err := client.Ping(ctx).Err(); err != nil {
-		return nil, errors.Join(err, client.Close())
+		return nil, joinError("ping redis cache", err, client.Close())
 	}
 
 	return NewKV(redisadapter.NewFromClient(client), opts.Prefix), nil

@@ -3,8 +3,8 @@ package meta
 import (
 	"strings"
 
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/samber/lo"
 )
 
 func normalizeEndpointHealthRecord(record EndpointHealthRecord) (EndpointHealthKey, EndpointHealthRecord, error) {
@@ -266,10 +266,7 @@ func cloneHeaders(headers map[string][]string) map[string][]string {
 	if len(headers) == 0 {
 		return nil
 	}
-	out := collectionmapping.NewMapWithCapacity[string, []string](len(headers))
-	collectionmapping.NewMapFrom(headers).Range(func(key string, values []string) bool {
-		out.Set(key, append([]string(nil), values...))
-		return true
+	return lo.MapValues(headers, func(values []string, _ string) []string {
+		return append([]string(nil), values...)
 	})
-	return out.All()
 }

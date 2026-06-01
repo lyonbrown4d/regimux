@@ -3,12 +3,13 @@ package config
 import (
 	"context"
 
-	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/configx"
+	"github.com/arcgolabs/dix"
+	"github.com/samber/lo"
 )
 
 var Module = func(options ...configx.Option) dix.Module {
-	optCopy := append([]configx.Option(nil), options...)
+	optCopy := lo.Clone(options)
 	return dix.NewModule("config",
 		dix.Providers(
 			dix.ProviderErr0[Config](func() (Config, error) {

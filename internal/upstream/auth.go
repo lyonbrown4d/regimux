@@ -11,6 +11,7 @@ import (
 
 	"github.com/jellydator/ttlcache/v3"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 )
 
 const defaultBearerTokenTTL = 5 * time.Minute
@@ -101,24 +102,21 @@ func parseBearerChallengeFallback(params string) bearerChallenge {
 }
 
 func normalizeChallengeParams(raw string) string {
-	parts := splitChallengeParams(raw)
-	normalized := make([]string, 0, len(parts))
-	for _, rawPart := range parts {
+	normalized := lo.FilterMap(splitChallengeParams(raw), func(rawPart string, _ int) (string, bool) {
 		name, value, ok := strings.Cut(rawPart, "=")
 		if !ok {
-			continue
+			return "", false
 		}
 		name = strings.ToLower(strings.TrimSpace(name))
 		value = strings.Trim(strings.TrimSpace(value), `"`)
 		if name == "" {
-			continue
+			return "", false
 		}
 		if value != "" {
-			normalized = append(normalized, name+"="+value)
-			continue
+			return name + "=" + value, true
 		}
-		normalized = append(normalized, name)
-	}
+		return name, true
+	})
 	return strings.Join(normalized, ";")
 }
 

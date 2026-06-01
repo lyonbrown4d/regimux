@@ -10,6 +10,7 @@ import (
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 )
 
 const endpointHealthPersistTimeout = 15 * time.Second
@@ -33,7 +34,7 @@ func (c *Client) FlushEndpointHealth(ctx context.Context) error {
 		}
 		if _, err := c.metadata.UpsertEndpointHealth(persistCtx, record); err != nil {
 			c.requeueEndpointHealth(record)
-			flushErr = errors.Join(flushErr, err)
+			flushErr = multierr.Append(flushErr, err)
 		}
 		return persistCtx.Err() == nil
 	})

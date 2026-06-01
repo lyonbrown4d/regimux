@@ -3,7 +3,6 @@ package cache
 import (
 	"bytes"
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"time"
@@ -87,7 +86,7 @@ func (p blobProxy) fetchStreamAndStore(ctx context.Context, req BlobRequest) (*B
 	reader := resp.Body
 	if err := p.touchSharedBlobMetadata(ctx, req, time.Now().UTC()); err != nil {
 		if closeErr := closeHTTPBody(resp.Body, "blob stream response body"); closeErr != nil {
-			return nil, errors.Join(err, closeErr)
+			return nil, joinError("close blob stream after metadata touch failure", err, closeErr)
 		}
 		return nil, err
 	}

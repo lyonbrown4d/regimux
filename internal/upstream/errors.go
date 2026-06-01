@@ -4,6 +4,7 @@ import (
 	"errors"
 
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 )
 
 func newError(message string) error {
@@ -15,5 +16,9 @@ func wrapError(err error, format string, args ...any) error {
 }
 
 func joinError(errs ...error) error {
-	return errors.Join(errs...)
+	err := multierr.Combine(errs...)
+	if err == nil {
+		return nil
+	}
+	return wrapError(err, "join upstream errors")
 }

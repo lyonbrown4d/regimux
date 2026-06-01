@@ -7,6 +7,7 @@ import (
 	"github.com/arcgolabs/observabilityx"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/lo"
 )
 
 type configMetrics struct {
@@ -103,12 +104,10 @@ type configuredEndpoint struct {
 }
 
 func configuredUpstreamEndpoints(cfg config.UpstreamConfig) []configuredEndpoint {
-	endpoints := make([]configuredEndpoint, 0, len(cfg.Mirrors)+1)
-	for _, mirror := range cfg.Mirrors {
-		if registry := cleanMetricRegistry(mirror); registry != "" {
-			endpoints = append(endpoints, configuredEndpoint{registry: registry, role: "mirror"})
-		}
-	}
+	endpoints := lo.FilterMap(cfg.Mirrors, func(mirror string, _ int) (configuredEndpoint, bool) {
+		registry := cleanMetricRegistry(mirror)
+		return configuredEndpoint{registry: registry, role: "mirror"}, registry != ""
+	})
 	if registry := cleanMetricRegistry(cfg.Registry); registry != "" {
 		endpoints = append(endpoints, configuredEndpoint{registry: registry, role: "primary"})
 	}

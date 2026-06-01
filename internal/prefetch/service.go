@@ -2,7 +2,6 @@ package prefetch
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 	"sync/atomic"
@@ -13,6 +12,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
+	"go.uber.org/multierr"
 )
 
 const (
@@ -116,7 +116,7 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 	report.RetryRequested = retryRequested
 	if err != nil {
 		finishErr := s.finishRunRecord(ctx, run, report, err)
-		return nil, errors.Join(err, finishErr)
+		return nil, cacheWrap(multierr.Combine(err, finishErr), "finish prefetch run after control failure")
 	}
 	if cancelRequested {
 		return s.finishCanceledRun(ctx, run, report)
@@ -137,7 +137,7 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 	finishErr := s.finishRunRecord(ctx, run, report, err)
 	if err != nil {
 		s.logger.WarnContext(ctx, "prefetch run failed", "run_id", run.ID, "duration", time.Since(startedAt), "error", err)
-		return report, errors.Join(err, finishErr)
+		return report, cacheWrap(multierr.Combine(err, finishErr), "finish prefetch run after failure")
 	}
 	if finishErr != nil {
 		return report, finishErr

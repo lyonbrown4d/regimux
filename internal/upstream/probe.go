@@ -2,7 +2,6 @@ package upstream
 
 import (
 	"context"
-	"errors"
 	"net/http"
 	"strings"
 	"sync/atomic"
@@ -13,6 +12,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"go.uber.org/multierr"
 )
 
 func (c *Client) Probe(ctx context.Context) error {
@@ -21,10 +21,13 @@ func (c *Client) Probe(ctx context.Context) error {
 	}
 	var probeErr error
 	c.upstreams.Range(func(alias string, _ *upstreamPool) bool {
-		probeErr = errors.Join(probeErr, c.ProbeAlias(ctx, alias))
+		probeErr = multierr.Append(probeErr, c.ProbeAlias(ctx, alias))
 		return true
 	})
-	return probeErr
+	if probeErr != nil {
+		return wrapError(probeErr, "probe upstream aliases")
+	}
+	return nil
 }
 
 func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
@@ -53,9 +56,9 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 		c.logProbeSummary(ctx, alias, successCount, failureCount, nil)
 		return nil
 	}
-	probeErr = errors.Join(newError("probe upstream endpoints"), probeErr)
+	probeErr = multierr.Combine(newError("probe upstream endpoints"), probeErr)
 	c.logProbeSummary(ctx, alias, successCount, failureCount, probeErr)
-	return probeErr
+	return wrapError(probeErr, "probe upstream alias %s", alias)
 }
 
 func (c *Client) probeTask(pool *upstreamPool, index int, successes, failures *atomic.Int32) func(context.Context) error {

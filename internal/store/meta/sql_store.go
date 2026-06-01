@@ -4,7 +4,6 @@ package meta
 import (
 	"context"
 	"database/sql"
-	"errors"
 	"log/slog"
 	"strings"
 	"time"
@@ -99,7 +98,7 @@ func OpenMetadataDB(ctx context.Context, opts DBOptions) (*dbx.DB, error) {
 	if err != nil {
 		closeErr := core.Close()
 		if closeErr != nil {
-			return nil, errors.Join(err, wrapError(closeErr, "close metadata db"))
+			return nil, joinError("configure metadata db and close after failure", err, wrapError(closeErr, "close metadata db"))
 		}
 		return nil, err
 	}
@@ -107,7 +106,7 @@ func OpenMetadataDB(ctx context.Context, opts DBOptions) (*dbx.DB, error) {
 	if err := MigrateMetadataDB(ctx, core); err != nil {
 		closeErr := core.Close()
 		if closeErr != nil {
-			return nil, errors.Join(err, wrapError(closeErr, "close metadata db"))
+			return nil, joinError("migrate metadata db and close after failure", err, wrapError(closeErr, "close metadata db"))
 		}
 		return nil, err
 	}

@@ -4,7 +4,6 @@ package registrytool
 
 import (
 	"context"
-	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -13,6 +12,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 	orasremote "oras.land/oras-go/v2/registry/remote"
 	orasauth "oras.land/oras-go/v2/registry/remote/auth"
 )
@@ -192,7 +192,7 @@ func readAndCloseManifest(rc io.ReadCloser) ([]byte, error) {
 	content, err := io.ReadAll(rc)
 	closeErr := rc.Close()
 	if err != nil || closeErr != nil {
-		return nil, oops.In("registrytool").Wrapf(errors.Join(err, closeErr), "read registry manifest")
+		return nil, oops.In("registrytool").Wrapf(multierr.Combine(err, closeErr), "read registry manifest")
 	}
 	return content, nil
 }

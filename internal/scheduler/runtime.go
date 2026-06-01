@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"time"
 
@@ -15,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 )
 
 type Runtime struct {
@@ -152,7 +152,7 @@ func (r *Runtime) newRedisLocker(ctx context.Context) (goredis.UniversalClient, 
 	defer cancel()
 	if err := client.Ping(pingCtx).Err(); err != nil {
 		if closeErr := client.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
+			err = oops.Wrapf(multierr.Combine(err, closeErr), "close scheduler redis client after ping failure")
 		}
 		return nil, nil, oops.Wrapf(err, "ping scheduler redis locker")
 	}
@@ -166,7 +166,7 @@ func (r *Runtime) newRedisLocker(ctx context.Context) (goredis.UniversalClient, 
 	locker, err := redislock.NewRedisLockerWithOptions(client, lockOpts...)
 	if err != nil {
 		if closeErr := client.Close(); closeErr != nil {
-			err = errors.Join(err, closeErr)
+			err = oops.Wrapf(multierr.Combine(err, closeErr), "close scheduler redis client after locker creation failure")
 		}
 		return nil, nil, oops.Wrapf(err, "create scheduler redis locker")
 	}
@@ -203,5 +203,9 @@ func (r *Runtime) lockPrefix() string {
 }
 
 func join(left, right error) error {
-	return errors.Join(left, right)
+	err := multierr.Combine(left, right)
+	if err == nil {
+		return nil
+	}
+	return oops.Wrapf(err, "join scheduler errors")
 }

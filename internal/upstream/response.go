@@ -79,7 +79,7 @@ func closeBody(body io.Closer) error {
 func closeBodyWithError(body io.Closer, err error) error {
 	closeErr := closeBody(body)
 	if closeErr != nil {
-		return errors.Join(err, closeErr)
+		return joinError(err, closeErr)
 	}
 	return err
 }

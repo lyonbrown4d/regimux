@@ -144,7 +144,7 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 	}
 	if err := p.touchStoredBlobAccess(ctx, req, &storedInfo); err != nil {
 		if closeErr := reader.Close(); closeErr != nil {
-			return nil, errors.Join(err, wrapError(closeErr, "close stored blob after access touch failure"))
+			return nil, joinError("close stored blob after access touch failure", err, wrapError(closeErr, "close stored blob after access touch failure"))
 		}
 		return nil, err
 	}

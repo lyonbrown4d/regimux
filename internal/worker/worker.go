@@ -2,12 +2,12 @@ package worker
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"sync"
 
 	"github.com/panjf2000/ants/v2"
 	"github.com/samber/oops"
+	"go.uber.org/multierr"
 	"golang.org/x/sync/errgroup"
 )
 
@@ -118,7 +118,7 @@ func RunAllSettled(ctx context.Context, pool *ants.Pool, tasks TaskIterable) err
 		group.Go(func() error {
 			if err := runOne(ctx, pool, task); err != nil {
 				mu.Lock()
-				runErr = errors.Join(runErr, err)
+				runErr = multierr.Append(runErr, err)
 				mu.Unlock()
 			}
 			return nil

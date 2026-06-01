@@ -1,11 +1,11 @@
 package upstream
 
 import (
-	"errors"
 	"log/slog"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"go.uber.org/multierr"
 )
 
 // EndpointClients owns the HTTP clients expanded from upstream endpoint config.
@@ -85,11 +85,14 @@ func (c *EndpointClients) Close() error {
 	c.groups.Range(func(_ string, group endpointClientGroup) bool {
 		collectionlist.NewList(group.runtimes...).Range(func(_ int, runtime upstreamRuntime) bool {
 			if runtime.client != nil {
-				closeErr = errors.Join(closeErr, runtime.client.Close())
+				closeErr = multierr.Append(closeErr, runtime.client.Close())
 			}
 			return true
 		})
 		return true
 	})
-	return closeErr
+	if closeErr != nil {
+		return wrapError(closeErr, "close upstream endpoint clients")
+	}
+	return nil
 }

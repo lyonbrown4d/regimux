@@ -2,7 +2,6 @@ package object
 
 import (
 	"context"
-	"errors"
 	"net"
 	"path"
 	"strings"
@@ -10,6 +9,7 @@ import (
 
 	"github.com/pkg/sftp"
 	"github.com/spf13/afero/sftpfs"
+	"go.uber.org/multierr"
 	"golang.org/x/crypto/ssh"
 	"golang.org/x/crypto/ssh/knownhosts"
 )
@@ -40,7 +40,7 @@ func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*SFTPStore, er
 	}
 	store, err := newAferoStore(newSlashPathFS(sftpfs.New(client)), sftpBasePath(root), false, true)
 	if err != nil {
-		return nil, errors.Join(err, closeSFTPClients(client, sshClient))
+		return nil, joinError("create sftp object store and close clients", err, closeSFTPClients(client, sshClient))
 	}
 	store.close = func() error {
 		return closeSFTPClients(client, sshClient)
@@ -82,12 +82,12 @@ func dialSFTP(ctx context.Context, opts SFTPOptions) (*sftp.Client, *ssh.Client,
 	}
 	sshConn, chans, reqs, err := ssh.NewClientConn(conn, opts.Addr, sshConfig)
 	if err != nil {
-		return nil, nil, errors.Join(wrapError(err, "open ssh client connection"), conn.Close())
+		return nil, nil, joinError("open ssh client connection and close tcp connection", wrapError(err, "open ssh client connection"), closeTCPConn(conn))
 	}
 	sshClient := ssh.NewClient(sshConn, chans, reqs)
 	client, err := sftp.NewClient(sshClient)
 	if err != nil {
-		return nil, nil, errors.Join(wrapError(err, "open sftp client"), sshClient.Close())
+		return nil, nil, joinError("open sftp client and close ssh client", wrapError(err, "open sftp client"), closeSSHClient(sshClient))
 	}
 	return client, sshClient, nil
 }
@@ -163,10 +163,33 @@ func sftpHostKeyCallback(opts SFTPOptions) (ssh.HostKeyCallback, error) {
 func closeSFTPClients(client *sftp.Client, sshClient *ssh.Client) error {
 	var err error
 	if client != nil {
-		err = errors.Join(err, client.Close())
+		err = multierr.Append(err, client.Close())
 	}
 	if sshClient != nil {
-		err = errors.Join(err, sshClient.Close())
+		err = multierr.Append(err, sshClient.Close())
 	}
-	return err
+	if err != nil {
+		return wrapError(err, "close sftp clients")
+	}
+	return nil
+}
+
+func closeTCPConn(conn net.Conn) error {
+	if conn == nil {
+		return nil
+	}
+	if err := conn.Close(); err != nil {
+		return wrapError(err, "close tcp connection")
+	}
+	return nil
+}
+
+func closeSSHClient(client *ssh.Client) error {
+	if client == nil {
+		return nil
+	}
+	if err := client.Close(); err != nil {
+		return wrapError(err, "close ssh client")
+	}
+	return nil
 }
