@@ -20,6 +20,7 @@ type Metrics struct {
 	cache     cacheMetrics
 	config    configMetrics
 	db        dbMetrics
+	docker    dockerMetrics
 	scheduler schedulerMetrics
 	upstream  upstreamMetrics
 }
@@ -40,6 +41,7 @@ func NewMetricsFromObservability(obs observabilityx.Observability, handler http.
 		cache:     newCacheMetrics(obs),
 		config:    newConfigMetrics(obs),
 		db:        newDBMetrics(obs),
+		docker:    newDockerMetrics(obs),
 		scheduler: newSchedulerMetrics(obs),
 		upstream:  newUpstreamMetrics(obs),
 	}

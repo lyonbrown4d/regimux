@@ -13,6 +13,7 @@ type configMetrics struct {
 	buildInfo          observabilityx.Gauge
 	cacheBackend       observabilityx.Gauge
 	storeBackend       observabilityx.Gauge
+	dockerIntegration  observabilityx.Gauge
 	upstreams          observabilityx.Gauge
 	upstreamEndpoint   observabilityx.Gauge
 	schedulerComponent observabilityx.Gauge
@@ -34,6 +35,11 @@ func newConfigMetrics(obs observabilityx.Observability) configMetrics {
 			"config_store_backend",
 			"Configured store backend.",
 			"kind", "driver",
+		)),
+		dockerIntegration: obs.Gauge(gaugeSpec(
+			"config_docker_integration",
+			"Configured optional Docker daemon integration.",
+			"component", "enabled",
 		)),
 		upstreams: obs.Gauge(gaugeSpec(
 			"config_upstreams",
@@ -68,6 +74,9 @@ func (m *Metrics) ObserveStaticConfig(ctx context.Context, cfg config.Config, ve
 	m.config.cacheBackend.Set(ctx, 1, observabilityx.String("backend", labelOrUnknown(cfg.Cache.Backend)))
 	m.config.storeBackend.Set(ctx, 1, observabilityx.String("kind", "meta"), observabilityx.String("driver", labelOrUnknown(cfg.Store.Meta.Driver)))
 	m.config.storeBackend.Set(ctx, 1, observabilityx.String("kind", "object"), observabilityx.String("driver", labelOrUnknown(cfg.Store.Object.Driver)))
+	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled), dockerConfigLabels("integration", cfg.Docker.Enabled)...)
+	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Observe), dockerConfigLabels("observe", cfg.Docker.Enabled && cfg.Docker.Observe)...)
+	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled), dockerConfigLabels("prewarm", cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled)...)
 	m.config.upstreams.Set(ctx, float64(len(cfg.Upstreams)))
 	observeConfiguredUpstreamEndpoints(ctx, m.config.upstreamEndpoint, cfg)
 	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Enabled), schedulerConfigLabels("scheduler", cfg.Scheduler.Enabled)...)
@@ -111,6 +120,13 @@ func cleanMetricRegistry(registry string) string {
 }
 
 func schedulerConfigLabels(component string, enabled bool) []observabilityx.Attribute {
+	return []observabilityx.Attribute{
+		observabilityx.String("component", component),
+		observabilityx.String("enabled", boolLabel(enabled)),
+	}
+}
+
+func dockerConfigLabels(component string, enabled bool) []observabilityx.Attribute {
 	return []observabilityx.Attribute{
 		observabilityx.String("component", component),
 		observabilityx.String("enabled", boolLabel(enabled)),

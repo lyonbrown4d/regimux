@@ -10,6 +10,7 @@ type Config struct {
 	Store     StoreConfig               `json:"store"     koanf:"store"     mapstructure:"store"     validate:"required"`
 	Scheduler SchedulerConfig           `json:"scheduler" koanf:"scheduler" mapstructure:"scheduler"`
 	Worker    WorkerConfig              `json:"worker"    koanf:"worker"    mapstructure:"worker"`
+	Docker    DockerConfig              `json:"docker"    koanf:"docker"    mapstructure:"docker"`
 	Upstreams map[string]UpstreamConfig `json:"upstreams" koanf:"upstreams" mapstructure:"upstreams" validate:"required,min=1,dive,keys,required,endkeys,required"`
 }
 

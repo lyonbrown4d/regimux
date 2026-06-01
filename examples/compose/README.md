@@ -53,6 +53,29 @@ docker compose --env-file examples/compose/.env -f examples/compose/compose.obse
 Prometheus is available at `http://localhost:9090`.
 Grafana is available at `http://localhost:3000`; anonymous read-only access is enabled for local use. The default admin password is `regimux` unless `GRAFANA_ADMIN_PASSWORD` is set in `.env`.
 
+## Optional Docker daemon integration
+
+RegiMux can connect to the host Docker daemon when you explicitly mount the Docker socket. This is off by default because the socket grants broad control over the host Docker daemon.
+
+For Linux Docker Engine, add this mount to the `regimux` service:
+
+```yaml
+volumes:
+  - /var/run/docker.sock:/var/run/docker.sock
+```
+
+Then enable the runtime config in `.env` or HCL:
+
+```text
+REGIMUX_DOCKER__ENABLED=true
+REGIMUX_DOCKER__OBSERVE=true
+REGIMUX_DOCKER__PREWARM__ENABLED=true
+REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
+REGIMUX_DOCKER__PREWARM__ALIAS=hub
+```
+
+`docker.prewarm.registry` must be reachable by the Docker daemon itself. On Docker Desktop that is often the host LAN IP, not `localhost`.
+
 ## S3-compatible object storage
 
 RegiMux can store blob objects in an S3-compatible backend while keeping metadata in SQLite, MySQL, or PostgreSQL. Set these values in `examples/compose/.env` or a production environment:

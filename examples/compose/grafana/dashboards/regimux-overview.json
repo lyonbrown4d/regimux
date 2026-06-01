@@ -1909,7 +1909,7 @@
       },
       "targets": [
         {
-          "expr": "regimux_service_config_cache_backend{job=~\"$job\",instance=~\"$instance\"} or regimux_service_config_store_backend{job=~\"$job\",instance=~\"$instance\"} or regimux_service_config_scheduler_component{job=~\"$job\",instance=~\"$instance\"}",
+          "expr": "regimux_service_config_cache_backend{job=~\"$job\",instance=~\"$instance\"} or regimux_service_config_store_backend{job=~\"$job\",instance=~\"$instance\"} or regimux_service_config_scheduler_component{job=~\"$job\",instance=~\"$instance\"} or regimux_service_config_docker_integration{job=~\"$job\",instance=~\"$instance\"}",
           "format": "table",
           "instant": true,
           "legendFormat": "config",

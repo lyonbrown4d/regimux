@@ -48,7 +48,32 @@ upstreams {
 - `store.object.path = "data/objects"`
 - `scheduler.cleanup.enabled = true`
 - `scheduler.prefetch.enabled = false`
+- `docker.enabled = false`
+- `docker.observe = true`
+- `docker.prewarm.alias = "hub"`
+- `docker.prewarm.timeout = "10m"`
 - `upstreams.hub.registry = "https://registry-1.docker.io"`
+
+## Docker Daemon 集成
+
+`docker` 块是可选能力，默认关闭。开启后 RegiMux 会通过 Docker socket 连接宿主 Docker daemon，可监听本机 image 事件，也可以在启动后让宿主 Docker 通过 RegiMux 代理拉取一组镜像，从而预热缓存。
+
+容器运行时需要显式挂载 socket，例如 Linux Docker Engine 下挂载 `/var/run/docker.sock:/var/run/docker.sock`。Docker Desktop 场景里，`prewarm.registry` 应填写 Docker daemon 能访问的地址，例如 `192.168.1.2:5000`，而不是容器内部的 `localhost:5000`。
+
+```hcl
+docker {
+  enabled = true
+  observe = true
+
+  prewarm {
+    enabled = true
+    registry = "192.168.1.2:5000"
+    alias = "hub"
+    images = ["alpine:latest", "library/nginx:1.27"]
+    timeout = "10m"
+  }
+}
+```
 
 ## 环境变量
 
@@ -60,6 +85,8 @@ REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
+REGIMUX_DOCKER__ENABLED=true
+REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
 REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
 ```
 
@@ -77,7 +104,7 @@ regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=deb
 
 ## 校验
 
-配置校验会拒绝无效枚举值、无效 URL、负数时长或数量、无效清理水位、不支持的存储驱动，以及不完整的 S3/SFTP 凭证。
+配置校验会拒绝无效枚举值、无效 URL、负数时长或数量、无效清理水位、不支持的存储驱动、不完整的 S3/SFTP 凭证，以及指向不存在上游 alias 的 Docker 预热配置。
 
 支持的元数据驱动：
 

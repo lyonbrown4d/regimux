@@ -48,7 +48,32 @@ Important defaults:
 - `store.object.path = "data/objects"`
 - `scheduler.cleanup.enabled = true`
 - `scheduler.prefetch.enabled = false`
+- `docker.enabled = false`
+- `docker.observe = true`
+- `docker.prewarm.alias = "hub"`
+- `docker.prewarm.timeout = "10m"`
 - `upstreams.hub.registry = "https://registry-1.docker.io"`
+
+## Docker Daemon Integration
+
+The `docker` block is optional and disabled by default. When enabled, RegiMux connects to the host Docker daemon through the Docker socket. It can observe local image events and ask the host daemon to pull configured images through the RegiMux proxy after startup, warming the RegiMux cache.
+
+The container runtime must explicitly mount the socket, for example `/var/run/docker.sock:/var/run/docker.sock` on Linux Docker Engine. With Docker Desktop, set `prewarm.registry` to an address reachable by the Docker daemon, such as `192.168.1.2:5000`, instead of container-local `localhost:5000`.
+
+```hcl
+docker {
+  enabled = true
+  observe = true
+
+  prewarm {
+    enabled = true
+    registry = "192.168.1.2:5000"
+    alias = "hub"
+    images = ["alpine:latest", "library/nginx:1.27"]
+    timeout = "10m"
+  }
+}
+```
 
 ## Environment
 
@@ -60,6 +85,8 @@ REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
+REGIMUX_DOCKER__ENABLED=true
+REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
 REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
 ```
 
@@ -77,7 +104,7 @@ Use this for small operational overrides. Keep larger configuration in HCL or en
 
 ## Validation
 
-Config validation rejects invalid enum values, invalid URLs, negative durations/counts, invalid cleanup watermarks, unsupported store drivers, and incomplete S3/SFTP credentials.
+Config validation rejects invalid enum values, invalid URLs, negative durations/counts, invalid cleanup watermarks, unsupported store drivers, incomplete S3/SFTP credentials, and Docker prewarm configs pointing at an unknown upstream alias.
 
 Supported metadata drivers:
 

@@ -214,6 +214,21 @@ worker {
   prefetch_concurrency = 8
 }
 
+docker {
+  enabled = false
+  host = ""
+  observe = true
+
+  prewarm {
+    enabled = false
+    registry = ""
+    alias = "hub"
+    images = []
+    timeout = "10m"
+    platform = ""
+  }
+}
+
 upstreams {
   hub {
     registry = "https://registry-1.docker.io"

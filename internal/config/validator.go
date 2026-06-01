@@ -14,6 +14,7 @@ func newConfigValidator() *validator.Validate {
 	v.RegisterStructValidation(validateStoreMetaStruct, StoreMetaConfig{})
 	v.RegisterStructValidation(validateStoreObjectStruct, StoreObjectConfig{})
 	v.RegisterStructValidation(validateSchedulerCleanupStruct, SchedulerCleanupConfig{})
+	v.RegisterStructValidation(validateDockerStruct, DockerConfig{})
 	return v
 }
 
@@ -133,6 +134,15 @@ func validateSchedulerCleanupStruct(sl validator.StructLevel) {
 	if cleanup.MaxBytes > 0 && cleanup.TargetBytes > cleanup.MaxBytes {
 		sl.ReportError(cleanup.TargetBytes, "target_bytes", "TargetBytes", "ltefield", "max_bytes")
 	}
+}
+
+func validateDockerStruct(sl validator.StructLevel) {
+	docker, ok := sl.Current().Interface().(DockerConfig)
+	if !ok || !docker.Enabled || !docker.Prewarm.Enabled {
+		return
+	}
+	reportBlankConfigValue(sl, docker.Prewarm.Registry, "prewarm.registry", "Prewarm.Registry", "required_with_docker_prewarm")
+	reportBlankConfigValue(sl, docker.Prewarm.Alias, "prewarm.alias", "Prewarm.Alias", "required_with_docker_prewarm")
 }
 
 func reportBlankConfigValue(sl validator.StructLevel, value, field, structField, tag string) {

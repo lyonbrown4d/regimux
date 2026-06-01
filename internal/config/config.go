@@ -105,6 +105,9 @@ func (c *Config) Normalize() error {
 	if err := c.normalizeUpstreams(); err != nil {
 		return err
 	}
+	if err := c.normalizeDocker(); err != nil {
+		return err
+	}
 	c.normalizeStore()
 	return nil
 }

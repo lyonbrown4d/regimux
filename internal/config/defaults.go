@@ -11,6 +11,7 @@ func defaultConfig() Config {
 		Store:     defaultStoreConfig(),
 		Scheduler: defaultSchedulerConfig(),
 		Worker:    defaultWorkerConfig(),
+		Docker:    defaultDockerConfig(),
 		Upstreams: defaultUpstreamsConfig(),
 	}
 }
@@ -131,6 +132,16 @@ func defaultWorkerConfig() WorkerConfig {
 	return WorkerConfig{
 		ProbeConcurrency:    16,
 		PrefetchConcurrency: 8,
+	}
+}
+
+func defaultDockerConfig() DockerConfig {
+	return DockerConfig{
+		Observe: true,
+		Prewarm: DockerPrewarmConfig{
+			Alias:   "hub",
+			Timeout: 10 * time.Minute,
+		},
 	}
 }
 

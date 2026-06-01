@@ -136,6 +136,25 @@ type CacheStore struct {
 
 func (CacheStore) Name() string { return "cache.store" }
 
+type DockerImageEvent struct {
+	Action string
+	Actor  string
+	Ref    string
+}
+
+func (DockerImageEvent) Name() string { return "docker.image_event" }
+
+type DockerPrewarm struct {
+	Alias    string
+	Image    string
+	ProxyRef string
+	Status   string
+	Duration time.Duration
+	Error    string
+}
+
+func (DockerPrewarm) Name() string { return "docker.prewarm" }
+
 func eventName(event Event) string {
 	if event == nil {
 		return ""
