@@ -35,6 +35,7 @@ type Proxy struct {
 	events               events.Bus
 	blobStreamAndCache   bool
 	blobVerifyTTL        time.Duration
+	blobSmallCache       smallBlobCacheConfig
 	logger               *slog.Logger
 	manifestGroup        singleflight.Group
 	blobGroup            singleflight.Group
@@ -66,6 +67,11 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 		manifestStaleIfError: deps.CacheConfig.Manifest.StaleIfError,
 		referrersFallbackTag: deps.CacheConfig.Referrers.FallbackTag,
 		blobStreamAndCache:   deps.CacheConfig.Blob.StreamAndCache,
+		blobSmallCache: smallBlobCacheConfig{
+			enabled:      deps.CacheConfig.Blob.SmallCache.Enabled,
+			maxSizeBytes: deps.CacheConfig.Blob.SmallCache.MaxSizeBytes,
+			ttl:          deps.CacheConfig.Blob.SmallCache.TTL,
+		},
 	}
 	if deps.CacheConfig.Manifest.TagTTL > 0 {
 		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
@@ -94,6 +100,9 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 		"referrers_ttl", p.referrersTTL,
 		"blob_stream_and_cache", p.blobStreamAndCache,
 		"blob_verify_ttl", p.blobVerifyTTL,
+		"blob_small_cache_enabled", p.blobSmallCache.enabled,
+		"blob_small_cache_max_size_bytes", p.blobSmallCache.maxSizeBytes,
+		"blob_small_cache_ttl", p.blobSmallCache.ttl,
 	)
 	return p
 }
@@ -115,12 +124,14 @@ func (p *Proxy) Manifests() ManifestService {
 func (p *Proxy) Blobs() BlobService {
 	return blobProxy{
 		client:           p.client,
+		cache:            p.cache,
 		metadata:         p.metadata,
 		objects:          p.objects,
 		events:           p.events,
 		logger:           p.logger,
 		streamAndCache:   p.blobStreamAndCache,
 		verifyMembership: p.blobVerifyTTL,
+		smallCache:       p.blobSmallCache,
 		group:            &p.blobGroup,
 	}
 }
@@ -158,12 +169,14 @@ type manifestProxy struct {
 
 type blobProxy struct {
 	client           upstream.RegistryClient
+	cache            backend.Backend
 	metadata         meta.Store
 	objects          object.Store
 	events           events.Bus
 	logger           *slog.Logger
 	streamAndCache   bool
 	verifyMembership time.Duration
+	smallCache       smallBlobCacheConfig
 	group            *singleflight.Group
 }
 

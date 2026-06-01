@@ -97,6 +97,14 @@ func assertFullBlobHit(t *testing.T, result *cache.BlobReadResult, want []byte) 
 	}
 }
 
+func assertFullBlobMiss(t *testing.T, result *cache.BlobReadResult, want []byte) {
+	t.Helper()
+	body := readAndClose(t, result.Reader)
+	if result.Cache != cache.CacheMiss || !bytes.Equal(body, want) {
+		t.Fatalf("unexpected full result: cache=%s body=%q", result.Cache, body)
+	}
+}
+
 func assertHeadBlobHit(t *testing.T, result *cache.BlobReadResult, wantSize int) {
 	t.Helper()
 	body := readAndClose(t, result.Reader)

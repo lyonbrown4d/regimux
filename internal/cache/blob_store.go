@@ -15,41 +15,82 @@ import (
 )
 
 func (p blobProxy) fetchAndStore(ctx context.Context, req BlobRequest) error {
-	resp, err := p.client.GetBlob(ctx, upstream.GetBlobRequest{
+	var stored storedBlob
+	err := p.client.ConsumeBlob(ctx, upstream.GetBlobRequest{
 		UpstreamAlias: req.UpstreamAlias,
 		Repo:          req.Repo,
 		Digest:        req.Digest,
 		Method:        http.MethodGet,
+	}, func(resp *upstream.BlobResponse) error {
+		result, storeErr := p.storeBlobResponse(ctx, req, resp)
+		if storeErr != nil {
+			return storeErr
+		}
+		stored = result
+		return nil
 	})
 	if err != nil {
 		return wrapError(err, "fetch blob for storage")
 	}
-	if resp.Digest != "" && resp.Digest != req.Digest {
-		if closeErr := closeHTTPBody(resp.Body, "blob storage body"); closeErr != nil {
-			return closeErr
-		}
-		return distribution.ErrDigestMismatch.WithDetail(map[string]string{
-			"expected": req.Digest,
-			"actual":   resp.Digest,
-		})
+	if stored.info == nil {
+		return errorf("stored blob info is empty")
 	}
-
-	info, putErr := p.objects.Put(ctx, req.Digest, resp.Body, object.PutOptions{ContentType: contentTypeFromHeader(resp.Headers)})
-	closeErr := closeHTTPBody(resp.Body, "blob storage body")
-	if putErr != nil {
-		if errors.Is(putErr, object.ErrDigestMismatch) {
-			return distribution.ErrDigestMismatch.WithDetail(putErr.Error())
-		}
-		return wrapError(putErr, "store blob object")
-	}
-	if closeErr != nil {
-		return closeErr
-	}
-	if err := p.upsertBlobRecords(ctx, req, info, contentTypeFromHeader(resp.Headers)); err != nil {
+	if err := p.upsertBlobRecords(ctx, req, stored.info, stored.mediaType); err != nil {
 		return err
 	}
-	p.publishCacheStore(ctx, req, info.Size, info.Digest)
+	p.publishCacheStore(ctx, req, stored.info.Size, stored.info.Digest)
 	return nil
+}
+
+type storedBlob struct {
+	info      *object.Info
+	mediaType string
+}
+
+func (p blobProxy) storeBlobResponse(ctx context.Context, req BlobRequest, resp *upstream.BlobResponse) (storedBlob, error) {
+	if err := validateStoredBlobDigest(req.Digest, resp.Digest); err != nil {
+		return storedBlob{}, err
+	}
+	mediaType := contentTypeFromHeader(resp.Headers)
+	info, err := p.putBlobObject(ctx, req, resp, mediaType)
+	if err != nil {
+		return storedBlob{}, err
+	}
+	return storedBlob{info: info, mediaType: mediaType}, nil
+}
+
+func validateStoredBlobDigest(expected, actual string) error {
+	if actual == "" || actual == expected {
+		return nil
+	}
+	return distribution.ErrDigestMismatch.WithDetail(map[string]string{
+		"expected": expected,
+		"actual":   actual,
+	})
+}
+
+func (p blobProxy) putBlobObject(ctx context.Context, req BlobRequest, resp *upstream.BlobResponse, mediaType string) (*object.Info, error) {
+	recorder := p.newSmallBlobRecorder(resp)
+	reader := smallBlobRecordingReader(resp.Body, recorder)
+	info, err := p.objects.Put(ctx, req.Digest, reader, object.PutOptions{ContentType: mediaType})
+	if err == nil {
+		p.storeSmallBlobCache(ctx, req.Digest, mediaType, info.Size, recorder.Bytes(info.Size))
+		return info, nil
+	}
+	if errors.Is(err, object.ErrDigestMismatch) {
+		return nil, distribution.ErrDigestMismatch.WithDetail(err.Error())
+	}
+	return nil, wrapError(err, "store blob object")
+}
+
+func (p blobProxy) newSmallBlobRecorder(resp *upstream.BlobResponse) *smallBlobRecorder {
+	if !p.smallCache.enabled || p.smallCache.maxSizeBytes <= 0 || resp == nil {
+		return nil
+	}
+	if resp.Size > p.smallCache.maxSizeBytes {
+		return nil
+	}
+	return newSmallBlobRecorder(p.smallCache.maxSizeBytes)
 }
 
 func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info *object.Info, mediaType string) error {

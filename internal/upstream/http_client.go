@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/url"
 	"strings"
@@ -12,9 +13,9 @@ import (
 )
 
 const (
-	defaultUserAgent    = "regimux/dev"
+	defaultUserAgent       = "regimux/dev"
 	registryAPIVersionPath = "/v2/"
-	tagsPath             = "tags/list"
+	tagsPath               = "tags/list"
 )
 
 func newHTTPClient(cfg Config) (clienthttp.Client, error) {
@@ -42,8 +43,27 @@ func newHTTPClient(cfg Config) (clienthttp.Client, error) {
 		// cancellation still flows through context.
 		httpClient.Raw().SetTimeout(0)
 	}
-	httpClient.Raw().Client().CheckRedirect = stripAuthOnCrossHostRedirect
+	rawClient := httpClient.Raw().Client()
+	configureHTTP2(rawClient, cfg.HTTP.HTTP2.Enabled)
+	rawClient.CheckRedirect = stripAuthOnCrossHostRedirect
 	return httpClient, nil
+}
+
+func configureHTTP2(client *http.Client, enabled bool) {
+	if client == nil {
+		return
+	}
+	transport, ok := client.Transport.(*http.Transport)
+	if !ok || transport == nil {
+		return
+	}
+	if enabled {
+		transport.ForceAttemptHTTP2 = true
+		transport.TLSNextProto = nil
+		return
+	}
+	transport.ForceAttemptHTTP2 = false
+	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
 }
 
 func stripAuthOnCrossHostRedirect(req *http.Request, via []*http.Request) error {

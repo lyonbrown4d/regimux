@@ -144,8 +144,15 @@ type ManifestCacheConfig struct {
 
 type BlobCacheConfig struct {
 	// VerifyTTL controls how often shared blobs are re-verified against upstream.
-	VerifyTTL      time.Duration `json:"verify_ttl"       koanf:"verify_ttl"       mapstructure:"verify_ttl"       validate:"min=0"`
-	StreamAndCache bool          `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
+	VerifyTTL      time.Duration        `json:"verify_ttl"       koanf:"verify_ttl"       mapstructure:"verify_ttl"       validate:"min=0"`
+	StreamAndCache bool                 `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
+	SmallCache     SmallBlobCacheConfig `json:"small_cache"      koanf:"small_cache"      mapstructure:"small_cache"`
+}
+
+type SmallBlobCacheConfig struct {
+	Enabled      bool          `json:"enabled"        koanf:"enabled"        mapstructure:"enabled"`
+	MaxSizeBytes int64         `json:"max_size_bytes" koanf:"max_size_bytes" mapstructure:"max_size_bytes" validate:"min=0"`
+	TTL          time.Duration `json:"ttl"            koanf:"ttl"            mapstructure:"ttl"            validate:"min=0"`
 }
 
 type TagsCacheConfig struct {
@@ -274,23 +281,4 @@ type AuthConfig struct {
 	Username string `json:"username" koanf:"username" mapstructure:"username"`
 	Password string `json:"password" koanf:"password" mapstructure:"password"`
 	Token    string `json:"token"    koanf:"token"    mapstructure:"token"`
-}
-
-type HTTPConfig struct {
-	Timeout time.Duration   `json:"timeout" koanf:"timeout" mapstructure:"timeout" validate:"min=0"`
-	Retry   HTTPRetryConfig `json:"retry"   koanf:"retry"   mapstructure:"retry"`
-	TLS     HTTPTLSConfig   `json:"tls"     koanf:"tls"     mapstructure:"tls"`
-}
-
-type HTTPRetryConfig struct {
-	Enabled    bool          `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
-	MaxRetries int           `json:"max_retries" koanf:"max_retries" mapstructure:"max_retries" validate:"min=0"`
-	WaitMin    time.Duration `json:"wait_min"    koanf:"wait_min"    mapstructure:"wait_min"    validate:"min=0"`
-	WaitMax    time.Duration `json:"wait_max"    koanf:"wait_max"    mapstructure:"wait_max"    validate:"min=0"`
-}
-
-type HTTPTLSConfig struct {
-	Enabled            bool   `json:"enabled"              koanf:"enabled"              mapstructure:"enabled"`
-	InsecureSkipVerify bool   `json:"insecure_skip_verify" koanf:"insecure_skip_verify" mapstructure:"insecure_skip_verify"`
-	ServerName         string `json:"server_name"          koanf:"server_name"          mapstructure:"server_name"`
 }

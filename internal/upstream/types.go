@@ -54,8 +54,13 @@ type ProbeConfig struct {
 
 type HTTPConfig struct {
 	Timeout time.Duration   `json:"timeout" koanf:"timeout" yaml:"timeout"`
+	HTTP2   HTTP2Config     `json:"http2"   koanf:"http2"   yaml:"http2"`
 	Retry   HTTPRetryConfig `json:"retry"   koanf:"retry"   yaml:"retry"`
 	TLS     HTTPTLSConfig   `json:"tls"     koanf:"tls"     yaml:"tls"`
+}
+
+type HTTP2Config struct {
+	Enabled bool `json:"enabled" koanf:"enabled" yaml:"enabled"`
 }
 
 type HTTPRetryConfig struct {
@@ -75,6 +80,7 @@ type RegistryClient interface {
 	Ping(ctx context.Context, alias string) error
 	GetManifest(ctx context.Context, req GetManifestRequest) (*ManifestResponse, error)
 	GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse, error)
+	ConsumeBlob(ctx context.Context, req GetBlobRequest, consume BlobConsumeFunc) error
 	ListTags(ctx context.Context, req ListTagsRequest) (*TagsResponse, error)
 	GetReferrers(ctx context.Context, req ReferrersRequest) (*ReferrersResponse, error)
 }
@@ -110,6 +116,8 @@ type BlobResponse struct {
 	StatusCode int
 	Headers    http.Header
 }
+
+type BlobConsumeFunc func(*BlobResponse) error
 
 type ListTagsRequest struct {
 	UpstreamAlias string

@@ -135,7 +135,7 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	if ctxErr := r.attemptCtx.Err(); ctxErr != nil {
 		return true, wrapError(ctxErr, "upstream %s context", r.operation)
 	}
-	if !shouldFailover(result.err) {
+	if !shouldFailover(req, result.err) {
 		r.cancel()
 		return true, result.err
 	}

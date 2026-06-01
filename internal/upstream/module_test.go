@@ -26,6 +26,9 @@ func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
 			Timeout:  3 * time.Second,
 			Cooldown: 2 * time.Minute,
 		},
+		HTTP: config.HTTPConfig{
+			HTTP2: config.HTTP2Config{Enabled: true},
+		},
 	}
 
 	got := upstream.ConfigFromUpstreamConfig("hub", cfg)
@@ -34,5 +37,8 @@ func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
 	}
 	if !got.Probe.Enabled || got.Probe.Interval != 30*time.Second || got.Probe.Timeout != 3*time.Second || got.Probe.Cooldown != 2*time.Minute {
 		t.Fatalf("unexpected probe mapping: %#v", got.Probe)
+	}
+	if !got.HTTP.HTTP2.Enabled {
+		t.Fatalf("unexpected http2 mapping: %#v", got.HTTP.HTTP2)
 	}
 }

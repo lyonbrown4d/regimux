@@ -110,6 +110,12 @@ cache {
 
   blob {
     stream_and_cache = false
+
+    small_cache {
+      enabled = false
+      max_size_bytes = 4194304
+      ttl = "24h"
+    }
   }
 
   tags {
@@ -265,6 +271,10 @@ upstreams {
     http {
       timeout = "0s"
 
+      http2 {
+        enabled = false
+      }
+
       retry {
         enabled = true
         max_retries = 2
@@ -284,6 +294,10 @@ upstreams {
 
     http {
       timeout = "0s"
+
+      http2 {
+        enabled = false
+      }
 
       retry {
         enabled = true
@@ -305,6 +319,10 @@ upstreams {
     http {
       timeout = "0s"
 
+      http2 {
+        enabled = false
+      }
+
       retry {
         enabled = true
         max_retries = 2
@@ -324,6 +342,10 @@ upstreams {
 
     http {
       timeout = "0s"
+
+      http2 {
+        enabled = false
+      }
 
       retry {
         enabled = true

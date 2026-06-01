@@ -9,6 +9,7 @@ import (
 
 	"github.com/arcgolabs/configx"
 	formathcl "github.com/arcgolabs/configx/format/hcl"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -21,6 +22,8 @@ const (
 	defaultUpstreamProbeTimeout    = 3 * time.Second
 	defaultUpstreamProbeCooldown   = 2 * time.Minute
 	defaultUpstreamProbeJitter     = 5 * time.Second
+	defaultSmallBlobCacheMaxSize   = 4 * 1024 * 1024
+	defaultSmallBlobCacheTTL       = 24 * time.Hour
 )
 
 func Load(ctx context.Context, path string, args ...string) (Config, error) {
@@ -113,30 +116,14 @@ func (c *Config) Normalize() error {
 }
 
 func (c *Config) normalizeServer() {
-	c.Server.Middleware.RequestID.Header = strings.TrimSpace(c.Server.Middleware.RequestID.Header)
-	if c.Server.Middleware.RequestID.Header == "" {
-		c.Server.Middleware.RequestID.Header = "X-Request-ID"
-	}
+	c.Server.Middleware.RequestID.Header = lo.CoalesceOrEmpty(strings.TrimSpace(c.Server.Middleware.RequestID.Header), "X-Request-ID")
 	c.Server.Middleware.Healthcheck.LivenessPath = normalizeHTTPPath(c.Server.Middleware.Healthcheck.LivenessPath, "/livez")
 	c.Server.Middleware.Healthcheck.ReadinessPath = normalizeHTTPPath(c.Server.Middleware.Healthcheck.ReadinessPath, "/readyz")
-	c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy = strings.ToLower(strings.TrimSpace(c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy))
-	if c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy == "" {
-		c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy = "unsafe-none"
-	}
-	c.Server.Middleware.Compress.Level = strings.ToLower(strings.TrimSpace(c.Server.Middleware.Compress.Level))
-	if c.Server.Middleware.Compress.Level == "" {
-		c.Server.Middleware.Compress.Level = "default"
-	}
-	if c.Server.Middleware.RateLimit.Expiration == 0 {
-		c.Server.Middleware.RateLimit.Expiration = time.Minute
-	}
-	if c.Server.Middleware.CSRF.IdleTimeout == 0 {
-		c.Server.Middleware.CSRF.IdleTimeout = 30 * time.Minute
-	}
-	c.Server.Middleware.CSRF.CookieName = strings.TrimSpace(c.Server.Middleware.CSRF.CookieName)
-	if c.Server.Middleware.CSRF.CookieName == "" {
-		c.Server.Middleware.CSRF.CookieName = "regimux_csrf"
-	}
+	c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy = lo.CoalesceOrEmpty(strings.ToLower(strings.TrimSpace(c.Server.Middleware.SecurityHeaders.CrossOriginEmbedderPolicy)), "unsafe-none")
+	c.Server.Middleware.Compress.Level = lo.CoalesceOrEmpty(strings.ToLower(strings.TrimSpace(c.Server.Middleware.Compress.Level)), "default")
+	c.Server.Middleware.RateLimit.Expiration = lo.CoalesceOrEmpty(c.Server.Middleware.RateLimit.Expiration, time.Minute)
+	c.Server.Middleware.CSRF.IdleTimeout = lo.CoalesceOrEmpty(c.Server.Middleware.CSRF.IdleTimeout, 30*time.Minute)
+	c.Server.Middleware.CSRF.CookieName = lo.CoalesceOrEmpty(strings.TrimSpace(c.Server.Middleware.CSRF.CookieName), "regimux_csrf")
 	c.Server.Middleware.Pprof.Prefix = strings.TrimRight(normalizeHTTPPath(c.Server.Middleware.Pprof.Prefix, ""), "/")
 }
 
@@ -152,24 +139,17 @@ func normalizeHTTPPath(value, fallback string) string {
 }
 
 func (c *Config) normalizeAuthDefaults() {
-	c.Auth.Service = strings.TrimSpace(c.Auth.Service)
-	if c.Auth.Service == "" {
-		c.Auth.Service = "regimux"
-	}
+	c.Auth.Service = lo.CoalesceOrEmpty(strings.TrimSpace(c.Auth.Service), "regimux")
 	c.Auth.Realm = strings.TrimSpace(c.Auth.Realm)
-	c.Auth.Issuer = strings.TrimSpace(c.Auth.Issuer)
-	if c.Auth.Issuer == "" {
-		c.Auth.Issuer = c.Auth.Service
-	}
-	if c.Auth.TokenTTL == 0 {
-		c.Auth.TokenTTL = 15 * time.Minute
-	}
+	c.Auth.Issuer = lo.CoalesceOrEmpty(strings.TrimSpace(c.Auth.Issuer), c.Auth.Service)
+	c.Auth.TokenTTL = lo.CoalesceOrEmpty(c.Auth.TokenTTL, 15*time.Minute)
 }
 
 func (c *Config) normalizeCache() {
-	c.Cache.Backend = strings.ToLower(strings.TrimSpace(c.Cache.Backend))
-	if c.Cache.Backend == "" {
-		c.Cache.Backend = "memory"
+	c.Cache.Backend = lo.CoalesceOrEmpty(strings.ToLower(strings.TrimSpace(c.Cache.Backend)), "memory")
+	if c.Cache.Blob.SmallCache.Enabled {
+		c.Cache.Blob.SmallCache.MaxSizeBytes = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.MaxSizeBytes, defaultSmallBlobCacheMaxSize)
+		c.Cache.Blob.SmallCache.TTL = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.TTL, defaultSmallBlobCacheTTL)
 	}
 }
 

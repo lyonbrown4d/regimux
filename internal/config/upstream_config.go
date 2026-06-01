@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -77,22 +78,15 @@ func normalizeUpstreamBlobConfig(alias, upstreamPolicy string, blobCfg UpstreamB
 		return UpstreamBlobConfig{}, err
 	}
 	blobCfg.MirrorPolicy = policy
-	if blobCfg.TopN == 0 {
-		blobCfg.TopN = defaultUpstreamBlobTopN
-	}
-	if blobCfg.MaxConcurrentAttempts == 0 {
-		blobCfg.MaxConcurrentAttempts = defaultUpstreamBlobMaxAttempts
-	}
+	blobCfg.TopN = lo.CoalesceOrEmpty(blobCfg.TopN, defaultUpstreamBlobTopN)
+	blobCfg.MaxConcurrentAttempts = lo.CoalesceOrEmpty(blobCfg.MaxConcurrentAttempts, defaultUpstreamBlobMaxAttempts)
 	return blobCfg, nil
 }
 
 func normalizeBlobMirrorPolicy(alias, policy, upstreamPolicy string) (string, error) {
 	policy = strings.ToLower(strings.TrimSpace(policy))
 	if policy == "" {
-		if upstreamPolicy == "" {
-			return "ordered", nil
-		}
-		return upstreamPolicy, nil
+		return lo.CoalesceOrEmpty(upstreamPolicy, "ordered"), nil
 	}
 	switch policy {
 	case "ordered", "round_robin", "latency":
@@ -117,18 +111,10 @@ func normalizeUpstreamProbeConfig(alias string, probeCfg UpstreamProbeConfig) (U
 			return UpstreamProbeConfig{}, check.err
 		}
 	}
-	if probeCfg.Interval == 0 {
-		probeCfg.Interval = defaultUpstreamProbeInterval
-	}
-	if probeCfg.Timeout == 0 {
-		probeCfg.Timeout = defaultUpstreamProbeTimeout
-	}
-	if probeCfg.Cooldown == 0 {
-		probeCfg.Cooldown = defaultUpstreamProbeCooldown
-	}
-	if probeCfg.Jitter == 0 {
-		probeCfg.Jitter = defaultUpstreamProbeJitter
-	}
+	probeCfg.Interval = lo.CoalesceOrEmpty(probeCfg.Interval, defaultUpstreamProbeInterval)
+	probeCfg.Timeout = lo.CoalesceOrEmpty(probeCfg.Timeout, defaultUpstreamProbeTimeout)
+	probeCfg.Cooldown = lo.CoalesceOrEmpty(probeCfg.Cooldown, defaultUpstreamProbeCooldown)
+	probeCfg.Jitter = lo.CoalesceOrEmpty(probeCfg.Jitter, defaultUpstreamProbeJitter)
 	if probeCfg.Interval > 0 && probeCfg.Jitter > probeCfg.Interval {
 		probeCfg.Jitter = probeCfg.Interval
 	}

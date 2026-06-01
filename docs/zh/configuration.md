@@ -42,6 +42,9 @@ upstreams {
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`
 - `cache.backend = "memory"`
+- `cache.blob.small_cache.enabled = false`
+- `cache.blob.small_cache.max_size_bytes = 4194304`
+- `cache.blob.small_cache.ttl = "24h"`
 - `store.meta.driver = "sqlite"`
 - `store.meta.path = "data/regimux.db"`
 - `store.object.driver = "local"`
@@ -53,6 +56,37 @@ upstreams {
 - `docker.prewarm.alias = "hub"`
 - `docker.prewarm.timeout = "10m"`
 - `upstreams.hub.registry = "https://registry-1.docker.io"`
+- `upstreams.hub.http.http2.enabled = false`
+
+RegiMux 默认会关闭上游 registry 客户端的 HTTP/2。这样可以让 mirror 和 CDN 链路更可控，并避免 HTTP/2 运行时 panic 直接打崩进程。只建议对可信上游按 alias 显式开启：
+
+```hcl
+upstreams {
+  hub {
+    http {
+      http2 {
+        enabled = true
+      }
+    }
+  }
+}
+```
+
+small blob cache 可以把已经完成 digest 校验的小 blob，例如 OCI image config blob，放进当前配置的 KV 缓存后端。这个模式建议搭配 Redis 或 Valkey 使用；大 layer 仍然应该放在 `store.object`。
+
+```hcl
+cache {
+  backend = "redis"
+
+  blob {
+    small_cache {
+      enabled = true
+      max_size_bytes = 4194304
+      ttl = "24h"
+    }
+  }
+}
+```
 
 ## Docker Daemon 集成
 
@@ -85,9 +119,11 @@ REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
+REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
 REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
+REGIMUX_UPSTREAMS__HUB__HTTP__HTTP2__ENABLED=true
 ```
 
 加载器会在存在 `.env` 时读取它。环境变量优先级高于 `.env` 和配置文件。

@@ -15,6 +15,7 @@ type failoverRequest struct {
 	operation  string
 	repository string
 	digest     string
+	sequential bool
 }
 
 func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn func(upstreamRuntime) error) (func(), error) {
@@ -32,7 +33,7 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 	var failoverErr error
 	if req.operation == operationBlob {
 		c.logBlobEndpointPlan(ctx, req, pool, runtimes)
-		if pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
+		if !req.sequential && pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
 			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
 		} else {
 			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
@@ -59,7 +60,7 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverReque
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return wrapError(ctxErr, "upstream %s context", req.operation)
 		}
-		if !shouldFailover(lastErr) {
+		if !shouldFailover(req, lastErr) {
 			return lastErr
 		}
 		c.recordEndpointFailure(req, pool, runtime, lastErr)
@@ -188,26 +189,30 @@ func runtimeRegistries(runtimes []upstreamRuntime) []string {
 	}).Values()
 }
 
-func shouldFailover(err error) bool {
+func shouldFailover(req failoverRequest, err error) bool {
 	if err == nil {
 		return false
 	}
 
 	if statusErr, ok := errors.AsType[*upstreamHTTPStatusError](err); ok {
-		return statusErr.status == http.StatusTooManyRequests || statusErr.status >= http.StatusInternalServerError
+		return shouldFailoverStatus(req, statusErr.status)
 	}
 
 	list := distribution.FromError(err)
 	if list == nil {
 		return false
 	}
-	switch list.Status {
+	return shouldFailoverStatus(req, list.Status)
+}
+
+func shouldFailoverStatus(req failoverRequest, status int) bool {
+	switch status {
 	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden, http.StatusNotFound:
-		return false
+		return req.operation == operationBlob && status == http.StatusNotFound
 	case http.StatusTooManyRequests:
 		return true
 	default:
-		return list.Status >= http.StatusInternalServerError
+		return status >= http.StatusInternalServerError
 	}
 }
 

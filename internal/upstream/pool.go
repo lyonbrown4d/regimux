@@ -93,6 +93,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger) *upstreamPool {
 			"probe_interval", pool.probeConfig.Interval,
 			"probe_timeout", pool.probeConfig.Timeout,
 			"probe_cooldown", pool.probeConfig.Cooldown,
+			"upstream_http2_enabled", cfg.HTTP.HTTP2.Enabled,
 		)
 	}
 	return pool

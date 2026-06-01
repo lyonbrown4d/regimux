@@ -15,6 +15,9 @@ func (p blobProxy) Get(ctx context.Context, req BlobRequest) (*BlobReadResult, e
 	if err := ValidateRouteParts(req.UpstreamAlias, req.Repo); err != nil {
 		return nil, err
 	}
+	if cached, ok, err := p.lookupSmallBlobCache(ctx, req); err != nil || ok {
+		return p.withCacheAccess(ctx, req, cached, err)
+	}
 	if cached, ok, err := p.lookup(ctx, req); err != nil || ok {
 		return p.withCacheAccess(ctx, req, cached, err)
 	}

@@ -90,9 +90,16 @@ func defaultCacheConfig() CacheConfig {
 		Redis:      ExternalCacheConfig{Addrs: []string{"127.0.0.1:6379"}, DB: 0},
 		Valkey:     ExternalCacheConfig{Addrs: []string{"127.0.0.1:6379"}, DB: 0},
 		Manifest:   ManifestCacheConfig{TagTTL: 10 * time.Minute, StaleIfError: true, MaxStale: 168 * time.Hour},
-		Blob:       BlobCacheConfig{VerifyTTL: 0, StreamAndCache: false},
-		Tags:       TagsCacheConfig{TTL: 5 * time.Minute, MaxPageSize: 1000},
-		Referrers:  ReferrersConfig{TTL: 5 * time.Minute, FallbackTag: true},
+		Blob: BlobCacheConfig{
+			VerifyTTL:      0,
+			StreamAndCache: false,
+			SmallCache: SmallBlobCacheConfig{
+				MaxSizeBytes: defaultSmallBlobCacheMaxSize,
+				TTL:          defaultSmallBlobCacheTTL,
+			},
+		},
+		Tags:      TagsCacheConfig{TTL: 5 * time.Minute, MaxPageSize: 1000},
+		Referrers: ReferrersConfig{TTL: 5 * time.Minute, FallbackTag: true},
 	}
 }
 

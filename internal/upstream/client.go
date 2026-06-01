@@ -159,17 +159,7 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse, error) {
 	var out *BlobResponse
 	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationBlob, repository: req.Repo, digest: req.Digest}, func(runtime upstreamRuntime) error {
-		method := methodOr(req.Method, http.MethodGet)
-		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointBlob, req.Digest)
-		var opts []requestOption
-		if req.Range != nil {
-			opts = append(opts, withHeader(distribution.HeaderRange, req.Range.String()))
-		}
-		resp, err := c.do(ctx, runtime, operationBlob, method, requestURL, pullRepositoryScope(req.Repo), opts...)
-		if err != nil {
-			return err
-		}
-		blob, err := blobResponseFromUpstream(resp, req.Digest)
+		blob, err := c.fetchBlob(ctx, runtime, req)
 		if err != nil {
 			return err
 		}

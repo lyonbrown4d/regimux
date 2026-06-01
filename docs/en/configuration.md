@@ -42,6 +42,9 @@ Important defaults:
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`
 - `cache.backend = "memory"`
+- `cache.blob.small_cache.enabled = false`
+- `cache.blob.small_cache.max_size_bytes = 4194304`
+- `cache.blob.small_cache.ttl = "24h"`
 - `store.meta.driver = "sqlite"`
 - `store.meta.path = "data/regimux.db"`
 - `store.object.driver = "local"`
@@ -53,6 +56,37 @@ Important defaults:
 - `docker.prewarm.alias = "hub"`
 - `docker.prewarm.timeout = "10m"`
 - `upstreams.hub.registry = "https://registry-1.docker.io"`
+- `upstreams.hub.http.http2.enabled = false`
+
+RegiMux disables HTTP/2 for upstream registry clients by default. This keeps mirror and CDN compatibility predictable and avoids process-level HTTP/2 runtime panics. Enable it per upstream only for trusted registries:
+
+```hcl
+upstreams {
+  hub {
+    http {
+      http2 {
+        enabled = true
+      }
+    }
+  }
+}
+```
+
+Small blob caching can store already-verified tiny blobs, such as OCI image config blobs, in the configured KV cache backend. Use Redis or Valkey for this mode; large layers still belong in `store.object`.
+
+```hcl
+cache {
+  backend = "redis"
+
+  blob {
+    small_cache {
+      enabled = true
+      max_size_bytes = 4194304
+      ttl = "24h"
+    }
+  }
+}
+```
 
 ## Docker Daemon Integration
 
@@ -85,9 +119,11 @@ REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
+REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
 REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
+REGIMUX_UPSTREAMS__HUB__HTTP__HTTP2__ENABLED=true
 ```
 
 The loader also reads `.env` when present. Environment variables override `.env` and file values.

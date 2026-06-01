@@ -2,9 +2,11 @@ package upstream
 
 import (
 	"errors"
+	"net/http"
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 )
 
 type contentInconsistentError struct {
@@ -45,5 +47,14 @@ func validateUpstreamContentDigest(expected, actual string) error {
 
 func isContentInconsistent(err error) bool {
 	var mismatch *contentInconsistentError
-	return errors.As(err, &mismatch)
+	if errors.As(err, &mismatch) {
+		return true
+	}
+	list := distribution.FromError(err)
+	if list == nil || list.Status != http.StatusBadGateway {
+		return false
+	}
+	return lo.ContainsBy(list.Errors, func(item distribution.Error) bool {
+		return item.Code == distribution.CodeDigestInvalid
+	})
 }

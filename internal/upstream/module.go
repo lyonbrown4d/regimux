@@ -98,6 +98,9 @@ func ConfigFromUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 		},
 		HTTP: HTTPConfig{
 			Timeout: cfg.HTTP.Timeout,
+			HTTP2: HTTP2Config{
+				Enabled: cfg.HTTP.HTTP2.Enabled,
+			},
 			Retry: HTTPRetryConfig{
 				Enabled:    cfg.HTTP.Retry.Enabled,
 				MaxRetries: cfg.HTTP.Retry.MaxRetries,

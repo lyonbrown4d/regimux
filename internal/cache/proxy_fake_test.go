@@ -3,6 +3,7 @@ package cache_test
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -102,6 +103,29 @@ func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequ
 		StatusCode: http.StatusOK,
 		Headers:    headers,
 	}, nil
+}
+
+func (c *fakeRegistryClient) ConsumeBlob(ctx context.Context, req upstream.GetBlobRequest, consume upstream.BlobConsumeFunc) error {
+	resp, err := c.GetBlob(ctx, req)
+	if err != nil {
+		return err
+	}
+	consumeErr := consume(resp)
+	closeErr := closeFakeBlobBody(resp.Body)
+	if consumeErr != nil {
+		return errors.Join(consumeErr, closeErr)
+	}
+	return closeErr
+}
+
+func closeFakeBlobBody(body io.Closer) error {
+	if body == nil {
+		return nil
+	}
+	if err := body.Close(); err != nil {
+		return fmt.Errorf("close fake blob body: %w", err)
+	}
+	return nil
 }
 
 func (c *fakeRegistryClient) ListTags(context.Context, upstream.ListTagsRequest) (*upstream.TagsResponse, error) {
