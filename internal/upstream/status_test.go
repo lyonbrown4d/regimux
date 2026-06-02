@@ -27,6 +27,7 @@ func TestMapStatusNotFound(t *testing.T) {
 			list := distribution.FromError(err)
 			if list == nil {
 				t.Fatal("expected mapped distribution error")
+				return
 			}
 			if got := list.Errors[0].Code; got != tc.want {
 				t.Fatalf("want code %s, got %s", tc.want, got)

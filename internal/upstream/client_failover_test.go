@@ -273,6 +273,7 @@ func requireErrorStatus(t *testing.T, err error, status int) {
 	list := distribution.FromError(err)
 	if list == nil {
 		t.Fatalf("error = %v, want distribution error", err)
+		return
 	}
 	requireEqual(t, list.Status, status, "status")
 }
