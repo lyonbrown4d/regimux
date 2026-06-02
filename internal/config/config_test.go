@@ -32,6 +32,13 @@ func TestLoadDefaultsDisableRegistryAuth(t *testing.T) {
 func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	cfg := loadDefaultConfig(t)
 	hub := cfg.Upstreams["hub"]
+	if hub.Type != "oci" {
+		t.Fatalf("unexpected hub upstream type: %q", hub.Type)
+	}
+	golang := cfg.Upstreams["golang"]
+	if golang.Type != "go" || golang.Registry != "https://proxy.golang.org" {
+		t.Fatalf("unexpected golang upstream defaults: %#v", golang)
+	}
 	assertDefaultUpstreamBlob(t, hub.Blob)
 	assertDefaultUpstreamProbe(t, hub.Probe)
 	assertDefaultWorker(t, cfg.Worker)

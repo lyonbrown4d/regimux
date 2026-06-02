@@ -77,6 +77,9 @@ func ConfigsFromUpstreamConfigs(configs *collectionmapping.OrderedMap[string, co
 	}
 	out := collectionmapping.NewOrderedMapWithCapacity[string, Config](configs.Len())
 	configs.Range(func(alias string, cfg config.UpstreamConfig) bool {
+		if cfg.Type != "" && cfg.Type != "oci" {
+			return true
+		}
 		out.Set(alias, ConfigFromUpstreamConfig(alias, cfg))
 		return true
 	})

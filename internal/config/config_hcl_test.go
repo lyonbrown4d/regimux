@@ -130,6 +130,9 @@ func assertLoadedHCLUpstream(t *testing.T, upstreamCfg config.UpstreamConfig) {
 	if upstreamCfg.Registry != "https://example.com" {
 		t.Fatalf("unexpected upstream config: %#v", upstreamCfg)
 	}
+	if upstreamCfg.Type != "oci" {
+		t.Fatalf("unexpected upstream type %q", upstreamCfg.Type)
+	}
 	if got := upstreamCfg.MirrorPolicy; got != "round_robin" {
 		t.Fatalf("unexpected mirror policy %q", got)
 	}

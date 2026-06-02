@@ -1,6 +1,6 @@
 # RegiMux 文档
 
-RegiMux 是一个只读的 OCI / Docker Registry V2 多上游代理镜像网关。
+RegiMux 是一个只读研发依赖缓存网关，当前支持 OCI / Docker Registry V2 代理镜像和 Go module proxy 缓存。
 
 ## 入门
 

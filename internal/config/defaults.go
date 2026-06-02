@@ -153,11 +153,15 @@ func defaultDockerConfig() DockerConfig {
 }
 
 func defaultUpstreamsConfig() map[string]UpstreamConfig {
-	return map[string]UpstreamConfig{"hub": defaultHubUpstreamConfig()}
+	return map[string]UpstreamConfig{
+		"hub":    defaultHubUpstreamConfig(),
+		"golang": defaultGoUpstreamConfig(),
+	}
 }
 
 func defaultHubUpstreamConfig() UpstreamConfig {
 	return UpstreamConfig{
+		Type:             "oci",
 		Registry:         "https://registry-1.docker.io",
 		MirrorPolicy:     "ordered",
 		DefaultNamespace: "library",
@@ -174,6 +178,22 @@ func defaultHubUpstreamConfig() UpstreamConfig {
 			Jitter:   5 * time.Second,
 		},
 		Auth: AuthConfig{Type: "anonymous"},
+		HTTP: HTTPConfig{
+			Retry: HTTPRetryConfig{
+				Enabled:    true,
+				MaxRetries: 2,
+				WaitMin:    100 * time.Millisecond,
+				WaitMax:    time.Second,
+			},
+		},
+	}
+}
+
+func defaultGoUpstreamConfig() UpstreamConfig {
+	return UpstreamConfig{
+		Type:     "go",
+		Registry: "https://proxy.golang.org",
+		Auth:     AuthConfig{Type: "anonymous"},
 		HTTP: HTTPConfig{
 			Retry: HTTPRetryConfig{
 				Enabled:    true,

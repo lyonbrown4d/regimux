@@ -13,6 +13,7 @@ func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (Upstream
 		return UpstreamConfig{}, oops.In("config").Errorf("upstream alias cannot be empty")
 	}
 	upstreamCfg.Alias = alias
+	upstreamCfg.Type = normalizeUpstreamType(upstreamCfg.Type)
 	upstreamCfg.Registry = strings.TrimSpace(upstreamCfg.Registry)
 
 	policy, policyErr := normalizeMirrorPolicy(alias, upstreamCfg.MirrorPolicy)
@@ -47,6 +48,14 @@ func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (Upstream
 		upstreamCfg.Auth.Type = "anonymous"
 	}
 	return upstreamCfg, nil
+}
+
+func normalizeUpstreamType(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return "oci"
+	}
+	return value
 }
 
 func normalizeMirrorPolicy(alias, policy string) (string, error) {

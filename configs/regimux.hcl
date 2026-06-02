@@ -193,6 +193,7 @@ docker {
 
 upstreams {
   hub {
+    type = "oci"
     registry = "https://registry-1.docker.io"
     mirrors = [
       "https://mirror.example.com",
@@ -241,6 +242,7 @@ upstreams {
   }
 
   ghcr {
+    type = "oci"
     registry = "https://ghcr.io"
     tag_ttl = "5m"
 
@@ -265,6 +267,7 @@ upstreams {
   }
 
   quay {
+    type = "oci"
     registry = "https://quay.io"
     tag_ttl = "5m"
 
@@ -289,6 +292,7 @@ upstreams {
   }
 
   k8s {
+    type = "oci"
     registry = "https://registry.k8s.io"
     tag_ttl = "30m"
 
@@ -302,6 +306,26 @@ upstreams {
       http2 {
         enabled = false
       }
+
+      retry {
+        enabled = true
+        max_retries = 2
+        wait_min = "100ms"
+        wait_max = "1s"
+      }
+    }
+  }
+
+  golang {
+    type = "go"
+    registry = "https://proxy.golang.org"
+
+    auth {
+      type = "anonymous"
+    }
+
+    http {
+      timeout = "0s"
 
       retry {
         enabled = true
