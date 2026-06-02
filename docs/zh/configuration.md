@@ -42,6 +42,7 @@ upstreams {
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`
 - `cache.backend = "memory"`
+- `cache.blob.stream_and_cache = true`
 - `cache.blob.small_cache.enabled = false`
 - `cache.blob.small_cache.max_size_bytes = 4194304`
 - `cache.blob.small_cache.ttl = "24h"`
@@ -71,6 +72,8 @@ upstreams {
   }
 }
 ```
+
+`cache.blob.stream_and_cache` 默认开启。完整 blob miss 会边回传给 Docker 边写入对象存储，完成后再提交缓存和元数据；range 请求会直通上游，后续完整 blob 命中后再从对象存储服务 range。
 
 small blob cache 可以把已经完成 digest 校验的小 blob，例如 OCI image config blob，放进当前配置的 KV 缓存后端。这个模式建议搭配 Redis 或 Valkey 使用；大 layer 仍然应该放在 `store.object`。
 

@@ -92,7 +92,7 @@ func defaultCacheConfig() CacheConfig {
 		Manifest:   ManifestCacheConfig{TagTTL: 10 * time.Minute, StaleIfError: true, MaxStale: 168 * time.Hour},
 		Blob: BlobCacheConfig{
 			VerifyTTL:      0,
-			StreamAndCache: false,
+			StreamAndCache: true,
 			SmallCache: SmallBlobCacheConfig{
 				MaxSizeBytes: defaultSmallBlobCacheMaxSize,
 				TTL:          defaultSmallBlobCacheTTL,

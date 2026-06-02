@@ -15,6 +15,7 @@ import (
 
 type fakeRegistryClient struct {
 	blobBody   []byte
+	blobReader io.ReadCloser
 	blobDigest string
 	blobGets   int
 	blobHeads  int
@@ -64,6 +65,7 @@ func (c *fakeRegistryClient) GetManifest(_ context.Context, req upstream.GetMani
 
 func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequest) (*upstream.BlobResponse, error) {
 	body := c.blobBody
+	bodyReader := io.NopCloser(bytes.NewReader(body))
 	headers := http.Header{
 		distribution.HeaderContentType: {distribution.MediaTypeOctetStream},
 	}
@@ -72,7 +74,7 @@ func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequ
 	switch req.Method {
 	case http.MethodHead:
 		c.blobHeads++
-		body = nil
+		bodyReader = io.NopCloser(bytes.NewReader(nil))
 		contentLength = 0
 	default:
 		c.blobGets++
@@ -93,11 +95,14 @@ func (c *fakeRegistryClient) GetBlob(_ context.Context, req upstream.GetBlobRequ
 				Headers:    headers,
 			}, nil
 		}
+		if c.blobReader != nil {
+			bodyReader = c.blobReader
+		}
 	}
 
 	headers.Set(distribution.HeaderContentLength, strconv.Itoa(contentLength))
 	return &upstream.BlobResponse{
-		Body:       io.NopCloser(bytes.NewReader(body)),
+		Body:       bodyReader,
 		Digest:     c.blobDigest,
 		Size:       int64(contentLength),
 		StatusCode: http.StatusOK,

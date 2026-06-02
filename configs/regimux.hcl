@@ -78,7 +78,7 @@ cache {
   }
 
   blob {
-    stream_and_cache = false
+    stream_and_cache = true
 
     small_cache {
       enabled = false

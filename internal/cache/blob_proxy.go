@@ -48,7 +48,6 @@ func (p blobProxy) shouldBypassStore(req BlobRequest) bool {
 func (p blobProxy) shouldStreamAndCache(req BlobRequest) bool {
 	return p.streamAndCache &&
 		req.Method != http.MethodHead &&
-		req.Range != nil &&
 		p.metadata != nil &&
 		p.objects != nil
 }
@@ -69,9 +68,13 @@ func (p blobProxy) fetchStored(ctx context.Context, req BlobRequest) (*BlobReadR
 }
 
 func (p blobProxy) fetchStreamAndStore(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
-	if req.Range == nil || req.Method == http.MethodHead {
-		return nil, errorf("stream-and-cache range fetch requires range request")
+	if req.Range != nil {
+		return p.fetchRangeStream(ctx, req)
 	}
+	return p.fetchFullStreamAndStore(ctx, req)
+}
+
+func (p blobProxy) fetchRangeStream(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
 	resp, err := p.client.GetBlob(ctx, upstream.GetBlobRequest{
 		UpstreamAlias: req.UpstreamAlias,
 		Repo:          req.Repo,
@@ -98,6 +101,36 @@ func (p blobProxy) fetchStreamAndStore(ctx context.Context, req BlobRequest) (*B
 		Status:  resp.StatusCode,
 		Headers: resp.Headers,
 		Cache:   CacheBypass,
+	}, nil
+}
+
+func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
+	resp, err := p.client.GetBlob(ctx, upstream.GetBlobRequest{
+		UpstreamAlias: req.UpstreamAlias,
+		Repo:          req.Repo,
+		Digest:        req.Digest,
+		Method:        req.Method,
+	})
+	if err != nil {
+		return nil, wrapError(err, "stream blob from upstream")
+	}
+	if err := validateStoredBlobDigest(req.Digest, resp.Digest); err != nil {
+		if closeErr := closeHTTPBody(resp.Body, "blob stream response body"); closeErr != nil {
+			return nil, joinError("close blob stream after digest mismatch", err, closeErr)
+		}
+		return nil, err
+	}
+
+	mediaType := contentTypeFromHeader(resp.Headers)
+	reader := p.streamBlobToCache(ctx, req, resp, mediaType)
+	p.logBlobCacheHit(ctx, req, "stream_and_cache_full")
+	return &BlobReadResult{
+		Reader:  reader,
+		Digest:  resp.Digest,
+		Size:    resp.Size,
+		Status:  resp.StatusCode,
+		Headers: resp.Headers,
+		Cache:   CacheMiss,
 	}, nil
 }
 

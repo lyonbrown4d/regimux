@@ -1,6 +1,7 @@
 package cache_test
 
 import (
+	"bytes"
 	"context"
 	"net/http"
 	"testing"
@@ -26,37 +27,37 @@ func newTestProxy(client upstream.RegistryClient, metadata meta.Store, objects o
 	})
 }
 
-func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
+func TestBlobProxyStreamsFullMissAndServesRangeHit(t *testing.T) {
 	ctx := context.Background()
 	body := []byte("0123456789")
 	digest := testDigestFor(body)
 	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
 	metadata, objects := newTestStores(t)
-	proxy := newTestProxy(client, metadata, objects, nil, config.Config{})
+	proxy := newTestProxy(client, metadata, objects, nil, config.DefaultConfig())
 
-	httpRange := &reference.HTTPRange{Start: 2, End: 5}
 	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
-		Range:         httpRange,
 		Method:        http.MethodGet,
 	})
 	if err != nil {
 		t.Fatalf("first blob get: %v", err)
 	}
-	assertRangeBlobMiss(t, first)
+	assertFullBlobMiss(t, first, body)
+	waitObjectStored(ctx, t, objects, digest)
 
 	second, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
+		Range:         &reference.HTTPRange{Start: 2, End: 5},
 		Method:        http.MethodGet,
 	})
 	if err != nil {
 		t.Fatalf("second blob get: %v", err)
 	}
-	assertFullBlobHit(t, second, body)
+	assertRangeBlobHit(t, second)
 	if client.blobGets != 1 {
 		t.Fatalf("expected one upstream blob GET, got %d", client.blobGets)
 	}
@@ -71,6 +72,45 @@ func TestBlobProxyCachesMissAndServesRangeHit(t *testing.T) {
 		t.Fatalf("head blob get: %v", err)
 	}
 	assertHeadBlobHit(t, head, len(body))
+}
+
+func TestBlobProxyFullMissReturnsBeforeUpstreamBodyCompletes(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	reader := newBlockingBlobReader(body)
+	client := &fakeRegistryClient{blobBody: body, blobReader: reader, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	proxy := newTestProxy(client, metadata, objects, nil, config.DefaultConfig())
+
+	resultCh := make(chan blobGetResult, 1)
+	go func() {
+		result, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+			UpstreamAlias: "hub",
+			Repo:          "library/alpine",
+			Digest:        digest,
+			Method:        http.MethodGet,
+		})
+		resultCh <- blobGetResult{result: result, err: err}
+	}()
+
+	var result blobGetResult
+	select {
+	case result = <-resultCh:
+	case <-time.After(200 * time.Millisecond):
+		t.Fatal("blob get blocked before upstream body completed")
+	}
+	if result.err != nil {
+		t.Fatalf("blob get: %v", result.err)
+	}
+	if result.result.Cache != cache.CacheMiss {
+		t.Fatalf("cache = %s, want miss", result.result.Cache)
+	}
+	reader.Release()
+	if got := readAndClose(t, result.result.Reader); !bytes.Equal(got, body) {
+		t.Fatalf("body = %q, want %q", got, body)
+	}
+	waitObjectStored(ctx, t, objects, digest)
 }
 
 func TestBlobProxyTouchesBlobAccessOnLocalHit(t *testing.T) {
@@ -91,6 +131,7 @@ func TestBlobProxyTouchesBlobAccessOnLocalHit(t *testing.T) {
 		t.Fatalf("first blob get: %v", err)
 	}
 	_ = readAndClose(t, first.Reader)
+	waitObjectStored(ctx, t, objects, digest)
 
 	old := time.Now().UTC().Add(-2 * time.Hour)
 	_, err = metadata.UpsertBlob(ctx, meta.BlobRecord{
@@ -126,4 +167,9 @@ func TestBlobProxyTouchesBlobAccessOnLocalHit(t *testing.T) {
 	assertFullBlobHit(t, hit, body)
 
 	assertBlobAccessTouched(ctx, t, metadata, digest, old)
+}
+
+type blobGetResult struct {
+	result *cache.BlobReadResult
+	err    error
 }

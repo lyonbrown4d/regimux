@@ -40,6 +40,9 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	if cfg.Cache.Blob.VerifyTTL != 0 {
 		t.Fatalf("unexpected blob verify ttl default: %s", cfg.Cache.Blob.VerifyTTL)
 	}
+	if !cfg.Cache.Blob.StreamAndCache {
+		t.Fatal("expected stream-and-cache to be enabled by default")
+	}
 	if hub.HTTP.HTTP2.Enabled {
 		t.Fatalf("unexpected upstream http2 default: %#v", hub.HTTP.HTTP2)
 	}

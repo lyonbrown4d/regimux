@@ -42,6 +42,7 @@ Important defaults:
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`
 - `cache.backend = "memory"`
+- `cache.blob.stream_and_cache = true`
 - `cache.blob.small_cache.enabled = false`
 - `cache.blob.small_cache.max_size_bytes = 4194304`
 - `cache.blob.small_cache.ttl = "24h"`
@@ -71,6 +72,8 @@ upstreams {
   }
 }
 ```
+
+`cache.blob.stream_and_cache` is enabled by default. Full blob misses stream back to Docker while the same bytes are written into object storage; the cache and metadata are committed after the stream completes. Range requests pass through upstream until a full blob has been cached.
 
 Small blob caching can store already-verified tiny blobs, such as OCI image config blobs, in the configured KV cache backend. Use Redis or Valkey for this mode; large layers still belong in `store.object`.
 

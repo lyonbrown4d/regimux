@@ -5,9 +5,12 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -45,20 +48,6 @@ func readAndClose(t *testing.T, reader io.ReadCloser) []byte {
 		t.Fatalf("read body: %v", err)
 	}
 	return body
-}
-
-func assertRangeBlobMiss(t *testing.T, result *cache.BlobReadResult) {
-	t.Helper()
-	body := readAndClose(t, result.Reader)
-	if result.Cache != cache.CacheMiss || result.Status != http.StatusPartialContent || string(body) != "2345" {
-		t.Fatalf("unexpected range result: cache=%s status=%d body=%q", result.Cache, result.Status, body)
-	}
-	if got := result.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-5/10" {
-		t.Fatalf("unexpected content range %q", got)
-	}
-	if got := result.Headers.Get(distribution.HeaderContentLength); got != "4" {
-		t.Fatalf("unexpected content length %q", got)
-	}
 }
 
 func assertRangeBlobBypass(t *testing.T, result *cache.BlobReadResult) {
@@ -179,6 +168,25 @@ func assertObjectPresence(ctx context.Context, t *testing.T, objects object.Stor
 	}
 }
 
+func waitObjectStored(ctx context.Context, t *testing.T, objects object.Store, digest string) {
+	t.Helper()
+
+	deadline := time.Now().Add(time.Second)
+	for {
+		exists, err := objects.Exists(ctx, digest)
+		if err != nil {
+			t.Fatalf("check object exists: %v", err)
+		}
+		if exists {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("object presence for %s did not become true", digest)
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+}
+
 func assertBlobRequestCounters(t *testing.T, client *fakeRegistryClient, gets, heads int) {
 	t.Helper()
 
@@ -211,4 +219,50 @@ func requirePullRecord(ctx context.Context, t *testing.T, metadata meta.Store, k
 func testDigestFor(body []byte) string {
 	sum := sha256.Sum256(body)
 	return "sha256:" + hex.EncodeToString(sum[:])
+}
+
+type blockingBlobReader struct {
+	mu       sync.Mutex
+	reader   *bytes.Reader
+	released chan struct{}
+	closed   bool
+}
+
+func newBlockingBlobReader(body []byte) *blockingBlobReader {
+	return &blockingBlobReader{
+		reader:   bytes.NewReader(body),
+		released: make(chan struct{}),
+	}
+}
+
+func (r *blockingBlobReader) Read(p []byte) (int, error) {
+	<-r.released
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.closed {
+		return 0, io.ErrClosedPipe
+	}
+	return r.read(p)
+}
+
+func (r *blockingBlobReader) Close() error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.closed = true
+	return nil
+}
+
+func (r *blockingBlobReader) Release() {
+	close(r.released)
+}
+
+func (r *blockingBlobReader) read(p []byte) (int, error) {
+	n, err := r.reader.Read(p)
+	if err == nil {
+		return n, nil
+	}
+	if errors.Is(err, io.EOF) {
+		return n, io.EOF
+	}
+	return n, fmt.Errorf("read blocking blob: %w", err)
 }

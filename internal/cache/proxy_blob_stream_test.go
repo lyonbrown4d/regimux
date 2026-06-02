@@ -61,7 +61,7 @@ func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
 		t.Fatalf("unexpected second blob result: cache=%s body=%q", second.Cache, bodyBuf)
 	}
 	assertBlobRequestCounters(t, client, 2, 0)
-	assertObjectPresence(ctx, t, objects, digest, true)
+	waitObjectStored(ctx, t, objects, digest)
 
 	third, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
@@ -108,6 +108,7 @@ func TestBlobProxySkipsVerifyForRecentSharedBlobWithinTTL(t *testing.T) {
 		t.Fatalf("first blob get: %v", err)
 	}
 	_ = readAndClose(t, first.Reader)
+	waitObjectStored(ctx, t, objects, digest)
 	if first.Cache != cache.CacheMiss {
 		t.Fatalf("first cache status = %s, want miss", first.Cache)
 	}
