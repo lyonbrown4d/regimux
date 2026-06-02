@@ -37,11 +37,11 @@ This example also enables predictive prefetch and latency-based mirror selection
 The Compose configs include a `golang` upstream for `https://proxy.golang.org`. After starting any example, point Go at RegiMux:
 
 ```bash
-export GOPROXY=http://localhost:5000/go/golang,direct
+export GOPROXY=http://localhost:5000,direct
 go mod download github.com/pkg/errors@v0.9.1
 ```
 
-Go module proxy responses are cached in the same object store used for OCI blobs.
+Go module proxy responses are cached in the same object store used for OCI blobs. The root Go proxy path tries configured `type = "go"` upstreams in stable alias order, preferring the `golang` alias when present. Use `/go/{alias}/...` only when you need to target one Go upstream explicitly.
 
 ## Valkey cache and distributed scheduler lock
 

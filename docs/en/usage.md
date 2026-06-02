@@ -110,7 +110,7 @@ curl -i \
 The default config includes a `golang` upstream pointing at `https://proxy.golang.org`. Go clients can use RegiMux as a Go module proxy:
 
 ```bash
-export GOPROXY=http://localhost:5000/go/golang,direct
+export GOPROXY=http://localhost:5000,direct
 go env GOPROXY
 go mod download github.com/pkg/errors@v0.9.1
 ```
@@ -118,12 +118,14 @@ go mod download github.com/pkg/errors@v0.9.1
 RegiMux proxies and caches Go proxy protocol requests such as:
 
 ```text
-GET /go/golang/github.com/pkg/errors/@v/list
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.info
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.mod
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.zip
-GET /go/golang/github.com/pkg/errors/@latest
+GET /github.com/pkg/errors/@v/list
+GET /github.com/pkg/errors/@v/v0.9.1.info
+GET /github.com/pkg/errors/@v/v0.9.1.mod
+GET /github.com/pkg/errors/@v/v0.9.1.zip
+GET /github.com/pkg/errors/@latest
 ```
+
+Root Go proxy requests try configured `type = "go"` upstreams in stable alias order, preferring the `golang` alias when present. The compatibility path `/go/{alias}/...` is still available when you want to target a specific Go upstream.
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in the object store by content sha256 and reused long term. The current implementation is a read-only read-through proxy; it does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 

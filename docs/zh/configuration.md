@@ -71,7 +71,7 @@ upstreams {
 `upstreams.*.type` 用来区分生态类型。当前支持：
 
 - `oci`：OCI / Docker Registry V2，通过 `/v2/{alias}/...` 访问。
-- `go`：Go module proxy，通过 `/go/{alias}/...` 访问。
+- `go`：Go module proxy，通过根路径 GOPROXY 访问；需要显式选择上游时可使用 `/go/{alias}/...`。
 - `maven`、`pypi`、`npm`：预留给后续 Maven、PyPI 和 npm 适配器。
 
 RegiMux 默认会关闭上游 registry 客户端的 HTTP/2。这样可以让 mirror 和 CDN 链路更可控，并避免 HTTP/2 运行时 panic 直接打崩进程。只建议对可信上游按 alias 显式开启：

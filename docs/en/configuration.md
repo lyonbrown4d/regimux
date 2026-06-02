@@ -71,7 +71,7 @@ Important defaults:
 `upstreams.*.type` selects the upstream ecosystem:
 
 - `oci`: OCI / Docker Registry V2 through `/v2/{alias}/...`.
-- `go`: Go module proxy through `/go/{alias}/...`.
+- `go`: Go module proxy through the root GOPROXY path, with `/go/{alias}/...` available for explicit upstream selection.
 - `maven`, `pypi`, and `npm`: reserved for the upcoming Maven, PyPI, and npm adapters.
 
 RegiMux disables HTTP/2 for upstream registry clients by default. This keeps mirror and CDN compatibility predictable and avoids process-level HTTP/2 runtime panics. Enable it per upstream only for trusted registries:

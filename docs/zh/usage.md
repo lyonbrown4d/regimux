@@ -110,7 +110,7 @@ curl -i \
 默认配置包含 `golang` upstream，指向 `https://proxy.golang.org`。Go 客户端可以把 RegiMux 当作 Go module proxy：
 
 ```bash
-export GOPROXY=http://localhost:5000/go/golang,direct
+export GOPROXY=http://localhost:5000,direct
 go env GOPROXY
 go mod download github.com/pkg/errors@v0.9.1
 ```
@@ -118,12 +118,14 @@ go mod download github.com/pkg/errors@v0.9.1
 RegiMux 会代理并缓存 Go proxy 协议请求，例如：
 
 ```text
-GET /go/golang/github.com/pkg/errors/@v/list
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.info
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.mod
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.zip
-GET /go/golang/github.com/pkg/errors/@latest
+GET /github.com/pkg/errors/@v/list
+GET /github.com/pkg/errors/@v/v0.9.1.info
+GET /github.com/pkg/errors/@v/v0.9.1.mod
+GET /github.com/pkg/errors/@v/v0.9.1.zip
+GET /github.com/pkg/errors/@latest
 ```
+
+Root Go proxy 请求会按稳定的 alias 顺序降级尝试所有 `type = "go"` upstream，并优先使用 `golang` alias。需要显式指定某个 Go upstream 时，兼容路径 `/go/{alias}/...` 仍然可用。
 
 `@latest` 和 `@v/list` 使用短 TTL；版本化的 `.info`、`.mod` 和 `.zip` 按内容 sha256 写入对象存储并长期复用。当前实现是只读 read-through proxy，不代理 `sum.golang.org`，也不做 VCS direct 拉取。
 

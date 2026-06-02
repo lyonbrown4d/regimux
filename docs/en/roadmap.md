@@ -8,8 +8,8 @@ RegiMux is expanding from a read-only OCI / Docker Registry V2 proxy mirror into
 
 - Keep the existing OCI / Docker Registry V2 compatible `/v2/{alias}/...` API as the stable registry path.
 - Add upstream ecosystem types: `oci`, `go`, `maven`, `pypi`, and `npm`. Go is implemented; Maven, PyPI, and npm are reserved config values.
-- Add a Go module proxy read-through cache at `/go/{alias}/{module}/@v/...` and `/go/{alias}/{module}/@latest`. Done.
-- Use `golang` as the default Go upstream alias backed by `https://proxy.golang.org`. Clients can set `GOPROXY=http://localhost:5000/go/golang`. Done.
+- Add a Go module proxy read-through cache at root GOPROXY paths and the compatibility `/go/{alias}/{module}/@v/...` path. Done.
+- Use `golang` as the preferred Go upstream alias backed by `https://proxy.golang.org`. Clients can set `GOPROXY=http://localhost:5000`. Done.
 - Store Go proxy responses in the object store by content sha256, with metadata mapping request paths to object digests. Done.
 - Add Maven next as a read-through repository-layout cache for release artifacts, `maven-metadata.xml`, and checksum files.
 - Add PyPI next with PEP 503 simple index caching, normalized package names, and file link rewriting.

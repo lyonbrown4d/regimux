@@ -19,6 +19,10 @@ type input struct {
 	Tail  httpx.PathTail `path:"tail"`
 }
 
+type rootInput struct {
+	Tail httpx.PathTail `path:"tail"`
+}
+
 type output struct {
 	Status        int
 	ContentType   string `header:"Content-Type"`
@@ -46,6 +50,8 @@ func (e *Endpoint) Register(registrar httpx.Registrar) {
 	group := registrar.Scope()
 	httpx.MustGroupGet(group, "go/{alias}/{tail...}", e.get)
 	httpx.MustGroupRoute(group, http.MethodHead, "go/{alias}/{tail...}", e.head)
+	httpx.MustGroupGet(group, "{tail...}", e.getRoot)
+	httpx.MustGroupRoute(group, http.MethodHead, "{tail...}", e.headRoot)
 }
 
 func (e *Endpoint) get(ctx context.Context, input *input) (*output, error) {
@@ -56,12 +62,37 @@ func (e *Endpoint) head(ctx context.Context, input *input) (*output, error) {
 	return e.dispatch(ctx, input, http.MethodHead)
 }
 
+func (e *Endpoint) getRoot(ctx context.Context, input *rootInput) (*output, error) {
+	return e.dispatchRoot(ctx, input, http.MethodGet)
+}
+
+func (e *Endpoint) headRoot(ctx context.Context, input *rootInput) (*output, error) {
+	return e.dispatchRoot(ctx, input, http.MethodHead)
+}
+
 func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*output, error) {
 	if in == nil {
 		return plainError(http.StatusBadRequest, "go proxy input is required"), nil
 	}
 	resp, err := e.service.Get(ctx, Request{
 		Alias:  in.Alias,
+		Tail:   in.Tail.String(),
+		Method: method,
+	})
+	if err != nil {
+		return plainError(http.StatusBadGateway, err.Error()), nil
+	}
+	return outputFromResponse(method, resp), nil
+}
+
+func (e *Endpoint) dispatchRoot(ctx context.Context, in *rootInput, method string) (*output, error) {
+	if in == nil {
+		return plainError(http.StatusBadRequest, "go proxy input is required"), nil
+	}
+	if !isGoProxyTail(in.Tail.String()) {
+		return plainError(http.StatusNotFound, "go proxy path not found"), nil
+	}
+	resp, err := e.service.Get(ctx, Request{
 		Tail:   in.Tail.String(),
 		Method: method,
 	})
@@ -94,8 +125,10 @@ func outputFromResponse(method string, resp *Response) *output {
 		return out
 	}
 	out.Body = streamWithStatus(resp.Status, httpx.StreamWriter(func(writer io.Writer) {
-		defer resp.Body.Close()
-		_, _ = io.Copy(writer, resp.Body)
+		defer closeReadCloser(resp.Body, nil, "close go proxy response body")
+		if _, err := io.Copy(writer, resp.Body); err != nil {
+			return
+		}
 	}))
 	return out
 }

@@ -1,4 +1,4 @@
-package goproxy
+package goproxy_test
 
 import (
 	"context"
@@ -9,8 +9,14 @@ import (
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/goproxy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+)
+
+const (
+	cacheHit  = "hit"
+	cacheMiss = "miss"
 )
 
 func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
@@ -22,12 +28,12 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 			t.Fatalf("upstream path = %s", r.URL.Path)
 		}
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		_, _ = w.Write([]byte("module github.com/acme/lib\n"))
+		writeResponse(t, w, "module github.com/acme/lib\n")
 	}))
 	t.Cleanup(upstream.Close)
 
 	service := newTestService(ctx, t, upstream.URL)
-	first, err := service.Get(ctx, Request{
+	first, err := service.Get(ctx, goproxy.Request{
 		Alias: "golang",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
 	})
@@ -37,7 +43,7 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 		t.Fatalf("first cache = %q, want %q", first.Cache, cacheMiss)
 	}
 
-	second, err := service.Get(ctx, Request{
+	second, err := service.Get(ctx, goproxy.Request{
 		Alias: "golang",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
 	})
@@ -51,6 +57,85 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	}
 }
 
+func TestServiceCachesRootGoProxyFile(t *testing.T) {
+	ctx := context.Background()
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/github.com/acme/lib/@v/v1.2.3.info" {
+			t.Fatalf("upstream path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		writeResponse(t, w, `{"Version":"v1.2.3"}`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newTestService(ctx, t, upstream.URL)
+	first, err := service.Get(ctx, goproxy.Request{
+		Tail: "github.com/acme/lib/@v/v1.2.3.info",
+	})
+	requireNoError(t, "first root get", err)
+	assertBody(t, first, `{"Version":"v1.2.3"}`)
+	if first.Cache != cacheMiss {
+		t.Fatalf("first cache = %q, want %q", first.Cache, cacheMiss)
+	}
+
+	second, err := service.Get(ctx, goproxy.Request{
+		Tail: "github.com/acme/lib/@v/v1.2.3.info",
+	})
+	requireNoError(t, "second root get", err)
+	assertBody(t, second, `{"Version":"v1.2.3"}`)
+	if second.Cache != cacheHit {
+		t.Fatalf("second cache = %q, want %q", second.Cache, cacheHit)
+	}
+	if requests != 1 {
+		t.Fatalf("upstream requests = %d, want 1", requests)
+	}
+}
+
+func TestServiceRootGoProxyFallsBackAcrossGoUpstreams(t *testing.T) {
+	ctx := context.Background()
+	primaryRequests := 0
+	primary := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		primaryRequests++
+		if r.URL.Path != "/github.com/acme/lib/@v/v1.2.3.mod" {
+			t.Fatalf("primary path = %s", r.URL.Path)
+		}
+		http.Error(w, "missing", http.StatusNotFound)
+	}))
+	t.Cleanup(primary.Close)
+
+	backupRequests := 0
+	backup := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		backupRequests++
+		if r.URL.Path != "/github.com/acme/lib/@v/v1.2.3.mod" {
+			t.Fatalf("backup path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		writeResponse(t, w, "module github.com/acme/lib\n")
+	}))
+	t.Cleanup(backup.Close)
+
+	service := newTestServiceWithUpstreams(ctx, t, map[string]config.UpstreamConfig{
+		"backup": {Type: "go", Registry: backup.URL},
+		"golang": {Type: "go", Registry: primary.URL},
+	})
+	resp, err := service.Get(ctx, goproxy.Request{
+		Tail: "github.com/acme/lib/@v/v1.2.3.mod",
+	})
+	requireNoError(t, "root fallback get", err)
+	assertBody(t, resp, "module github.com/acme/lib\n")
+	if resp.Cache != cacheMiss {
+		t.Fatalf("cache = %q, want %q", resp.Cache, cacheMiss)
+	}
+	if primaryRequests != 1 {
+		t.Fatalf("primary requests = %d, want 1", primaryRequests)
+	}
+	if backupRequests != 1 {
+		t.Fatalf("backup requests = %d, want 1", backupRequests)
+	}
+}
+
 func TestServicePassesThroughNotFound(t *testing.T) {
 	ctx := context.Background()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -59,7 +144,7 @@ func TestServicePassesThroughNotFound(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	service := newTestService(ctx, t, upstream.URL)
-	resp, err := service.Get(ctx, Request{
+	resp, err := service.Get(ctx, goproxy.Request{
 		Alias: "golang",
 		Tail:  "github.com/acme/missing/@v/v1.0.0.mod",
 	})
@@ -84,8 +169,8 @@ func TestServiceDoesNotStoreHeadMiss(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	service := newTestService(ctx, t, upstream.URL)
-	for i := 0; i < 2; i++ {
-		resp, err := service.Get(ctx, Request{
+	for range 2 {
+		resp, err := service.Get(ctx, goproxy.Request{
 			Alias:  "golang",
 			Tail:   "github.com/acme/lib/@v/v1.2.3.zip",
 			Method: http.MethodHead,
@@ -105,14 +190,14 @@ func TestServiceDoesNotStoreHeadMiss(t *testing.T) {
 
 func TestServiceRejectsNonGoUpstream(t *testing.T) {
 	ctx := context.Background()
-	service := NewService(ServiceDependencies{
+	service := goproxy.NewService(goproxy.ServiceDependencies{
 		Config: config.Config{
 			Upstreams: map[string]config.UpstreamConfig{
 				"hub": {Type: "oci", Registry: "https://registry-1.docker.io"},
 			},
 		},
 	})
-	_, err := service.Get(ctx, Request{
+	_, err := service.Get(ctx, goproxy.Request{
 		Alias: "hub",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
 	})
@@ -121,7 +206,17 @@ func TestServiceRejectsNonGoUpstream(t *testing.T) {
 	}
 }
 
-func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *Service {
+func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *goproxy.Service {
+	t.Helper()
+	return newTestServiceWithUpstreams(ctx, t, map[string]config.UpstreamConfig{
+		"golang": {
+			Type:     "go",
+			Registry: upstreamURL,
+		},
+	})
+}
+
+func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams map[string]config.UpstreamConfig) *goproxy.Service {
 	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
@@ -130,30 +225,39 @@ func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *Serv
 	})
 	objects, err := object.NewMemory("go-proxy-test")
 	requireNoError(t, "open objects", err)
-	return NewService(ServiceDependencies{
+	return goproxy.NewService(goproxy.ServiceDependencies{
 		Config: config.Config{
-			Upstreams: map[string]config.UpstreamConfig{
-				"golang": {
-					Type:     "go",
-					Registry: upstreamURL,
-				},
-			},
+			Upstreams: upstreams,
 		},
 		Metadata: db,
 		Objects:  objects,
 	})
 }
 
-func assertBody(t *testing.T, resp *Response, want string) {
+func assertBody(t *testing.T, resp *goproxy.Response, want string) {
 	t.Helper()
 	if resp == nil || resp.Body == nil {
 		t.Fatalf("response body is empty")
 	}
-	defer resp.Body.Close()
+	defer closeBody(t, resp.Body)
 	body, err := io.ReadAll(resp.Body)
 	requireNoError(t, "read body", err)
 	if string(body) != want {
 		t.Fatalf("body = %q, want %q", string(body), want)
+	}
+}
+
+func writeResponse(t *testing.T, w http.ResponseWriter, body string) {
+	t.Helper()
+	if _, err := io.WriteString(w, body); err != nil {
+		t.Fatalf("write response: %v", err)
+	}
+}
+
+func closeBody(t *testing.T, body io.Closer) {
+	t.Helper()
+	if err := body.Close(); err != nil {
+		t.Fatalf("close body: %v", err)
 	}
 }
 

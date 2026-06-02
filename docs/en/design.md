@@ -4,7 +4,7 @@
 
 RegiMux is a read-only developer dependency cache gateway. The stable capabilities today are an OCI / Docker Registry V2 proxy mirror and a Go module proxy read-through cache. Maven, PyPI, and npm adapters are planned next.
 
-The OCI side exposes a Registry-compatible pull API while routing requests to configured upstream registries by alias. The Go side exposes the Go module proxy protocol at `/go/{alias}/...` and routes requests to upstreams configured with `type = "go"`.
+The OCI side exposes a Registry-compatible pull API while routing requests to configured upstream registries by alias. The Go side exposes the Go module proxy protocol at the root path and routes requests to upstreams configured with `type = "go"`. The compatibility path `/go/{alias}/...` can still target one Go upstream explicitly.
 
 RegiMux is not a push registry. Upload, manifest write, and delete APIs are intentionally out of scope.
 
@@ -44,18 +44,20 @@ upstreams {
 Clients use:
 
 ```bash
-GOPROXY=http://localhost:5000/go/golang,direct
+GOPROXY=http://localhost:5000,direct
 ```
 
 Go proxy API examples:
 
 ```text
-GET /go/golang/github.com/pkg/errors/@v/list
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.info
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.mod
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.zip
-GET /go/golang/github.com/pkg/errors/@latest
+GET /github.com/pkg/errors/@v/list
+GET /github.com/pkg/errors/@v/v0.9.1.info
+GET /github.com/pkg/errors/@v/v0.9.1.mod
+GET /github.com/pkg/errors/@v/v0.9.1.zip
+GET /github.com/pkg/errors/@latest
 ```
+
+Root Go proxy requests try all configured Go upstreams in stable alias order, preferring the `golang` alias when present and falling back to later Go upstreams when a module is not available.
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in object storage by content sha256, with metadata mapping module/reference to digest. The current implementation does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 

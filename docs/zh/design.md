@@ -4,7 +4,7 @@
 
 RegiMux 是一个只读研发依赖缓存网关。当前稳定能力包括 OCI / Docker Registry V2 代理镜像和 Go module proxy read-through cache；后续会继续接入 Maven、PyPI 和 npm。
 
-OCI 部分对外暴露兼容 Registry 的 pull API，并通过配置的 alias 将请求路由到不同上游 registry。Go 部分通过 `/go/{alias}/...` 暴露 Go module proxy 协议，并将请求路由到配置为 `type = "go"` 的上游。
+OCI 部分对外暴露兼容 Registry 的 pull API，并通过配置的 alias 将请求路由到不同上游 registry。Go 部分在根路径暴露 Go module proxy 协议，并将请求路由到配置为 `type = "go"` 的上游；兼容路径 `/go/{alias}/...` 仍可用于显式选择某个 Go upstream。
 
 RegiMux 不是 push registry。上传、manifest 写入和删除 API 当前都不在范围内。
 
@@ -44,18 +44,20 @@ upstreams {
 客户端使用：
 
 ```bash
-GOPROXY=http://localhost:5000/go/golang,direct
+GOPROXY=http://localhost:5000,direct
 ```
 
 Go proxy API 示例：
 
 ```text
-GET /go/golang/github.com/pkg/errors/@v/list
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.info
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.mod
-GET /go/golang/github.com/pkg/errors/@v/v0.9.1.zip
-GET /go/golang/github.com/pkg/errors/@latest
+GET /github.com/pkg/errors/@v/list
+GET /github.com/pkg/errors/@v/v0.9.1.info
+GET /github.com/pkg/errors/@v/v0.9.1.mod
+GET /github.com/pkg/errors/@v/v0.9.1.zip
+GET /github.com/pkg/errors/@latest
 ```
+
+Root Go proxy 请求会按稳定 alias 顺序尝试所有已配置的 Go upstream；存在 `golang` alias 时优先使用它，模块不存在时降级到后续 Go upstream。
 
 `@latest` 和 `@v/list` 使用短 TTL。版本化 `.info`、`.mod` 和 `.zip` 响应按内容 sha256 写入对象存储，并用元数据记录 module/reference 到 digest 的映射。当前不代理 `sum.golang.org`，也不做 VCS direct 拉取。
 
