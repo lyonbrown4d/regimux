@@ -1,8 +1,21 @@
 package distribution
 
+import (
+	"fmt"
+	"strings"
+)
+
 type ManifestUnknownDetail struct {
-	Repository string `json:"repo"`
-	Reference  string `json:"reference"`
+	Repository            string               `json:"repo"`
+	Reference             string               `json:"reference"`
+	Message               string               `json:"message,omitempty"`
+	Suggestions           []ManifestSuggestion `json:"suggestions,omitempty"`
+	RepositorySuggestions []ManifestSuggestion `json:"repository_suggestions,omitempty"`
+}
+
+type ManifestSuggestion struct {
+	Reference string `json:"reference"`
+	Image     string `json:"image,omitempty"`
 }
 
 type BlobUnknownDetail struct {
@@ -44,4 +57,57 @@ func UpstreamStatus(status int, kind string) *ErrorList {
 		Status: status,
 		Kind:   kind,
 	})
+}
+
+func ManifestUnknownWithSuggestions(alias, repo, reference string, tags, repositories []string) *ErrorList {
+	message := manifestUnknownSuggestionMessage(repo, reference, tags, repositories)
+	return NewError(ErrManifestUnknown.Status, CodeManifestUnknown, message, ManifestUnknownDetail{
+		Repository:            repo,
+		Reference:             reference,
+		Message:               message,
+		Suggestions:           manifestTagSuggestions(alias, repo, tags),
+		RepositorySuggestions: manifestRepositorySuggestions(alias, reference, repositories),
+	})
+}
+
+func manifestUnknownSuggestionMessage(repo, reference string, tags, repositories []string) string {
+	if len(tags) == 0 && len(repositories) == 0 {
+		return ErrManifestUnknown.Message
+	}
+	if len(tags) > 0 {
+		suggestion := strings.Join(tags[:min(len(tags), 2)], " or ")
+		return fmt.Sprintf("manifest unknown: tag %q not found for repository %q; did you mean %s?", reference, repo, suggestion)
+	}
+	suggestion := strings.Join(repositories[:min(len(repositories), 2)], " or ")
+	return fmt.Sprintf("manifest unknown: repository %q or tag %q was not found; did you mean image %s?", repo, reference, suggestion)
+}
+
+func manifestTagSuggestions(alias, repo string, tags []string) []ManifestSuggestion {
+	out := make([]ManifestSuggestion, 0, len(tags))
+	for _, tag := range tags {
+		out = append(out, ManifestSuggestion{
+			Reference: tag,
+			Image:     suggestedImage(alias, repo, tag),
+		})
+	}
+	return out
+}
+
+func manifestRepositorySuggestions(alias, reference string, repositories []string) []ManifestSuggestion {
+	out := make([]ManifestSuggestion, 0, len(repositories))
+	for _, repo := range repositories {
+		out = append(out, ManifestSuggestion{
+			Reference: reference,
+			Image:     suggestedImage(alias, repo, reference),
+		})
+	}
+	return out
+}
+
+func suggestedImage(alias, repo, tag string) string {
+	name := strings.Trim(strings.Trim(alias, "/")+"/"+strings.Trim(repo, "/"), "/")
+	if name == "" {
+		return tag
+	}
+	return name + ":" + tag
 }

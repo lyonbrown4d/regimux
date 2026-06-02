@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	"github.com/lyonbrown4d/regimux/internal/suggestion"
 )
 
 type fiberOptions struct {
@@ -25,7 +26,7 @@ var EndpointsModule = dix.NewModule("api-endpoints",
 		dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
 			dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
 		),
-		dix.Provider2[RegistryEndpointOptions, config.Config, *observability.Metrics](newRegistryEndpointOptions),
+		dix.Provider3[RegistryEndpointOptions, config.Config, *observability.Metrics, suggestion.ManifestService](newRegistryEndpointOptions),
 		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, RegistryEndpointOptions](
 			NewRegistryEndpointFromOptions,
 			dix.Into[httpx.Endpoint](dix.Key("registry"), dix.Order(10)),
@@ -92,10 +93,15 @@ func newFiberOptions(routes *collectionlist.List[FiberRoute], views *collectionl
 	return opts
 }
 
-func newRegistryEndpointOptions(cfg config.Config, metrics *observability.Metrics) RegistryEndpointOptions {
+func newRegistryEndpointOptions(
+	cfg config.Config,
+	metrics *observability.Metrics,
+	suggestions suggestion.ManifestService,
+) RegistryEndpointOptions {
 	return RegistryEndpointOptions{
-		Config:  cfg,
-		Metrics: metrics,
+		Config:      cfg,
+		Metrics:     metrics,
+		Suggestions: suggestions,
 	}
 }
 

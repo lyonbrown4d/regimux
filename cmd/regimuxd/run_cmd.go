@@ -18,6 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/registrytool"
 	"github.com/lyonbrown4d/regimux/internal/scheduler"
 	storemodule "github.com/lyonbrown4d/regimux/internal/store"
+	"github.com/lyonbrown4d/regimux/internal/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/samber/oops"
@@ -50,6 +51,7 @@ func buildApp(configPath string, args ...string) *dix.App {
 	upstreamModule := upstream.Module
 	storeModule := storemodule.Module
 	cacheModule := cache.Module
+	suggestionModule := suggestion.Module
 	schedulerModule := scheduler.Module
 	dockerModule := dockerintegration.Module
 	adminModule := admin.Module
@@ -61,6 +63,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux registry proxy mirror gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, upstreamModule, storeModule, cacheModule, schedulerModule, adminModule, endpointModule, apiModule, dockerModule),
+		dix.Modules(configModule, buildModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, upstreamModule, storeModule, cacheModule, suggestionModule, schedulerModule, adminModule, endpointModule, apiModule, dockerModule),
 	)
 }

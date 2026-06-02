@@ -16,18 +16,20 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/suggestion"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 	"github.com/samber/mo"
 )
 
 type RegistryEndpoint struct {
-	manifests cache.ManifestService
-	blobs     cache.BlobService
-	tags      cache.TagService
-	referrers cache.ReferrerService
-	logger    *slog.Logger
-	metrics   *observability.Metrics
+	manifests   cache.ManifestService
+	blobs       cache.BlobService
+	tags        cache.TagService
+	referrers   cache.ReferrerService
+	logger      *slog.Logger
+	metrics     *observability.Metrics
+	suggestions suggestion.ManifestService
 
 	defaultNamespaces *collectionmapping.Map[string, string]
 }
@@ -66,8 +68,9 @@ func NewRegistryEndpointFromConfig(
 }
 
 type RegistryEndpointOptions struct {
-	Config  config.Config
-	Metrics *observability.Metrics
+	Config      config.Config
+	Metrics     *observability.Metrics
+	Suggestions suggestion.ManifestService
 }
 
 func NewRegistryEndpointFromOptions(
@@ -80,6 +83,7 @@ func NewRegistryEndpointFromOptions(
 ) *RegistryEndpoint {
 	endpoint := NewRegistryEndpointFromConfig(manifests, blobs, tags, referrers, logger, options.Config)
 	endpoint.metrics = options.Metrics
+	endpoint.suggestions = options.Suggestions
 	return endpoint
 }
 
@@ -171,8 +175,9 @@ func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, r
 		Method:        method,
 	})
 	if err != nil {
-		return errorOutput(distribution.FromError(err))
+		return e.manifestError(ctx, route, err)
 	}
+	e.observeManifest(ctx, route)
 
 	out := newRegistryOutput(http.StatusOK, result.Headers)
 	out.ContentType = result.MediaType
