@@ -19,7 +19,13 @@ server {
 
 upstreams {
   hub {
+    type = "oci"
     registry = "https://registry-1.docker.io"
+  }
+
+  golang {
+    type = "go"
+    registry = "https://proxy.golang.org"
   }
 }
 ```
@@ -56,14 +62,25 @@ Important defaults:
 - `docker.observe = true`
 - `docker.prewarm.alias = "hub"`
 - `docker.prewarm.timeout = "10m"`
+- `upstreams.hub.type = "oci"`
 - `upstreams.hub.registry = "https://registry-1.docker.io"`
+- `upstreams.golang.type = "go"`
+- `upstreams.golang.registry = "https://proxy.golang.org"`
 - `upstreams.hub.http.http2.enabled = false`
+
+`upstreams.*.type` selects the upstream ecosystem:
+
+- `oci`: OCI / Docker Registry V2 through `/v2/{alias}/...`.
+- `go`: Go module proxy through `/go/{alias}/...`.
+- `maven`, `pypi`, and `npm`: reserved for the upcoming Maven, PyPI, and npm adapters.
 
 RegiMux disables HTTP/2 for upstream registry clients by default. This keeps mirror and CDN compatibility predictable and avoids process-level HTTP/2 runtime panics. Enable it per upstream only for trusted registries:
 
 ```hcl
 upstreams {
   hub {
+    type = "oci"
+
     http {
       http2 {
         enabled = true
@@ -125,6 +142,8 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
+REGIMUX_UPSTREAMS__GOLANG__TYPE=go
+REGIMUX_UPSTREAMS__GOLANG__REGISTRY=https://proxy.golang.org
 REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
 REGIMUX_UPSTREAMS__HUB__HTTP__HTTP2__ENABLED=true
 ```

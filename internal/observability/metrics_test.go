@@ -16,9 +16,12 @@ func TestObserveStaticConfigRecordsConfiguredUpstreamMetrics(t *testing.T) {
 	recorder := &metricsRecorder{}
 	metrics := observability.NewMetricsFromObservability(recorder, nil)
 	cfg := config.DefaultConfig()
-	cfg.Upstreams["hub"] = config.UpstreamConfig{
-		Registry: "https://registry-1.docker.io/",
-		Mirrors:  []string{"https://mirror.example.com/"},
+	cfg.Upstreams = map[string]config.UpstreamConfig{
+		"hub": {
+			Type:     "oci",
+			Registry: "https://registry-1.docker.io/",
+			Mirrors:  []string{"https://mirror.example.com/"},
+		},
 	}
 
 	metrics.ObserveStaticConfig(context.Background(), cfg, build.Version("test"))

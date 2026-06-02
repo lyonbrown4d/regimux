@@ -105,6 +105,28 @@ curl -i \
   http://localhost:5000/v2/hub/library/alpine/manifests/latest
 ```
 
+## Go Module Proxy
+
+默认配置包含 `golang` upstream，指向 `https://proxy.golang.org`。Go 客户端可以把 RegiMux 当作 Go module proxy：
+
+```bash
+export GOPROXY=http://localhost:5000/go/golang,direct
+go env GOPROXY
+go mod download github.com/pkg/errors@v0.9.1
+```
+
+RegiMux 会代理并缓存 Go proxy 协议请求，例如：
+
+```text
+GET /go/golang/github.com/pkg/errors/@v/list
+GET /go/golang/github.com/pkg/errors/@v/v0.9.1.info
+GET /go/golang/github.com/pkg/errors/@v/v0.9.1.mod
+GET /go/golang/github.com/pkg/errors/@v/v0.9.1.zip
+GET /go/golang/github.com/pkg/errors/@latest
+```
+
+`@latest` 和 `@v/list` 使用短 TTL；版本化的 `.info`、`.mod` 和 `.zip` 按内容 sha256 写入对象存储并长期复用。当前实现是只读 read-through proxy，不代理 `sum.golang.org`，也不做 VCS direct 拉取。
+
 ## Docker Compose
 
 Compose 示例默认使用已经发布到 GHCR 的镜像：

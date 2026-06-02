@@ -250,6 +250,7 @@ type WorkerConfig struct {
 
 type UpstreamConfig struct {
 	Alias            string              `json:"-"                 koanf:"-"                 mapstructure:"-"`
+	Type             string              `json:"type"              koanf:"type"              mapstructure:"type"              validate:"omitempty,oneof=oci go maven pypi npm"`
 	Registry         string              `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
 	Mirrors          []string            `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
 	MirrorPolicy     string              `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`

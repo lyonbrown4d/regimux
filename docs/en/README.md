@@ -1,6 +1,6 @@
 # RegiMux Documentation
 
-RegiMux is a read-only OCI / Docker Registry V2 multi-upstream proxy mirror gateway.
+RegiMux is a read-only developer dependency cache gateway. It currently supports OCI / Docker Registry V2 proxy mirrors and Go module proxy caching.
 
 ## Start Here
 

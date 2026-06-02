@@ -46,6 +46,7 @@ scheduler {
 
 upstreams {
   hub {
+    type = "oci"
     registry = "https://registry-1.docker.io"
     default_namespace = "library"
 
@@ -56,5 +57,10 @@ upstreams {
     auth {
       type = "anonymous"
     }
+  }
+
+  golang {
+    type = "go"
+    registry = "https://proxy.golang.org"
   }
 }

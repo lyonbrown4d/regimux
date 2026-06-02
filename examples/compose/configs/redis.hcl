@@ -66,6 +66,7 @@ worker {
 
 upstreams {
   hub {
+    type = "oci"
     registry = "https://registry-1.docker.io"
     mirrors = [
       "https://mirror.example.com",
@@ -98,6 +99,7 @@ upstreams {
   }
 
   ghcr {
+    type = "oci"
     registry = "https://ghcr.io"
 
     auth {
@@ -106,7 +108,17 @@ upstreams {
   }
 
   quay {
+    type = "oci"
     registry = "https://quay.io"
+
+    auth {
+      type = "anonymous"
+    }
+  }
+
+  golang {
+    type = "go"
+    registry = "https://proxy.golang.org"
 
     auth {
       type = "anonymous"
