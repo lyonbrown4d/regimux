@@ -8,6 +8,7 @@ require (
 	github.com/arcgolabs/authx/http/fiber v0.4.0
 	github.com/arcgolabs/authx/jwt v0.3.0
 	github.com/arcgolabs/clientx v0.1.2
+	github.com/arcgolabs/collectionx/bitset v0.9.0
 	github.com/arcgolabs/collectionx/list v0.9.0
 	github.com/arcgolabs/collectionx/mapping v0.9.0
 	github.com/arcgolabs/collectionx/set v0.9.0
@@ -76,6 +77,7 @@ require (
 	github.com/andybalholm/brotli v1.2.1 // indirect
 	github.com/apparentlymart/go-textseg/v15 v15.0.0 // indirect
 	github.com/arcgolabs/collectionx/graph v0.9.0 // indirect
+	github.com/arcgolabs/collectionx/interval v0.9.0 // indirect
 	github.com/arcgolabs/httpx/adapter/std v0.1.7 // indirect
 	github.com/arcgolabs/pkg/option v0.0.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.11 // indirect

@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"strings"
 
+	collectioninterval "github.com/arcgolabs/collectionx/interval"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
@@ -147,12 +148,46 @@ func (r HTTPRange) Resolve(size int64) (*HTTPRange, error) {
 
 	switch {
 	case r.IsSuffix():
-		return r.resolveSuffix(size), nil
+		return resolveInterval(r.resolveSuffix(size))
 	case r.IsOpenEnded():
-		return r.resolveOpenEnded(size)
+		resolved, err := r.resolveOpenEnded(size)
+		if err != nil {
+			return nil, err
+		}
+		return resolveInterval(resolved)
 	default:
-		return r.resolveBounded(size)
+		resolved, err := r.resolveBounded(size)
+		if err != nil {
+			return nil, err
+		}
+		return resolveInterval(resolved)
 	}
+}
+
+func resolveInterval(r *HTTPRange) (*HTTPRange, error) {
+	if r == nil {
+		return nil, oops.Wrapf(errRangeInvalid, "invalid range")
+	}
+	resolved := collectioninterval.NewRangeSet[int64]()
+	if !resolved.Add(r.Start, r.End+1) {
+		return nil, oops.Wrapf(errRangeInvalid, "invalid range")
+	}
+
+	normalized, ok := resolved.GetFirst()
+	if !ok {
+		return nil, oops.Wrapf(errRangeInvalid, "invalid resolved range")
+	}
+	if !normalized.IsValid() {
+		return nil, oops.Wrapf(errRangeInvalid, "invalid resolved range")
+	}
+	if normalized.Start < 0 {
+		return nil, oops.Wrapf(errRangeInvalid, "invalid resolved range")
+	}
+	if normalized.End <= normalized.Start {
+		return nil, oops.Wrapf(errRangeInvalid, "invalid resolved range")
+	}
+
+	return &HTTPRange{Start: normalized.Start, End: normalized.End - 1}, nil
 }
 
 func validateContentSize(size int64) error {

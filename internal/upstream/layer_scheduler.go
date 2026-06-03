@@ -5,9 +5,9 @@ import (
 	"sync"
 	"time"
 
+	collectionbitset "github.com/arcgolabs/collectionx/bitset"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 const defaultLayerSchedulerRecentWindow = 2 * time.Second
@@ -127,11 +127,11 @@ func sortTopNCandidates(candidates []layerSchedulerCandidate, topN int) {
 	ranked := append([]layerSchedulerCandidate(nil), candidates...)
 	sortCandidates(ranked)
 
-	selected := collectionset.NewSetWithCapacity[int](topN)
+	selected := collectionbitset.New()
 	for i := range topN {
 		candidate := ranked[i]
 		candidates[i] = candidate
-		selected.Add(candidate.index)
+		selected.Set(candidate.index)
 	}
 
 	write := topN

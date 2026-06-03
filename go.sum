@@ -32,8 +32,12 @@ github.com/arcgolabs/authx/jwt v0.3.0 h1:KlH2JeZ0B5lT9vJGjUT9YsjwL8TFFf1kOTSXFQo
 github.com/arcgolabs/authx/jwt v0.3.0/go.mod h1:BJHOyngenkCXkVSpjTxjiUBoitOa03RQdAN7e34rCr0=
 github.com/arcgolabs/clientx v0.1.2 h1:W+h6iBVyb1OgHn1Uz4A3PNGHtDuzDCPFkyHCJwiYuUs=
 github.com/arcgolabs/clientx v0.1.2/go.mod h1:4/IB6J0wq43MKPw24DWiqEjzqA0MWVZkhjYOocTVwP4=
+github.com/arcgolabs/collectionx/bitset v0.9.0 h1:rJQR3okazzJqtI4fVEO5MYImmNDaikixaf/lfWNtSQg=
+github.com/arcgolabs/collectionx/bitset v0.9.0/go.mod h1:EeaEOLmFKplwaMFIKl6IAcKdcrTYBQw+WBMbCb0n3To=
 github.com/arcgolabs/collectionx/graph v0.9.0 h1:wpOevcDwHq49F1Ei5oyoq+7Xiln8iPipPRsxrzyLQGw=
 github.com/arcgolabs/collectionx/graph v0.9.0/go.mod h1:ed6tV9GiiLzvSajUwyaEYt4c5R2m8itI3FKfkHSRv80=
+github.com/arcgolabs/collectionx/interval v0.9.0 h1:LiJrRH2SOh6fZY6+r5ocFhDFfvb2OvxIdZjMFulGCf0=
+github.com/arcgolabs/collectionx/interval v0.9.0/go.mod h1:/JhcQR00R1Pq6iY+9CyVsKbUZXy1eA1dhSoEV+qMG0k=
 github.com/arcgolabs/collectionx/list v0.9.0 h1:Z2DZp/QTc1rFSM7J0urge7mqCBenOdMKSfZlInlbOQI=
 github.com/arcgolabs/collectionx/list v0.9.0/go.mod h1:ljn1rjvCXgliu1T7qnFGbozhSUmMqJqlYeLcoLF1YMM=
 github.com/arcgolabs/collectionx/mapping v0.9.0 h1:oczGpSxWHGAbav4OgitfNysLroTqDnp5OC+vt6QVLqs=
