@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	goredis "github.com/redis/go-redis/v9"
@@ -37,7 +38,7 @@ type RedisStore struct {
 
 type recordList struct {
 	values []meta.EndpointHealthRecord
-	seen   map[string]struct{}
+	seen   *collectionset.Set[string]
 }
 
 func NewStore(cfg config.Config, logger *slog.Logger) Store {
@@ -202,7 +203,7 @@ func (s *RedisStore) appendAliasRecords(ctx context.Context, alias string, recor
 func newRecordList() *recordList {
 	return &recordList{
 		values: make([]meta.EndpointHealthRecord, 0),
-		seen:   map[string]struct{}{},
+		seen:   collectionset.NewSet[string](),
 	}
 }
 
@@ -210,10 +211,13 @@ func (r *recordList) seenKey(key string) bool {
 	if r == nil {
 		return true
 	}
-	if _, ok := r.seen[key]; ok {
+	if r.seen == nil {
+		r.seen = collectionset.NewSet[string]()
+	}
+	if r.seen.Contains(key) {
 		return true
 	}
-	r.seen[key] = struct{}{}
+	r.seen.Add(key)
 	return false
 }
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
@@ -124,10 +125,10 @@ func groupKey(candidate Candidate) string {
 }
 
 func (s *Service) repositories(candidates *collectionlist.List[Candidate]) int {
-	groups := map[string]struct{}{}
+	groups := collectionset.NewSet[string]()
 	candidates.Range(func(_ int, candidate Candidate) bool {
-		groups[groupKey(candidate)] = struct{}{}
+		groups.Add(groupKey(candidate))
 		return true
 	})
-	return len(groups)
+	return groups.Len()
 }

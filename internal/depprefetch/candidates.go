@@ -2,6 +2,7 @@ package depprefetch
 
 import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
@@ -10,7 +11,7 @@ func (s *Service) candidates(records *collectionlist.List[meta.PullRecord], opts
 	if records == nil {
 		return collectionlist.NewList[Candidate]()
 	}
-	seenRepositories := map[string]struct{}{}
+	seenRepositories := collectionset.NewSet[string]()
 	candidates := collectionlist.NewListWithCapacity[Candidate](records.Len())
 	limit := candidateLimit(opts)
 	records.Range(func(_ int, record meta.PullRecord) bool {
@@ -24,7 +25,7 @@ func (s *Service) candidates(records *collectionlist.List[meta.PullRecord], opts
 	return candidates
 }
 
-func (s *Service) candidate(record meta.PullRecord, opts ecosystem.PrefetchOptions, seenRepositories map[string]struct{}) (Candidate, bool) {
+func (s *Service) candidate(record meta.PullRecord, opts ecosystem.PrefetchOptions, seenRepositories *collectionset.Set[string]) (Candidate, bool) {
 	alias, ok := rawAlias(s.ecosystem, record.Alias)
 	if !ok || record.Count < opts.MinPullCount || record.Reference == "" || record.Repository == "" {
 		return Candidate{}, false
@@ -38,11 +39,11 @@ func (s *Service) candidate(record meta.PullRecord, opts ecosystem.PrefetchOptio
 		Score:       candidateScore(record),
 	}
 	key := groupKey(candidate)
-	if _, exists := seenRepositories[key]; !exists {
-		if opts.MaxRepositories > 0 && len(seenRepositories) >= opts.MaxRepositories {
+	if !seenRepositories.Contains(key) {
+		if opts.MaxRepositories > 0 && seenRepositories.Len() >= opts.MaxRepositories {
 			return Candidate{}, false
 		}
-		seenRepositories[key] = struct{}{}
+		seenRepositories.Add(key)
 	}
 	return candidate, true
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -106,15 +107,11 @@ func TestUpstreamEndpointsFallsBackWhenAllEndpointsAreUnhealthy(t *testing.T) {
 	if got := len(endpoints); got != 3 {
 		t.Fatalf("expected fallback to all endpoints when all unhealthy, got %d (%v)", got, endpoints)
 	}
-	expected := map[string]struct{}{
-		"https://primary.internal":  {},
-		"https://mirror-a.internal": {},
-		"https://mirror-b.internal": {},
-	}
+	expected := collectionset.NewSet[string]("https://primary.internal", "https://mirror-a.internal", "https://mirror-b.internal")
 	for _, endpoint := range endpoints {
-		delete(expected, endpoint)
+		expected.Remove(endpoint)
 	}
-	if len(expected) != 0 {
+	if !expected.IsEmpty() {
 		t.Fatalf("expected fallback to include all configured endpoints, got %v", endpoints)
 	}
 }
