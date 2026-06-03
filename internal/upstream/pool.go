@@ -29,7 +29,7 @@ type upstreamPool struct {
 	blobLimit       int
 	blobMaxAttempts int
 	logger          *slog.Logger
-	runtimes        []upstreamRuntime
+	runtimes        *collectionlist.List[upstreamRuntime]
 	next            int
 	nextBlob        int
 	limiters        *collectionmapping.ConcurrentMap[string, chan struct{}]
@@ -63,12 +63,12 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes []upstreamRuntime
 		limiters: collectionmapping.NewConcurrentMap[string, chan struct{}](),
 		logger:   logger,
 	}
-	pool.runtimes = collectionlist.NewList(runtimes...).Values()
+	pool.runtimes = collectionlist.NewList(runtimes...)
 	if logger != nil {
 		logger.Debug(
 			"upstream pool initialized",
 			"alias", cfg.Alias,
-			"endpoint_count", len(pool.runtimes),
+			"endpoint_count", pool.runtimes.Len(),
 			"mirror_policy", pool.policy,
 			"blob_mirror_policy", pool.blobPolicy,
 			"blob_top_n", pool.blobTopN,
@@ -127,11 +127,11 @@ func normalizeBlobMirrorPolicy(policy, fallback string) string {
 }
 
 type runtimeSelection struct {
-	runtimes []upstreamRuntime
+	runtimes *collectionlist.List[upstreamRuntime]
 	release  func()
 }
 
-func newRuntimeSelection(runtimes []upstreamRuntime, release func()) runtimeSelection {
+func newRuntimeSelection(runtimes *collectionlist.List[upstreamRuntime], release func()) runtimeSelection {
 	if release == nil {
 		release = func() {}
 	}
@@ -171,24 +171,31 @@ func (p *upstreamPool) selectBlobRuntimes(repository, digest string) runtimeSele
 	}
 }
 
-func (p *upstreamPool) runtimesForPolicy(policy string, runtimes []upstreamRuntime, blob bool) []upstreamRuntime {
-	if len(runtimes) <= 1 || policy != mirrorPolicyRoundRobin {
+func (p *upstreamPool) runtimesForPolicy(policy string, runtimes *collectionlist.List[upstreamRuntime], blob bool) *collectionlist.List[upstreamRuntime] {
+	if runtimes == nil || runtimes.Len() <= 1 || policy != mirrorPolicyRoundRobin {
 		return runtimes
 	}
 
-	start := p.nextOffset(len(runtimes), blob)
-	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(i int, _ upstreamRuntime) upstreamRuntime {
-		return runtimes[(start+i)%len(runtimes)]
-	}).Values()
+	start := p.nextOffset(runtimes.Len(), blob)
+	count := runtimes.Len()
+	ordered := collectionlist.NewListWithCapacity[upstreamRuntime](count)
+	for i := 0; i < count; i++ {
+		runtime, ok := runtimes.Get((start + i) % count)
+		if !ok {
+			continue
+		}
+		ordered.Add(runtime)
+	}
+	return ordered
 }
 
-func (p *upstreamPool) selectLatencyBlobRuntimes(repository, digest string, runtimes []upstreamRuntime, now time.Time) runtimeSelection {
-	if len(runtimes) <= 1 {
+func (p *upstreamPool) selectLatencyBlobRuntimes(repository, digest string, runtimes *collectionlist.List[upstreamRuntime], now time.Time) runtimeSelection {
+	if runtimes == nil || runtimes.Len() <= 1 {
 		return newRuntimeSelection(runtimes, nil)
 	}
-	candidates := p.health.rankRuntimeCandidates(collectionlist.NewList(runtimes...), repository, now)
+	candidates := p.health.rankRuntimeCandidates(runtimes, repository, now)
 	filtered := p.selectHealthyRuntimeCandidates(candidates, repository, operationBlob)
-	return p.scheduler.schedule(digest, filtered.Values(), p.blobTopN, p.blobAttemptConcurrency(), now)
+	return p.scheduler.schedule(digest, filtered, p.blobTopN, p.blobAttemptConcurrency(), now)
 }
 
 func (p *upstreamPool) nextOffset(modulo int, blob bool) int {
@@ -209,14 +216,14 @@ func (p *upstreamPool) nextOffset(modulo int, blob bool) int {
 	return start
 }
 
-func (p *upstreamPool) selectHealthyRuntimes(runtimes []upstreamRuntime, repository string, now time.Time, operation string) []upstreamRuntime {
+func (p *upstreamPool) selectHealthyRuntimes(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time, operation string) *collectionlist.List[upstreamRuntime] {
 	if p == nil {
 		return runtimes
 	}
 
 	runtimeCandidates := p.toUpstreamRuntimeCandidates(runtimes, repository, now)
 	if p.health != nil && runtimeCandidates != nil && runtimeCandidates.Len() > 1 {
-		runtimeCandidates = p.health.rankRuntimeCandidates(collectionlist.NewList(runtimes...), repository, now)
+		runtimeCandidates = p.health.rankRuntimeCandidates(runtimes, repository, now)
 	}
 	selectedCandidates := p.selectHealthyRuntimeCandidates(runtimeCandidates, repository, operation)
 	return candidatesToRuntimes(selectedCandidates)
@@ -261,11 +268,11 @@ func (p *upstreamPool) selectHealthyRuntimeCandidates(
 	return filtered
 }
 
-func (p *upstreamPool) toUpstreamRuntimeCandidates(runtimes []upstreamRuntime, repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
+func (p *upstreamPool) toUpstreamRuntimeCandidates(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
 	if p == nil {
 		return collectionlist.NewList[endpointRuntimeCandidate]()
 	}
-	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(i int, runtime upstreamRuntime) endpointRuntimeCandidate {
+	return collectionlist.MapList(runtimes, func(i int, runtime upstreamRuntime) endpointRuntimeCandidate {
 		return endpointRuntimeCandidate{
 			runtime: runtime,
 			state:   p.health.runtimeSnapshot(runtime.config.Registry, repository, now),
@@ -283,17 +290,20 @@ func (p *upstreamPool) filterUnhealthyEndpointCandidates(candidates *collectionl
 	})
 }
 
-func candidatesToRuntimes(candidates *collectionlist.List[endpointRuntimeCandidate]) []upstreamRuntime {
+func candidatesToRuntimes(candidates *collectionlist.List[endpointRuntimeCandidate]) *collectionlist.List[upstreamRuntime] {
 	if candidates == nil {
-		return nil
+		return collectionlist.NewList[upstreamRuntime]()
 	}
 	return collectionlist.MapList(candidates, func(_ int, item endpointRuntimeCandidate) upstreamRuntime {
 		return item.runtime
-	}).Values()
+	})
 }
 
-func runtimeRegistries(runtimes []upstreamRuntime) []string {
-	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(_ int, runtime upstreamRuntime) string {
+func runtimeRegistries(runtimes *collectionlist.List[upstreamRuntime]) []string {
+	if runtimes == nil {
+		return nil
+	}
+	return collectionlist.MapList(runtimes, func(_ int, runtime upstreamRuntime) string {
 		return runtime.config.Registry
 	}).Values()
 }

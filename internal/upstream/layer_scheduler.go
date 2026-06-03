@@ -1,7 +1,6 @@
 package upstream
 
 import (
-	"sort"
 	"sync"
 	"time"
 
@@ -48,12 +47,12 @@ func newLayerScheduler(opts EndpointHealthOptions) *layerScheduler {
 
 func (s *layerScheduler) schedule(
 	digest string,
-	candidates []endpointRuntimeCandidate,
+	candidates *collectionlist.List[endpointRuntimeCandidate],
 	topN int,
 	reserveCount int,
 	now time.Time,
 ) runtimeSelection {
-	if s == nil || len(candidates) <= 1 {
+	if s == nil || candidates == nil || candidates.Len() <= 1 {
 		return newRuntimeSelection(runtimeCandidates(candidates), nil)
 	}
 
@@ -68,8 +67,15 @@ func (s *layerScheduler) schedule(
 	return newRuntimeSelection(scheduledRuntimes(scored), release)
 }
 
-func (s *layerScheduler) scoreCandidatesLocked(digest string, candidates []endpointRuntimeCandidate, now time.Time) []layerSchedulerCandidate {
-	return collectionlist.MapList(collectionlist.NewList(candidates...), func(i int, candidate endpointRuntimeCandidate) layerSchedulerCandidate {
+func (s *layerScheduler) scoreCandidatesLocked(
+	digest string,
+	candidates *collectionlist.List[endpointRuntimeCandidate],
+	now time.Time,
+) *collectionlist.List[layerSchedulerCandidate] {
+	if candidates == nil {
+		return collectionlist.NewList[layerSchedulerCandidate]()
+	}
+	return collectionlist.MapList(candidates, func(i int, candidate endpointRuntimeCandidate) layerSchedulerCandidate {
 		registry := candidate.runtime.config.Registry
 		score := s.scoreLocked(digest, registry, candidate.state, now)
 		return layerSchedulerCandidate{
@@ -78,7 +84,7 @@ func (s *layerScheduler) scoreCandidatesLocked(digest string, candidates []endpo
 			score:   score,
 			index:   i,
 		}
-	}).Values()
+	})
 }
 
 func (s *layerScheduler) scoreLocked(digest, registry string, state EndpointHealthSnapshot, now time.Time) time.Duration {
@@ -114,81 +120,112 @@ func (s *layerScheduler) sameDigestAffinityLocked(digest, registry string) time.
 	return s.opts.SameDigestAffinity
 }
 
-func sortTopNCandidates(candidates []layerSchedulerCandidate, topN int) {
-	if topN <= 0 || topN > len(candidates) {
-		topN = len(candidates)
+func sortTopNCandidates(candidates *collectionlist.List[layerSchedulerCandidate], topN int) {
+	if candidates == nil {
+		return
 	}
-	if topN == len(candidates) {
+	if topN <= 0 || topN > candidates.Len() {
+		topN = candidates.Len()
+	}
+	if topN == candidates.Len() {
 		sortCandidates(candidates)
 		return
 	}
 
-	original := append([]layerSchedulerCandidate(nil), candidates...)
-	ranked := append([]layerSchedulerCandidate(nil), candidates...)
-	sortCandidates(ranked)
-
+	original := candidates.Clone()
+	ranked := candidates.Clone().Sort(layerSchedulerCandidateCompare)
 	selected := collectionbitset.New()
-	for i := range topN {
-		candidate := ranked[i]
-		candidates[i] = candidate
-		selected.Set(candidate.index)
-	}
 
-	write := topN
-	for i := range original {
-		candidate := original[i]
-		if selected.Contains(candidate.index) {
-			continue
+	ranked.Range(func(index int, candidate layerSchedulerCandidate) bool {
+		if index >= topN {
+			return false
 		}
-		candidates[write] = candidate
-		write++
-	}
+		selected.Set(candidate.index)
+		return true
+	})
+
+	reordered := collectionlist.NewListWithCapacity[layerSchedulerCandidate](candidates.Len())
+	ranked.Range(func(index int, candidate layerSchedulerCandidate) bool {
+		if index >= topN {
+			return false
+		}
+		reordered.Add(candidate)
+		return true
+	})
+	original.Range(func(_ int, candidate layerSchedulerCandidate) bool {
+		if selected.Contains(candidate.index) {
+			return true
+		}
+		reordered.Add(candidate)
+		return true
+	})
+
+	candidates.Clear()
+	candidates.Merge(reordered)
 }
 
-func sortCandidates(candidates []layerSchedulerCandidate) {
-	sort.SliceStable(candidates, func(i, j int) bool {
-		return layerSchedulerCandidateLess(candidates[i], candidates[j])
-	})
+func sortCandidates(candidates *collectionlist.List[layerSchedulerCandidate]) {
+	candidates.Sort(layerSchedulerCandidateCompare)
+}
+
+func layerSchedulerCandidateCompare(left, right layerSchedulerCandidate) int {
+	if left.state.InCooldown != right.state.InCooldown {
+		if left.state.InCooldown {
+			return 1
+		}
+		return -1
+	}
+	if left.score != right.score {
+		if left.score < right.score {
+			return -1
+		}
+		return 1
+	}
+	if left.index == right.index {
+		return 0
+	}
+	if left.index < right.index {
+		return -1
+	}
+	return 1
 }
 
 func layerSchedulerCandidateLess(left, right layerSchedulerCandidate) bool {
-	if left.state.InCooldown != right.state.InCooldown {
-		return !left.state.InCooldown
-	}
-	if left.score != right.score {
-		return left.score < right.score
-	}
-	return left.index < right.index
+	return layerSchedulerCandidateCompare(left, right) < 0
 }
 
-func scheduledRuntimes(candidates []layerSchedulerCandidate) []upstreamRuntime {
-	return collectionlist.MapList(collectionlist.NewList(candidates...), func(_ int, candidate layerSchedulerCandidate) upstreamRuntime {
+func scheduledRuntimes(candidates *collectionlist.List[layerSchedulerCandidate]) *collectionlist.List[upstreamRuntime] {
+	return collectionlist.MapList(candidates, func(_ int, candidate layerSchedulerCandidate) upstreamRuntime {
 		return candidate.runtime
-	}).Values()
+	})
 }
 
-func runtimeCandidates(candidates []endpointRuntimeCandidate) []upstreamRuntime {
-	return collectionlist.MapList(collectionlist.NewList(candidates...), func(_ int, candidate endpointRuntimeCandidate) upstreamRuntime {
+func runtimeCandidates(candidates *collectionlist.List[endpointRuntimeCandidate]) *collectionlist.List[upstreamRuntime] {
+	return collectionlist.MapList(candidates, func(_ int, candidate endpointRuntimeCandidate) upstreamRuntime {
 		return candidate.runtime
-	}).Values()
+	})
 }
 
 func (s *layerScheduler) reserveLocked(
 	digest string,
-	candidates []layerSchedulerCandidate,
+	candidates *collectionlist.List[layerSchedulerCandidate],
 	reserveCount int,
 	now time.Time,
 ) func() {
-	if reserveCount <= 0 || len(candidates) == 0 {
+	if candidates == nil || reserveCount <= 0 || candidates.Len() == 0 {
 		return nil
 	}
-	if reserveCount > len(candidates) {
-		reserveCount = len(candidates)
+	if reserveCount > candidates.Len() {
+		reserveCount = candidates.Len()
 	}
 
 	registries := collectionlist.NewListWithCapacity[string](reserveCount)
 	for i := range reserveCount {
-		registry := normalizeEndpointHealthRegistry(candidates[i].runtime.config.Registry)
+		candidate, ok := candidates.Get(i)
+		if !ok {
+			continue
+		}
+		registry := normalizeEndpointHealthRegistry(candidate.runtime.config.Registry)
 		inFlight, _ := s.inFlight.Get(registry)
 		s.inFlight.Set(registry, inFlight+1)
 		s.recent.Set(registry, now)

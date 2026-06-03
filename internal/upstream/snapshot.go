@@ -46,7 +46,10 @@ func (p *upstreamPool) snapshot(now time.Time) UpstreamSnapshot {
 	alias := p.alias
 	policy := p.policy
 	blobPolicy := p.blobPolicy
-	runtimes := append([]upstreamRuntime(nil), p.runtimes...)
+	runtimes := p.runtimes
+	if runtimes == nil {
+		runtimes = collectionlist.NewList[upstreamRuntime]()
+	}
 	p.mu.Unlock()
 
 	out := UpstreamSnapshot{
@@ -54,11 +57,11 @@ func (p *upstreamPool) snapshot(now time.Time) UpstreamSnapshot {
 		Policy:     policy,
 		BlobPolicy: blobPolicy,
 	}
-	out.Endpoints = collectionlist.MapList(collectionlist.NewList(runtimes...), func(i int, runtime upstreamRuntime) EndpointSnapshot {
+	out.Endpoints = collectionlist.MapList(runtimes, func(i int, runtime upstreamRuntime) EndpointSnapshot {
 		registry := normalizeEndpointHealthRegistry(runtime.config.Registry)
 		return EndpointSnapshot{
 			Registry: registry,
-			Role:     endpointRole(i, len(runtimes)),
+			Role:     endpointRole(i, runtimes.Len()),
 			Health:   p.health.Snapshot(registry, now),
 		}
 	}).Values()

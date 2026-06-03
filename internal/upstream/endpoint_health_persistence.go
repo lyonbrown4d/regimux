@@ -153,15 +153,20 @@ func endpointHealthHotContext(parent context.Context) (context.Context, context.
 }
 
 func (p *upstreamPool) hasRegistry(registry string) bool {
-	if p == nil {
+	if p == nil || p.runtimes == nil {
 		return false
 	}
 	registry = normalizeEndpointHealthRegistry(registry)
-	for i := range p.runtimes {
-		runtime := &p.runtimes[i]
+	var found bool
+	p.runtimes.Range(func(_ int, runtime upstreamRuntime) bool {
 		if normalizeEndpointHealthRegistry(runtime.config.Registry) == registry {
-			return true
+			found = true
+			return false
 		}
+		return true
+	})
+	if found {
+		return true
 	}
 	return false
 }

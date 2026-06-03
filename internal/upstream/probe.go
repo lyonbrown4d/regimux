@@ -41,9 +41,13 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 
 	var successes atomic.Int32
 	var failures atomic.Int32
-	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](len(pool.runtimes))
-	for index := range pool.runtimes {
-		tasks.Add(c.probeTask(pool, index, &successes, &failures))
+	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](pool.runtimes.Len())
+	pool.runtimes.Range(func(_ int, runtime upstreamRuntime) bool {
+		tasks.Add(c.probeTask(pool, runtime, &successes, &failures))
+		return true
+	})
+	if tasks.IsEmpty() {
+		return distribution.ErrNameUnknown.WithDetail("upstream alias has no endpoints")
 	}
 	probeErr := worker.RunAllSettled(ctx, c.probePool(), tasks)
 	flushErr := c.FlushEndpointHealth(ctx)
@@ -61,9 +65,9 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 	return wrapError(probeErr, "probe upstream alias %s", alias)
 }
 
-func (c *Client) probeTask(pool *upstreamPool, index int, successes, failures *atomic.Int32) func(context.Context) error {
+func (c *Client) probeTask(pool *upstreamPool, runtime upstreamRuntime, successes, failures *atomic.Int32) func(context.Context) error {
 	return func(taskCtx context.Context) error {
-		if err := c.probeRuntime(taskCtx, pool, pool.runtimes[index]); err != nil {
+		if err := c.probeRuntime(taskCtx, pool, runtime); err != nil {
 			failures.Add(1)
 			return err
 		}

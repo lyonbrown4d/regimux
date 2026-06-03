@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/arcgolabs/clientx"
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -28,20 +29,20 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 	selection := pool.selectRuntimes(req.operation, req.repository, req.digest)
 
 	runtimes := selection.runtimes
-	if len(runtimes) == 0 {
+	if runtimes == nil || runtimes.Len() == 0 {
 		selection.Release()
 		return nil, distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + req.alias)
 	}
 	c.logUpstreamSelectionPlan(ctx, req, pool, runtimes)
 	var failoverErr error
 	if req.operation == operationBlob {
-		if !req.sequential && pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
-			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
+		if !req.sequential && pool.blobAttemptConcurrency() > 1 && runtimes.Len() > 1 {
+			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes.Values(), fn)
 		} else {
-			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes.Values(), fn)
 		}
 	} else {
-		failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+		failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes.Values(), fn)
 	}
 	if failoverErr != nil {
 		selection.Release()
@@ -50,8 +51,8 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 	return selection.Release, nil
 }
 
-func (c *Client) logUpstreamSelectionPlan(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime) {
-	if c == nil || c.logger == nil || pool == nil || len(runtimes) == 0 {
+func (c *Client) logUpstreamSelectionPlan(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes *collectionlist.List[upstreamRuntime]) {
+	if c == nil || c.logger == nil || pool == nil || runtimes == nil || runtimes.Len() == 0 {
 		return
 	}
 
@@ -69,7 +70,7 @@ func (c *Client) logUpstreamSelectionPlan(ctx context.Context, req failoverReque
 	c.logger.DebugContext(ctx, "selected upstream endpoints for request", args...)
 }
 
-func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime, now time.Time) []any {
+func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPool, runtimes *collectionlist.List[upstreamRuntime], now time.Time) []any {
 	if pool == nil {
 		return []any{
 			"alias", req.alias,
@@ -78,9 +79,7 @@ func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPoo
 		}
 	}
 
-	entries := make([]string, 0, len(runtimes))
-	for i := range runtimes {
-		runtime := runtimes[i]
+	entries := collectionlist.MapList(runtimes, func(_ int, runtime upstreamRuntime) string {
 		snapshot := pool.health.runtimeSnapshot(runtime.config.Registry, req.repository, now)
 		status := "healthy"
 		if snapshot.InCooldown {
@@ -100,15 +99,15 @@ func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPoo
 		if snapshot.HasSuccessRate {
 			entry = fmt.Sprintf("%s success_rate=%.3f", entry, snapshot.SuccessRate)
 		}
-		entries = append(entries, entry)
-	}
+		return entry
+	}).Values()
 
 	args := []any{
 		"alias", req.alias,
 		"operation", req.operation,
 		"repository", req.repository,
 		"endpoints", entries,
-		"selected_count", len(runtimes),
+		"selected_count", runtimes.Len(),
 		"upstream_policy", pool.policy,
 		"probe_enabled", pool.probeConfig.Enabled,
 	}
@@ -281,7 +280,7 @@ func (c *Client) upstream(alias string) (*upstreamPool, error) {
 		return nil, newError("upstream registry is not configured")
 	}
 	pool, ok := c.upstreams.Get(alias)
-	if !ok || pool == nil || len(pool.runtimes) == 0 {
+	if !ok || pool == nil || pool.runtimes == nil || pool.runtimes.Len() == 0 {
 		return nil, distribution.ErrNameUnknown.WithDetail("unknown upstream alias: " + alias)
 	}
 	return pool, nil
