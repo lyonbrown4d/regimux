@@ -209,7 +209,17 @@ func (p *upstreamPool) nextOffset(modulo int, blob bool) int {
 }
 
 func (p *upstreamPool) selectHealthyRuntimes(runtimes []upstreamRuntime, repository string, now time.Time, operation string) []upstreamRuntime {
+	if p == nil {
+		return runtimes
+	}
+
 	runtimeCandidates := p.toUpstreamRuntimeCandidates(runtimes, repository, now)
+	// Order candidates by health score first so healthier endpoints are preferred for ordered
+	// and round-robin selection paths before failover sequencing.
+	// keep original index as deterministic tie-breaker.
+	if p.health != nil && len(runtimeCandidates) > 1 {
+		runtimeCandidates = p.health.rankRuntimeCandidates(runtimes, repository, now)
+	}
 	selectedCandidates := p.selectHealthyRuntimeCandidates(runtimeCandidates, repository, operation)
 	return candidatesToRuntimes(selectedCandidates)
 }
