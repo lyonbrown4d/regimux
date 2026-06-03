@@ -15,7 +15,7 @@ type EndpointClients struct {
 
 type endpointClientGroup struct {
 	config   Config
-	runtimes []upstreamRuntime
+	runtimes *collectionlist.List[upstreamRuntime]
 }
 
 func newEndpointClientsFromConfigs(
@@ -39,10 +39,10 @@ func newEndpointClientsFromConfigs(
 	return &EndpointClients{groups: groups}
 }
 
-func newEndpointRuntimes(cfg Config, logger *slog.Logger) []upstreamRuntime {
+func newEndpointRuntimes(cfg Config, logger *slog.Logger) *collectionlist.List[upstreamRuntime] {
 	registries := endpointRegistries(cfg)
-	runtimes := collectionlist.NewListWithCapacity[upstreamRuntime](len(registries))
-	collectionlist.NewList(registries...).Range(func(_ int, registry string) bool {
+	runtimes := collectionlist.NewListWithCapacity[upstreamRuntime](registries.Len())
+	registries.Range(func(_ int, registry string) bool {
 		runtimeCfg := cfg
 		runtimeCfg.Registry = registry
 		runtime := upstreamRuntime{config: runtimeCfg}
@@ -58,7 +58,7 @@ func newEndpointRuntimes(cfg Config, logger *slog.Logger) []upstreamRuntime {
 		runtimes.Add(runtime)
 		return true
 	})
-	return runtimes.Values()
+	return runtimes
 }
 
 func (c *EndpointClients) Len() int {
@@ -68,12 +68,12 @@ func (c *EndpointClients) Len() int {
 	return c.groups.Len()
 }
 
-func (c *EndpointClients) Range(fn func(alias string, cfg Config, runtimes []upstreamRuntime) bool) {
+func (c *EndpointClients) Range(fn func(alias string, cfg Config, runtimes *collectionlist.List[upstreamRuntime]) bool) {
 	if c == nil || c.groups == nil || fn == nil {
 		return
 	}
 	c.groups.Range(func(alias string, group endpointClientGroup) bool {
-		return fn(alias, group.config, collectionlist.NewList(group.runtimes...).Values())
+		return fn(alias, group.config, group.runtimes)
 	})
 }
 
@@ -83,7 +83,10 @@ func (c *EndpointClients) Close() error {
 	}
 	var closeErr error
 	c.groups.Range(func(_ string, group endpointClientGroup) bool {
-		collectionlist.NewList(group.runtimes...).Range(func(_ int, runtime upstreamRuntime) bool {
+		if group.runtimes == nil {
+			return true
+		}
+		group.runtimes.Range(func(_ int, runtime upstreamRuntime) bool {
 			if runtime.client != nil {
 				closeErr = multierr.Append(closeErr, runtime.client.Close())
 			}

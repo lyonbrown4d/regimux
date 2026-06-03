@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
@@ -82,9 +83,9 @@ func NewClient(deps ClientDependencies) *Client {
 		}
 	}
 	upstreams = collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](endpointClients.Len())
-	endpointClients.Range(func(alias string, cfg Config, runtimes []upstreamRuntime) bool {
+	endpointClients.Range(func(alias string, cfg Config, runtimes *collectionlist.List[upstreamRuntime]) bool {
 		cfg.Alias = alias
-		upstreams.Set(alias, newUpstreamPool(cfg, logger, runtimes))
+		upstreams.Set(alias, newUpstreamPool(cfg, logger, runtimes.Values()))
 		return true
 	})
 	logger.Info("upstream client configured", "upstreams", upstreams.Len())

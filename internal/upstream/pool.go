@@ -84,7 +84,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes []upstreamRuntime
 	return pool
 }
 
-func endpointRegistries(cfg Config) []string {
+func endpointRegistries(cfg Config) *collectionlist.List[string] {
 	registries := collectionset.NewOrderedSetWithCapacity[string](len(cfg.Mirrors) + 1)
 	collectionlist.NewList(cfg.Mirrors...).Range(func(_ int, registry string) bool {
 		registry = strings.TrimRight(strings.TrimSpace(registry), "/")
@@ -98,7 +98,7 @@ func endpointRegistries(cfg Config) []string {
 	if registry != "" {
 		registries.Add(registry)
 	}
-	return registries.Values()
+	return collectionlist.NewList(registries.Values()...)
 }
 
 func normalizeMirrorPolicy(policy string) string {
