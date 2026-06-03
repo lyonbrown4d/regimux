@@ -5,16 +5,17 @@ import (
 	"net/http"
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
 )
 
 func TestNewServerRegistersEndpoints(t *testing.T) {
 	server := api.NewServer(api.Options{
-		Endpoints: []httpx.Endpoint{
+		Endpoints: collectionlist.NewList[httpx.Endpoint](
 			api.NewHealthEndpoint(),
 			api.NewRegistryEndpoint(nil, nil, nil, nil, slog.Default()),
-		},
+		),
 	})
 
 	assertRoute(t, server, http.MethodGet, "/healthz")

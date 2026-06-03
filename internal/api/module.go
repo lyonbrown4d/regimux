@@ -17,7 +17,7 @@ import (
 )
 
 type fiberOptions struct {
-	routes []FiberRoute
+	routes *collectionlist.List[FiberRoute]
 	views  fiber.Views
 }
 
@@ -61,15 +61,11 @@ func newServer(
 	metrics *observability.Metrics,
 	authService *auth.Service,
 ) *Server {
-	var values []httpx.Endpoint
-	if endpoints != nil {
-		values = endpoints.Values()
-	}
 	return NewServer(Options{
 		Listen:       cfg.Listen,
 		PublicURL:    cfg.PublicURL,
 		Logger:       logger,
-		Endpoints:    values,
+		Endpoints:    endpoints,
 		FiberRoutes:  fiberOpts.routes,
 		Views:        fiberOpts.views,
 		Metrics:      metrics,
@@ -83,9 +79,8 @@ func newServer(
 }
 
 func newFiberOptions(routes *collectionlist.List[FiberRoute], views *collectionlist.List[fiber.Views]) fiberOptions {
-	var opts fiberOptions
-	if routes != nil {
-		opts.routes = routes.Values()
+	opts := fiberOptions{
+		routes: routes,
 	}
 	if views != nil && views.Len() > 0 {
 		opts.views = views.Values()[0]

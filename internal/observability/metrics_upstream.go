@@ -78,11 +78,13 @@ func (m *Metrics) ObserveUpstreamSnapshot(ctx context.Context, snapshot upstream
 	if m == nil {
 		return
 	}
-	for _, upstreamSnapshot := range snapshot.Upstreams {
-		for i := range upstreamSnapshot.Endpoints {
-			m.observeEndpointSnapshot(ctx, upstreamSnapshot, upstreamSnapshot.Endpoints[i])
-		}
-	}
+	snapshot.Upstreams.Range(func(_ int, upstreamSnapshot upstream.UpstreamSnapshot) bool {
+		upstreamSnapshot.Endpoints.Range(func(_ int, endpoint upstream.EndpointSnapshot) bool {
+			m.observeEndpointSnapshot(ctx, upstreamSnapshot, endpoint)
+			return true
+		})
+		return true
+	})
 }
 
 type UpstreamRequestMetric struct {

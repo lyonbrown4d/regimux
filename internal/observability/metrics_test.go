@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/observability"
@@ -62,11 +63,11 @@ func TestAdditionalMetricsRecordBytesAndReports(t *testing.T) {
 func TestObserveUpstreamSnapshotRecordsEndpointHealth(t *testing.T) {
 	recorder := &metricsRecorder{}
 	metrics := observability.NewMetricsFromObservability(recorder, nil)
-	snapshot := upstream.ClientSnapshot{Upstreams: []upstream.UpstreamSnapshot{
-		{
+	snapshot := upstream.ClientSnapshot{Upstreams: collectionlist.NewList(
+		upstream.UpstreamSnapshot{
 			Alias: "hub",
-			Endpoints: []upstream.EndpointSnapshot{
-				{
+			Endpoints: collectionlist.NewList(
+				upstream.EndpointSnapshot{
 					Registry: "https://mirror.example.com",
 					Role:     "mirror",
 					Health: upstream.EndpointHealthSnapshot{
@@ -78,9 +79,9 @@ func TestObserveUpstreamSnapshotRecordsEndpointHealth(t *testing.T) {
 						SuccessRate:         0.75,
 					},
 				},
-			},
+			),
 		},
-	}}
+	)}
 
 	metrics.ObserveUpstreamSnapshot(context.Background(), snapshot)
 

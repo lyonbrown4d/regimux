@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/httpx"
 	"github.com/arcgolabs/httpx/adapter"
 	fiberadapter "github.com/arcgolabs/httpx/adapter/fiber"
@@ -33,8 +34,8 @@ type Options struct {
 	Listen       string
 	PublicURL    string
 	Logger       *slog.Logger
-	Endpoints    []httpx.Endpoint
-	FiberRoutes  []FiberRoute
+	Endpoints    *collectionlist.List[httpx.Endpoint]
+	FiberRoutes  *collectionlist.List[FiberRoute]
 	Views        fiber.Views
 	Metrics      *observability.Metrics
 	Auth         *auth.Service
@@ -69,10 +70,12 @@ func NewServer(opts Options) *Server {
 	if opts.Metrics != nil {
 		fiberApp.Get("/metrics", adaptor.HTTPHandler(opts.Metrics.Handler()))
 	}
-	for _, route := range opts.FiberRoutes {
-		if route != nil {
+	routeRegistrations := opts.FiberRoutes
+	if routeRegistrations != nil {
+		routeRegistrations.Range(func(_ int, route FiberRoute) bool {
 			route.RegisterFiber(fiberApp)
-		}
+			return true
+		})
 	}
 	if opts.Auth != nil {
 		opts.Auth.RegisterFiber(fiberApp)
@@ -90,9 +93,14 @@ func NewServer(opts Options) *Server {
 		httpx.WithLogger(logger),
 		httpx.WithPrintRoutes(opts.PrintRoutes),
 	)
-	for _, endpoint := range opts.Endpoints {
-		server.RegisterOnly(endpoint)
+	endpoints := opts.Endpoints
+	if endpoints == nil {
+		endpoints = collectionlist.NewList[httpx.Endpoint]()
 	}
+	endpoints.Range(func(_ int, endpoint httpx.Endpoint) bool {
+		server.RegisterOnly(endpoint)
+		return true
+	})
 
 	return &Server{
 		listen:  listen,

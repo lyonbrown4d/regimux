@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/samber/oops"
@@ -15,7 +16,11 @@ import (
 
 func startAPIServer(t *testing.T, endpoints ...httpx.Endpoint) string {
 	t.Helper()
-	return startAPIServerWithOptions(t, api.Options{Endpoints: endpoints})
+	all := collectionlist.NewList[httpx.Endpoint]()
+	for _, endpoint := range endpoints {
+		all.Add(endpoint)
+	}
+	return startAPIServerWithOptions(t, api.Options{Endpoints: all})
 }
 
 func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
@@ -23,7 +28,14 @@ func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 
 	addr := freeTCPAddr(t)
 	opts.Listen = addr
-	opts.Endpoints = append([]httpx.Endpoint{api.NewHealthEndpoint()}, opts.Endpoints...)
+	endpoints := collectionlist.NewList[httpx.Endpoint](api.NewHealthEndpoint())
+	if opts.Endpoints != nil {
+		opts.Endpoints.Range(func(_ int, endpoint httpx.Endpoint) bool {
+			endpoints.Add(endpoint)
+			return true
+		})
+	}
+	opts.Endpoints = endpoints
 	server := api.NewServer(opts)
 	if err := server.Start(context.Background()); err != nil {
 		t.Fatalf("start api server: %v", err)

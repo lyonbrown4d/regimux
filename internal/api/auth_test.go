@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/auth"
@@ -18,7 +19,7 @@ func TestServerAuthenticatesRegistryPullWithBearerToken(t *testing.T) {
 	authService := newTestAuthService(t)
 	baseURL := startAPIServerWithOptions(t, api.Options{
 		Auth: authService,
-		Endpoints: []httpx.Endpoint{
+		Endpoints: collectionlist.NewList[httpx.Endpoint](
 			api.NewRegistryEndpointFromConfig(
 				&recordingManifestService{},
 				nil,
@@ -27,7 +28,7 @@ func TestServerAuthenticatesRegistryPullWithBearerToken(t *testing.T) {
 				nil,
 				authTestConfig(),
 			),
-		},
+		),
 	})
 
 	unauthenticated := httpGet(t, baseURL+"/v2/hub/library/alpine/manifests/latest")

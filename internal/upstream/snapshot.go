@@ -7,14 +7,14 @@ import (
 )
 
 type ClientSnapshot struct {
-	Upstreams []UpstreamSnapshot
+	Upstreams *collectionlist.List[UpstreamSnapshot]
 }
 
 type UpstreamSnapshot struct {
 	Alias      string
 	Policy     string
 	BlobPolicy string
-	Endpoints  []EndpointSnapshot
+	Endpoints  *collectionlist.List[EndpointSnapshot]
 }
 
 type EndpointSnapshot struct {
@@ -25,19 +25,17 @@ type EndpointSnapshot struct {
 
 func (c *Client) Snapshot(now time.Time) ClientSnapshot {
 	if c == nil || c.upstreams == nil {
-		return ClientSnapshot{}
+		return ClientSnapshot{Upstreams: collectionlist.NewList[UpstreamSnapshot]()}
 	}
-
+	upstreams := collectionlist.NewList[UpstreamSnapshot]()
+	c.upstreams.Range(func(_ string, pool *upstreamPool) bool {
+		if pool != nil {
+			upstreams.Add(pool.snapshot(now))
+		}
+		return true
+	})
 	return ClientSnapshot{
-		Upstreams: collectionlist.FilterMapList(
-			collectionlist.NewList(c.upstreams.Values()...),
-			func(_ int, pool *upstreamPool) (UpstreamSnapshot, bool) {
-				if pool == nil {
-					return UpstreamSnapshot{}, false
-				}
-				return pool.snapshot(now), true
-			},
-		).Values(),
+		Upstreams: upstreams,
 	}
 }
 
@@ -64,7 +62,7 @@ func (p *upstreamPool) snapshot(now time.Time) UpstreamSnapshot {
 			Role:     endpointRole(i, runtimes.Len()),
 			Health:   p.health.Snapshot(registry, now),
 		}
-	}).Values()
+	})
 	return out
 }
 

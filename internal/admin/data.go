@@ -221,7 +221,7 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 	if s.upstream != nil {
 		snapshot = s.upstream.Snapshot(now)
 	}
-	snapshots := upstreamSnapshotMap(collectionlist.NewList(snapshot.Upstreams...))
+	snapshots := upstreamSnapshotMap(snapshot.Upstreams)
 	stats := upstreamMetadataMap(metadata)
 
 	ordered := s.cfg.OrderedContainerUpstreams()
@@ -276,7 +276,7 @@ func upstreamSnapshotMap(records *collectionlist.List[upstream.UpstreamSnapshot]
 }
 
 func endpointRows(snapshot upstream.UpstreamSnapshot) *collectionlist.List[EndpointRow] {
-	return collectionlist.MapList(collectionlist.NewList(snapshot.Endpoints...), func(_ int, endpoint upstream.EndpointSnapshot) EndpointRow {
+	return collectionlist.MapList(snapshot.Endpoints, func(_ int, endpoint upstream.EndpointSnapshot) EndpointRow {
 		health := endpoint.Health
 		return EndpointRow{
 			Registry:      endpoint.Registry,

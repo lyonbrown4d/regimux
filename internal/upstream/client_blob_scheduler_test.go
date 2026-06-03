@@ -218,14 +218,19 @@ func blobDigestHeaderHandler(t *testing.T, label, headerDigest string, requests 
 
 func endpointSnapshot(t *testing.T, snapshot upstream.ClientSnapshot, registry string) upstream.EndpointSnapshot {
 	t.Helper()
-	for i := range snapshot.Upstreams {
-		upstreamSnapshot := &snapshot.Upstreams[i]
-		for j := range upstreamSnapshot.Endpoints {
-			endpoint := &upstreamSnapshot.Endpoints[j]
+	var found *upstream.EndpointSnapshot
+	snapshot.Upstreams.Range(func(_ int, upstreamSnapshot upstream.UpstreamSnapshot) bool {
+		upstreamSnapshot.Endpoints.Range(func(_ int, endpoint upstream.EndpointSnapshot) bool {
 			if endpoint.Registry == registry {
-				return *endpoint
+				found = &endpoint
+				return false
 			}
-		}
+			return true
+		})
+		return found == nil
+	})
+	if found != nil {
+		return *found
 	}
 	t.Fatalf("endpoint snapshot not found for %s: %#v", registry, snapshot)
 	return upstream.EndpointSnapshot{}

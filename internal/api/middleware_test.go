@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/config"
@@ -23,7 +24,7 @@ func TestSecurityHeadersAllowAdminCDNByDefault(t *testing.T) {
 	cfg := config.DefaultConfig()
 	baseURL := startAPIServerWithOptions(t, api.Options{
 		Middleware:  cfg.Server.Middleware,
-		FiberRoutes: []api.FiberRoute{adminTestRoute{}},
+		FiberRoutes: collectionlist.NewList[api.FiberRoute](adminTestRoute{}),
 	})
 	resp := httpGet(t, baseURL+"/admin")
 	defer readHTTPResponse(t, resp)
