@@ -284,18 +284,33 @@ func (s *Service) goUpstreams() *collectionlist.List[goUpstream] {
 }
 
 func preferGoAlias(upstreams *collectionlist.List[goUpstream], alias string) *collectionlist.List[goUpstream] {
-	values := upstreams.Values()
-	for i := range values {
-		if values[i].alias != alias {
-			continue
-		}
-		if i == 0 {
-			return collectionlist.NewList(values...)
-		}
-		preferred := values[i]
-		copy(values[1:i+1], values[0:i])
-		values[0] = preferred
-		return collectionlist.NewList(values...)
+	if upstreams == nil || upstreams.Len() == 0 {
+		return collectionlist.NewList[goUpstream]()
 	}
-	return collectionlist.NewList(values...)
+	if alias == "" {
+		return upstreams
+	}
+
+	preferredIndex := -1
+	var preferred goUpstream
+	upstreams.Range(func(index int, upstream goUpstream) bool {
+		if upstream.alias == alias && preferredIndex == -1 {
+			preferredIndex = index
+			preferred = upstream
+		}
+		return true
+	})
+	if preferredIndex <= 0 {
+		return upstreams
+	}
+	preferredUpstreams := collectionlist.NewListWithCapacity[goUpstream](upstreams.Len())
+	preferredUpstreams.Add(preferred)
+	upstreams.Range(func(index int, upstream goUpstream) bool {
+		if index == preferredIndex {
+			return true
+		}
+		preferredUpstreams.Add(upstream)
+		return true
+	})
+	return preferredUpstreams
 }

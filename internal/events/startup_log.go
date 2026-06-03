@@ -52,8 +52,8 @@ func logRegisteredUpstreams(logger *slog.Logger, cfg config.Config) {
 			"alias", alias,
 			"registry", cleanRegistry(upstreamCfg.Registry),
 			"mirrors", upstreamCfg.Mirrors,
-			"endpoint_count", len(endpoints),
-			"endpoints", endpoints,
+			"endpoint_count", endpoints.Len(),
+			"endpoints", endpoints.Values(),
 			"mirror_policy", upstreamCfg.MirrorPolicy,
 			"blob_mirror_policy", upstreamCfg.Blob.MirrorPolicy,
 			"default_namespace", upstreamCfg.DefaultNamespace,
@@ -87,7 +87,7 @@ func startupServiceEndpoints(cfg config.Config) *collectionlist.List[startupEndp
 	return endpoints
 }
 
-func upstreamEndpointRegistries(cfg config.UpstreamConfig) []string {
+func upstreamEndpointRegistries(cfg config.UpstreamConfig) *collectionlist.List[string] {
 	registries := collectionset.NewOrderedSetWithCapacity[string](len(cfg.Mirrors) + 1)
 	collectionlist.NewList(cfg.Mirrors...).Range(func(_ int, registry string) bool {
 		if endpoint := cleanRegistry(registry); endpoint != "" {
@@ -98,7 +98,9 @@ func upstreamEndpointRegistries(cfg config.UpstreamConfig) []string {
 	if registry := cleanRegistry(cfg.Registry); registry != "" {
 		registries.Add(registry)
 	}
-	return registries.Values()
+	out := collectionlist.NewListWithCapacity[string](registries.Len())
+	out.Add(registries.Values()...)
+	return out
 }
 
 func serviceBaseURL(cfg config.ServerConfig) string {
