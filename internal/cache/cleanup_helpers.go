@@ -8,7 +8,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func newCleanupReport(opts CleanupOptions, blobs []meta.BlobRecord) *CleanupReport {
+func newCleanupReport(opts CleanupOptions, blobs *collectionlist.List[meta.BlobRecord]) *CleanupReport {
 	report := &CleanupReport{
 		DryRun:      opts.DryRun,
 		BytesBefore: cleanupBlobBytes(blobs),
@@ -19,14 +19,13 @@ func newCleanupReport(opts CleanupOptions, blobs []meta.BlobRecord) *CleanupRepo
 	return report
 }
 
-func cleanupBlobBytes(blobs []meta.BlobRecord) int64 {
-	var total int64
-	for i := range blobs {
-		if blobs[i].Size > 0 {
-			total += blobs[i].Size
+func cleanupBlobBytes(blobs *collectionlist.List[meta.BlobRecord]) int64 {
+	return collectionlist.ReduceList(blobs, int64(0), func(total int64, _ int, blob meta.BlobRecord) int64 {
+		if blob.Size <= 0 {
+			return total
 		}
-	}
-	return total
+		return total + blob.Size
+	})
 }
 
 func cleanupCapacityTarget(opts CleanupOptions) int64 {
@@ -39,8 +38,11 @@ func cleanupCapacityTarget(opts CleanupOptions) int64 {
 	return opts.MaxBytes
 }
 
-func cleanupOrderedBlobs(blobs []meta.BlobRecord) []meta.BlobRecord {
-	return collectionlist.NewList(blobs...).Sort(compareCleanupBlob).Values()
+func cleanupOrderedBlobs(blobs *collectionlist.List[meta.BlobRecord]) *collectionlist.List[meta.BlobRecord] {
+	if blobs == nil {
+		return collectionlist.NewList[meta.BlobRecord]()
+	}
+	return blobs.Sort(compareCleanupBlob)
 }
 
 func compareCleanupBlob(left, right meta.BlobRecord) int {

@@ -32,8 +32,8 @@ func TestMemoryBackendUsesSafeNoopStore(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list noop health: %v", err)
 	}
-	if len(records) != 0 {
-		t.Fatalf("records = %#v, want empty", records)
+	if records.Len() != 0 {
+		t.Fatalf("records len = %d, want 0", records.Len())
 	}
 	if err := store.Close(); err != nil {
 		t.Fatalf("close noop store: %v", err)

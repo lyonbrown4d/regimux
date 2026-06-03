@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -23,7 +24,7 @@ const (
 // SQL metadata remains the durable source of truth; this store is best-effort.
 type Store interface {
 	Put(context.Context, meta.EndpointHealthRecord) error
-	List(context.Context, ...string) ([]meta.EndpointHealthRecord, error)
+	List(context.Context, ...string) (*collectionlist.List[meta.EndpointHealthRecord], error)
 	Close() error
 }
 
@@ -37,7 +38,7 @@ type RedisStore struct {
 }
 
 type recordList struct {
-	values []meta.EndpointHealthRecord
+	values *collectionlist.List[meta.EndpointHealthRecord]
 	seen   *collectionset.Set[string]
 }
 
@@ -84,7 +85,7 @@ func (noopStore) Put(context.Context, meta.EndpointHealthRecord) error {
 	return nil
 }
 
-func (noopStore) List(context.Context, ...string) ([]meta.EndpointHealthRecord, error) {
+func (noopStore) List(context.Context, ...string) (*collectionlist.List[meta.EndpointHealthRecord], error) {
 	return nil, nil
 }
 
@@ -134,9 +135,9 @@ func (s *RedisStore) Put(ctx context.Context, record meta.EndpointHealthRecord) 
 	return nil
 }
 
-func (s *RedisStore) List(ctx context.Context, aliases ...string) ([]meta.EndpointHealthRecord, error) {
+func (s *RedisStore) List(ctx context.Context, aliases ...string) (*collectionlist.List[meta.EndpointHealthRecord], error) {
 	if s == nil || s.client == nil || len(aliases) == 0 {
-		return nil, nil
+		return collectionlist.NewList[meta.EndpointHealthRecord](), nil
 	}
 	ctx = normalizeContext(ctx)
 	records := newRecordList()
@@ -202,7 +203,7 @@ func (s *RedisStore) appendAliasRecords(ctx context.Context, alias string, recor
 
 func newRecordList() *recordList {
 	return &recordList{
-		values: make([]meta.EndpointHealthRecord, 0),
+		values: collectionlist.NewList[meta.EndpointHealthRecord](),
 		seen:   collectionset.NewSet[string](),
 	}
 }
@@ -225,7 +226,7 @@ func (r *recordList) add(record meta.EndpointHealthRecord) {
 	if r == nil {
 		return
 	}
-	r.values = append(r.values, record)
+	r.values.Add(record)
 }
 
 func (s *RedisStore) healthKey(recordKey string) string {

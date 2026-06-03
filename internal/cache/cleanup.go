@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -86,8 +87,9 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 		return nil, err
 	}
 
-	report := newCleanupReport(opts, blobs)
-	if err := s.cleanupBlobRecords(ctx, opts, now.Add(-opts.UnusedFor), blobs, protected, report); err != nil {
+	blobList := collectionlist.NewList(blobs...)
+	report := newCleanupReport(opts, blobList)
+	if err := s.cleanupBlobRecords(ctx, opts, now.Add(-opts.UnusedFor), blobList, protected, report); err != nil {
 		return nil, err
 	}
 	s.logger.InfoContext(ctx,
@@ -160,16 +162,33 @@ func (s *CleanupService) cleanupBlobRecords(
 	ctx context.Context,
 	opts CleanupOptions,
 	cutoff time.Time,
-	blobs []meta.BlobRecord,
+	blobs *collectionlist.List[meta.BlobRecord],
 	protected *collectionset.Set[string],
 	report *CleanupReport,
 ) error {
 	ordered := cleanupOrderedBlobs(blobs)
-	for i := range ordered {
-		stop, err := s.cleanupBlob(ctx, opts, cutoff, &ordered[i], protected, report)
-		if err != nil || stop {
-			return err
+	var stopEarly bool
+	var outErr error
+	ordered.Range(func(_ int, blob meta.BlobRecord) bool {
+		stop, err := s.cleanupBlob(ctx, opts, cutoff, &blob, protected, report)
+		if err != nil {
+			outErr = err
+			return false
 		}
+		if stop {
+			stopEarly = true
+			return false
+		}
+		return true
+	})
+	if outErr != nil {
+		return outErr
+	}
+	if stopEarly {
+		return nil
+	}
+	if ordered.Len() == 0 {
+		return nil
 	}
 	return nil
 }

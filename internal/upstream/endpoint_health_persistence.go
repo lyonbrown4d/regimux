@@ -21,7 +21,7 @@ func (c *Client) LoadEndpointHealth(ctx context.Context) error {
 		if err != nil {
 			return oops.In("upstream").Wrapf(err, "load endpoint health metadata")
 		}
-		loaded += c.restoreEndpointHealthRecords(records)
+		loaded += c.restoreEndpointHealthRecords(collectionlist.NewList(records...))
 	}
 	loaded += c.loadHotEndpointHealth(ctx)
 
@@ -65,17 +65,20 @@ func (c *Client) endpointHealthAliases() *collectionlist.List[string] {
 	return aliases
 }
 
-func (c *Client) restoreEndpointHealthRecords(records []meta.EndpointHealthRecord) int {
+func (c *Client) restoreEndpointHealthRecords(records *collectionlist.List[meta.EndpointHealthRecord]) int {
 	loaded := 0
-	for i := range records {
-		record := &records[i]
+	if records == nil {
+		return 0
+	}
+	records.Range(func(_ int, record meta.EndpointHealthRecord) bool {
 		pool, ok := c.upstreams.Get(record.Alias)
 		if !ok || pool == nil || !pool.hasRegistry(record.Registry) {
-			continue
+			return true
 		}
-		pool.health.RestoreSnapshot(endpointHealthSnapshotFromRecord(record))
+		pool.health.RestoreSnapshot(endpointHealthSnapshotFromRecord(&record))
 		loaded++
-	}
+		return true
+	})
 	return loaded
 }
 
