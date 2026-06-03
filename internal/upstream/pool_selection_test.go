@@ -56,6 +56,7 @@ func TestClientManifestOrderedPolicySkipsUnhealthyEndpointFromHealthCheck(t *tes
 		primaryRequests.Add(1)
 		switch r.URL.Path {
 		case "/v2/":
+			time.Sleep(80 * time.Millisecond)
 			w.WriteHeader(http.StatusOK)
 		default:
 			t.Fatalf("unexpected path for primary: %s", r.URL.Path)
@@ -170,6 +171,7 @@ func TestClientManifestRoundRobinSkipsUnhealthyAndRotatesHealthyEndpoints(t *tes
 		primaryRequests.Add(1)
 		switch r.URL.Path {
 		case "/v2/":
+			time.Sleep(80 * time.Millisecond)
 			w.WriteHeader(http.StatusOK)
 		default:
 			t.Fatalf("unexpected path for primary: %s", r.URL.Path)

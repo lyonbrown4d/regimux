@@ -297,6 +297,12 @@ func candidatesToRuntimes(candidates []endpointRuntimeCandidate) []upstreamRunti
 	}).Values()
 }
 
+func runtimeRegistries(runtimes []upstreamRuntime) []string {
+	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(_ int, runtime upstreamRuntime) string {
+		return runtime.config.Registry
+	}).Values()
+}
+
 func (p *upstreamPool) acquireRuntime(ctx context.Context, operation string, runtime upstreamRuntime) (func(), error) {
 	if p == nil || operation != operationBlob {
 		return func() {}, nil

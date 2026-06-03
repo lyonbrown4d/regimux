@@ -3,10 +3,11 @@ package upstream
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/arcgolabs/clientx"
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -31,9 +32,9 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 		selection.Release()
 		return nil, distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + req.alias)
 	}
+	c.logUpstreamSelectionPlan(ctx, req, pool, runtimes)
 	var failoverErr error
 	if req.operation == operationBlob {
-		c.logBlobEndpointPlan(ctx, req, pool, runtimes)
 		if !req.sequential && pool.blobAttemptConcurrency() > 1 && len(runtimes) > 1 {
 			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
 		} else {
@@ -47,6 +48,74 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 		return nil, failoverErr
 	}
 	return selection.Release, nil
+}
+
+func (c *Client) logUpstreamSelectionPlan(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime) {
+	if c == nil || c.logger == nil || pool == nil || len(runtimes) == 0 {
+		return
+	}
+
+	args := c.upstreamSelectionLogArgs(req, pool, runtimes, time.Now())
+	if req.operation == operationBlob {
+		args = append(args,
+			"blob_mirror_policy", pool.blobPolicy,
+			"blob_top_n", pool.blobTopN,
+			"blob_max_concurrency_per_endpoint", pool.blobLimit,
+			"blob_max_concurrent_attempts", pool.blobMaxAttempts,
+		)
+		c.logger.DebugContext(ctx, "selected upstream endpoints for blob request", args...)
+		return
+	}
+	c.logger.DebugContext(ctx, "selected upstream endpoints for request", args...)
+}
+
+func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime, now time.Time) []any {
+	if pool == nil {
+		return []any{
+			"alias", req.alias,
+			"operation", req.operation,
+			"repository", req.repository,
+		}
+	}
+
+	entries := make([]string, 0, len(runtimes))
+	for i := range runtimes {
+		runtime := runtimes[i]
+		snapshot := pool.health.runtimeSnapshot(runtime.config.Registry, req.repository, now)
+		status := "healthy"
+		if snapshot.InCooldown {
+			status = "cooldown"
+		}
+		if snapshot.InDegraded {
+			status = "degraded"
+		}
+		entry := fmt.Sprintf(
+			"%s score=%s latency=%s inflight=%d status=%s",
+			runtime.config.Registry,
+			snapshot.Score,
+			snapshot.LatencyEWMA,
+			snapshot.Inflight,
+			status,
+		)
+		if snapshot.HasSuccessRate {
+			entry = fmt.Sprintf("%s success_rate=%.3f", entry, snapshot.SuccessRate)
+		}
+		entries = append(entries, entry)
+	}
+
+	args := []any{
+		"alias", req.alias,
+		"operation", req.operation,
+		"repository", req.repository,
+		"endpoints", entries,
+		"selected_count", len(runtimes),
+		"upstream_policy", pool.policy,
+		"probe_enabled", pool.probeConfig.Enabled,
+	}
+	if req.digest != "" {
+		args = append(args, "digest", req.digest)
+	}
+	return args
 }
 
 func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime, fn func(upstreamRuntime) error) error {
@@ -169,27 +238,6 @@ func (c *Client) logFailover(req failoverRequest, runtime upstreamRuntime, err e
 	)
 }
 
-func (c *Client) logBlobEndpointPlan(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime) {
-	if c == nil || c.logger == nil || pool == nil {
-		return
-	}
-	c.logger.DebugContext(ctx,
-		"selected upstream endpoints for blob request",
-		"alias", req.alias,
-		"digest", req.digest,
-		"blob_mirror_policy", pool.blobPolicy,
-		"blob_top_n", pool.blobTopN,
-		"blob_max_concurrency_per_endpoint", pool.blobLimit,
-		"endpoints", runtimeRegistries(runtimes),
-	)
-}
-
-func runtimeRegistries(runtimes []upstreamRuntime) []string {
-	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(_ int, runtime upstreamRuntime) string {
-		return runtime.config.Registry
-	}).Values()
-}
-
 func shouldFailover(req failoverRequest, err error) bool {
 	if err == nil {
 		return false
@@ -210,6 +258,8 @@ func shouldFailoverError(err error) bool {
 	switch clientx.KindOf(err) {
 	case clientx.ErrorKindTimeout, clientx.ErrorKindTemporary, clientx.ErrorKindConnRefused, clientx.ErrorKindDNS, clientx.ErrorKindNetwork:
 		return true
+	case clientx.ErrorKindUnknown, clientx.ErrorKindCanceled, clientx.ErrorKindTLS, clientx.ErrorKindClosed, clientx.ErrorKindCodec:
+		return false
 	default:
 		return false
 	}
