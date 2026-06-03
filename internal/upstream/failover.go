@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/http"
 
+	"github.com/arcgolabs/clientx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -200,9 +201,18 @@ func shouldFailover(req failoverRequest, err error) bool {
 
 	list := distribution.FromError(err)
 	if list == nil {
-		return false
+		return shouldFailoverError(err)
 	}
 	return shouldFailoverStatus(req, list.Status)
+}
+
+func shouldFailoverError(err error) bool {
+	switch clientx.KindOf(err) {
+	case clientx.ErrorKindTimeout, clientx.ErrorKindTemporary, clientx.ErrorKindConnRefused, clientx.ErrorKindDNS, clientx.ErrorKindNetwork:
+		return true
+	default:
+		return false
+	}
 }
 
 func shouldFailoverStatus(req failoverRequest, status int) bool {

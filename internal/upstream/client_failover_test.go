@@ -82,6 +82,43 @@ func TestClientGetManifestDoesNotFailOverUnauthorizedMirror(t *testing.T) {
 	requireEqual(t, primaryRequests.Load(), int32(0), "primary requests")
 }
 
+func TestClientGetManifestFailsOverOnTransportError(t *testing.T) {
+	t.Parallel()
+
+	var timeoutMirrorRequests atomic.Int32
+	timeoutMirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		timeoutMirrorRequests.Add(1)
+		requireEqual(t, r.URL.Path, "/v2/library/nginx/manifests/latest", "timeout mirror manifest path")
+		time.Sleep(20 * time.Millisecond)
+	}))
+	defer timeoutMirror.Close()
+
+	var healthyRegistryRequests atomic.Int32
+	healthyRegistry := httptest.NewServer(healthyManifestHandler(t, &healthyRegistryRequests))
+	defer healthyRegistry.Close()
+
+	client := newTestClient(map[string]upstream.Config{
+		"hub": {
+			Registry:     healthyRegistry.URL,
+			Mirrors:      []string{timeoutMirror.URL},
+			MirrorPolicy: "ordered",
+			HTTP: upstream.HTTPConfig{
+				Timeout: 10 * time.Millisecond,
+			},
+		},
+	})
+
+	resp, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/nginx",
+		Reference:     "latest",
+	})
+	requireNoError(t, err, "GetManifest")
+	closeBody(t, resp.Body)
+	requireEqual(t, timeoutMirrorRequests.Load(), int32(1), "timeout mirror requests")
+	requireEqual(t, healthyRegistryRequests.Load(), int32(1), "healthy registry requests")
+}
+
 func TestClientGetManifestRetriesTransientStatus(t *testing.T) {
 	t.Parallel()
 
