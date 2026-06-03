@@ -60,4 +60,42 @@ pypi:default / repository=urllib3 / reference=2.2.0
 maven:central / repository=com/fasterxml/jackson/core/jackson-databind / reference=2.16.1
 ```
 
-The job is created as async and can be viewed from the sync result panel. It prewarms the ecosystem cache path and records outcomes in metadata.
+The job is created as async and can be viewed from the sync result panel.
+
+### Flow
+
+- Submit form: `POST /admin/sync` creates a `prefetch.SyncJob` (status `queued`) and schedules an immediate background job.
+- Poll status: result panel uses `GET /admin/sync/jobs/{id}` and auto-refreshes every 2 seconds via htmx while status is `queued` or `running`.
+- Completion states:
+  - `queued`
+  - `running`
+  - `succeeded`
+  - `failed`
+
+The final result contains:
+
+- `alias` / `repository` / `reference`
+- manifest digest and media type
+- warmed artifact counts:
+  - layers
+  - blobs
+  - child manifests
+- elapsed duration
+
+### Input behavior
+
+- `repository` can be provided as `repo:tag` or `repo@digest` to be auto-split into `Reference`.
+- If `reference` is empty, RegiMux uses `latest` by default.
+- For container ecosystem, input is parsed as a manifest path and default namespace is applied from `container` config (for example `library/*`).
+- For non-container ecosystems, `repository`/`reference` are passed directly after alias validation.
+
+### Error handling
+
+The sync page returns different status codes depending on failure source:
+
+- `400` validation error (for example missing repository)
+- `503` sync service unavailable
+- `502` when scheduling/sync submission fails
+- `404` when querying an unknown job ID
+
+Manual sync jobs are currently kept in scheduler memory and exposed through the job polling endpoint; they are not persisted as a standalone history table.

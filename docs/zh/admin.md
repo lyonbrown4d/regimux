@@ -61,3 +61,41 @@ maven:central / repository=com/fasterxml/jackson/core/jackson-databind / referen
 ```
 
 请求为异步任务，在结果面板可见运行状态。手动同步会按生态协议预热对应缓存路径，并将结果记录到元数据中。
+
+## 任务流程
+
+- 提交：`POST /admin/sync` 创建一个 `prefetch.SyncJob`，初始状态为 `queued`，并立即调度一个后台一次性任务。
+- 轮询：结果面板会在任务状态为 `queued` 或 `running` 时，使用 htmx 自动轮询 `GET /admin/sync/jobs/{id}`（约每 2 秒一次）。
+- 终态：
+  - `queued`
+  - `running`
+  - `succeeded`
+  - `failed`
+
+完成结果包括：
+
+- `alias` / `repository` / `reference`
+- manifest digest 与 media type
+- 预热产物计数：
+  - 层数
+  - blob 数
+  - 子 manifest 数
+- 耗时
+
+## 入参规则
+
+- `repository` 可用 `repo:tag` 或 `repo@digest` 形式携带引用，系统会自动拆分到 `Reference`。
+- `reference` 为空时默认使用 `latest`。
+- container 生态会按 manifest 路径解析仓库并应用该 alias 的默认命名空间（如 `library/*`）。
+- 非 container 生态会在别名校验通过后直接透传 `repository`/`reference`。
+
+## 错误返回
+
+错误会返回对应状态码：
+
+- `400`：参数校验失败（例如 repository 为空）
+- `503`：未配置手动同步能力
+- `502`：调度或提交失败
+- `404`：查询不存在的 job id
+
+当前手动同步任务仅保存在内存中并通过轮询接口暴露，不会单独持久化为历史任务表。
