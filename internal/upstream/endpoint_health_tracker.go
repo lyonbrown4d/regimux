@@ -107,7 +107,8 @@ func (t *EndpointHealthTracker) Snapshot(registry string, now time.Time) Endpoin
 	defer t.mu.Unlock()
 
 	registry = normalizeEndpointHealthRegistry(registry)
-	state, _ := t.states.Get(endpointHealthStateKey(registry, ""))
+	endpoint, _ := t.states.Get(registry, "")
+	state := endpoint
 	if state == nil {
 		return t.snapshotLocked(&endpointHealthState{registry: registry}, now)
 	}
@@ -166,7 +167,7 @@ func (t *EndpointHealthTracker) runtimeSnapshot(registry, repository string, now
 	if repository == "" {
 		return t.snapshotLocked(endpoint, now)
 	}
-	repo, ok := t.states.Get(endpointHealthStateKey(registry, repository))
+	repo, ok := t.states.Get(registry, repository)
 	if !ok || repo == nil {
 		return t.snapshotLocked(endpoint, now)
 	}
@@ -175,18 +176,18 @@ func (t *EndpointHealthTracker) runtimeSnapshot(registry, repository string, now
 
 func (t *EndpointHealthTracker) stateLocked(registry, repository string) *endpointHealthState {
 	if t.states == nil {
-		t.states = collectionmapping.NewMap[string, *endpointHealthState]()
+		t.states = collectionmapping.NewConcurrentTable[string, string, *endpointHealthState]()
 	}
 	t.opts = normalizeEndpointHealthOptions(t.opts)
 
 	registry = normalizeEndpointHealthRegistry(registry)
-	key := endpointHealthStateKey(registry, repository)
-	state, _ := t.states.Get(key)
-	if state == nil {
-		state = &endpointHealthState{registry: registry, repository: repository}
-		t.states.Set(key, state)
+	state, _ := t.states.Get(registry, repository)
+	if state != nil {
+		return state
 	}
-	return state
+	snapshot := &endpointHealthState{registry: registry, repository: repository}
+	t.states.Put(registry, repository, snapshot)
+	return snapshot
 }
 
 func (t *EndpointHealthTracker) optionsLocked() EndpointHealthOptions {

@@ -31,7 +31,7 @@ type EndpointHealthOptions struct {
 type EndpointHealthTracker struct {
 	mu     sync.Mutex
 	opts   EndpointHealthOptions
-	states *collectionmapping.Map[string, *endpointHealthState]
+	states *collectionmapping.ConcurrentTable[string, string, *endpointHealthState]
 }
 
 type endpointHealthState struct {
@@ -91,7 +91,10 @@ type endpointRuntimeCandidate struct {
 }
 
 func NewEndpointHealthTracker(opts EndpointHealthOptions) *EndpointHealthTracker {
-	return &EndpointHealthTracker{opts: normalizeEndpointHealthOptions(opts)}
+	return &EndpointHealthTracker{
+		opts:   normalizeEndpointHealthOptions(opts),
+		states: collectionmapping.NewConcurrentTable[string, string, *endpointHealthState](),
+	}
 }
 
 func normalizeEndpointHealthOptions(opts EndpointHealthOptions) EndpointHealthOptions {
@@ -121,10 +124,4 @@ func normalizeEndpointHealthOptions(opts EndpointHealthOptions) EndpointHealthOp
 
 func normalizeEndpointHealthRegistry(registry string) string {
 	return strings.TrimRight(strings.TrimSpace(registry), "/")
-}
-
-func endpointHealthStateKey(registry, repository string) string {
-	registry = normalizeEndpointHealthRegistry(registry)
-	repository = strings.TrimSpace(repository)
-	return registry + "\x1f" + repository
 }

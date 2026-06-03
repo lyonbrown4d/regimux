@@ -32,7 +32,7 @@ type upstreamPool struct {
 	runtimes        []upstreamRuntime
 	next            int
 	nextBlob        int
-	limiters        *collectionmapping.Map[string, chan struct{}]
+	limiters        *collectionmapping.ConcurrentMap[string, chan struct{}]
 	health          *EndpointHealthTracker
 	scheduler       *layerScheduler
 	probeConfig     ProbeConfig
@@ -60,7 +60,8 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes []upstreamRuntime
 		scheduler: newLayerScheduler(EndpointHealthOptions{
 			Cooldown: cfg.Probe.Cooldown,
 		}),
-		logger: logger,
+		limiters: collectionmapping.NewConcurrentMap[string, chan struct{}](),
+		logger:   logger,
 	}
 	pool.runtimes = collectionlist.NewList(runtimes...).Values()
 	if logger != nil {
@@ -325,17 +326,6 @@ func (p *upstreamPool) limiter(registry string) chan struct{} {
 		return nil
 	}
 	registry = normalizeEndpointHealthRegistry(registry)
-
-	p.mu.Lock()
-	defer p.mu.Unlock()
-
-	if p.limiters == nil {
-		p.limiters = collectionmapping.NewMap[string, chan struct{}]()
-	}
-	limiter, _ := p.limiters.Get(registry)
-	if limiter == nil {
-		limiter = make(chan struct{}, p.blobLimit)
-		p.limiters.Set(registry, limiter)
-	}
+	limiter, _ := p.limiters.GetOrStore(registry, make(chan struct{}, p.blobLimit))
 	return limiter
 }
