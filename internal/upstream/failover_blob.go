@@ -4,6 +4,7 @@ import (
 	"context"
 	"sync"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -23,7 +24,7 @@ type blobFailoverRunner struct {
 	repository string
 	digest     string
 	pool       *upstreamPool
-	runtimes   []upstreamRuntime
+	runtimes   *collectionlist.List[upstreamRuntime]
 	fn         func(upstreamRuntime) error
 	results    chan attemptResult
 
@@ -37,15 +38,21 @@ func (c *Client) doWithConcurrentFailover(
 	ctx context.Context,
 	req failoverRequest,
 	pool *upstreamPool,
-	runtimes []upstreamRuntime,
+	runtimes *collectionlist.List[upstreamRuntime],
 	fn func(upstreamRuntime) error,
 ) error {
+	if pool == nil {
+		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+	}
 	maxAttempts := pool.blobAttemptConcurrency()
 	if maxAttempts <= 1 {
 		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 	}
-	if maxAttempts > len(runtimes) {
-		maxAttempts = len(runtimes)
+	if runtimes == nil {
+		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+	}
+	if maxAttempts > runtimes.Len() {
+		maxAttempts = runtimes.Len()
 	}
 
 	attemptCtx, cancel := context.WithCancel(ctx)
@@ -61,7 +68,7 @@ func (c *Client) doWithConcurrentFailover(
 		pool:        pool,
 		runtimes:    runtimes,
 		fn:          fn,
-		results:     make(chan attemptResult, len(runtimes)),
+		results:     make(chan attemptResult, runtimes.Len()),
 		maxAttempts: maxAttempts,
 	}
 	defer cancel()
@@ -99,7 +106,7 @@ func (r *blobFailoverRunner) startNext() bool {
 		return false
 	}
 	req := failoverRequest{alias: r.alias, operation: r.operation, repository: r.repository, digest: r.digest}
-	r.client.logBlobAttempt(r.ctx, req, runtime, attempt, len(r.runtimes), r.maxAttempts)
+	r.client.logBlobAttempt(r.ctx, req, runtime, attempt, r.runtimes.Len(), r.maxAttempts)
 	go func() {
 		r.results <- attemptResult{
 			runtime: runtime,
@@ -113,10 +120,13 @@ func (r *blobFailoverRunner) startNext() bool {
 func (r *blobFailoverRunner) nextRuntime() (upstreamRuntime, int, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if r.nextAttempt >= len(r.runtimes) {
+	if r.runtimes == nil || r.nextAttempt >= r.runtimes.Len() {
 		return upstreamRuntime{}, 0, false
 	}
-	runtime := r.runtimes[r.nextAttempt]
+	runtime, ok := r.runtimes.Get(r.nextAttempt)
+	if !ok {
+		return upstreamRuntime{}, 0, false
+	}
 	attempt := r.nextAttempt + 1
 	r.nextAttempt++
 	r.inFlight++
@@ -128,7 +138,7 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	req := failoverRequest{alias: r.alias, operation: r.operation, repository: r.repository, digest: r.digest}
 	if result.err == nil {
 		r.client.recordEndpointSuccess(r.ctx, req, r.pool, result.runtime)
-		r.client.logBlobEndpointSelected(r.ctx, req, result.runtime, result.attempt, len(r.runtimes))
+		r.client.logBlobEndpointSelected(r.ctx, req, result.runtime, result.attempt, r.runtimes.Len())
 		r.cancel()
 		return true, nil
 	}
@@ -141,7 +151,7 @@ func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
 	}
 
 	r.client.recordEndpointFailure(r.ctx, req, r.pool, result.runtime, result.err)
-	r.client.logBlobAttemptFailure(r.ctx, req, result.runtime, result.err, result.attempt, len(r.runtimes), remaining+inFlightRemaining)
+	r.client.logBlobAttemptFailure(r.ctx, req, result.runtime, result.err, result.attempt, r.runtimes.Len(), remaining+inFlightRemaining)
 	r.client.logFailover(req, result.runtime, result.err, hasNext)
 	r.client.publishFailover(r.ctx, req, result.runtime, result.err, hasNext)
 	if hasNext {
@@ -154,13 +164,13 @@ func (r *blobFailoverRunner) finishAttempt() (int, int, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inFlight--
-	return len(r.runtimes) - r.nextAttempt, r.inFlight, r.nextAttempt < len(r.runtimes)
+	return r.runtimes.Len() - r.nextAttempt, r.inFlight, r.nextAttempt < r.runtimes.Len()
 }
 
 func (r *blobFailoverRunner) done() bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	return r.nextAttempt >= len(r.runtimes) && r.inFlight == 0
+	return r.nextAttempt >= r.runtimes.Len() && r.inFlight == 0
 }
 
 func (r *blobFailoverRunner) doneContextError() error {

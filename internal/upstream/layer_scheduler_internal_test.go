@@ -18,7 +18,7 @@ func TestLayerSchedulerTopNSelectsLowScoreOutsidePrefix(t *testing.T) {
 	)
 	selection := scheduler.schedule("", candidates, 2, 0, time.Now())
 
-	got := runtimeRegistries(selection.runtimes)
+	got := runtimeRegistries(selection.runtimes).Values()
 	want := []string{"third", "first", "second"}
 	if len(got) != len(want) {
 		t.Fatalf("selected runtimes = %v, want %v", got, want)

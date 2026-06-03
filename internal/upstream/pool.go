@@ -44,8 +44,11 @@ type upstreamRuntime struct {
 	err    error
 }
 
-func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes []upstreamRuntime) *upstreamPool {
+func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes *collectionlist.List[upstreamRuntime]) *upstreamPool {
 	policy := normalizeMirrorPolicy(cfg.MirrorPolicy)
+	if runtimes == nil {
+		runtimes = collectionlist.NewList[upstreamRuntime]()
+	}
 	pool := &upstreamPool{
 		alias:           cfg.Alias,
 		policy:          policy,
@@ -63,7 +66,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes []upstreamRuntime
 		limiters: collectionmapping.NewConcurrentMap[string, chan struct{}](),
 		logger:   logger,
 	}
-	pool.runtimes = collectionlist.NewList(runtimes...)
+	pool.runtimes = runtimes
 	if logger != nil {
 		logger.Debug(
 			"upstream pool initialized",
@@ -249,7 +252,7 @@ func (p *upstreamPool) selectHealthyRuntimeCandidates(
 				"alias", p.alias,
 				"operation", operation,
 				"repository", repository,
-				"candidate_endpoints", runtimeRegistries(candidatesToRuntimes(candidates)),
+				"candidate_endpoints", runtimeRegistries(candidatesToRuntimes(candidates)).Values(),
 			)
 		}
 		return candidates
@@ -260,9 +263,9 @@ func (p *upstreamPool) selectHealthyRuntimeCandidates(
 			"alias", p.alias,
 			"operation", operation,
 			"repository", repository,
-			"candidate_endpoints", runtimeRegistries(candidatesToRuntimes(candidates)),
+			"candidate_endpoints", runtimeRegistries(candidatesToRuntimes(candidates)).Values(),
 			"skipped_endpoints", candidates.Len()-filtered.Len(),
-			"selected_endpoints", runtimeRegistries(candidatesToRuntimes(filtered)),
+			"selected_endpoints", runtimeRegistries(candidatesToRuntimes(filtered)).Values(),
 		)
 	}
 	return filtered
@@ -299,13 +302,16 @@ func candidatesToRuntimes(candidates *collectionlist.List[endpointRuntimeCandida
 	})
 }
 
-func runtimeRegistries(runtimes *collectionlist.List[upstreamRuntime]) []string {
+func runtimeRegistries(runtimes *collectionlist.List[upstreamRuntime]) *collectionlist.List[string] {
 	if runtimes == nil {
-		return nil
+		return collectionlist.NewList[string]()
 	}
-	return collectionlist.MapList(runtimes, func(_ int, runtime upstreamRuntime) string {
-		return runtime.config.Registry
-	}).Values()
+	out := collectionlist.NewListWithCapacity[string](runtimes.Len())
+	runtimes.Range(func(_ int, runtime upstreamRuntime) bool {
+		out.Add(runtime.config.Registry)
+		return true
+	})
+	return out
 }
 
 func (p *upstreamPool) acquireRuntime(ctx context.Context, operation string, runtime upstreamRuntime) (func(), error) {

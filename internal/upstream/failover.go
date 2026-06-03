@@ -37,12 +37,12 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 	var failoverErr error
 	if req.operation == operationBlob {
 		if !req.sequential && pool.blobAttemptConcurrency() > 1 && runtimes.Len() > 1 {
-			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes.Values(), fn)
+			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
 		} else {
-			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes.Values(), fn)
+			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 		}
 	} else {
-		failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes.Values(), fn)
+		failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 	}
 	if failoverErr != nil {
 		selection.Release()
@@ -117,24 +117,36 @@ func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPoo
 	return args
 }
 
-func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes []upstreamRuntime, fn func(upstreamRuntime) error) error {
+func (c *Client) doWithSequentialFailover(
+	ctx context.Context,
+	req failoverRequest,
+	pool *upstreamPool,
+	runtimes *collectionlist.List[upstreamRuntime],
+	fn func(upstreamRuntime) error,
+) error {
+	if pool == nil || runtimes == nil || runtimes.Len() == 0 {
+		return nil
+	}
 	var lastErr error
-	for i := range runtimes {
-		runtime := runtimes[i]
+	runtimes.Range(func(i int, runtime upstreamRuntime) bool {
 		lastErr = runAgainstRuntime(ctx, pool, req.operation, runtime, fn)
 		if lastErr == nil {
 			c.recordEndpointSuccess(ctx, req, pool, runtime)
-			return nil
+			return false
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
-			return wrapError(ctxErr, "upstream %s context", req.operation)
+			return false
 		}
 		if !shouldFailover(req, lastErr) {
-			return lastErr
+			return false
 		}
 		c.recordEndpointFailure(ctx, req, pool, runtime, lastErr)
-		c.logFailover(req, runtime, lastErr, i < len(runtimes)-1)
-		c.publishFailover(ctx, req, runtime, lastErr, i < len(runtimes)-1)
+		c.logFailover(req, runtime, lastErr, i < runtimes.Len()-1)
+		c.publishFailover(ctx, req, runtime, lastErr, i < runtimes.Len()-1)
+		return true
+	})
+	if err := ctx.Err(); err != nil {
+		return wrapError(err, "upstream %s context", req.operation)
 	}
 	return lastErr
 }

@@ -85,7 +85,7 @@ func NewClient(deps ClientDependencies) *Client {
 	upstreams = collectionmapping.NewOrderedMapWithCapacity[string, *upstreamPool](endpointClients.Len())
 	endpointClients.Range(func(alias string, cfg Config, runtimes *collectionlist.List[upstreamRuntime]) bool {
 		cfg.Alias = alias
-		upstreams.Set(alias, newUpstreamPool(cfg, logger, runtimes.Values()))
+		upstreams.Set(alias, newUpstreamPool(cfg, logger, runtimes))
 		return true
 	})
 	logger.Info("upstream client configured", "upstreams", upstreams.Len())
