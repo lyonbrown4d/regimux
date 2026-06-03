@@ -162,6 +162,50 @@ func TestUpstreamEndpointsUsesLatestRecordPerEndpoint(t *testing.T) {
 	}
 }
 
+func TestUpstreamEndpointsIsScopedByEcosystemAndAlias(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux-selector-scope.db")})
+	requireNoError(t, "open metadata store", err)
+	t.Cleanup(func() { requireNoError(t, "close metadata store", store.Close()) })
+
+	cfg := config.UpstreamConfig{
+		Registry: "https://go-primary.internal/",
+		Mirrors:  []string{"https://go-mirror.internal/"},
+	}
+
+	now := time.Now().UTC()
+	// Add a fast healthy record in Maven for the same mirror used by Go.
+	writeEndpointHealth(t, ctx, store, ecosystem.ScopedAlias(ecosystem.Maven, "default"), "https://go-mirror.internal", meta.EndpointHealthRecord{
+		LatencyEWMA: 5 * time.Millisecond,
+		CreatedAt:   now,
+		UpdatedAt:   now,
+	})
+	// Go has only unhealthy records; if cross-ecosystem records leaked, mirror would be incorrectly preferred.
+	writeEndpointHealth(t, ctx, store, ecosystem.ScopedAlias(ecosystem.Go, "default"), "https://go-primary.internal", meta.EndpointHealthRecord{
+		LatencyEWMA:   100 * time.Millisecond,
+		CooldownUntil: now.Add(10 * time.Minute),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+	writeEndpointHealth(t, ctx, store, ecosystem.ScopedAlias(ecosystem.Go, "default"), "https://go-mirror.internal", meta.EndpointHealthRecord{
+		LatencyEWMA:   200 * time.Millisecond,
+		CooldownUntil: now.Add(10 * time.Minute),
+		CreatedAt:     now,
+		UpdatedAt:     now,
+	})
+
+	endpoints := ecosystem.UpstreamEndpoints(ctx, store, ecosystem.Go, "default", cfg)
+	if got := len(endpoints); got != 2 {
+		t.Fatalf("expected all go endpoints in fallback mode, got %d (%v)", got, endpoints)
+	}
+	// Both endpoints are in cooldown for Go, so original order must be preserved.
+	if endpoints[0] != "https://go-primary.internal" || endpoints[1] != "https://go-mirror.internal" {
+		t.Fatalf("expected go endpoint order by configured order, got %v", endpoints)
+	}
+}
+
 func writeEndpointHealth(t *testing.T, ctx context.Context, store meta.Store, alias, registry string, record meta.EndpointHealthRecord) {
 	t.Helper()
 	record.Alias = alias
