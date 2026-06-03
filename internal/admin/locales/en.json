@@ -168,6 +168,7 @@
   "field.degraded": "Degraded",
   "field.last_success": "Last Success",
   "field.last_failure": "Last Failure",
+  "field.ecosystem": "Ecosystem",
   "field.digest": "Digest",
   "field.source_manifest": "Source Manifest",
   "field.last_verified": "Last Verified",

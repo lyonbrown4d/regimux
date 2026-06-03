@@ -247,12 +247,13 @@ type PrefetchOutcomeRow struct {
 }
 
 type ProbeJobRow struct {
-	Alias    string
-	Enabled  bool
-	Interval string
-	Timeout  string
-	Cooldown string
-	Jitter   string
+	Ecosystem string
+	Alias     string
+	Enabled   bool
+	Interval  string
+	Timeout   string
+	Cooldown  string
+	Jitter    string
 }
 
 type ConfigRow struct {

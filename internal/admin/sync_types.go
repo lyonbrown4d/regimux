@@ -12,14 +12,18 @@ type SyncPageData struct {
 
 type SyncForm struct {
 	UpstreamAlias string
+	Ecosystem     string
+	Alias         string
 	Repository    string
 	Reference     string
 }
 
 type SyncUpstreamOption struct {
-	Alias    string
-	Registry string
-	Selected bool
+	Ecosystem string
+	Alias     string
+	Value     string
+	Registry  string
+	Selected  bool
 }
 
 type SyncResult struct {

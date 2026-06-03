@@ -10,7 +10,7 @@
         <span class="text-zinc-400">{{t . "field.alias"}}</span>
         <select name="upstream_alias" class="rounded border border-zinc-800 bg-zinc-950 px-3 py-2 text-zinc-100 outline-none ring-cyan-500/30 focus:ring-2">
           {{range .Sync.Upstreams}}
-            <option value="{{.Alias}}" {{if .Selected}}selected{{end}}>{{.Alias}} - {{.Registry}}</option>
+            <option value="{{.Value}}" {{if .Selected}}selected{{end}}>{{.Ecosystem}}/{{.Alias}} - {{.Registry}}</option>
           {{end}}
         </select>
       </label>

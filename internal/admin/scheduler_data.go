@@ -4,7 +4,9 @@ import (
 	"context"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
@@ -45,19 +47,32 @@ func (s *Service) schedulerSummary(ctx context.Context) (SchedulerSummary, error
 }
 
 func probeJobRows(cfg config.Config) *collectionlist.List[ProbeJobRow] {
-	ordered := cfg.OrderedContainerUpstreams()
-	rows := collectionlist.NewListWithCapacity[ProbeJobRow](ordered.Len())
-	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		rows.Add(ProbeJobRow{
-			Alias:    alias,
-			Enabled:  upstreamCfg.Probe.Enabled,
-			Interval: formatDuration(upstreamCfg.Probe.Interval),
-			Timeout:  formatDuration(upstreamCfg.Probe.Timeout),
-			Cooldown: formatDuration(upstreamCfg.Probe.Cooldown),
-			Jitter:   formatDuration(upstreamCfg.Probe.Jitter),
+	rows := collectionlist.NewListWithCapacity[ProbeJobRow](
+		cfg.OrderedContainerUpstreams().Len() +
+			cfg.OrderedGoUpstreams().Len() +
+			cfg.OrderedNPMUpstreams().Len() +
+			cfg.OrderedPyPIUpstreams().Len() +
+			cfg.OrderedMavenUpstreams().Len(),
+	)
+	addProbeRows := func(runtime string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) {
+		upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+			rows.Add(ProbeJobRow{
+				Ecosystem: runtime,
+				Alias:     alias,
+				Enabled:   upstreamCfg.Probe.Enabled,
+				Interval:  formatDuration(upstreamCfg.Probe.Interval),
+				Timeout:   formatDuration(upstreamCfg.Probe.Timeout),
+				Cooldown:  formatDuration(upstreamCfg.Probe.Cooldown),
+				Jitter:    formatDuration(upstreamCfg.Probe.Jitter),
+			})
+			return true
 		})
-		return true
-	})
+	}
+	addProbeRows(ecosystem.Container, cfg.OrderedContainerUpstreams())
+	addProbeRows(ecosystem.Go, cfg.OrderedGoUpstreams())
+	addProbeRows(ecosystem.NPM, cfg.OrderedNPMUpstreams())
+	addProbeRows(ecosystem.PyPI, cfg.OrderedPyPIUpstreams())
+	addProbeRows(ecosystem.Maven, cfg.OrderedMavenUpstreams())
 	return rows
 }
 

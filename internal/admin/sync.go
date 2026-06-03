@@ -5,8 +5,10 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	registryref "github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/samber/oops"
@@ -88,8 +90,11 @@ func (s *Service) syncOptionsFromForm(c fiber.Ctx) (prefetch.SyncOptions, SyncFo
 		Reference:     strings.TrimSpace(c.FormValue("reference")),
 	}
 	if form.UpstreamAlias == "" {
-		form.UpstreamAlias = "hub"
+		form.UpstreamAlias = defaultSyncUpstreamValue(s.cfg)
 	}
+	form.Ecosystem, form.Alias = parseSyncTarget(form.UpstreamAlias)
+	form.UpstreamAlias = syncTargetValue(form.Ecosystem, form.Alias)
+
 	if form.Repository == "" {
 		return prefetch.SyncOptions{}, form, oops.In("admin").Errorf("repository is required")
 	}
@@ -129,7 +134,10 @@ func syncRepositoryAndReference(form SyncForm) (string, SyncForm, error) {
 }
 
 func (s *Service) syncRoute(form SyncForm, repo string) (*registryref.Route, SyncForm, error) {
-	route, err := registryref.ParseManifestPath("/v2/" + form.UpstreamAlias + "/" + repo + "/manifests/" + form.Reference)
+	if form.Ecosystem != ecosystem.Container {
+		return nil, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("manual sync for ecosystem %q is not supported", form.Ecosystem)
+	}
+	route, err := registryref.ParseManifestPath("/v2/" + form.Alias + "/" + repo + "/manifests/" + form.Reference)
 	if err != nil {
 		return nil, form, oops.In("admin").Wrapf(err, "invalid sync target")
 	}
@@ -145,25 +153,41 @@ func (s *Service) syncRoute(form SyncForm, repo string) (*registryref.Route, Syn
 
 func defaultSyncForm() SyncForm {
 	return SyncForm{
-		UpstreamAlias: "hub",
+		UpstreamAlias: "container:hub",
 		Reference:     "latest",
 	}
 }
 
 func (s *Service) syncUpstreamOptions(selected string) []SyncUpstreamOption {
+	selected = normalizeSyncTarget(selected)
 	if selected == "" {
-		selected = "hub"
+		selected = defaultSyncUpstreamValue(s.cfg)
 	}
-	ordered := s.cfg.OrderedContainerUpstreams()
-	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](ordered.Len())
-	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		options.Add(SyncUpstreamOption{
-			Alias:    alias,
-			Registry: upstreamCfg.Registry,
-			Selected: alias == selected,
+	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](
+		s.cfg.OrderedContainerUpstreams().Len() +
+			s.cfg.OrderedGoUpstreams().Len() +
+			s.cfg.OrderedNPMUpstreams().Len() +
+			s.cfg.OrderedPyPIUpstreams().Len() +
+			s.cfg.OrderedMavenUpstreams().Len(),
+	)
+	addSyncOptions := func(targetEcosystem string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) {
+		upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+			value := syncTargetValue(targetEcosystem, alias)
+			options.Add(SyncUpstreamOption{
+				Ecosystem: targetEcosystem,
+				Alias:     alias,
+				Value:     value,
+				Registry:  upstreamCfg.Registry,
+				Selected:  value == selected,
+			})
+			return true
 		})
-		return true
-	})
+	}
+	addSyncOptions(ecosystem.Container, s.cfg.OrderedContainerUpstreams())
+	addSyncOptions(ecosystem.Go, s.cfg.OrderedGoUpstreams())
+	addSyncOptions(ecosystem.NPM, s.cfg.OrderedNPMUpstreams())
+	addSyncOptions(ecosystem.PyPI, s.cfg.OrderedPyPIUpstreams())
+	addSyncOptions(ecosystem.Maven, s.cfg.OrderedMavenUpstreams())
 	return options.Values()
 }
 
@@ -192,6 +216,66 @@ func splitRepositoryReference(value string) (string, string, error) {
 		return repo, reference, nil
 	}
 	return value, "", nil
+}
+
+func parseSyncTarget(value string) (targetEcosystem, alias string) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ecosystem.Container, ""
+	}
+	if strings.Contains(value, ":") {
+		parts := strings.SplitN(value, ":", 2)
+		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+	}
+	return ecosystem.Container, value
+}
+
+func syncTargetValue(targetEcosystem, alias string) string {
+	alias = strings.TrimSpace(alias)
+	targetEcosystem = strings.TrimSpace(targetEcosystem)
+	if targetEcosystem == "" {
+		targetEcosystem = ecosystem.Container
+	}
+	if alias == "" {
+		return ""
+	}
+	return targetEcosystem + ":" + alias
+}
+
+func normalizeSyncTarget(value string) string {
+	eco, alias := parseSyncTarget(value)
+	return syncTargetValue(eco, alias)
+}
+
+func firstConfiguredTarget(_ config.Config, runtime string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) (string, bool) {
+	if upstreams == nil || upstreams.Len() == 0 {
+		return "", false
+	}
+	var value string
+	upstreams.Range(func(alias string, _ config.UpstreamConfig) bool {
+		value = syncTargetValue(runtime, alias)
+		return false
+	})
+	return value, value != ""
+}
+
+func defaultSyncUpstreamValue(cfg config.Config) string {
+	targets := []struct {
+		name      string
+		upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]
+	}{
+		{name: ecosystem.Container, upstreams: cfg.OrderedContainerUpstreams()},
+		{name: ecosystem.Go, upstreams: cfg.OrderedGoUpstreams()},
+		{name: ecosystem.NPM, upstreams: cfg.OrderedNPMUpstreams()},
+		{name: ecosystem.PyPI, upstreams: cfg.OrderedPyPIUpstreams()},
+		{name: ecosystem.Maven, upstreams: cfg.OrderedMavenUpstreams()},
+	}
+	for _, target := range targets {
+		if value, ok := firstConfiguredTarget(cfg, target.name, target.upstreams); ok {
+			return value
+		}
+	}
+	return ""
 }
 
 func syncResultFromReport(report *prefetch.SyncReport) SyncResult {

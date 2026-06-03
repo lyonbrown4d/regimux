@@ -168,6 +168,7 @@
   "field.degraded": "降级",
   "field.last_success": "最近成功",
   "field.last_failure": "最近失败",
+  "field.ecosystem": "生态",
   "field.digest": "Digest",
   "field.source_manifest": "来源 Manifest",
   "field.last_verified": "最近验证",
