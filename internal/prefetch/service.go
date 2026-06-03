@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -30,7 +29,6 @@ type Service struct {
 	workers         *worker.Pools
 	logger          *slog.Logger
 	syncJobs        *collectionmapping.ConcurrentMap[string, SyncJob]
-	syncJobSeq      atomic.Int64
 	activeMu        sync.Mutex
 	activeRunID     int64
 	activeRunCancel context.CancelFunc

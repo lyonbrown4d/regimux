@@ -41,6 +41,7 @@ require (
 	github.com/gofiber/fiber/v3 v3.3.0
 	github.com/gofiber/template/html/v3 v3.0.4
 	github.com/golang-jwt/jwt/v5 v5.3.1
+	github.com/google/uuid v1.6.0
 	github.com/jellydator/ttlcache/v3 v3.4.0
 	github.com/lib/pq v1.12.3
 	github.com/opencontainers/go-digest v1.0.0
@@ -52,6 +53,7 @@ require (
 	github.com/samber/mo v1.16.0
 	github.com/samber/oops v1.22.0
 	github.com/sethvargo/go-retry v0.3.0
+	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/afero v1.15.0
 	github.com/spf13/afero/sftpfs v1.15.0
 	github.com/spf13/cobra v1.10.2
@@ -116,7 +118,6 @@ require (
 	github.com/gofiber/template/v2 v2.1.0 // indirect
 	github.com/gofiber/utils/v2 v2.1.0 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/errwrap v1.1.0 // indirect
 	github.com/hashicorp/go-multierror v1.1.1 // indirect
 	github.com/hashicorp/golang-lru/v2 v2.0.7 // indirect
@@ -178,8 +179,6 @@ require (
 	go.opentelemetry.io/otel v1.44.0 // indirect
 	go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp v1.44.0 // indirect
 	go.opentelemetry.io/otel/metric v1.44.0 // indirect
-	go.opentelemetry.io/otel/sdk v1.44.0 // indirect
-	go.opentelemetry.io/otel/sdk/metric v1.44.0 // indirect
 	go.opentelemetry.io/otel/trace v1.44.0 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/mod v0.36.0 // indirect

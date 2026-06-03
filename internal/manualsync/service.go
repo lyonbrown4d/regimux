@@ -3,11 +3,10 @@ package manualsync
 import (
 	"context"
 	"log/slog"
-	"strconv"
-	"sync/atomic"
 	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/google/uuid"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/samber/oops"
 )
@@ -23,11 +22,10 @@ type ServiceDependencies struct {
 }
 
 type Service struct {
-	execute    ExecuteFunc
-	timeout    time.Duration
-	logger     *slog.Logger
-	syncJobs   *collectionmapping.ConcurrentMap[string, prefetch.SyncJob]
-	syncJobSeq atomic.Int64
+	execute  ExecuteFunc
+	timeout  time.Duration
+	logger   *slog.Logger
+	syncJobs *collectionmapping.ConcurrentMap[string, prefetch.SyncJob]
 }
 
 func NewService(deps ServiceDependencies) *Service {
@@ -121,8 +119,7 @@ func (s *Service) SyncJob(id string) (prefetch.SyncJob, bool) {
 }
 
 func (s *Service) nextSyncJobID() string {
-	seq := s.syncJobSeq.Add(1)
-	return "sync-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 36) + "-" + strconv.FormatInt(seq, 36)
+	return "sync-" + uuid.NewString()
 }
 
 func (s *Service) storeSyncJob(job prefetch.SyncJob) {

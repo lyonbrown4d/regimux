@@ -2,10 +2,10 @@ package prefetch
 
 import (
 	"context"
-	"strconv"
 	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/google/uuid"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
@@ -98,8 +98,7 @@ func (s *Service) SyncJob(id string) (SyncJob, bool) {
 }
 
 func (s *Service) nextSyncJobID() string {
-	seq := s.syncJobSeq.Add(1)
-	return "sync-" + strconv.FormatInt(time.Now().UTC().UnixNano(), 36) + "-" + strconv.FormatInt(seq, 36)
+	return "sync-" + uuid.NewString()
 }
 
 func (s *Service) storeSyncJob(job SyncJob) {

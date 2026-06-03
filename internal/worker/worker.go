@@ -3,12 +3,10 @@ package worker
 import (
 	"context"
 	"log/slog"
-	"sync"
 
 	"github.com/panjf2000/ants/v2"
 	"github.com/samber/oops"
-	"go.uber.org/multierr"
-	"golang.org/x/sync/errgroup"
+	concpool "github.com/sourcegraph/conc/pool"
 )
 
 type Pools struct {
@@ -95,12 +93,14 @@ func RunAll(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
 		return nil
 	}
 
-	group, gctx := errgroup.WithContext(ctx)
+	runtime := newConcContextPool(ctx, pool).WithCancelOnError().WithFirstError()
 	tasks.Range(func(_ int, task func(context.Context) error) bool {
-		group.Go(func() error { return runOne(gctx, pool, task) })
+		runtime.Go(func(taskCtx context.Context) error {
+			return runOne(taskCtx, pool, task)
+		})
 		return true
 	})
-	if err := group.Wait(); err != nil {
+	if err := runtime.Wait(); err != nil {
 		return oops.Wrapf(err, "run worker tasks")
 	}
 	return nil
@@ -111,27 +111,34 @@ func RunAllSettled(ctx context.Context, pool *ants.Pool, tasks TaskIterable) err
 		return nil
 	}
 
-	var group errgroup.Group
-	var mu sync.Mutex
-	var runErr error
+	runtime := newConcContextPool(ctx, pool)
 	tasks.Range(func(_ int, task func(context.Context) error) bool {
-		group.Go(func() error {
-			if err := runOne(ctx, pool, task); err != nil {
-				mu.Lock()
-				runErr = multierr.Append(runErr, err)
-				mu.Unlock()
+		runtime.Go(func(taskCtx context.Context) error {
+			if err := runOne(taskCtx, pool, task); err != nil {
+				return err
 			}
 			return nil
 		})
 		return true
 	})
-	if err := group.Wait(); err != nil {
+	if err := runtime.Wait(); err != nil {
 		return oops.Wrapf(err, "run worker tasks")
 	}
-	if runErr != nil {
-		return oops.Wrapf(runErr, "run worker tasks")
-	}
 	return nil
+}
+
+func newConcContextPool(ctx context.Context, pool *ants.Pool) *concpool.ContextPool {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	runtimePool := concpool.New().WithContext(ctx)
+	if pool != nil {
+		limit := pool.Cap()
+		if limit > 0 {
+			runtimePool.WithMaxGoroutines(limit)
+		}
+	}
+	return runtimePool
 }
 
 func runOne(ctx context.Context, pool *ants.Pool, task func(context.Context) error) error {
