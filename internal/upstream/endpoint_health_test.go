@@ -4,6 +4,7 @@ import (
 	"testing"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
@@ -15,11 +16,11 @@ func TestEndpointHealthRanksLowerLatencyFirst(t *testing.T) {
 	tracker.RecordProbeSuccess("https://slow.example", 200*time.Millisecond, now)
 	tracker.RecordProbeSuccess("https://fast.example", 20*time.Millisecond, now)
 
-	ranked := tracker.RankEndpointCandidates([]string{
+	ranked := tracker.RankEndpointCandidates(collectionlist.NewList(
 		"https://unknown.example",
 		"https://slow.example",
 		"https://fast.example",
-	}, now)
+	), now)
 
 	requireRegistryOrder(t, ranked, []string{
 		"https://fast.example",
@@ -51,14 +52,15 @@ func TestEndpointHealthFailureEntersCooldown(t *testing.T) {
 		t.Fatalf("consecutive failures = %d, want 1", failed.ConsecutiveFailures)
 	}
 
-	candidates := tracker.RankEndpointCandidates([]string{
+	candidates := tracker.RankEndpointCandidates(collectionlist.NewList(
 		"https://failed.example",
 		"https://healthy.example",
-	}, now)
-	if candidates[0].Registry != "https://healthy.example" {
-		t.Fatalf("first registry = %q, want healthy endpoint", candidates[0].Registry)
+	), now)
+	candidateValues := candidates.Values()
+	if candidateValues[0].Registry != "https://healthy.example" {
+		t.Fatalf("first registry = %q, want healthy endpoint", candidateValues[0].Registry)
 	}
-	if !candidates[1].State.InCooldown {
+	if !candidateValues[1].State.InCooldown {
 		t.Fatal("cooldown endpoint was not ranked as cooldown")
 	}
 }
@@ -74,24 +76,26 @@ func TestEndpointHealthInflightPenaltySpreadsSelection(t *testing.T) {
 	tracker.RecordProbeSuccess("https://second.example", 60*time.Millisecond, now)
 
 	release := tracker.Acquire("https://fast.example")
-	candidates := tracker.RankEndpointCandidates([]string{
+	candidates := tracker.RankEndpointCandidates(collectionlist.NewList(
 		"https://fast.example",
 		"https://second.example",
-	}, now)
-	if candidates[0].Registry != "https://second.example" {
-		t.Fatalf("first registry with inflight penalty = %q, want second endpoint", candidates[0].Registry)
+	), now)
+	candidateValues := candidates.Values()
+	if candidateValues[0].Registry != "https://second.example" {
+		t.Fatalf("first registry with inflight penalty = %q, want second endpoint", candidateValues[0].Registry)
 	}
-	if candidates[1].State.Inflight != 1 {
-		t.Fatalf("fast endpoint inflight = %d, want 1", candidates[1].State.Inflight)
+	if candidateValues[1].State.Inflight != 1 {
+		t.Fatalf("fast endpoint inflight = %d, want 1", candidateValues[1].State.Inflight)
 	}
 
 	release()
-	candidates = tracker.RankEndpointCandidates([]string{
+	candidates = tracker.RankEndpointCandidates(collectionlist.NewList(
 		"https://fast.example",
 		"https://second.example",
-	}, now)
-	if candidates[0].Registry != "https://fast.example" {
-		t.Fatalf("first registry after release = %q, want fast endpoint", candidates[0].Registry)
+	), now)
+	candidateValues = candidates.Values()
+	if candidateValues[0].Registry != "https://fast.example" {
+		t.Fatalf("first registry after release = %q, want fast endpoint", candidateValues[0].Registry)
 	}
 }
 
@@ -172,14 +176,15 @@ func TestEndpointHealthContentMismatchDegradesEndpoint(t *testing.T) {
 	}
 }
 
-func requireRegistryOrder(t *testing.T, candidates []upstream.EndpointHealthCandidate, want []string) {
+func requireRegistryOrder(t *testing.T, candidates *collectionlist.List[upstream.EndpointHealthCandidate], want []string) {
 	t.Helper()
-	if len(candidates) != len(want) {
-		t.Fatalf("candidate count = %d, want %d", len(candidates), len(want))
+	values := candidates.Values()
+	if len(values) != len(want) {
+		t.Fatalf("candidate count = %d, want %d", len(values), len(want))
 	}
-	for i := range candidates {
-		if candidates[i].Registry != want[i] {
-			t.Fatalf("candidate[%d] = %q, want %q", i, candidates[i].Registry, want[i])
+	for i := range values {
+		if values[i].Registry != want[i] {
+			t.Fatalf("candidate[%d] = %q, want %q", i, values[i].Registry, want[i])
 		}
 	}
 }

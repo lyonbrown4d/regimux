@@ -186,8 +186,8 @@ func (p *upstreamPool) selectLatencyBlobRuntimes(repository, digest string, runt
 	if len(runtimes) <= 1 {
 		return newRuntimeSelection(runtimes, nil)
 	}
-	candidates := p.health.rankRuntimeCandidates(runtimes, repository, now)
-	filtered := p.selectHealthyRuntimeCandidates(collectionlist.NewList(candidates...), repository, operationBlob)
+	candidates := p.health.rankRuntimeCandidates(collectionlist.NewList(runtimes...), repository, now)
+	filtered := p.selectHealthyRuntimeCandidates(candidates, repository, operationBlob)
 	return p.scheduler.schedule(digest, filtered.Values(), p.blobTopN, p.blobAttemptConcurrency(), now)
 }
 
@@ -216,7 +216,7 @@ func (p *upstreamPool) selectHealthyRuntimes(runtimes []upstreamRuntime, reposit
 
 	runtimeCandidates := p.toUpstreamRuntimeCandidates(runtimes, repository, now)
 	if p.health != nil && runtimeCandidates != nil && runtimeCandidates.Len() > 1 {
-		runtimeCandidates = collectionlist.NewList(p.health.rankRuntimeCandidates(runtimes, repository, now)...)
+		runtimeCandidates = p.health.rankRuntimeCandidates(collectionlist.NewList(runtimes...), repository, now)
 	}
 	selectedCandidates := p.selectHealthyRuntimeCandidates(runtimeCandidates, repository, operation)
 	return candidatesToRuntimes(selectedCandidates)

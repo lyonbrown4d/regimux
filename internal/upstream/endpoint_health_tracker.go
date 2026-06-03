@@ -136,8 +136,11 @@ func (t *EndpointHealthTracker) RestoreSnapshot(snapshot EndpointHealthSnapshot)
 	state.contentMismatchCount = snapshot.ContentMismatchCount
 }
 
-func (t *EndpointHealthTracker) RankEndpointCandidates(registries []string, now time.Time) []EndpointHealthCandidate {
-	ranked := collectionlist.MapList(collectionlist.NewList(registries...), func(index int, registry string) endpointHealthCandidateRank {
+func (t *EndpointHealthTracker) RankEndpointCandidates(registries *collectionlist.List[string], now time.Time) *collectionlist.List[EndpointHealthCandidate] {
+	if t == nil || registries == nil {
+		return collectionlist.NewList[EndpointHealthCandidate]()
+	}
+	ranked := collectionlist.MapList(registries, func(index int, registry string) endpointHealthCandidateRank {
 		state := t.Snapshot(registry, now)
 		return endpointHealthCandidateRank{
 			candidate: EndpointHealthCandidate{Registry: state.Registry, State: state},
@@ -146,17 +149,20 @@ func (t *EndpointHealthTracker) RankEndpointCandidates(registries []string, now 
 	}).Sort(compareEndpointHealthCandidateRank)
 	return collectionlist.MapList(ranked, func(_ int, item endpointHealthCandidateRank) EndpointHealthCandidate {
 		return item.candidate
-	}).Values()
+	})
 }
 
-func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes []upstreamRuntime, repository string, now time.Time) []endpointRuntimeCandidate {
-	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(index int, runtime upstreamRuntime) endpointRuntimeCandidate {
+func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
+	if t == nil || runtimes == nil {
+		return collectionlist.NewList[endpointRuntimeCandidate]()
+	}
+	return collectionlist.MapList(runtimes, func(index int, runtime upstreamRuntime) endpointRuntimeCandidate {
 		return endpointRuntimeCandidate{
 			runtime: runtime,
 			state:   t.runtimeSnapshot(runtime.config.Registry, repository, now),
 			index:   index,
 		}
-	}).Sort(compareEndpointRuntimeCandidate).Values()
+	}).Sort(compareEndpointRuntimeCandidate)
 }
 
 func (t *EndpointHealthTracker) runtimeSnapshot(registry, repository string, now time.Time) EndpointHealthSnapshot {
