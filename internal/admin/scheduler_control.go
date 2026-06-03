@@ -30,12 +30,12 @@ func (s *Service) schedulerCleanupSubmit(c fiber.Ctx) error {
 		return s.render(c, "scheduler", "layout", data)
 	}
 
-	data, err = s.pageData(c, "page.scheduler", "scheduler")
-	if err != nil {
-		return err
+	refreshedData, pageErr := s.pageData(c, "page.scheduler", "scheduler")
+	if pageErr != nil {
+		return pageErr
 	}
-	data.Scheduler.CleanupControlMessage = s.translate(data.Locale, "action.cleanup_trigger_requested")
-	return s.render(c, "scheduler", "layout", data)
+	refreshedData.Scheduler.CleanupControlMessage = s.translate(refreshedData.Locale, "action.cleanup_trigger_requested")
+	return s.render(c, "scheduler", "layout", refreshedData)
 }
 
 func (s *Service) schedulerProbeSubmit(c fiber.Ctx) error {
@@ -67,10 +67,10 @@ func (s *Service) schedulerProbeSubmit(c fiber.Ctx) error {
 		return s.render(c, "scheduler", "layout", data)
 	}
 
-	data, err = s.pageData(c, "page.scheduler", "scheduler")
-	if err != nil {
-		return err
+	refreshedData, pageErr := s.pageData(c, "page.scheduler", "scheduler")
+	if pageErr != nil {
+		return pageErr
 	}
-	data.Scheduler.ProbeControlMessage = s.translate(data.Locale, "action.probe_trigger_requested")
-	return s.render(c, "scheduler", "layout", data)
+	refreshedData.Scheduler.ProbeControlMessage = s.translate(refreshedData.Locale, "action.probe_trigger_requested")
+	return s.render(c, "scheduler", "layout", refreshedData)
 }
