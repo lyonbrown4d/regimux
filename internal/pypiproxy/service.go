@@ -76,7 +76,7 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return s.responseFromStored(req, requestRoute, cached, cacheHit)
 	}
 
-	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute, req.Method)
+	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
 		if cachedOK {
 			return s.responseFromStored(req, requestRoute, cached, cacheStale)

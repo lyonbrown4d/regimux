@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 type tempBody struct {
@@ -16,9 +17,10 @@ type tempBody struct {
 	name string
 }
 
-func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, requestRoute Route, method string) (*upstreamFetch, error) {
+func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
+	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Maven, upstreamAlias, cfg)
 	var lastErr error
-	for _, endpoint := range upstreamEndpoints(cfg) {
+	for _, endpoint := range endpoints {
 		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
 		requestURL = urlWithQuery(requestURL, requestRoute.Query)
 		resp, err := s.fetchURL(ctx, cfg, requestURL, method)
@@ -86,15 +88,6 @@ func (t *tempBody) Close() error {
 	closeErr := t.File.Close()
 	removeErr := os.Remove(t.name)
 	return errors.Join(closeErr, removeErr)
-}
-
-func upstreamEndpoints(cfg config.UpstreamConfig) []string {
-	out := make([]string, 0, 1+len(cfg.Mirrors))
-	if cfg.Registry != "" {
-		out = append(out, cfg.Registry)
-	}
-	out = append(out, cfg.Mirrors...)
-	return out
 }
 
 func urlWithQuery(rawURL, rawQuery string) string {

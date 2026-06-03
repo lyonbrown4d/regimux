@@ -85,15 +85,6 @@ func contentLength(headers http.Header) int64 {
 	return size
 }
 
-func upstreamEndpoints(cfg config.UpstreamConfig) []string {
-	out := make([]string, 0, 1+len(cfg.Mirrors))
-	if cfg.Registry != "" {
-		out = append(out, cfg.Registry)
-	}
-	out = append(out, cfg.Mirrors...)
-	return out
-}
-
 func closeReadCloser(body io.Closer, logger *slog.Logger, message string) {
 	if body == nil {
 		return

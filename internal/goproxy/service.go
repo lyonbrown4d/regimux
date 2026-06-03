@@ -126,7 +126,7 @@ func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute r
 	for i := range upstreams {
 		upstream := upstreams[i]
 		requestRoute := routeForUpstream(baseRoute, upstream.alias)
-		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg)
+		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias)
 		if err != nil {
 			lastErr = err
 			if canFallback(fallback, i, len(upstreams)) {
@@ -146,7 +146,7 @@ func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute r
 	return nil, oops.In("go-proxy").Errorf("go upstream did not return module content")
 }
 
-func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig) (*Response, error) {
+func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig, upstreamAlias string) (*Response, error) {
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err
@@ -155,7 +155,7 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return s.responseFromStored(req, cached, cacheHit)
 	}
 
-	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute, req.Method)
+	fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
 	if err != nil {
 		return s.responseFromFetchError(req, cached, cachedOK, err)
 	}

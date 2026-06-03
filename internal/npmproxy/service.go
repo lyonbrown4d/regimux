@@ -12,6 +12,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
 )
 
@@ -99,7 +100,7 @@ func (s *Service) getFromUpstream(
 		return s.responseFromStored(req, requestRoute, cached, cacheHit)
 	}
 
-	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute, req.Method)
+	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
 		return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err)
 	}
@@ -113,9 +114,10 @@ func (s *Service) getFromUpstream(
 	return s.storeFetchedResponse(ctx, req, requestRoute, prepared)
 }
 
-func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, requestRoute route, method string) (*upstreamFetch, error) {
+func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute route, method string) (*upstreamFetch, error) {
+	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.NPM, upstreamAlias, cfg)
 	var lastErr error
-	for _, endpoint := range upstreamEndpoints(cfg) {
+	for _, endpoint := range endpoints {
 		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
 		requestURL = urlWithQuery(requestURL, requestRoute.Query)
 		resp, err := s.fetchURL(ctx, cfg, requestURL, method)

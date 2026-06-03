@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 type tempBody struct {
@@ -16,9 +17,10 @@ type tempBody struct {
 	name string
 }
 
-func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, requestRoute route, method string) (*upstreamFetch, error) {
+func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute route, method string) (*upstreamFetch, error) {
+	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Go, upstreamAlias, cfg)
 	var lastErr error
-	for _, endpoint := range upstreamEndpoints(cfg) {
+	for _, endpoint := range endpoints {
 		resp, err := s.fetchEndpoint(ctx, cfg, endpoint, requestRoute.Tail, method)
 		if err == nil {
 			return resp, nil
@@ -95,15 +97,6 @@ func closeAndRemoveTemp(file *os.File, name string, err error, message string) e
 	closeErr := file.Close()
 	removeErr := os.Remove(name)
 	return wrapError(errors.Join(err, closeErr, removeErr), message)
-}
-
-func upstreamEndpoints(cfg config.UpstreamConfig) []string {
-	out := make([]string, 0, 1+len(cfg.Mirrors))
-	if cfg.Registry != "" {
-		out = append(out, cfg.Registry)
-	}
-	out = append(out, cfg.Mirrors...)
-	return out
 }
 
 func applyAuth(req *http.Request, cfg config.AuthConfig) {
