@@ -30,6 +30,7 @@ type Service struct {
 	messages  *Messages
 	syncer    ManualSyncer
 	prefetch  PrefetchController
+	scheduler SchedulerController
 	startedAt time.Time
 }
 
@@ -50,6 +51,7 @@ func NewService(deps Dependencies) *Service {
 		messages:  deps.Messages,
 		syncer:    deps.Syncer,
 		prefetch:  deps.Prefetch,
+		scheduler: deps.Scheduler,
 		startedAt: time.Now(),
 	}
 	service.logger.Info("admin service configured", "base_path", basePath, "auth_enabled", service.adminAuthEnabled())
@@ -73,6 +75,8 @@ func (s *Service) RegisterFiber(app *fiber.App) {
 	group.Get("/scheduler", s.schedulerPage)
 	group.Post("/prefetch/cancel", s.prefetchCancelSubmit)
 	group.Post("/prefetch/retry", s.prefetchRetrySubmit)
+	group.Post("/scheduler/cleanup", s.schedulerCleanupSubmit)
+	group.Post("/scheduler/probe", s.schedulerProbeSubmit)
 	group.Get("/sync", s.syncPage)
 	group.Post("/sync", s.syncSubmit)
 	group.Get("/sync/jobs/:id", s.syncJobPartial)

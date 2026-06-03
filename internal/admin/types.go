@@ -214,6 +214,10 @@ type SchedulerSummary struct {
 	PrefetchControlMessage       string
 	PrefetchControlError         string
 	ProbeJobs                    []ProbeJobRow
+	CleanupControlMessage        string
+	CleanupControlError          string
+	ProbeControlMessage          string
+	ProbeControlError            string
 }
 
 type PrefetchRunRow struct {

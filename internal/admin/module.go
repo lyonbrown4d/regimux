@@ -17,15 +17,16 @@ import (
 )
 
 type Dependencies struct {
-	Config   config.Config
-	Metadata meta.Store
-	Upstream *upstream.Client
-	Version  build.Version
-	Logger   *slog.Logger
-	Auth     *auth.Service
-	Messages *Messages
-	Syncer   ManualSyncer
-	Prefetch PrefetchController
+	Config    config.Config
+	Metadata  meta.Store
+	Upstream  *upstream.Client
+	Version   build.Version
+	Logger    *slog.Logger
+	Auth      *auth.Service
+	Messages  *Messages
+	Syncer    ManualSyncer
+	Prefetch  PrefetchController
+	Scheduler SchedulerController
 }
 
 type baseDependencies struct {
@@ -67,14 +68,15 @@ func newBaseDependencies(
 
 func newDependencies(base baseDependencies, syncer *scheduler.Runtime, prefetchService *prefetch.Service, messages *Messages) Dependencies {
 	return Dependencies{
-		Config:   base.Config,
-		Metadata: base.Metadata,
-		Upstream: base.Upstream,
-		Version:  base.Version,
-		Logger:   base.Logger,
-		Auth:     base.Auth,
-		Messages: messages,
-		Syncer:   syncer,
-		Prefetch: prefetchService,
+		Config:    base.Config,
+		Metadata:  base.Metadata,
+		Upstream:  base.Upstream,
+		Version:   base.Version,
+		Logger:    base.Logger,
+		Auth:      base.Auth,
+		Messages:  messages,
+		Syncer:    syncer,
+		Prefetch:  prefetchService,
+		Scheduler: syncer,
 	}
 }

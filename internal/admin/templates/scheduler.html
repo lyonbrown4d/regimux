@@ -22,6 +22,16 @@
       <div class="border-b border-zinc-800 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.cleanup_job"}}</h2>
       </div>
+      {{if .Scheduler.CleanupControlMessage}}
+      <div class="border-b border-zinc-800 px-4 py-2 text-xs text-cyan-300">{{.Scheduler.CleanupControlMessage}}</div>
+      {{end}}
+      {{if .Scheduler.CleanupControlError}}
+      <div class="border-b border-zinc-800 px-4 py-2 text-xs text-red-300">{{.Scheduler.CleanupControlError}}</div>
+      {{end}}
+      <form method="post" action="{{.BasePath}}/scheduler/cleanup" class="border-b border-zinc-800 px-4 py-2">
+        {{if .CSRFToken}}<input type="hidden" name="_csrf" value="{{.CSRFToken}}">{{end}}
+        <button class="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-200 hover:bg-zinc-800" type="submit">{{t . "action.run_cleanup"}}</button>
+      </form>
       <dl class="divide-y divide-zinc-800 text-sm">
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.enabled"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupEnabled}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.interval"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupInterval}}</dd></div>
@@ -145,12 +155,18 @@
   </section>
 
   <section class="rounded border border-zinc-800 bg-zinc-900/50">
-    <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
-      <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.probe_jobs"}}</h2>
-      <span class="text-xs text-zinc-500">{{len .Scheduler.ProbeJobs}} {{t . "jobs"}}</span>
-    </div>
-    <div class="overflow-x-auto">
-      <table class="min-w-full text-left text-sm">
+      <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+        <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.probe_jobs"}}</h2>
+        <span class="text-xs text-zinc-500">{{len .Scheduler.ProbeJobs}} {{t . "jobs"}}</span>
+      </div>
+      {{if .Scheduler.ProbeControlMessage}}
+      <div class="border-b border-zinc-800 px-4 py-2 text-xs text-cyan-300">{{.Scheduler.ProbeControlMessage}}</div>
+      {{end}}
+      {{if .Scheduler.ProbeControlError}}
+      <div class="border-b border-zinc-800 px-4 py-2 text-xs text-red-300">{{.Scheduler.ProbeControlError}}</div>
+      {{end}}
+      <div class="overflow-x-auto">
+        <table class="min-w-full text-left text-sm">
         <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
           <tr>
             <th class="px-4 py-2 font-medium">{{t . "field.ecosystem"}}</th>
@@ -160,6 +176,7 @@
             <th class="px-4 py-2 font-medium">{{t . "field.timeout"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.cooldown"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.jitter"}}</th>
+            <th class="px-4 py-2 font-medium"></th>
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
@@ -172,12 +189,21 @@
             <td class="px-4 py-2 text-zinc-400">{{.Timeout}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Cooldown}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Jitter}}</td>
+            <td class="px-4 py-2">
+              <form method="post" action="{{$.BasePath}}/scheduler/probe">
+                {{if $.CSRFToken}}<input type="hidden" name="_csrf" value="{{$.CSRFToken}}">{{end}}
+                <input type="hidden" name="ecosystem" value="{{.Ecosystem}}">
+                <input type="hidden" name="alias" value="{{.Alias}}">
+                <button class="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800" type="submit">{{t $ "action.run_probe"}}</button>
+              </form>
+            </td>
           </tr>
           {{else}}
-          <tr><td colspan="7" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.probe_jobs"}}</td></tr>
+          <tr><td colspan="8" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.probe_jobs"}}</td></tr>
           {{end}}
         </tbody>
       </table>
     </div>
   </section>
+
 </section>
