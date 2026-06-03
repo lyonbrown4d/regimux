@@ -12,12 +12,15 @@ import (
 )
 
 func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler) error {
-	for _, prober := range r.probers() {
+	var registerErr error
+	r.probers().Range(func(_ int, prober ecosystem.Prober) bool {
 		if err := r.registerProbeTargets(ctx, scheduler, prober); err != nil {
-			return err
+			registerErr = err
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return registerErr
 }
 
 func (r *Runtime) registerProbeTargets(ctx context.Context, scheduler gocron.Scheduler, prober ecosystem.Prober) error {

@@ -104,10 +104,16 @@ func (r *Runtime) findProbeTarget(ecosystemName, alias string) (ecosystem.Prober
 }
 
 func (r *Runtime) runtimeByName(name string) (ecosystem.Runtime, error) {
-	for _, runtime := range r.runtimes {
+	var found ecosystem.Runtime
+	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
 		if runtime != nil && strings.EqualFold(runtime.Name(), name) {
-			return runtime, nil
+			found = runtime
+			return false
 		}
+		return true
+	})
+	if found != nil {
+		return found, nil
 	}
 	return nil, oops.In("scheduler").With("ecosystem", name).Errorf("ecosystem prober is not configured")
 }

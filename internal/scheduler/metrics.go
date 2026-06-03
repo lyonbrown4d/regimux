@@ -65,10 +65,11 @@ func (r *Runtime) observeEndpointHealth(ctx context.Context) {
 	if r == nil || r.metrics == nil {
 		return
 	}
-	for _, runtime := range r.runtimes {
+	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
 		observer, ok := runtime.(endpointHealthObserver)
 		if ok {
 			observer.ObserveEndpointHealth(ctx, r.metrics)
 		}
-	}
+		return true
+	})
 }

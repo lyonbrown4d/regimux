@@ -21,7 +21,7 @@ type Runtime struct {
 	cfg      config.Config
 	logger   *slog.Logger
 	cleanup  *cache.CleanupService
-	runtimes []ecosystem.Runtime
+	runtimes *collectionlist.List[ecosystem.Runtime]
 	metrics  *observability.Metrics
 
 	scheduler gocron.Scheduler
@@ -36,9 +36,9 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	var runtimes []ecosystem.Runtime
+	runtimes := collectionlist.NewList[ecosystem.Runtime]()
 	if deps.Runtimes != nil {
-		runtimes = deps.Runtimes.Values()
+		runtimes = collectionlist.NewList(deps.Runtimes.Values()...)
 	}
 	return &Runtime{
 		cfg:      cfg,
@@ -93,11 +93,11 @@ func (r *Runtime) Start(ctx context.Context) error {
 	return nil
 }
 
-func runtimeNames(runtimes []ecosystem.Runtime) *collectionlist.List[string] {
-	if len(runtimes) == 0 {
+func runtimeNames(runtimes *collectionlist.List[ecosystem.Runtime]) *collectionlist.List[string] {
+	if runtimes == nil || runtimes.Len() == 0 {
 		return collectionlist.NewList[string]()
 	}
-	return collectionlist.FilterMapList(collectionlist.NewList(runtimes...), func(_ int, runtime ecosystem.Runtime) (string, bool) {
+	return collectionlist.FilterMapList(runtimes, func(_ int, runtime ecosystem.Runtime) (string, bool) {
 		if runtime == nil {
 			return "", false
 		}

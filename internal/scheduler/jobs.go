@@ -6,6 +6,7 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
 )
@@ -37,7 +38,7 @@ func (r *Runtime) registerCleanup(ctx context.Context, scheduler gocron.Schedule
 }
 
 func (r *Runtime) registerEndpointHealthFlush(ctx context.Context, scheduler gocron.Scheduler) error {
-	if len(r.endpointHealthFlushers()) == 0 {
+	if r.endpointHealthFlushers().Len() == 0 {
 		return nil
 	}
 	options := []gocron.JobOption{
@@ -94,14 +95,15 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 func (r *Runtime) runEndpointHealthFlush(ctx context.Context) error {
 	startedAt := time.Now()
 	var flushErr error
-	for _, flusher := range r.endpointHealthFlushers() {
+	r.endpointHealthFlushers().Range(func(_ int, flusher ecosystem.EndpointHealthFlusher) bool {
 		if flusher == nil {
-			continue
+			return true
 		}
 		if err := flusher.FlushEndpointHealth(ctx); err != nil {
 			flushErr = multierr.Append(flushErr, oops.With("ecosystem", flusher.Name()).Wrapf(err, "flush endpoint health"))
 		}
-	}
+		return flushErr == nil
+	})
 	if flushErr != nil {
 		err := oops.Wrapf(flushErr, "run endpoint health flush job")
 		r.observeJob(ctx, "endpoint_health_flush", "", startedAt, err)

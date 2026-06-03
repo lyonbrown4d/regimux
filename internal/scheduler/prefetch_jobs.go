@@ -15,7 +15,7 @@ func (r *Runtime) registerPrefetch(ctx context.Context, scheduler gocron.Schedul
 	if !cfg.Enabled || cfg.Interval <= 0 {
 		return nil
 	}
-	if len(r.prefetchers()) == 0 {
+	if r.prefetchers().Len() == 0 {
 		r.logger.InfoContext(ctx, "prefetch job skipped because no ecosystem exposes prefetch capability")
 		return nil
 	}
@@ -53,12 +53,13 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 		Accept:               r.cfg.Scheduler.Prefetch.Accept,
 	}
 	group, groupCtx := errgroup.WithContext(ctx)
-	for _, prefetcher := range r.prefetchers() {
+	r.prefetchers().Range(func(_ int, prefetcher ecosystem.Prefetcher) bool {
 		jobPrefetcher := prefetcher
 		group.Go(func() error {
 			return r.runEcosystemPrefetch(groupCtx, jobPrefetcher, options)
 		})
-	}
+		return true
+	})
 	if err := group.Wait(); err != nil {
 		return oops.Wrapf(err, "run ecosystem prefetch jobs")
 	}

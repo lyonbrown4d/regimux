@@ -118,32 +118,45 @@ func (r *Runtime) manualSyncer(ecosystemName string) manualSyncer {
 	if r == nil || ecosystemName == "" {
 		return nil
 	}
-	for _, runtime := range r.runtimes {
+	var match manualSyncer
+	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
 		if runtime == nil || runtime.Name() != ecosystemName {
-			continue
+			return true
 		}
 		syncer, ok := runtime.(manualSyncer)
 		if ok {
-			return syncer
+			match = syncer
+			return false
 		}
-	}
-	return nil
+		return true
+	})
+	return match
 }
 
 func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, prefetch.SyncJob, bool) {
 	if r == nil || id == "" {
 		return nil, prefetch.SyncJob{}, false
 	}
-	for _, runtime := range r.runtimes {
-		syncer, ok := runtime.(manualSyncer)
-		if !ok {
-			continue
+	var matched manualSyncer
+	var job prefetch.SyncJob
+	var ok bool
+	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
+		if matched != nil {
+			return false
 		}
-		job, ok := syncer.SyncJob(id)
-		if !ok {
-			continue
+		syncer, isSyncer := runtime.(manualSyncer)
+		if !isSyncer {
+			return true
 		}
-		return syncer, job, true
+		job, ok = syncer.SyncJob(id)
+		if !ok {
+			return true
+		}
+		matched = syncer
+		return false
+	})
+	if matched != nil && ok {
+		return matched, job, true
 	}
 	return nil, prefetch.SyncJob{}, false
 }
