@@ -267,7 +267,7 @@ func (s *Service) ResourceFromPath(path string) (string, error) {
 		return "", oops.In("auth").With("path", path).Errorf("registry auth resource is missing repository")
 	}
 	repo := route.Repo
-	if upstreamCfg, ok := s.cfg.Upstreams[route.Alias]; ok && upstreamCfg.DefaultNamespace != "" {
+	if upstreamCfg, ok := s.cfg.ContainerUpstream(route.Alias); ok && upstreamCfg.DefaultNamespace != "" {
 		repo = route.WithDefaultNamespace(upstreamCfg.DefaultNamespace).Repo
 	}
 	return route.Alias + "/" + strings.Trim(repo, "/"), nil

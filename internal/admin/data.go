@@ -224,8 +224,9 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 	snapshots := upstreamSnapshotMap(collectionlist.NewList(snapshot.Upstreams...))
 	stats := upstreamMetadataMap(metadata)
 
-	rows := collectionlist.NewListWithCapacity[UpstreamRow](len(s.cfg.Upstreams))
-	s.cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+	ordered := s.cfg.OrderedContainerUpstreams()
+	rows := collectionlist.NewListWithCapacity[UpstreamRow](ordered.Len())
+	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		row := UpstreamRow{
 			Alias:            alias,
 			Registry:         upstreamCfg.Registry,

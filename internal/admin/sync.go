@@ -133,7 +133,7 @@ func (s *Service) syncRoute(form SyncForm, repo string) (*registryref.Route, Syn
 	if err != nil {
 		return nil, form, oops.In("admin").Wrapf(err, "invalid sync target")
 	}
-	upstreamCfg, ok := s.cfg.Upstreams[route.Alias]
+	upstreamCfg, ok := s.cfg.ContainerUpstream(route.Alias)
 	if !ok {
 		return nil, form, oops.In("admin").With("alias", route.Alias).Errorf("unknown upstream alias %q", route.Alias)
 	}
@@ -154,8 +154,9 @@ func (s *Service) syncUpstreamOptions(selected string) []SyncUpstreamOption {
 	if selected == "" {
 		selected = "hub"
 	}
-	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](len(s.cfg.Upstreams))
-	s.cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+	ordered := s.cfg.OrderedContainerUpstreams()
+	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](ordered.Len())
+	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		options.Add(SyncUpstreamOption{
 			Alias:    alias,
 			Registry: upstreamCfg.Registry,

@@ -8,14 +8,19 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/api"
+	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/dockerintegration"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/goproxy"
+	"github.com/lyonbrown4d/regimux/internal/mavenproxy"
+	"github.com/lyonbrown4d/regimux/internal/npmproxy"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	"github.com/lyonbrown4d/regimux/internal/pypiproxy"
 	"github.com/lyonbrown4d/regimux/internal/registrytool"
 	"github.com/lyonbrown4d/regimux/internal/scheduler"
 	storemodule "github.com/lyonbrown4d/regimux/internal/store"
@@ -43,6 +48,8 @@ func buildApp(configPath string, args ...string) *dix.App {
 		configx.WithFiles(configPath),
 		configx.WithArgs(args...),
 	)
+	artifactCacheModule := artifactcache.Module
+	clientFactoryModule := clientfactory.Module
 	observabilityModule := observability.Module
 	authModule := auth.Module
 	buildModule := build.Module
@@ -56,6 +63,9 @@ func buildApp(configPath string, args ...string) *dix.App {
 	schedulerModule := scheduler.Module
 	dockerModule := dockerintegration.Module
 	goProxyModule := goproxy.Module
+	npmProxyModule := npmproxy.Module
+	pypiProxyModule := pypiproxy.Module
+	mavenProxyModule := mavenproxy.Module
 	adminModule := admin.Module
 	endpointModule := api.EndpointsModule
 	apiModule := api.Module
@@ -65,6 +75,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux registry proxy mirror gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, upstreamModule, storeModule, cacheModule, suggestionModule, schedulerModule, adminModule, goProxyModule, endpointModule, apiModule, dockerModule),
+		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, upstreamModule, storeModule, cacheModule, suggestionModule, schedulerModule, adminModule, goProxyModule, npmProxyModule, pypiProxyModule, mavenProxyModule, endpointModule, apiModule, dockerModule),
 	)
 }

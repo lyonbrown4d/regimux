@@ -17,15 +17,33 @@ server {
   listen = ":5000"
 }
 
-upstreams {
+container {
   hub {
-    type = "oci"
     registry = "https://registry-1.docker.io"
   }
+}
 
-  golang {
-    type = "go"
+go {
+  default {
     registry = "https://proxy.golang.org"
+  }
+}
+
+npm {
+  default {
+    registry = "https://registry.npmjs.org"
+  }
+}
+
+pypi {
+  default {
+    registry = "https://pypi.org"
+  }
+}
+
+maven {
+  central {
+    registry = "https://repo.maven.apache.org/maven2"
   }
 }
 ```
@@ -62,25 +80,32 @@ upstreams {
 - `docker.observe = true`
 - `docker.prewarm.alias = "hub"`
 - `docker.prewarm.timeout = "10m"`
-- `upstreams.hub.type = "oci"`
-- `upstreams.hub.registry = "https://registry-1.docker.io"`
-- `upstreams.golang.type = "go"`
-- `upstreams.golang.registry = "https://proxy.golang.org"`
-- `upstreams.hub.http.http2.enabled = false`
+- `container.hub.registry = "https://registry-1.docker.io"`
+- `container.ghcr.registry = "https://ghcr.io"`
+- `container.quay.registry = "https://quay.io"`
+- `container.hub.http.http2.enabled = false`
+- `go.default.registry = "https://proxy.golang.org"`
+- `npm.default.registry = "https://registry.npmjs.org"`
+- `pypi.default.registry = "https://pypi.org"`
+- `maven.central.registry = "https://repo.maven.apache.org/maven2"`
 
-`upstreams.*.type` 用来区分生态类型。当前支持：
+顶层生态块是源配置：
 
-- `oci`：OCI / Docker Registry V2，通过 `/v2/{alias}/...` 访问。
-- `go`：Go module proxy，通过根路径 GOPROXY 访问；需要显式选择上游时可使用 `/go/{alias}/...`。
-- `maven`、`pypi`、`npm`：预留给后续 Maven、PyPI 和 npm 适配器。
+- `container`：OCI / Docker Registry V2 上游 registry，每个 container alias 通过 `/v2/{containerAlias}/...` 暴露。
+- `go`：Go module proxy 上游，每个 Go alias 通过 `/go/{goAlias}/...` 暴露。
+- `npm`：npm registry 上游，通过 `/npm/{npmAlias}/...` 暴露。
+- `pypi`：PyPI 上游，通过 `/pypi/{pypiAlias}/...` 暴露。
+- `maven`：Maven repository layout 上游，通过 `/maven/{mavenAlias}/...` 暴露。
+
+这些块也是生态 runtime 层的输入。RegiMux 会把它们归一化为带生态类型、alias、registry、mirrors、auth 和 HTTP 策略的 runtime 条目。调度器随后从 `probe`、`prefetch` 等 runtime capability 工作，而不是读取 legacy `upstreams` 块。
+
+container runtime 当前暴露定时 `probe` 和 `prefetch` capability。Go、npm、PyPI 和 Maven 使用同一套源配置和 runtime 注册边界提供 read-through cache 行为；后续可以按生态增加调度能力，不需要改变 HCL 分组。
 
 RegiMux 默认会关闭上游 registry 客户端的 HTTP/2。这样可以让 mirror 和 CDN 链路更可控，并避免 HTTP/2 运行时 panic 直接打崩进程。只建议对可信上游按 alias 显式开启：
 
 ```hcl
-upstreams {
+container {
   hub {
-    type = "oci"
-
     http {
       http2 {
         enabled = true
@@ -142,10 +167,12 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
-REGIMUX_UPSTREAMS__GOLANG__TYPE=go
-REGIMUX_UPSTREAMS__GOLANG__REGISTRY=https://proxy.golang.org
-REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
-REGIMUX_UPSTREAMS__HUB__HTTP__HTTP2__ENABLED=true
+REGIMUX_CONTAINER__HUB__REGISTRY=https://registry-1.docker.io
+REGIMUX_CONTAINER__HUB__HTTP__HTTP2__ENABLED=true
+REGIMUX_GO__DEFAULT__REGISTRY=https://proxy.golang.org
+REGIMUX_NPM__DEFAULT__REGISTRY=https://registry.npmjs.org
+REGIMUX_PYPI__DEFAULT__REGISTRY=https://pypi.org
+REGIMUX_MAVEN__CENTRAL__REGISTRY=https://repo.maven.apache.org/maven2
 ```
 
 加载器会在存在 `.env` 时读取它。环境变量优先级高于 `.env` 和配置文件。
@@ -162,7 +189,7 @@ regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=deb
 
 ## 校验
 
-配置校验会拒绝无效枚举值、无效 URL、负数时长或数量、无效清理水位、不支持的存储驱动、不完整的 S3/SFTP 凭证，以及指向不存在上游 alias 的 Docker 预热配置。
+配置校验会拒绝无效枚举值、无效 URL、负数时长或数量、无效清理水位、不支持的存储驱动、不完整的 S3/SFTP 凭证，以及指向不存在 container alias 的 Docker 预热配置。
 
 支持的元数据驱动：
 

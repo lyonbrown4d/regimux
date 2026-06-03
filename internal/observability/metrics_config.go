@@ -78,7 +78,7 @@ func (m *Metrics) ObserveStaticConfig(ctx context.Context, cfg config.Config, ve
 	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled), dockerConfigLabels("integration", cfg.Docker.Enabled)...)
 	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Observe), dockerConfigLabels("observe", cfg.Docker.Enabled && cfg.Docker.Observe)...)
 	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled), dockerConfigLabels("prewarm", cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled)...)
-	m.config.upstreams.Set(ctx, float64(len(cfg.Upstreams)))
+	m.config.upstreams.Set(ctx, float64(cfg.OrderedContainerUpstreams().Len()))
 	observeConfiguredUpstreamEndpoints(ctx, m.config.upstreamEndpoint, cfg)
 	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Enabled), schedulerConfigLabels("scheduler", cfg.Scheduler.Enabled)...)
 	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Cleanup.Enabled), schedulerConfigLabels("cleanup", cfg.Scheduler.Cleanup.Enabled)...)
@@ -86,7 +86,7 @@ func (m *Metrics) ObserveStaticConfig(ctx context.Context, cfg config.Config, ve
 }
 
 func observeConfiguredUpstreamEndpoints(ctx context.Context, metric observabilityx.Gauge, cfg config.Config) {
-	cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+	cfg.OrderedContainerUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		for _, endpoint := range configuredUpstreamEndpoints(upstreamCfg) {
 			metric.Set(ctx, 1,
 				observabilityx.String("alias", alias),

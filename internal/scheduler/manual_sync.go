@@ -9,18 +9,26 @@ import (
 	"github.com/samber/oops"
 )
 
+type manualSyncer interface {
+	CreateSyncJob(context.Context, prefetch.SyncOptions) (prefetch.SyncJob, error)
+	RunSyncJob(context.Context, string) error
+	MarkSyncJobFailed(string, error)
+	SyncJob(string) (prefetch.SyncJob, bool)
+}
+
 func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
-	if r == nil || r.prefetch == nil {
+	syncer := r.manualSyncer()
+	if syncer == nil {
 		return prefetch.SyncJob{}, oops.In("scheduler").Errorf("manual sync service is not configured")
 	}
-	job, err := r.prefetch.CreateSyncJob(ctx, opts)
+	job, err := syncer.CreateSyncJob(ctx, opts)
 	if err != nil {
 		return prefetch.SyncJob{}, oops.Wrapf(err, "create manual sync job")
 	}
 	if r.scheduler == nil {
 		err := oops.In("scheduler").Errorf("scheduler is not running")
-		r.prefetch.MarkSyncJobFailed(job.ID, err)
-		failed, ok := r.prefetch.SyncJob(job.ID)
+		syncer.MarkSyncJobFailed(job.ID, err)
+		failed, ok := syncer.SyncJob(job.ID)
 		if ok {
 			return failed, err
 		}
@@ -37,8 +45,8 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (pr
 		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 		gocron.WithDisabledDistributedJobLocker(true),
 	); err != nil {
-		r.prefetch.MarkSyncJobFailed(job.ID, err)
-		failed, ok := r.prefetch.SyncJob(job.ID)
+		syncer.MarkSyncJobFailed(job.ID, err)
+		failed, ok := syncer.SyncJob(job.ID)
 		if ok {
 			return failed, oops.Wrapf(err, "register manual sync job")
 		}
@@ -51,33 +59,35 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (pr
 		"repository", opts.Repo,
 		"reference", opts.Reference,
 	)
-	if current, ok := r.prefetch.SyncJob(job.ID); ok {
+	if current, ok := syncer.SyncJob(job.ID); ok {
 		return current, nil
 	}
 	return job, nil
 }
 
 func (r *Runtime) SyncJob(id string) (prefetch.SyncJob, bool) {
-	if r == nil || r.prefetch == nil {
+	syncer := r.manualSyncer()
+	if syncer == nil {
 		return prefetch.SyncJob{}, false
 	}
-	return r.prefetch.SyncJob(id)
+	return syncer.SyncJob(id)
 }
 
 func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 	startedAt := time.Now()
-	if r == nil || r.prefetch == nil {
+	syncer := r.manualSyncer()
+	if syncer == nil {
 		err := oops.In("scheduler").Errorf("manual sync service is not configured")
 		r.observeJob(ctx, "manual_sync", "", startedAt, err)
 		return err
 	}
-	job, ok := r.prefetch.SyncJob(id)
+	job, ok := syncer.SyncJob(id)
 	if !ok {
 		err := oops.In("scheduler").With("job_id", id).Errorf("manual sync job not found")
 		r.observeJob(ctx, "manual_sync", "", startedAt, err)
 		return err
 	}
-	err := r.prefetch.RunSyncJob(ctx, id)
+	err := syncer.RunSyncJob(ctx, id)
 	if err != nil {
 		err = oops.Wrapf(err, "run manual sync job")
 		r.logger.WarnContext(ctx,
@@ -101,5 +111,18 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 	)
 	r.observeJob(ctx, "manual_sync", job.Options.Alias, startedAt, nil)
+	return nil
+}
+
+func (r *Runtime) manualSyncer() manualSyncer {
+	if r == nil {
+		return nil
+	}
+	for _, runtime := range r.runtimes {
+		syncer, ok := runtime.(manualSyncer)
+		if ok {
+			return syncer
+		}
+	}
 	return nil
 }

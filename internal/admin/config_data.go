@@ -136,21 +136,43 @@ func addWorkerRows(rows *collectionlist.List[ConfigRow], cfg config.WorkerConfig
 }
 
 func addUpstreamRows(rows *collectionlist.List[ConfigRow], cfg config.Config) {
-	cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		prefix := "upstreams." + alias
-		addRow(rows, prefix+".registry", upstreamCfg.Registry)
-		addRow(rows, prefix+".mirrors", fmt.Sprintf("%v", upstreamCfg.Mirrors))
-		addRow(rows, prefix+".mirror_policy", upstreamCfg.MirrorPolicy)
-		addRow(rows, prefix+".default_namespace", upstreamCfg.DefaultNamespace)
-		addRow(rows, prefix+".blob.mirror_policy", upstreamCfg.Blob.MirrorPolicy)
-		addRow(rows, prefix+".probe.enabled", boolString(upstreamCfg.Probe.Enabled))
-		addRow(rows, prefix+".probe.interval", durationString(upstreamCfg.Probe.Interval))
-		addRow(rows, prefix+".auth.type", upstreamCfg.Auth.Type)
-		addRow(rows, prefix+".auth.username", upstreamCfg.Auth.Username)
-		addRow(rows, prefix+".auth.password", mask(upstreamCfg.Auth.Password))
-		addRow(rows, prefix+".auth.token", mask(upstreamCfg.Auth.Token))
+	cfg.OrderedContainerUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		addConfigUpstreamRows(rows, "container."+alias, upstreamCfg, true)
 		return true
 	})
+	cfg.OrderedGoUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		addConfigUpstreamRows(rows, "go."+alias, upstreamCfg, false)
+		return true
+	})
+	cfg.OrderedNPMUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		addConfigUpstreamRows(rows, "npm."+alias, upstreamCfg, false)
+		return true
+	})
+	cfg.OrderedPyPIUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		addConfigUpstreamRows(rows, "pypi."+alias, upstreamCfg, false)
+		return true
+	})
+	cfg.OrderedMavenUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		addConfigUpstreamRows(rows, "maven."+alias, upstreamCfg, false)
+		return true
+	})
+}
+
+func addConfigUpstreamRows(rows *collectionlist.List[ConfigRow], prefix string, upstreamCfg config.UpstreamConfig, container bool) {
+	addRow(rows, prefix+".registry", upstreamCfg.Registry)
+	addRow(rows, prefix+".mirrors", fmt.Sprintf("%v", upstreamCfg.Mirrors))
+	addRow(rows, prefix+".mirror_policy", upstreamCfg.MirrorPolicy)
+	addRow(rows, prefix+".auth.type", upstreamCfg.Auth.Type)
+	addRow(rows, prefix+".auth.username", upstreamCfg.Auth.Username)
+	addRow(rows, prefix+".auth.password", mask(upstreamCfg.Auth.Password))
+	addRow(rows, prefix+".auth.token", mask(upstreamCfg.Auth.Token))
+	if !container {
+		return
+	}
+	addRow(rows, prefix+".default_namespace", upstreamCfg.DefaultNamespace)
+	addRow(rows, prefix+".blob.mirror_policy", upstreamCfg.Blob.MirrorPolicy)
+	addRow(rows, prefix+".probe.enabled", boolString(upstreamCfg.Probe.Enabled))
+	addRow(rows, prefix+".probe.interval", durationString(upstreamCfg.Probe.Interval))
 }
 
 func addRow(rows *collectionlist.List[ConfigRow], path, value string) {

@@ -59,6 +59,11 @@ type upstreamFetch struct {
 	body    io.ReadCloser
 }
 
+type Upstream struct {
+	Alias  string
+	Config config.UpstreamConfig
+}
+
 type goUpstream struct {
 	alias string
 	cfg   config.UpstreamConfig
@@ -201,29 +206,32 @@ func (s *Service) storeFetchedResponse(ctx context.Context, req Request, request
 }
 
 func (s *Service) goUpstream(alias string) (config.UpstreamConfig, bool) {
-	if s.cfg.Upstreams == nil {
-		return config.UpstreamConfig{}, false
+	return s.cfg.GoUpstream(alias)
+}
+
+func (s *Service) Upstreams() []Upstream {
+	if s == nil {
+		return nil
 	}
-	cfg, ok := s.cfg.Upstreams[alias]
-	if !ok || cfg.Type != "go" {
-		return config.UpstreamConfig{}, false
+	upstreams := s.goUpstreams()
+	out := make([]Upstream, 0, len(upstreams))
+	for i := range upstreams {
+		out = append(out, Upstream{Alias: upstreams[i].alias, Config: upstreams[i].cfg})
 	}
-	return cfg, true
+	return out
 }
 
 func (s *Service) goUpstreams() []goUpstream {
-	if s.cfg.Upstreams == nil {
+	ordered := s.cfg.OrderedGoUpstreams()
+	if ordered.Len() == 0 {
 		return nil
 	}
-	ordered := s.cfg.OrderedUpstreams()
 	out := make([]goUpstream, 0, ordered.Len())
 	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		if cfg.Type == "go" {
-			out = append(out, goUpstream{alias: alias, cfg: cfg})
-		}
+		out = append(out, goUpstream{alias: alias, cfg: cfg})
 		return true
 	})
-	return preferGoAlias(out, "golang")
+	return preferGoAlias(out, "default")
 }
 
 func preferGoAlias(upstreams []goUpstream, alias string) []goUpstream {

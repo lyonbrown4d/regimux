@@ -34,7 +34,7 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 
 	service := newTestService(ctx, t, upstream.URL)
 	first, err := service.Get(ctx, goproxy.Request{
-		Alias: "golang",
+		Alias: "default",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
 	})
 	requireNoError(t, "first get", err)
@@ -44,7 +44,7 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	}
 
 	second, err := service.Get(ctx, goproxy.Request{
-		Alias: "golang",
+		Alias: "default",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
 	})
 	requireNoError(t, "second get", err)
@@ -116,9 +116,9 @@ func TestServiceRootGoProxyFallsBackAcrossGoUpstreams(t *testing.T) {
 	}))
 	t.Cleanup(backup.Close)
 
-	service := newTestServiceWithUpstreams(ctx, t, map[string]config.UpstreamConfig{
-		"backup": {Type: "go", Registry: backup.URL},
-		"golang": {Type: "go", Registry: primary.URL},
+	service := newTestServiceWithUpstreams(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"backup":  {Registry: backup.URL},
+		"default": {Registry: primary.URL},
 	})
 	resp, err := service.Get(ctx, goproxy.Request{
 		Tail: "github.com/acme/lib/@v/v1.2.3.mod",
@@ -145,7 +145,7 @@ func TestServicePassesThroughNotFound(t *testing.T) {
 
 	service := newTestService(ctx, t, upstream.URL)
 	resp, err := service.Get(ctx, goproxy.Request{
-		Alias: "golang",
+		Alias: "default",
 		Tail:  "github.com/acme/missing/@v/v1.0.0.mod",
 	})
 	requireNoError(t, "get missing", err)
@@ -171,7 +171,7 @@ func TestServiceDoesNotStoreHeadMiss(t *testing.T) {
 	service := newTestService(ctx, t, upstream.URL)
 	for range 2 {
 		resp, err := service.Get(ctx, goproxy.Request{
-			Alias:  "golang",
+			Alias:  "default",
 			Tail:   "github.com/acme/lib/@v/v1.2.3.zip",
 			Method: http.MethodHead,
 		})
@@ -192,13 +192,13 @@ func TestServiceRejectsNonGoUpstream(t *testing.T) {
 	ctx := context.Background()
 	service := goproxy.NewService(goproxy.ServiceDependencies{
 		Config: config.Config{
-			Upstreams: map[string]config.UpstreamConfig{
-				"hub": {Type: "oci", Registry: "https://registry-1.docker.io"},
+			Container: config.ContainerConfig{
+				"hub": {Registry: "https://registry-1.docker.io"},
 			},
 		},
 	})
 	_, err := service.Get(ctx, goproxy.Request{
-		Alias: "hub",
+		Alias: "default",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
 	})
 	if err == nil {
@@ -208,15 +208,14 @@ func TestServiceRejectsNonGoUpstream(t *testing.T) {
 
 func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *goproxy.Service {
 	t.Helper()
-	return newTestServiceWithUpstreams(ctx, t, map[string]config.UpstreamConfig{
-		"golang": {
-			Type:     "go",
+	return newTestServiceWithUpstreams(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"default": {
 			Registry: upstreamURL,
 		},
 	})
 }
 
-func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams map[string]config.UpstreamConfig) *goproxy.Service {
+func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) *goproxy.Service {
 	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
@@ -227,7 +226,7 @@ func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams ma
 	requireNoError(t, "open objects", err)
 	return goproxy.NewService(goproxy.ServiceDependencies{
 		Config: config.Config{
-			Upstreams: upstreams,
+			Go: upstreams,
 		},
 		Metadata: db,
 		Objects:  objects,

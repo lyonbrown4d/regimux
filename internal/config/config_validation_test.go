@@ -98,8 +98,21 @@ func invalidBlobProbeCases() []invalidConfigCase {
 
 func mutateHub(mutator func(*config.UpstreamConfig)) func(*config.Config) {
 	return func(cfg *config.Config) {
-		upstreamCfg := cfg.Upstreams["hub"]
+		upstreamCfg, ok := cfg.ContainerUpstream("hub")
+		if !ok {
+			return
+		}
 		mutator(&upstreamCfg)
-		cfg.Upstreams["hub"] = upstreamCfg
+		cfg.Container["hub"] = config.ContainerRegistryConfig{
+			Registry:         upstreamCfg.Registry,
+			Mirrors:          upstreamCfg.Mirrors,
+			MirrorPolicy:     upstreamCfg.MirrorPolicy,
+			DefaultNamespace: upstreamCfg.DefaultNamespace,
+			TagTTL:           upstreamCfg.TagTTL,
+			Blob:             upstreamCfg.Blob,
+			Probe:            upstreamCfg.Probe,
+			Auth:             upstreamCfg.Auth,
+			HTTP:             upstreamCfg.HTTP,
+		}
 	}
 }

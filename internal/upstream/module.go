@@ -28,7 +28,7 @@ var Module = dix.NewModule("upstream",
 )
 
 func newEndpointClients(cfg config.Config, logger *slog.Logger) *EndpointClients {
-	return newEndpointClientsFromConfigs(ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), logger)
+	return newEndpointClientsFromConfigs(ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), logger)
 }
 
 func newClientDependencies(
@@ -40,7 +40,7 @@ func newClientDependencies(
 	endpointClients *EndpointClients,
 ) ClientDependencies {
 	return ClientDependencies{
-		Configs:         ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()),
+		Configs:         ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()),
 		Logger:          logger,
 		Pools:           pools,
 		Bus:             bus,

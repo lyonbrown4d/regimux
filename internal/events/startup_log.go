@@ -23,14 +23,14 @@ type startupEndpoint struct {
 }
 
 func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, version build.Version) error {
-	ordered := cfg.OrderedUpstreams()
+	ordered := cfg.OrderedContainerUpstreams()
 	logger = startupLogger(logger)
 	logger.Info("regimuxd starting",
 		"version", string(version),
 		"listen", cfg.Server.Listen,
 		"public_url", serviceBaseURL(cfg.Server),
-		"upstream_count", ordered.Len(),
-		"upstreams", ordered.Keys(),
+		"container_upstream_count", ordered.Len(),
+		"container_upstreams", ordered.Keys(),
 	)
 	return nil
 }
@@ -46,7 +46,7 @@ func logRuntimeAccess(_ context.Context, cfg config.Config, logger *slog.Logger)
 }
 
 func logRegisteredUpstreams(logger *slog.Logger, cfg config.Config) {
-	cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+	cfg.OrderedContainerUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		endpoints := upstreamEndpointRegistries(upstreamCfg)
 		logger.Info("registry upstream registered",
 			"alias", alias,

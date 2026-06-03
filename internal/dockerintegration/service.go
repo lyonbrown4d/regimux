@@ -50,13 +50,14 @@ func NewService(
 	if logger == nil {
 		logger = slog.Default()
 	}
+	upstreamCfg, _ := cfg.ContainerUpstream(cfg.Docker.Prewarm.Alias)
 	return &Service{
 		cfg:              cfg,
 		logger:           logger,
 		bus:              bus,
 		metrics:          metrics,
 		connector:        dockerConnector{},
-		defaultNamespace: cfg.Upstreams[cfg.Docker.Prewarm.Alias].DefaultNamespace,
+		defaultNamespace: upstreamCfg.DefaultNamespace,
 	}
 }
 

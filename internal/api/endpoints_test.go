@@ -27,7 +27,7 @@ func TestRegistryEndpointAppliesDefaultNamespace(t *testing.T) {
 		nil,
 		nil,
 		config.Config{
-			Upstreams: map[string]config.UpstreamConfig{
+			Container: config.ContainerConfig{
 				"hub": {DefaultNamespace: "library"},
 			},
 		},

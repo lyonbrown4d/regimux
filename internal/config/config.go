@@ -152,23 +152,3 @@ func (c *Config) normalizeCache() {
 		c.Cache.Blob.SmallCache.TTL = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.TTL, defaultSmallBlobCacheTTL)
 	}
 }
-
-func (c *Config) normalizeUpstreams() error {
-	if len(c.Upstreams) == 0 {
-		return oops.In("config").Errorf("at least one upstream is required")
-	}
-	var normalizeErr error
-	c.UpstreamAliases().Range(func(_ int, alias string) bool {
-		upstreamCfg, err := normalizeUpstreamConfig(alias, c.Upstreams[alias])
-		if err != nil {
-			normalizeErr = err
-			return false
-		}
-		c.Upstreams[alias] = upstreamCfg
-		return true
-	})
-	if normalizeErr != nil {
-		return normalizeErr
-	}
-	return nil
-}

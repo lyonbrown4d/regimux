@@ -235,9 +235,8 @@ docker {
   }
 }
 
-upstreams {
+container {
   hub {
-    type = "oci"
     registry = "https://registry-1.docker.io"
     mirrors = [
       "https://mirror.example.com",
@@ -286,7 +285,6 @@ upstreams {
   }
 
   ghcr {
-    type = "oci"
     registry = "https://ghcr.io"
     tag_ttl = "5m"
 
@@ -311,7 +309,6 @@ upstreams {
   }
 
   quay {
-    type = "oci"
     registry = "https://quay.io"
     tag_ttl = "5m"
 
@@ -336,7 +333,6 @@ upstreams {
   }
 
   k8s {
-    type = "oci"
     registry = "https://registry.k8s.io"
     tag_ttl = "30m"
 
@@ -359,9 +355,10 @@ upstreams {
       }
     }
   }
+}
 
-  golang {
-    type = "go"
+go {
+  default {
     registry = "https://proxy.golang.org"
     mirrors = []
 
@@ -378,6 +375,35 @@ upstreams {
         wait_min = "100ms"
         wait_max = "1s"
       }
+    }
+  }
+}
+
+npm {
+  default {
+    registry = "https://registry.npmjs.org"
+    tag_ttl = "5m"
+    auth {
+      type = "anonymous"
+    }
+  }
+}
+
+pypi {
+  default {
+    registry = "https://pypi.org"
+    auth {
+      type = "anonymous"
+    }
+  }
+}
+
+maven {
+  central {
+    registry = "https://repo.maven.apache.org/maven2"
+    tag_ttl = "5m"
+    auth {
+      type = "anonymous"
     }
   }
 }

@@ -13,11 +13,33 @@ import (
 
 func TestLoadHCLFile(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "regimux.hcl")
-	if err := os.WriteFile(path, []byte(`
+	if err := os.WriteFile(path, []byte(testHCLConfig()), 0o600); err != nil {
+		t.Fatalf("write hcl config: %v", err)
+	}
+
+	cfg, err := config.Load(context.Background(), path)
+	if err != nil {
+		t.Fatalf("load hcl config: %v", err)
+	}
+	assertLoadedHCLConfig(t, cfg)
+}
+
+func testHCLConfig() string {
+	return testHCLServer +
+		testHCLAuth +
+		testHCLCache +
+		testHCLContainer +
+		testHCLDependencyEcosystems +
+		testHCLWorker
+}
+
+const testHCLServer = `
 server {
   listen = "127.0.0.1:5555"
 }
+`
 
+const testHCLAuth = `
 auth {
   enabled = true
   service = "regimux"
@@ -33,7 +55,9 @@ auth {
     }
   }
 }
+`
 
+const testHCLCache = `
 cache {
   blob {
     small_cache {
@@ -43,8 +67,10 @@ cache {
     }
   }
 }
+`
 
-upstreams {
+const testHCLContainer = `
+container {
   local {
     registry = "https://example.com"
     mirrors = ["https://mirror-a.example.com", "https://mirror-b.example.com"]
@@ -72,21 +98,40 @@ upstreams {
     }
   }
 }
+`
 
+const testHCLDependencyEcosystems = `
+go {
+  default {
+    registry = "https://proxy.golang.org"
+  }
+}
+
+npm {
+  default {
+    registry = "https://registry.npmjs.org"
+  }
+}
+
+pypi {
+  default {
+    registry = "https://pypi.org"
+  }
+}
+
+maven {
+  central {
+    registry = "https://repo.maven.apache.org/maven2"
+  }
+}
+`
+
+const testHCLWorker = `
 worker {
   probe_concurrency = 5
   prefetch_concurrency = 7
 }
-`), 0o600); err != nil {
-		t.Fatalf("write hcl config: %v", err)
-	}
-
-	cfg, err := config.Load(context.Background(), path)
-	if err != nil {
-		t.Fatalf("load hcl config: %v", err)
-	}
-	assertLoadedHCLConfig(t, cfg)
-}
+`
 
 func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 	t.Helper()
@@ -96,7 +141,12 @@ func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 	}
 	assertLoadedHCLAuth(t, cfg.Auth)
 	assertLoadedHCLCache(t, cfg.Cache)
-	assertLoadedHCLUpstream(t, cfg.Upstreams["local"])
+	local, ok := cfg.ContainerUpstream("local")
+	if !ok {
+		t.Fatal("missing local container upstream")
+	}
+	assertLoadedHCLUpstream(t, local)
+	assertLoadedHCLEcosystemConfig(t, cfg)
 	assertLoadedHCLWorker(t, cfg.Worker)
 }
 
@@ -141,6 +191,54 @@ func assertLoadedHCLUpstream(t *testing.T, upstreamCfg config.UpstreamConfig) {
 	assertLoadedHCLProbe(t, upstreamCfg.Probe)
 	if !upstreamCfg.HTTP.HTTP2.Enabled {
 		t.Fatalf("unexpected upstream http2 config: %#v", upstreamCfg.HTTP.HTTP2)
+	}
+}
+
+func assertLoadedHCLEcosystemConfig(t *testing.T, cfg config.Config) {
+	t.Helper()
+
+	if cfg.Container["local"].Registry != "https://example.com" {
+		t.Fatalf("unexpected container ecosystem config: %#v", cfg.Container["local"])
+	}
+	assertLoadedHCLGoConfig(t, cfg)
+	assertLoadedHCLNPMConfig(t, cfg)
+	assertLoadedHCLPyPIConfig(t, cfg)
+	assertLoadedHCLMavenConfig(t, cfg)
+}
+
+func assertLoadedHCLGoConfig(t *testing.T, cfg config.Config) {
+	t.Helper()
+
+	goUpstream, ok := cfg.GoUpstream("default")
+	if !ok || goUpstream.Type != "go" || cfg.Go["default"].Registry != "https://proxy.golang.org" {
+		t.Fatalf("unexpected go ecosystem config: %#v / %#v", cfg.Go, goUpstream)
+	}
+}
+
+func assertLoadedHCLNPMConfig(t *testing.T, cfg config.Config) {
+	t.Helper()
+
+	npmUpstream, ok := cfg.NPMUpstream("default")
+	if !ok || npmUpstream.Type != "npm" || cfg.NPM["default"].Registry != "https://registry.npmjs.org" {
+		t.Fatalf("unexpected npm ecosystem config: %#v / %#v", cfg.NPM, npmUpstream)
+	}
+}
+
+func assertLoadedHCLPyPIConfig(t *testing.T, cfg config.Config) {
+	t.Helper()
+
+	pypiUpstream, ok := cfg.PyPIUpstream("default")
+	if !ok || pypiUpstream.Type != "pypi" || cfg.PyPI["default"].Registry != "https://pypi.org" {
+		t.Fatalf("unexpected pypi ecosystem config: %#v / %#v", cfg.PyPI, pypiUpstream)
+	}
+}
+
+func assertLoadedHCLMavenConfig(t *testing.T, cfg config.Config) {
+	t.Helper()
+
+	mavenUpstream, ok := cfg.MavenUpstream("central")
+	if !ok || mavenUpstream.Type != "maven" || cfg.Maven["central"].Registry != "https://repo.maven.apache.org/maven2" {
+		t.Fatalf("unexpected maven ecosystem config: %#v / %#v", cfg.Maven, mavenUpstream)
 	}
 }
 

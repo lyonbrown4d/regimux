@@ -61,19 +61,87 @@ func (c *Config) normalizeObjectStore() {
 	}
 }
 
-func (c Config) OrderedUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
-	aliases := c.UpstreamAliases()
+func (c Config) OrderedContainerUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	aliases := c.ContainerAliases()
 	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](aliases.Len())
 	aliases.Range(func(_ int, alias string) bool {
-		out.Set(alias, c.Upstreams[alias])
+		if upstreamCfg, ok := c.ContainerUpstream(alias); ok {
+			out.Set(alias, upstreamCfg)
+		}
 		return true
 	})
 	return out
 }
 
-func (c Config) UpstreamAliases() *collectionlist.List[string] {
-	return collectionlist.NewList(collectionmapping.NewMapFrom(c.Upstreams).Keys()...).
+func (c Config) ContainerAliases() *collectionlist.List[string] {
+	return collectionlist.NewList(collectionmapping.NewMapFrom(c.Container).Keys()...).
 		Sort(strings.Compare)
+}
+
+func (c Config) ContainerUpstream(alias string) (UpstreamConfig, bool) {
+	cfg, ok := c.Container[strings.TrimSpace(alias)]
+	if !ok {
+		return UpstreamConfig{}, false
+	}
+	upstreamCfg := cfg.toUpstreamConfig()
+	upstreamCfg.Alias = alias
+	return upstreamCfg, true
+}
+
+func (c Config) OrderedGoUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	return orderedDependencyUpstreams(c.Go, ecosystemGo)
+}
+
+func (c Config) GoUpstream(alias string) (UpstreamConfig, bool) {
+	return dependencyUpstream(c.Go, ecosystemGo, alias)
+}
+
+func (c Config) OrderedNPMUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	return orderedDependencyUpstreams(c.NPM, ecosystemNPM)
+}
+
+func (c Config) NPMUpstream(alias string) (UpstreamConfig, bool) {
+	return dependencyUpstream(c.NPM, ecosystemNPM, alias)
+}
+
+func (c Config) OrderedPyPIUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	return orderedDependencyUpstreams(c.PyPI, ecosystemPyPI)
+}
+
+func (c Config) PyPIUpstream(alias string) (UpstreamConfig, bool) {
+	return dependencyUpstream(c.PyPI, ecosystemPyPI, alias)
+}
+
+func (c Config) OrderedMavenUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	return orderedDependencyUpstreams(c.Maven, ecosystemMaven)
+}
+
+func (c Config) MavenUpstream(alias string) (UpstreamConfig, bool) {
+	return dependencyUpstream(c.Maven, ecosystemMaven, alias)
+}
+
+func orderedDependencyUpstreams(values DependencyEcosystemConfig, ecosystem string) *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	aliases := collectionlist.NewList(collectionmapping.NewMapFrom(values).Keys()...).
+		Sort(strings.Compare)
+	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](aliases.Len())
+	aliases.Range(func(_ int, alias string) bool {
+		if upstreamCfg, ok := dependencyUpstream(values, ecosystem, alias); ok {
+			out.Set(alias, upstreamCfg)
+		}
+		return true
+	})
+	return out
+}
+
+func dependencyUpstream(values DependencyEcosystemConfig, ecosystem, alias string) (UpstreamConfig, bool) {
+	alias = strings.TrimSpace(alias)
+	cfg, ok := values[alias]
+	if !ok {
+		return UpstreamConfig{}, false
+	}
+	upstreamCfg := cfg.toUpstreamConfig(ecosystem)
+	upstreamCfg.Alias = alias
+	return upstreamCfg, true
 }
 
 func validateURL(name, value string) error {

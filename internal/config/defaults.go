@@ -12,7 +12,11 @@ func defaultConfig() Config {
 		Scheduler: defaultSchedulerConfig(),
 		Worker:    defaultWorkerConfig(),
 		Docker:    defaultDockerConfig(),
-		Upstreams: defaultUpstreamsConfig(),
+		Container: defaultContainerConfig(),
+		Go:        defaultGoConfig(),
+		NPM:       defaultNPMConfig(),
+		PyPI:      defaultPyPIConfig(),
+		Maven:     defaultMavenConfig(),
 	}
 }
 
@@ -152,59 +156,10 @@ func defaultDockerConfig() DockerConfig {
 	}
 }
 
-func defaultUpstreamsConfig() map[string]UpstreamConfig {
-	return map[string]UpstreamConfig{
-		"hub":    defaultHubUpstreamConfig(),
-		"golang": defaultGoUpstreamConfig(),
-	}
-}
-
-func defaultHubUpstreamConfig() UpstreamConfig {
-	return UpstreamConfig{
-		Type:             "oci",
-		Registry:         "https://registry-1.docker.io",
-		MirrorPolicy:     "ordered",
-		DefaultNamespace: "library",
-		TagTTL:           10 * time.Minute,
-		Blob: UpstreamBlobConfig{
-			MirrorPolicy:          "ordered",
-			TopN:                  3,
-			MaxConcurrentAttempts: 1,
-		},
-		Probe: UpstreamProbeConfig{
-			Interval: 30 * time.Second,
-			Timeout:  3 * time.Second,
-			Cooldown: 2 * time.Minute,
-			Jitter:   5 * time.Second,
-		},
-		Auth: AuthConfig{Type: "anonymous"},
-		HTTP: HTTPConfig{
-			Retry: HTTPRetryConfig{
-				Enabled:    true,
-				MaxRetries: 2,
-				WaitMin:    100 * time.Millisecond,
-				WaitMax:    time.Second,
-			},
-		},
-	}
-}
-
-func defaultGoUpstreamConfig() UpstreamConfig {
-	return UpstreamConfig{
-		Type:     "go",
-		Registry: "https://proxy.golang.org",
-		Auth:     AuthConfig{Type: "anonymous"},
-		HTTP: HTTPConfig{
-			Retry: HTTPRetryConfig{
-				Enabled:    true,
-				MaxRetries: 2,
-				WaitMin:    100 * time.Millisecond,
-				WaitMax:    time.Second,
-			},
-		},
-	}
-}
-
 func DefaultConfig() Config {
-	return defaultConfig()
+	cfg := defaultConfig()
+	if err := cfg.normalizeUpstreams(); err != nil {
+		panic(err)
+	}
+	return cfg
 }

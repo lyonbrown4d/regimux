@@ -5,8 +5,8 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
 )
 
 func (r *Runtime) observeJob(ctx context.Context, job, alias string, startedAt time.Time, err error) {
@@ -38,7 +38,7 @@ func (r *Runtime) observeCleanupReport(ctx context.Context, report *cache.Cleanu
 	})
 }
 
-func (r *Runtime) observePrefetchReport(ctx context.Context, report *prefetch.RunReport) {
+func (r *Runtime) observePrefetchReport(ctx context.Context, report *ecosystem.PrefetchReport) {
 	if r == nil || r.metrics == nil || report == nil {
 		return
 	}
@@ -57,9 +57,18 @@ func (r *Runtime) observePrefetchReport(ctx context.Context, report *prefetch.Ru
 	})
 }
 
-func (r *Runtime) observeUpstreamSnapshot(ctx context.Context) {
-	if r == nil || r.metrics == nil || r.upstream == nil {
+type endpointHealthObserver interface {
+	ObserveEndpointHealth(context.Context, *observability.Metrics)
+}
+
+func (r *Runtime) observeEndpointHealth(ctx context.Context) {
+	if r == nil || r.metrics == nil {
 		return
 	}
-	r.metrics.ObserveUpstreamSnapshot(ctx, r.upstream.Snapshot(time.Now()))
+	for _, runtime := range r.runtimes {
+		observer, ok := runtime.(endpointHealthObserver)
+		if ok {
+			observer.ObserveEndpointHealth(ctx, r.metrics)
+		}
+	}
 }

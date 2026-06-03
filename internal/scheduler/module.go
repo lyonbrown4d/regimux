@@ -6,9 +6,11 @@ import (
 	"log/slog"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -26,11 +28,11 @@ type PrefetchServiceDependencies struct {
 }
 
 type RuntimeDependencies struct {
+	// runtime dependencies are assembled by dix.
 	Config   config.Config
 	Logger   *slog.Logger
 	Cleanup  *cache.CleanupService
-	Prefetch *prefetch.Service
-	Upstream *upstream.Client
+	Runtimes *collectionlist.List[ecosystem.Runtime]
 	Metrics  *observability.Metrics
 }
 
@@ -39,7 +41,11 @@ var Module = dix.NewModule("scheduler",
 		dix.Provider6[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
 			newPrefetchServiceDependencies,
 		),
-		dix.Provider6[RuntimeDependencies, config.Config, *slog.Logger, *cache.CleanupService, *prefetch.Service, *upstream.Client, *observability.Metrics](
+		dix.Provider3[*ContainerRuntime, config.Config, *upstream.Client, *prefetch.Service](
+			NewContainerRuntime,
+			dix.Into[ecosystem.Runtime](dix.Key("container"), dix.Order(0)),
+		),
+		dix.Provider5[RuntimeDependencies, config.Config, *slog.Logger, *cache.CleanupService, *collectionlist.List[ecosystem.Runtime], *observability.Metrics](
 			newRuntimeDependencies,
 		),
 		dix.Provider1[*prefetch.Service, PrefetchServiceDependencies](NewPrefetchService),
@@ -84,16 +90,14 @@ func newRuntimeDependencies(
 	cfg config.Config,
 	logger *slog.Logger,
 	cleanup *cache.CleanupService,
-	prefetchService *prefetch.Service,
-	upstreamClient *upstream.Client,
+	runtimes *collectionlist.List[ecosystem.Runtime],
 	metrics *observability.Metrics,
 ) RuntimeDependencies {
 	return RuntimeDependencies{
 		Config:   cfg,
 		Logger:   logger,
 		Cleanup:  cleanup,
-		Prefetch: prefetchService,
-		Upstream: upstreamClient,
+		Runtimes: runtimes,
 		Metrics:  metrics,
 	}
 }

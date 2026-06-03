@@ -2,40 +2,39 @@
 
 ## Positioning
 
-RegiMux is a read-only developer dependency cache gateway. The stable capabilities today are an OCI / Docker Registry V2 proxy mirror and a Go module proxy read-through cache. Maven, PyPI, and npm adapters are planned next.
+RegiMux is a read-only developer dependency cache gateway. The stable handlers today are an OCI / Docker Registry V2 proxy mirror and a Go module proxy read-through cache. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, and `maven` blocks.
 
-The OCI side exposes a Registry-compatible pull API while routing requests to configured upstream registries by alias. The Go side exposes the Go module proxy protocol at the root path and routes requests to upstreams configured with `type = "go"`. The compatibility path `/go/{alias}/...` can still target one Go upstream explicitly.
+The OCI side exposes a Registry-compatible pull API while routing requests to configured container registries by container alias. The Go side exposes the Go module proxy protocol under `/go/{goAlias}/...` and routes requests to upstreams configured under the `go` block.
 
 RegiMux is not a push registry. Upload, manifest write, and delete APIs are intentionally out of scope.
 
 ## OCI Request Model
 
-Image names use the first repository path segment as the upstream alias:
+Image names use the first repository path segment as the container alias:
 
 ```text
-localhost:5000/hub/library/alpine:latest
-localhost:5000/ghcr/org/app:v1.2.3
+localhost:5000/{containerAlias}/library/alpine:latest
+localhost:5000/{containerAlias}/org/app:v1.2.3
 ```
 
 Registry API examples:
 
 ```text
-GET /v2/hub/library/alpine/manifests/latest
-GET /v2/hub/library/alpine/blobs/sha256:...
-GET /v2/hub/library/alpine/tags/list
-GET /v2/hub/library/alpine/referrers/sha256:...
+GET /v2/{containerAlias}/library/alpine/manifests/latest
+GET /v2/{containerAlias}/library/alpine/blobs/sha256:...
+GET /v2/{containerAlias}/library/alpine/tags/list
+GET /v2/{containerAlias}/library/alpine/referrers/sha256:...
 ```
 
-The alias is resolved from configuration. The rest of the path is passed to the selected upstream registry.
+The container alias is resolved from the `container` block. The rest of the path is passed to the selected upstream registry.
 
 ## Go Module Proxy Request Model
 
-Go upstreams use `type = "go"`:
+Go upstreams are configured under the `go` ecosystem block:
 
 ```hcl
-upstreams {
-  golang {
-    type = "go"
+go {
+  default {
     registry = "https://proxy.golang.org"
   }
 }
@@ -44,22 +43,43 @@ upstreams {
 Clients use:
 
 ```bash
-GOPROXY=http://localhost:5000,direct
+GOPROXY=http://localhost:5000/go/{goAlias},direct
 ```
 
 Go proxy API examples:
 
 ```text
-GET /github.com/pkg/errors/@v/list
-GET /github.com/pkg/errors/@v/v0.9.1.info
-GET /github.com/pkg/errors/@v/v0.9.1.mod
-GET /github.com/pkg/errors/@v/v0.9.1.zip
-GET /github.com/pkg/errors/@latest
+GET /go/{goAlias}/github.com/pkg/errors/@v/list
+GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.info
+GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.mod
+GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.zip
+GET /go/{goAlias}/github.com/pkg/errors/@latest
 ```
 
-Root Go proxy requests try all configured Go upstreams in stable alias order, preferring the `golang` alias when present and falling back to later Go upstreams when a module is not available.
+The Go alias is resolved only within the `go` block. It does not share a namespace with container, npm, PyPI, or Maven aliases.
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in object storage by content sha256, with metadata mapping module/reference to digest. The current implementation does not proxy `sum.golang.org` and does not perform VCS direct fetching.
+
+## Other Ecosystem Prefixes
+
+npm, PyPI, and Maven use independent alias namespaces under their own path prefixes:
+
+```text
+GET /npm/{npmAlias}/...
+GET /pypi/{pypiAlias}/...
+GET /maven/{mavenAlias}/...
+```
+
+## Ecosystem Runtime Abstraction
+
+Registry, mirror, probe, and prefetch behavior is exposed through ecosystem runtimes instead of being hard-coded into the scheduler. Each runtime owns the protocol details for one ecosystem and advertises the capabilities it supports.
+
+The scheduler consumes the runtime set from `dix` and registers background work from capabilities:
+
+- `probe`: discover endpoint health and latency for aliases that configure mirror probing.
+- `prefetch`: warm likely future artifacts through the same cache path used by client requests.
+
+Current capability coverage is intentionally uneven. The container runtime supports `probe` and `prefetch` first because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven use the same runtime registration boundary for fetch/cache behavior and can add scheduler capabilities without changing scheduler wiring.
 
 ## Main Components
 
@@ -71,17 +91,18 @@ Fiber HTTP server
   |
   +-- Registry API handlers
   +-- Go proxy API handlers
+  +-- npm / PyPI / Maven proxy handlers
   +-- Auth middleware
   +-- Admin UI
   |
   v
-Cache services
+Ecosystem runtimes
   |
-  +-- OCI manifest cache
-  +-- OCI blob cache
-  +-- OCI tags cache
-  +-- OCI referrers cache
-  +-- Go module proxy cache
+  +-- container runtime: Registry V2, mirrors, probe, prefetch
+  +-- Go runtime: module proxy cache
+  +-- npm runtime: registry cache
+  +-- PyPI runtime: simple index and file cache
+  +-- Maven runtime: repository layout cache
   |
   v
 Storage
@@ -93,8 +114,8 @@ Storage
 Background services run through the scheduler and worker pool:
 
 - cache cleanup and capacity control
-- upstream mirror probing
-- predictive prefetch
+- capability-based mirror probing
+- capability-based predictive prefetch
 - distributed locks when Redis or Valkey is configured
 
 ## Metadata Model
@@ -138,7 +159,7 @@ Tags and referrers are cached with TTLs and upstream revalidation.
 
 ## Mirror Scheduling
 
-One upstream alias may have multiple mirrors. Blob fetches can use latency-aware selection:
+One container alias may have multiple mirrors. The container runtime advertises the `probe` capability when probing is enabled for an alias. Blob fetches can use latency-aware selection:
 
 - probes update endpoint latency and health
 - successful endpoints are preferred
@@ -149,7 +170,7 @@ Client-side layer concurrency already exists in Docker/containerd, so RegiMux fo
 
 ## Prefetch
 
-Prefetch predicts likely next tags based on pull history, then warms manifests and blobs through the normal cache path. Runs and outcomes are stored in metadata and shown in Admin UI.
+Prefetch predicts likely next tags based on pull history, then warms manifests and blobs through the normal cache path. The scheduler invokes this through the runtime `prefetch` capability, so additional ecosystems can provide their own prediction and warming logic behind the same job shape. Runs and outcomes are stored in metadata and shown in Admin UI.
 
 Prefetch supports:
 
@@ -165,8 +186,8 @@ Prefetch supports:
 When enabled, RegiMux supports Docker Registry authentication flow and `docker login`. Users are configured locally. Each user can be scoped to repository patterns such as:
 
 ```text
-hub/*
-ghcr/my-org/*
+{containerAlias}/*
+{containerAlias}/my-org/*
 ```
 
 Admin UI reuses the same configured users and is protected with HTTP Basic when auth is enabled.
@@ -177,7 +198,8 @@ The application is assembled with `dix`.
 
 Important lifecycle decisions:
 
-- logger, config, auth, cache, upstream, scheduler, worker, admin, and store are separate modules
+- logger, config, auth, ecosystem runtimes, cache, upstream, scheduler, worker, admin, and store are separate modules
+- ecosystem runtime implementations are registered with `dix`; the scheduler consumes the registered runtime set rather than importing per-ecosystem handlers
 - metadata mapper is a DI singleton
 - `*dbx.DB` is managed by DI lifecycle and closed on stop
 - SQL repositories are composed into a `meta.Store` facade while narrower repository interfaces are exposed for future consumers

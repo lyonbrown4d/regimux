@@ -37,9 +37,8 @@ UI 会自动跟随浏览器或操作系统的 light/dark 偏好。
 手动同步会通过配置的缓存路径预热镜像：
 
 ```text
-hub/library/node:20
-hub/gitlab/gitlab-ce:latest
+{containerAlias}/library/node:20
+{containerAlias}/gitlab/gitlab-ce:latest
 ```
 
 它会拉取 manifest 和关联 blob，并将结果记录到元数据中。
-

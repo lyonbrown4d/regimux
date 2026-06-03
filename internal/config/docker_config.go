@@ -40,7 +40,7 @@ func (c Config) validateDockerPrewarmAlias() error {
 	if !c.Docker.Enabled || !c.Docker.Prewarm.Enabled {
 		return nil
 	}
-	if _, ok := c.Upstreams[c.Docker.Prewarm.Alias]; !ok {
+	if _, ok := c.ContainerUpstream(c.Docker.Prewarm.Alias); !ok {
 		return oops.In("config").
 			With("alias", c.Docker.Prewarm.Alias).
 			Errorf("docker.prewarm.alias must reference a configured upstream")

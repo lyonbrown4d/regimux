@@ -37,9 +37,8 @@ Current views:
 Manual sync warms an image through the configured cache path:
 
 ```text
-hub/library/node:20
-hub/gitlab/gitlab-ce:latest
+{containerAlias}/library/node:20
+{containerAlias}/gitlab/gitlab-ce:latest
 ```
 
 It fetches the manifest and referenced blobs, then records outcomes in metadata.
-

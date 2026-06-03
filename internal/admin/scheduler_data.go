@@ -45,8 +45,9 @@ func (s *Service) schedulerSummary(ctx context.Context) (SchedulerSummary, error
 }
 
 func probeJobRows(cfg config.Config) *collectionlist.List[ProbeJobRow] {
-	rows := collectionlist.NewListWithCapacity[ProbeJobRow](len(cfg.Upstreams))
-	cfg.OrderedUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+	ordered := cfg.OrderedContainerUpstreams()
+	rows := collectionlist.NewListWithCapacity[ProbeJobRow](ordered.Len())
+	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		rows.Add(ProbeJobRow{
 			Alias:    alias,
 			Enabled:  upstreamCfg.Probe.Enabled,

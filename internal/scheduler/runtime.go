@@ -5,13 +5,13 @@ import (
 	"log/slog"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	redislock "github.com/go-co-op/gocron-redis-lock/v2"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
@@ -21,8 +21,7 @@ type Runtime struct {
 	cfg      config.Config
 	logger   *slog.Logger
 	cleanup  *cache.CleanupService
-	prefetch *prefetch.Service
-	upstream *upstream.Client
+	runtimes []ecosystem.Runtime
 	metrics  *observability.Metrics
 
 	scheduler gocron.Scheduler
@@ -33,18 +32,19 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 	cfg := deps.Config
 	logger := deps.Logger
 	cleanup := deps.Cleanup
-	prefetchService := deps.Prefetch
-	upstreamClient := deps.Upstream
 	metrics := deps.Metrics
 	if logger == nil {
 		logger = slog.Default()
+	}
+	var runtimes []ecosystem.Runtime
+	if deps.Runtimes != nil {
+		runtimes = deps.Runtimes.Values()
 	}
 	return &Runtime{
 		cfg:      cfg,
 		logger:   logger.With("component", "scheduler"),
 		cleanup:  cleanup,
-		prefetch: prefetchService,
-		upstream: upstreamClient,
+		runtimes: runtimes,
 		metrics:  metrics,
 	}
 }
@@ -61,6 +61,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 		"cleanup_enabled", r.cfg.Scheduler.Cleanup.Enabled,
 		"prefetch_enabled", r.cfg.Scheduler.Prefetch.Enabled,
 		"distributed_lock", r.cfg.Scheduler.DistributedLock,
+		"ecosystems", runtimeNames(r.runtimes).Values(),
 	)
 	options, err := r.schedulerOptions(ctx)
 	if err != nil {
@@ -90,6 +91,17 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 	r.logger.Info("scheduler started", "jobs", len(scheduler.Jobs()))
 	return nil
+}
+
+func runtimeNames(runtimes []ecosystem.Runtime) *collectionlist.List[string] {
+	names := make([]string, 0, len(runtimes))
+	collectionlist.NewList(runtimes...).Range(func(_ int, runtime ecosystem.Runtime) bool {
+		if runtime != nil {
+			names = append(names, runtime.Name())
+		}
+		return true
+	})
+	return collectionlist.NewList(names...)
 }
 
 func (r *Runtime) Stop(ctx context.Context) error {

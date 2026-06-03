@@ -17,15 +17,33 @@ server {
   listen = ":5000"
 }
 
-upstreams {
+container {
   hub {
-    type = "oci"
     registry = "https://registry-1.docker.io"
   }
+}
 
-  golang {
-    type = "go"
+go {
+  default {
     registry = "https://proxy.golang.org"
+  }
+}
+
+npm {
+  default {
+    registry = "https://registry.npmjs.org"
+  }
+}
+
+pypi {
+  default {
+    registry = "https://pypi.org"
+  }
+}
+
+maven {
+  central {
+    registry = "https://repo.maven.apache.org/maven2"
   }
 }
 ```
@@ -62,25 +80,32 @@ Important defaults:
 - `docker.observe = true`
 - `docker.prewarm.alias = "hub"`
 - `docker.prewarm.timeout = "10m"`
-- `upstreams.hub.type = "oci"`
-- `upstreams.hub.registry = "https://registry-1.docker.io"`
-- `upstreams.golang.type = "go"`
-- `upstreams.golang.registry = "https://proxy.golang.org"`
-- `upstreams.hub.http.http2.enabled = false`
+- `container.hub.registry = "https://registry-1.docker.io"`
+- `container.ghcr.registry = "https://ghcr.io"`
+- `container.quay.registry = "https://quay.io"`
+- `container.hub.http.http2.enabled = false`
+- `go.default.registry = "https://proxy.golang.org"`
+- `npm.default.registry = "https://registry.npmjs.org"`
+- `pypi.default.registry = "https://pypi.org"`
+- `maven.central.registry = "https://repo.maven.apache.org/maven2"`
 
-`upstreams.*.type` selects the upstream ecosystem:
+Top-level ecosystem blocks are the source configuration:
 
-- `oci`: OCI / Docker Registry V2 through `/v2/{alias}/...`.
-- `go`: Go module proxy through the root GOPROXY path, with `/go/{alias}/...` available for explicit upstream selection.
-- `maven`, `pypi`, and `npm`: reserved for the upcoming Maven, PyPI, and npm adapters.
+- `container`: OCI / Docker Registry V2 upstream registries. Each container alias is exposed through `/v2/{containerAlias}/...`.
+- `go`: Go module proxy upstreams. Each Go alias is exposed through `/go/{goAlias}/...`.
+- `npm`: npm registry upstreams, exposed through `/npm/{npmAlias}/...`.
+- `pypi`: PyPI upstreams, exposed through `/pypi/{pypiAlias}/...`.
+- `maven`: Maven repository layout upstreams, exposed through `/maven/{mavenAlias}/...`.
+
+These blocks are also the input to the ecosystem runtime layer. RegiMux normalizes them into typed runtime entries with an ecosystem kind, alias, registry, mirrors, auth, and HTTP policy. The scheduler then works from runtime capabilities such as `probe` and `prefetch` instead of reading a legacy `upstreams` block.
+
+Container runtimes currently expose scheduled `probe` and `prefetch` capabilities. Go, npm, PyPI, and Maven use the same source configuration and runtime registration boundary for read-through cache behavior; scheduled capabilities can be added per ecosystem without changing the HCL grouping.
 
 RegiMux disables HTTP/2 for upstream registry clients by default. This keeps mirror and CDN compatibility predictable and avoids process-level HTTP/2 runtime panics. Enable it per upstream only for trusted registries:
 
 ```hcl
-upstreams {
+container {
   hub {
-    type = "oci"
-
     http {
       http2 {
         enabled = true
@@ -142,10 +167,12 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
-REGIMUX_UPSTREAMS__GOLANG__TYPE=go
-REGIMUX_UPSTREAMS__GOLANG__REGISTRY=https://proxy.golang.org
-REGIMUX_UPSTREAMS__HUB__REGISTRY=https://registry-1.docker.io
-REGIMUX_UPSTREAMS__HUB__HTTP__HTTP2__ENABLED=true
+REGIMUX_CONTAINER__HUB__REGISTRY=https://registry-1.docker.io
+REGIMUX_CONTAINER__HUB__HTTP__HTTP2__ENABLED=true
+REGIMUX_GO__DEFAULT__REGISTRY=https://proxy.golang.org
+REGIMUX_NPM__DEFAULT__REGISTRY=https://registry.npmjs.org
+REGIMUX_PYPI__DEFAULT__REGISTRY=https://pypi.org
+REGIMUX_MAVEN__CENTRAL__REGISTRY=https://repo.maven.apache.org/maven2
 ```
 
 The loader also reads `.env` when present. Environment variables override `.env` and file values.
@@ -162,7 +189,7 @@ Use this for small operational overrides. Keep larger configuration in HCL or en
 
 ## Validation
 
-Config validation rejects invalid enum values, invalid URLs, negative durations/counts, invalid cleanup watermarks, unsupported store drivers, incomplete S3/SFTP credentials, and Docker prewarm configs pointing at an unknown upstream alias.
+Config validation rejects invalid enum values, invalid URLs, negative durations/counts, invalid cleanup watermarks, unsupported store drivers, incomplete S3/SFTP credentials, and Docker prewarm configs pointing at an unknown container alias.
 
 Supported metadata drivers:
 

@@ -69,7 +69,7 @@ func routeFromInput(input *registryInput) (reference.Route, error) {
 }
 
 func defaultNamespacesFromConfig(cfg config.Config) *collectionmapping.Map[string, string] {
-	upstreams := cfg.OrderedUpstreams()
+	upstreams := cfg.OrderedContainerUpstreams()
 	out := collectionmapping.NewMapWithCapacity[string, string](upstreams.Len())
 	upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
 		namespace := strings.Trim(strings.TrimSpace(upstreamCfg.DefaultNamespace), "/")

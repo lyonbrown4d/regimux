@@ -35,7 +35,7 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
-		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), nil, nil, nil),
+		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), nil, nil, nil),
 		Version:  build.Version("test-version"),
 		Messages: newAdminMessages(t),
 	})
@@ -129,7 +129,7 @@ func newAdminTestApp(t *testing.T, cfg config.Config, authService *auth.Service)
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
-		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedUpstreams()), nil, nil, nil),
+		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), nil, nil, nil),
 		Version:  build.Version("test-version"),
 		Auth:     authService,
 		Messages: newAdminMessages(t),

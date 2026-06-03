@@ -31,27 +31,58 @@ func TestLoadDefaultsDisableRegistryAuth(t *testing.T) {
 
 func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	cfg := loadDefaultConfig(t)
-	hub := cfg.Upstreams["hub"]
-	if hub.Type != "oci" {
-		t.Fatalf("unexpected hub upstream type: %q", hub.Type)
-	}
-	golang := cfg.Upstreams["golang"]
-	if golang.Type != "go" || golang.Registry != "https://proxy.golang.org" {
-		t.Fatalf("unexpected golang upstream defaults: %#v", golang)
-	}
+	hub := assertDefaultContainerUpstreams(t, cfg)
+	assertDefaultDependencyUpstreams(t, cfg)
 	assertDefaultUpstreamBlob(t, hub.Blob)
 	assertDefaultUpstreamProbe(t, hub.Probe)
 	assertDefaultWorker(t, cfg.Worker)
 	assertDefaultCleanup(t, cfg.Scheduler.Cleanup)
 	assertDefaultPrefetch(t, cfg.Scheduler.Prefetch)
-	if cfg.Cache.Blob.VerifyTTL != 0 {
-		t.Fatalf("unexpected blob verify ttl default: %s", cfg.Cache.Blob.VerifyTTL)
-	}
-	if !cfg.Cache.Blob.StreamAndCache {
-		t.Fatal("expected stream-and-cache to be enabled by default")
-	}
+	assertDefaultBlobCache(t, cfg.Cache.Blob)
 	if hub.HTTP.HTTP2.Enabled {
 		t.Fatalf("unexpected upstream http2 default: %#v", hub.HTTP.HTTP2)
+	}
+}
+
+func assertDefaultContainerUpstreams(t *testing.T, cfg config.Config) config.UpstreamConfig {
+	t.Helper()
+
+	hub, ok := cfg.ContainerUpstream("hub")
+	if !ok {
+		t.Fatal("missing hub container upstream")
+	}
+	if hub.Type != "oci" {
+		t.Fatalf("unexpected hub upstream type: %q", hub.Type)
+	}
+	if cfg.Container["hub"].Registry != "https://registry-1.docker.io" ||
+		cfg.Container["ghcr"].Registry != "https://ghcr.io" ||
+		cfg.Container["quay"].Registry != "https://quay.io" {
+		t.Fatalf("unexpected container defaults: %#v", cfg.Container)
+	}
+	return hub
+}
+
+func assertDefaultDependencyUpstreams(t *testing.T, cfg config.Config) {
+	t.Helper()
+
+	golang, ok := cfg.GoUpstream("default")
+	if !ok {
+		t.Fatal("missing default go upstream")
+	}
+	if golang.Type != "go" || golang.Registry != "https://proxy.golang.org" {
+		t.Fatalf("unexpected golang upstream defaults: %#v", golang)
+	}
+	if cfg.Go["default"].Registry != "https://proxy.golang.org" {
+		t.Fatalf("unexpected go defaults: %#v", cfg.Go)
+	}
+	if cfg.Maven["central"].Registry != "https://repo.maven.apache.org/maven2" {
+		t.Fatalf("unexpected maven defaults: %#v", cfg.Maven)
+	}
+	if cfg.PyPI["default"].Registry != "https://pypi.org" {
+		t.Fatalf("unexpected pypi defaults: %#v", cfg.PyPI)
+	}
+	if cfg.NPM["default"].Registry != "https://registry.npmjs.org" {
+		t.Fatalf("unexpected npm defaults: %#v", cfg.NPM)
 	}
 }
 
@@ -112,20 +143,35 @@ func assertDefaultPrefetch(t *testing.T, prefetch config.SchedulerPrefetchConfig
 	}
 }
 
+func assertDefaultBlobCache(t *testing.T, blob config.BlobCacheConfig) {
+	t.Helper()
+
+	if blob.VerifyTTL != 0 {
+		t.Fatalf("unexpected blob verify ttl default: %s", blob.VerifyTTL)
+	}
+	if !blob.StreamAndCache {
+		t.Fatal("expected stream-and-cache to be enabled by default")
+	}
+}
+
 func TestNormalizeUpstreamBlobDefaultsToMirrorPolicy(t *testing.T) {
 	cfg, err := config.Load(context.Background(), "")
 	if err != nil {
 		t.Fatalf("load defaults: %v", err)
 	}
-	local := cfg.Upstreams["hub"]
+	local := cfg.Container["hub"]
 	local.MirrorPolicy = "round_robin"
 	local.Blob = config.UpstreamBlobConfig{}
-	cfg.Upstreams = map[string]config.UpstreamConfig{"local": local}
+	cfg.Container = config.ContainerConfig{"local": local}
 
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		t.Fatalf("normalize upstream: %v", err)
 	}
-	if got := cfg.Upstreams["local"].Blob; got.MirrorPolicy != "round_robin" || got.TopN != 3 || got.MaxConcurrentAttempts != 1 {
+	localUpstream, ok := cfg.ContainerUpstream("local")
+	if !ok {
+		t.Fatal("missing local container upstream")
+	}
+	if got := localUpstream.Blob; got.MirrorPolicy != "round_robin" || got.TopN != 3 || got.MaxConcurrentAttempts != 1 {
 		t.Fatalf("unexpected blob defaults: %#v", got)
 	}
 }
@@ -135,15 +181,19 @@ func TestNormalizeLatencyBlobPolicyEnablesProbe(t *testing.T) {
 	if err != nil {
 		t.Fatalf("load defaults: %v", err)
 	}
-	local := cfg.Upstreams["hub"]
+	local := cfg.Container["hub"]
 	local.Blob.MirrorPolicy = "latency"
 	local.Probe.Enabled = false
-	cfg.Upstreams = map[string]config.UpstreamConfig{"local": local}
+	cfg.Container = config.ContainerConfig{"local": local}
 
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		t.Fatalf("normalize upstream: %v", err)
 	}
-	if got := cfg.Upstreams["local"].Probe; !got.Enabled {
+	localUpstream, ok := cfg.ContainerUpstream("local")
+	if !ok {
+		t.Fatal("missing local container upstream")
+	}
+	if got := localUpstream.Probe; !got.Enabled {
 		t.Fatalf("latency blob policy did not enable probe: %#v", got)
 	}
 }

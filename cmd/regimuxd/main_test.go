@@ -72,7 +72,7 @@ store {
   }
 }
 
-upstreams {
+container {
   hub {
     registry = "https://registry-1.docker.io"
     auth {
@@ -111,7 +111,7 @@ func validTestConfig(t *testing.T) config.Config {
 				Path:   t.TempDir(),
 			},
 		},
-		Upstreams: map[string]config.UpstreamConfig{
+		Container: config.ContainerConfig{
 			"hub": {
 				Registry: "https://registry-1.docker.io",
 				Auth: config.AuthConfig{

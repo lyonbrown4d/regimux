@@ -37,7 +37,7 @@ users {
 
 ```bash
 docker login localhost:5000
-docker pull localhost:5000/hub/library/alpine:latest
+docker pull localhost:5000/{containerAlias}/library/alpine:latest
 ```
 
 The Registry token flow uses the configured service, issuer, secret, and user repository scopes.
@@ -47,9 +47,9 @@ The Registry token flow uses the configured service, issuer, secret, and user re
 Repository patterns support exact matches and prefix wildcards:
 
 ```text
-hub/library/alpine
-hub/*
-ghcr/my-org/*
+{containerAlias}/library/alpine
+{containerAlias}/*
+{containerAlias}/my-org/*
 ```
 
 Admin UI reuses the configured users and is protected with HTTP Basic when auth is enabled.
@@ -59,7 +59,7 @@ Admin UI reuses the configured users and is protected with HTTP Basic when auth 
 Upstream registries can also be configured with anonymous, basic, bearer, or Docker Hub auth:
 
 ```hcl
-upstreams {
+container {
   hub {
     registry = "https://registry-1.docker.io"
 
@@ -71,4 +71,3 @@ upstreams {
   }
 }
 ```
-

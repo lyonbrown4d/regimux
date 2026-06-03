@@ -83,18 +83,18 @@ curl -i http://localhost:5000/v2/
 
 ## Pull Images
 
-RegiMux uses the first repository path segment as the upstream alias:
+RegiMux uses the first repository path segment as the container alias:
 
 ```text
-localhost:5000/hub/library/alpine:latest
-localhost:5000/ghcr/org/app:v1.2.3
-localhost:5000/quay/coreos/etcd:v3.5.0
+localhost:5000/{containerAlias}/library/alpine:latest
+localhost:5000/{containerAlias}/org/app:v1.2.3
+localhost:5000/{containerAlias}/coreos/etcd:v3.5.0
 ```
 
 Pull through Docker:
 
 ```bash
-docker pull localhost:5000/hub/library/alpine:latest
+docker pull localhost:5000/{containerAlias}/library/alpine:latest
 ```
 
 Fetch a manifest directly:
@@ -102,15 +102,15 @@ Fetch a manifest directly:
 ```bash
 curl -i \
   -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-  http://localhost:5000/v2/hub/library/alpine/manifests/latest
+  http://localhost:5000/v2/{containerAlias}/library/alpine/manifests/latest
 ```
 
 ## Go Module Proxy
 
-The default config includes a `golang` upstream pointing at `https://proxy.golang.org`. Go clients can use RegiMux as a Go module proxy:
+Each alias under the `go` block exposes a Go module proxy endpoint at `/go/{goAlias}`. Go clients can use RegiMux as a Go module proxy:
 
 ```bash
-export GOPROXY=http://localhost:5000,direct
+export GOPROXY=http://localhost:5000/go/{goAlias},direct
 go env GOPROXY
 go mod download github.com/pkg/errors@v0.9.1
 ```
@@ -118,14 +118,14 @@ go mod download github.com/pkg/errors@v0.9.1
 RegiMux proxies and caches Go proxy protocol requests such as:
 
 ```text
-GET /github.com/pkg/errors/@v/list
-GET /github.com/pkg/errors/@v/v0.9.1.info
-GET /github.com/pkg/errors/@v/v0.9.1.mod
-GET /github.com/pkg/errors/@v/v0.9.1.zip
-GET /github.com/pkg/errors/@latest
+GET /go/{goAlias}/github.com/pkg/errors/@v/list
+GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.info
+GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.mod
+GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.zip
+GET /go/{goAlias}/github.com/pkg/errors/@latest
 ```
 
-Root Go proxy requests try configured `type = "go"` upstreams in stable alias order, preferring the `golang` alias when present. The compatibility path `/go/{alias}/...` is still available when you want to target a specific Go upstream.
+The selected Go alias is resolved only within the `go` block. Container, npm, PyPI, and Maven aliases use their own namespaces.
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in the object store by content sha256 and reused long term. The current implementation is a read-only read-through proxy; it does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 
@@ -161,8 +161,8 @@ The Admin UI is embedded in the binary. It includes dashboard, upstream health, 
 Manual sync can warm an image through the existing manifest and blob cache path, for example:
 
 ```text
-hub/library/node:20
-hub/gitlab/gitlab-ce:latest
+{containerAlias}/library/node:20
+{containerAlias}/gitlab/gitlab-ce:latest
 ```
 
 When `auth.enabled = true`, `/admin` is protected with HTTP Basic using the same configured users as Registry auth.

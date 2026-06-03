@@ -1,14 +1,13 @@
 package upstream
 
 import (
-	"crypto/tls"
 	"log/slog"
-	"net/http"
 	"net/url"
 	"strings"
 
 	"github.com/arcgolabs/clientx"
 	clienthttp "github.com/arcgolabs/clientx/http"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"resty.dev/v3"
 )
@@ -20,73 +19,24 @@ const (
 )
 
 func newHTTPClient(cfg Config, logger *slog.Logger) (clienthttp.Client, error) {
-	httpClient, err := clienthttp.New(clienthttp.Config{
-		BaseURL:   strings.TrimRight(cfg.Registry, "/"),
+	factory := clientfactory.New(logger)
+	httpClient, err := factory.HTTP(clientfactory.Config{
+		BaseURL:   cfg.Registry,
 		Timeout:   cfg.HTTP.Timeout,
 		UserAgent: defaultUserAgent,
 		// RegiMux handles upstream retries in request.go so status-based retry,
 		// body draining, metrics, and failover all share one attempt model.
-		Retry: clientx.RetryConfig{Enabled: false},
-		TLS: clientx.TLSConfig{
-			Enabled:            cfg.HTTP.TLS.Enabled,
-			InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
-			ServerName:         cfg.HTTP.TLS.ServerName,
-		},
-	}, upstreamHTTPClientOptions(logger)...)
+		Retry:              clientx.RetryConfig{Enabled: false},
+		HTTP2:              cfg.HTTP.HTTP2.Enabled,
+		TLSEnabled:         cfg.HTTP.TLS.Enabled,
+		InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
+		ServerName:         cfg.HTTP.TLS.ServerName,
+		Component:          "upstream.clientx",
+	})
 	if err != nil {
 		return nil, wrapError(err, "create upstream http client")
 	}
-	if cfg.HTTP.Timeout == 0 {
-		// Preserve RegiMux's previous no-client-timeout behavior. Per-request
-		// cancellation still flows through context.
-		httpClient.Raw().SetTimeout(0)
-	}
-	rawClient := httpClient.Raw().Client()
-	configureHTTP2(rawClient, cfg.HTTP.HTTP2.Enabled)
-	rawClient.CheckRedirect = stripAuthOnCrossHostRedirect
 	return httpClient, nil
-}
-
-func upstreamHTTPClientOptions(logger *slog.Logger) []clienthttp.Option {
-	if logger == nil {
-		return nil
-	}
-	return []clienthttp.Option{
-		clienthttp.WithHooks(clientx.NewLoggingHook(
-			logger.With("component", "upstream.clientx"),
-			clientx.WithLoggingHookAddress(false),
-		)),
-	}
-}
-
-func configureHTTP2(client *http.Client, enabled bool) {
-	if client == nil {
-		return
-	}
-	transport, ok := client.Transport.(*http.Transport)
-	if !ok || transport == nil {
-		return
-	}
-	if enabled {
-		transport.ForceAttemptHTTP2 = true
-		transport.TLSNextProto = nil
-		return
-	}
-	transport.ForceAttemptHTTP2 = false
-	transport.TLSNextProto = map[string]func(string, *tls.Conn) http.RoundTripper{}
-}
-
-func stripAuthOnCrossHostRedirect(req *http.Request, via []*http.Request) error {
-	if len(via) == 0 {
-		return nil
-	}
-	if req.URL.Host != via[0].URL.Host {
-		req.Header.Del(distribution.HeaderAuthorization)
-	}
-	if len(via) >= 5 {
-		return http.ErrUseLastResponse
-	}
-	return nil
 }
 
 func prepareRequest(req *resty.Request, cfg Config) {

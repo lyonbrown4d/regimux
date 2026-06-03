@@ -41,7 +41,7 @@ func TestLoadEnvOverridesHCLFile(t *testing.T) {
 		"REGIMUX_SERVER__LISTEN",
 		"REGIMUX_CACHE__BACKEND",
 		"REGIMUX_CACHE__REDIS__ADDRS",
-		"REGIMUX_UPSTREAMS__HUB__REGISTRY",
+		"REGIMUX_CONTAINER__HUB__REGISTRY",
 	} {
 		unsetEnv(t, key)
 	}
@@ -52,7 +52,7 @@ server {
   listen = ":5000"
 }
 
-upstreams {
+container {
   hub {
     registry = "https://registry-1.docker.io"
   }
@@ -64,7 +64,7 @@ upstreams {
 	t.Setenv("REGIMUX_SERVER__LISTEN", "127.0.0.1:8888")
 	t.Setenv("REGIMUX_CACHE__BACKEND", "redis")
 	t.Setenv("REGIMUX_CACHE__REDIS__ADDRS", "redis:6379")
-	t.Setenv("REGIMUX_UPSTREAMS__HUB__REGISTRY", "https://mirror.example.com")
+	t.Setenv("REGIMUX_CONTAINER__HUB__REGISTRY", "https://mirror.example.com")
 
 	cfg, err := config.Load(context.Background(), path)
 	if err != nil {
@@ -79,8 +79,8 @@ upstreams {
 	if len(cfg.Cache.Redis.Addrs) != 1 || cfg.Cache.Redis.Addrs[0] != "redis:6379" {
 		t.Fatalf("unexpected env redis addrs %#v", cfg.Cache.Redis.Addrs)
 	}
-	if cfg.Upstreams["hub"].Registry != "https://mirror.example.com" {
-		t.Fatalf("unexpected env upstream registry %q", cfg.Upstreams["hub"].Registry)
+	if cfg.Container["hub"].Registry != "https://mirror.example.com" {
+		t.Fatalf("unexpected env container registry %q", cfg.Container["hub"].Registry)
 	}
 }
 
@@ -94,7 +94,7 @@ server {
   listen = ":5000"
 }
 
-upstreams {
+container {
   hub {
     registry = "https://registry-1.docker.io"
   }
@@ -136,8 +136,23 @@ func TestLoadDockerComposeExampleConfigs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("load example config: %v", err)
 			}
-			if len(cfg.Upstreams) == 0 {
-				t.Fatal("expected at least one upstream")
+			if len(cfg.Container) == 0 {
+				t.Fatal("expected at least one container upstream")
+			}
+		})
+	}
+}
+
+func TestLoadReleaseExampleConfigs(t *testing.T) {
+	configDir := filepath.Join("..", "..", "configs")
+	for _, name := range []string{"regimux.minimal.hcl", "regimux.hcl", "regimux.full.hcl"} {
+		t.Run(name, func(t *testing.T) {
+			cfg, err := config.Load(context.Background(), filepath.Join(configDir, name))
+			if err != nil {
+				t.Fatalf("load release config: %v", err)
+			}
+			if len(cfg.Container) == 0 {
+				t.Fatalf("expected ecosystem config: container=%#v", cfg.Container)
 			}
 		})
 	}

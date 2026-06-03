@@ -7,10 +7,12 @@ RegiMux uses `gocron` for background jobs and a worker pool for bounded asynchro
 Current jobs:
 
 - cache cleanup and object capacity control
-- upstream mirror probing
-- predictive prefetch
+- runtime `probe` capabilities
+- runtime `prefetch` capabilities
 
 When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas.
+
+The scheduler does not own ecosystem-specific fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises capabilities, and the scheduler creates jobs only for capabilities present in the runtime set. Container is the first runtime with scheduled `probe` and `prefetch`; Go, npm, PyPI, and Maven join through the same runtime abstraction and can expose scheduled capabilities later without changing scheduler wiring.
 
 ## Cleanup
 
@@ -33,10 +35,10 @@ When `max_bytes` and `target_bytes` are set, RegiMux evicts least-recently-acces
 
 ## Mirror Probing
 
-Each upstream can probe mirrors and persist endpoint health:
+Runtimes that implement `probe` can schedule mirror health checks and persist endpoint health. Container aliases support this first:
 
 ```hcl
-upstreams {
+container {
   hub {
     blob {
       mirror_policy = "latency"
@@ -55,11 +57,11 @@ upstreams {
 }
 ```
 
-Blob fetches prefer healthy low-latency endpoints. Failing endpoints enter cooldown windows, and content mismatches can downgrade an endpoint.
+Container blob fetches prefer healthy low-latency endpoints. Failing endpoints enter cooldown windows, and content mismatches can downgrade an endpoint.
 
 ## Predictive Prefetch
 
-Prefetch predicts likely next tags from pull history, then warms manifests and referenced blobs through the same cache path as client pulls.
+Runtimes that implement `prefetch` can schedule predictive cache warming. Container prefetch predicts likely next tags from pull history, then warms manifests and referenced blobs through the same cache path as client pulls.
 
 ```hcl
 scheduler {
@@ -78,7 +80,7 @@ scheduler {
 }
 ```
 
-Runs and outcomes are stored in metadata and can be viewed from Admin UI.
+Runs and outcomes are stored in metadata and can be viewed from Admin UI. Other ecosystems should preserve the same scheduler shape while mapping candidates and warmed artifacts to their own protocol model.
 
 ## Worker Pool
 
@@ -90,4 +92,3 @@ worker {
 ```
 
 Set these values based on upstream rate limits, object store bandwidth, and available CPU/network capacity.
-
