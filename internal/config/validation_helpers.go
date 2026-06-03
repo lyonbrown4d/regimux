@@ -74,8 +74,7 @@ func (c Config) OrderedContainerUpstreams() *collectionmapping.OrderedMap[string
 }
 
 func (c Config) ContainerAliases() *collectionlist.List[string] {
-	return collectionlist.NewList(collectionmapping.NewMapFrom(c.Container).Keys()...).
-		Sort(strings.Compare)
+	return sortedConfigAliases(c.Container)
 }
 
 func (c Config) ContainerUpstream(alias string) (UpstreamConfig, bool) {
@@ -121,8 +120,7 @@ func (c Config) MavenUpstream(alias string) (UpstreamConfig, bool) {
 }
 
 func orderedDependencyUpstreams(values DependencyEcosystemConfig, ecosystem string) *collectionmapping.OrderedMap[string, UpstreamConfig] {
-	aliases := collectionlist.NewList(collectionmapping.NewMapFrom(values).Keys()...).
-		Sort(strings.Compare)
+	aliases := sortedConfigAliases(values)
 	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](aliases.Len())
 	aliases.Range(func(_ int, alias string) bool {
 		if upstreamCfg, ok := dependencyUpstream(values, ecosystem, alias); ok {
