@@ -38,6 +38,7 @@ type ServiceDependencies struct {
 type Service struct {
 	cfg       config.Config
 	cache     *artifactcache.Store
+	metadata  meta.Store
 	client    *http.Client
 	logger    *slog.Logger
 	publicURL string
@@ -45,11 +46,12 @@ type Service struct {
 }
 
 type Request struct {
-	Alias     string
-	Tail      string
-	Query     string
-	Method    string
-	PublicURL string
+	Alias          string
+	Tail           string
+	Query          string
+	Method         string
+	PublicURL      string
+	SkipPullRecord bool
 }
 
 type Response struct {

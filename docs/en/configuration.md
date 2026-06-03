@@ -97,9 +97,9 @@ Top-level ecosystem blocks are the source configuration:
 - `pypi`: PyPI upstreams, exposed through `/pypi/{pypiAlias}/...`.
 - `maven`: Maven repository layout upstreams, exposed through `/maven/{mavenAlias}/...`.
 
-These blocks are also the input to the ecosystem runtime layer. RegiMux normalizes them into typed runtime entries with an ecosystem kind, alias, registry, mirrors, auth, and HTTP policy. The scheduler then works from runtime capabilities such as `probe` and `prefetch` instead of reading a legacy `upstreams` block.
+These blocks are also the input to the ecosystem runtime layer. RegiMux normalizes them into typed runtime entries with an ecosystem kind, alias, registry, mirrors, probe settings, auth, and HTTP policy. The scheduler then works from runtime capabilities such as `probe` and `prefetch` instead of reading a legacy `upstreams` block.
 
-Container runtimes currently expose scheduled `probe` and `prefetch` capabilities. Go, npm, PyPI, and Maven use the same source configuration and runtime registration boundary for read-through cache behavior; scheduled capabilities can be added per ecosystem without changing the HCL grouping.
+Container runtimes expose scheduled `probe` and predictive `prefetch` capabilities. Go, npm, PyPI, and Maven expose the shared endpoint `probe` capability when an alias has `probe.enabled = true`, and they also participate in scheduled `prefetch` by rewarming recently requested artifacts.
 
 RegiMux disables HTTP/2 for upstream registry clients by default. This keeps mirror and CDN compatibility predictable and avoids process-level HTTP/2 runtime panics. Enable it per upstream only for trusted registries:
 

@@ -15,11 +15,13 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/dockerintegration"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/goproxy"
 	"github.com/lyonbrown4d/regimux/internal/mavenproxy"
 	"github.com/lyonbrown4d/regimux/internal/npmproxy"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/pypiproxy"
 	"github.com/lyonbrown4d/regimux/internal/registrytool"
 	"github.com/lyonbrown4d/regimux/internal/scheduler"
@@ -56,8 +58,10 @@ func buildApp(configPath string, args ...string) *dix.App {
 	eventsModule := events.Module
 	registryToolModule := registrytool.Module
 	workerModule := worker.Module
+	probeHealthModule := probehealth.Module
 	upstreamModule := upstream.Module
 	storeModule := storemodule.Module
+	ecosystemModule := ecosystem.Module
 	cacheModule := cache.Module
 	suggestionModule := suggestion.Module
 	schedulerModule := scheduler.Module
@@ -75,6 +79,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux registry proxy mirror gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, upstreamModule, storeModule, cacheModule, suggestionModule, schedulerModule, adminModule, goProxyModule, npmProxyModule, pypiProxyModule, mavenProxyModule, endpointModule, apiModule, dockerModule),
+		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, probeHealthModule, upstreamModule, storeModule, ecosystemModule, cacheModule, suggestionModule, schedulerModule, adminModule, goProxyModule, npmProxyModule, pypiProxyModule, mavenProxyModule, endpointModule, apiModule, dockerModule),
 	)
 }

@@ -79,7 +79,7 @@ The scheduler consumes the runtime set from `dix` and registers background work 
 - `probe`: discover endpoint health and latency for aliases that configure mirror probing.
 - `prefetch`: warm likely future artifacts through the same cache path used by client requests.
 
-Current capability coverage is intentionally uneven. The container runtime supports `probe` and `prefetch` first because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven use the same runtime registration boundary for fetch/cache behavior and can add scheduler capabilities without changing scheduler wiring.
+Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
 ## Main Components
 
@@ -99,10 +99,10 @@ Fiber HTTP server
 Ecosystem runtimes
   |
   +-- container runtime: Registry V2, mirrors, probe, prefetch
-  +-- Go runtime: module proxy cache
-  +-- npm runtime: registry cache
-  +-- PyPI runtime: simple index and file cache
-  +-- Maven runtime: repository layout cache
+  +-- Go runtime: module proxy cache, endpoint probe
+  +-- npm runtime: registry cache, endpoint probe
+  +-- PyPI runtime: simple index and file cache, endpoint probe
+  +-- Maven runtime: repository layout cache, endpoint probe
   |
   v
 Storage
@@ -117,6 +117,7 @@ Background services run through the scheduler and worker pool:
 - capability-based mirror probing
 - capability-based predictive prefetch
 - distributed locks when Redis or Valkey is configured
+- Redis/Valkey endpoint health hot state when a remote cache backend is configured
 
 ## Metadata Model
 
@@ -135,6 +136,8 @@ Metadata is organized around repository-style interfaces:
 - endpoint health
 - prefetch runs, outcomes, and controls
 - aggregate read model for admin and stats
+
+Endpoint health is durable in SQL. When Redis or Valkey is configured as the cache backend, probe updates are also written to a shared hot state layer so replicas can avoid cold-starting endpoint scores and can share low-latency mirror ranking quickly.
 
 The SQL implementation is named `SQLStore`. SQLite-specific path, DSN, and pragma logic is isolated under the SQLite driver helper.
 
@@ -170,7 +173,7 @@ Client-side layer concurrency already exists in Docker/containerd, so RegiMux fo
 
 ## Prefetch
 
-Prefetch predicts likely next tags based on pull history, then warms manifests and blobs through the normal cache path. The scheduler invokes this through the runtime `prefetch` capability, so additional ecosystems can provide their own prediction and warming logic behind the same job shape. Runs and outcomes are stored in metadata and shown in Admin UI.
+Container prefetch predicts likely next tags based on pull history, then warms manifests and blobs through the normal cache path. Dependency ecosystem prefetch currently rewinds recent pull history and refreshes the exact Go/npm/PyPI/Maven artifact through that ecosystem's proxy cache path. The scheduler invokes both through the runtime `prefetch` capability, so ecosystem-specific version prediction can be added behind the same job shape. Runs and outcomes are stored in metadata and shown in Admin UI.
 
 Prefetch supports:
 

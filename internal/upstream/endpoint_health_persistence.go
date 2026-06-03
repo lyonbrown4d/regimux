@@ -8,20 +8,60 @@ import (
 	"github.com/samber/oops"
 )
 
+const endpointHealthHotStoreTimeout = 2 * time.Second
+
 func (c *Client) LoadEndpointHealth(ctx context.Context) error {
-	if c == nil || c.metadata == nil || c.upstreams == nil {
+	if c == nil || c.upstreams == nil {
 		return nil
 	}
-	records, err := c.metadata.ListEndpointHealth(ctx)
-	if err != nil {
-		return oops.In("upstream").Wrapf(err, "load endpoint health metadata")
+	loaded := 0
+	if c.metadata != nil {
+		records, err := c.metadata.ListEndpointHealth(ctx)
+		if err != nil {
+			return oops.In("upstream").Wrapf(err, "load endpoint health metadata")
+		}
+		loaded += c.restoreEndpointHealthRecords(records)
 	}
+	loaded += c.loadHotEndpointHealth(ctx)
 
-	loaded := c.restoreEndpointHealthRecords(records)
 	if loaded > 0 && c.logger != nil {
 		c.logger.InfoContext(ctx, "loaded upstream endpoint health snapshots", "records", loaded)
 	}
 	return nil
+}
+
+func (c *Client) loadHotEndpointHealth(ctx context.Context) int {
+	if c == nil || c.hotHealth == nil || c.upstreams == nil || c.upstreams.Len() == 0 {
+		return 0
+	}
+	aliases := c.endpointHealthAliases()
+	if len(aliases) == 0 {
+		return 0
+	}
+	records, err := c.hotHealth.List(ctx, aliases...)
+	if err != nil {
+		if c.logger != nil {
+			c.logger.DebugContext(ctx, "load upstream endpoint health hot state failed", "error", err)
+		}
+		return 0
+	}
+	loaded := c.restoreEndpointHealthRecords(records)
+	if loaded > 0 && c.logger != nil {
+		c.logger.DebugContext(ctx, "loaded upstream endpoint health hot state", "records", loaded)
+	}
+	return loaded
+}
+
+func (c *Client) endpointHealthAliases() []string {
+	if c == nil || c.upstreams == nil {
+		return nil
+	}
+	aliases := make([]string, 0, c.upstreams.Len())
+	c.upstreams.Range(func(alias string, _ *upstreamPool) bool {
+		aliases = append(aliases, alias)
+		return true
+	})
+	return aliases
 }
 
 func (c *Client) restoreEndpointHealthRecords(records []meta.EndpointHealthRecord) int {
@@ -38,31 +78,31 @@ func (c *Client) restoreEndpointHealthRecords(records []meta.EndpointHealthRecor
 	return loaded
 }
 
-func (c *Client) recordProbeSuccess(pool *upstreamPool, runtime upstreamRuntime, latency time.Duration) {
+func (c *Client) recordProbeSuccess(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime, latency time.Duration) {
 	now := time.Now()
 	snapshot := pool.recordProbeSuccess(runtime, latency, now)
-	c.persistEndpointHealthSnapshot(pool.alias, snapshot)
+	c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
 }
 
-func (c *Client) recordProbeFailure(pool *upstreamPool, runtime upstreamRuntime) {
+func (c *Client) recordProbeFailure(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) {
 	now := time.Now()
 	snapshot := pool.recordProbeFailure(runtime, now)
-	c.persistEndpointHealthSnapshot(pool.alias, snapshot)
+	c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
 }
 
-func (c *Client) recordEndpointSuccess(req failoverRequest, pool *upstreamPool, runtime upstreamRuntime) {
+func (c *Client) recordEndpointSuccess(ctx context.Context, req failoverRequest, pool *upstreamPool, runtime upstreamRuntime) {
 	if pool == nil {
 		return
 	}
 	now := time.Now()
 	snapshot := pool.recordRequestSuccess(runtime, req.repository, now)
-	c.persistEndpointHealthSnapshot(pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
+	c.persistEndpointHealthSnapshot(ctx, pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
 	if snapshot.Repository != "" {
-		c.persistEndpointHealthSnapshot(pool.alias, snapshot)
+		c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
 	}
 }
 
-func (c *Client) recordEndpointFailure(req failoverRequest, pool *upstreamPool, runtime upstreamRuntime, err error) {
+func (c *Client) recordEndpointFailure(ctx context.Context, req failoverRequest, pool *upstreamPool, runtime upstreamRuntime, err error) {
 	if pool == nil {
 		return
 	}
@@ -73,17 +113,39 @@ func (c *Client) recordEndpointFailure(req failoverRequest, pool *upstreamPool, 
 	} else {
 		snapshot = pool.recordRequestFailure(runtime, req.repository, now)
 	}
-	c.persistEndpointHealthSnapshot(pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
+	c.persistEndpointHealthSnapshot(ctx, pool.alias, pool.health.Snapshot(runtime.config.Registry, now))
 	if snapshot.Repository != "" {
-		c.persistEndpointHealthSnapshot(pool.alias, snapshot)
+		c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
 	}
 }
 
-func (c *Client) persistEndpointHealthSnapshot(alias string, snapshot EndpointHealthSnapshot) {
-	if c == nil || c.metadata == nil || snapshot.Registry == "" {
+func (c *Client) persistEndpointHealthSnapshot(ctx context.Context, alias string, snapshot EndpointHealthSnapshot) {
+	if c == nil || snapshot.Registry == "" {
 		return
 	}
-	c.enqueueEndpointHealth(endpointHealthRecordFromSnapshot(alias, snapshot))
+	record := endpointHealthRecordFromSnapshot(alias, snapshot)
+	if c.metadata != nil {
+		c.enqueueEndpointHealth(record)
+	}
+	c.putEndpointHealthHot(ctx, record)
+}
+
+func (c *Client) putEndpointHealthHot(ctx context.Context, record meta.EndpointHealthRecord) {
+	if c == nil || c.hotHealth == nil {
+		return
+	}
+	ctx, cancel := endpointHealthHotContext(ctx)
+	defer cancel()
+	if err := c.hotHealth.Put(ctx, record); err != nil && c.logger != nil {
+		c.logger.DebugContext(ctx, "write upstream endpoint health hot state failed", "alias", record.Alias, "registry", record.Registry, "repository", record.Repository, "error", err)
+	}
+}
+
+func endpointHealthHotContext(parent context.Context) (context.Context, context.CancelFunc) {
+	if parent == nil {
+		parent = context.Background()
+	}
+	return context.WithTimeout(context.WithoutCancel(parent), endpointHealthHotStoreTimeout)
 }
 
 func (p *upstreamPool) hasRegistry(registry string) bool {

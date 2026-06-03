@@ -54,7 +54,7 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverReque
 		runtime := runtimes[i]
 		lastErr = runAgainstRuntime(ctx, pool, req.operation, runtime, fn)
 		if lastErr == nil {
-			c.recordEndpointSuccess(req, pool, runtime)
+			c.recordEndpointSuccess(ctx, req, pool, runtime)
 			return nil
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
@@ -63,7 +63,7 @@ func (c *Client) doWithSequentialFailover(ctx context.Context, req failoverReque
 		if !shouldFailover(req, lastErr) {
 			return lastErr
 		}
-		c.recordEndpointFailure(req, pool, runtime, lastErr)
+		c.recordEndpointFailure(ctx, req, pool, runtime, lastErr)
 		c.logFailover(req, runtime, lastErr, i < len(runtimes)-1)
 		c.publishFailover(ctx, req, runtime, lastErr, i < len(runtimes)-1)
 	}

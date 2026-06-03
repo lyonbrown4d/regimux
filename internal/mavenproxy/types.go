@@ -36,18 +36,20 @@ type ServiceDependencies struct {
 }
 
 type Service struct {
-	cfg    config.Config
-	cache  *artifactcache.Store
-	client *http.Client
-	logger *slog.Logger
-	now    func() time.Time
+	cfg      config.Config
+	cache    *artifactcache.Store
+	metadata meta.Store
+	client   *http.Client
+	logger   *slog.Logger
+	now      func() time.Time
 }
 
 type Request struct {
-	Alias  string
-	Tail   string
-	Query  string
-	Method string
+	Alias          string
+	Tail           string
+	Query          string
+	Method         string
+	SkipPullRecord bool
 }
 
 type Response struct {

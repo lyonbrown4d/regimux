@@ -9,6 +9,8 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
 
@@ -35,11 +37,12 @@ func NewService(deps ServiceDependencies) *Service {
 		})
 	}
 	return &Service{
-		cfg:    deps.Config,
-		cache:  cache,
-		client: client,
-		logger: logger.With("component", "maven-proxy"),
-		now:    now,
+		cfg:      deps.Config,
+		cache:    cache,
+		metadata: deps.Metadata,
+		client:   client,
+		logger:   logger.With("component", "maven-proxy"),
+		now:      now,
 	}
 }
 
@@ -56,7 +59,9 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if !ok {
 		return nil, oops.In("maven-proxy").With("alias", requestRoute.Alias).Errorf("maven upstream is not configured")
 	}
-	return s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
+	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
+	s.recordPull(ctx, req, requestRoute, resp, err)
+	return resp, err
 }
 
 func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig) (*Response, error) {
@@ -83,6 +88,45 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return nil, err
 	}
 	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
+}
+
+func (s *Service) recordPull(ctx context.Context, req Request, requestRoute Route, resp *Response, err error) {
+	if !s.shouldRecordPull(req, resp, err) {
+		return
+	}
+	key := mavenPullKey(requestRoute)
+	s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+}
+
+func (s *Service) shouldRecordPull(req Request, resp *Response, err error) bool {
+	return s != nil &&
+		s.metadata != nil &&
+		!req.SkipPullRecord &&
+		err == nil &&
+		resp != nil &&
+		resp.Status >= http.StatusOK &&
+		resp.Status < http.StatusMultipleChoices
+}
+
+func mavenPullKey(requestRoute Route) meta.PullKey {
+	return meta.PullKey{
+		Alias:      ecosystem.ScopedAlias(ecosystem.Maven, requestRoute.Alias),
+		Repository: requestRoute.Repository,
+		Reference:  requestRoute.Reference,
+	}
+}
+
+func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream bool) {
+	now := s.now()
+	if _, recordErr := s.metadata.RecordPull(ctx, key, now); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record maven proxy pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
+	if !upstream {
+		return
+	}
+	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record maven proxy upstream pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
 }
 
 func (s *Service) upstream(alias string) (config.UpstreamConfig, bool) {

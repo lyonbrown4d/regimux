@@ -97,9 +97,9 @@ maven {
 - `pypi`：PyPI 上游，通过 `/pypi/{pypiAlias}/...` 暴露。
 - `maven`：Maven repository layout 上游，通过 `/maven/{mavenAlias}/...` 暴露。
 
-这些块也是生态 runtime 层的输入。RegiMux 会把它们归一化为带生态类型、alias、registry、mirrors、auth 和 HTTP 策略的 runtime 条目。调度器随后从 `probe`、`prefetch` 等 runtime capability 工作，而不是读取 legacy `upstreams` 块。
+这些块也是生态 runtime 层的输入。RegiMux 会把它们归一化为带生态类型、alias、registry、mirrors、probe 设置、auth 和 HTTP 策略的 runtime 条目。调度器随后从 `probe`、`prefetch` 等 runtime capability 工作，而不是读取 legacy `upstreams` 块。
 
-container runtime 当前暴露定时 `probe` 和 `prefetch` capability。Go、npm、PyPI 和 Maven 使用同一套源配置和 runtime 注册边界提供 read-through cache 行为；后续可以按生态增加调度能力，不需要改变 HCL 分组。
+container runtime 暴露定时 `probe` 和预测性 `prefetch` capability。Go、npm、PyPI 和 Maven 在 alias 配置 `probe.enabled = true` 后会暴露通用 endpoint `probe` capability，同时也会参与定时 `prefetch`，用于刷新近期请求过的制品。
 
 RegiMux 默认会关闭上游 registry 客户端的 HTTP/2。这样可以让 mirror 和 CDN 链路更可控，并避免 HTTP/2 运行时 panic 直接打崩进程。只建议对可信上游按 alias 显式开启：
 

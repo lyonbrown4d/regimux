@@ -39,6 +39,7 @@ func NewService(deps ServiceDependencies) *Service {
 	}
 	return &Service{
 		cfg:         deps.Config,
+		metadata:    deps.Metadata,
 		cache:       cache,
 		client:      client,
 		logger:      logger.With("component", "npm-proxy"),
@@ -66,7 +67,9 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if requestRoute.MetadataTTL <= 0 {
 		requestRoute.MetadataTTL = upstreamCfg.TagTTL
 	}
-	return s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
+	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
+	s.recordPull(ctx, req, requestRoute, resp, err)
+	return resp, err
 }
 
 func (s *Service) Upstreams() []Upstream {

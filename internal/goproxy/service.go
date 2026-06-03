@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
@@ -39,9 +40,10 @@ type Service struct {
 }
 
 type Request struct {
-	Alias  string
-	Tail   string
-	Method string
+	Alias          string
+	Tail           string
+	Method         string
+	SkipPullRecord bool
 }
 
 type Response struct {
@@ -111,7 +113,9 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if !ok {
 		return nil, oops.In("go-proxy").With("alias", parsed.Alias).Errorf("go upstream is not configured")
 	}
-	return s.getFromUpstreams(ctx, req, parsed, []goUpstream{{alias: parsed.Alias, cfg: upstreamCfg}}, false)
+	resp, err := s.getFromUpstreams(ctx, req, parsed, []goUpstream{{alias: parsed.Alias, cfg: upstreamCfg}}, false)
+	s.recordPull(ctx, req, parsed, resp, err)
+	return resp, err
 }
 
 func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute route, upstreams []goUpstream, fallback bool) (*Response, error) {
@@ -203,6 +207,46 @@ func (s *Service) storeFetchedResponse(ctx context.Context, req Request, request
 		headers: stored.headers,
 		body:    stored.body,
 	}, cacheMiss)
+}
+
+func (s *Service) recordPull(ctx context.Context, req Request, requestRoute route, resp *Response, err error) {
+	if !s.shouldRecordPull(req, requestRoute, resp, err) {
+		return
+	}
+	key := goPullKey(requestRoute)
+	s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+}
+
+func (s *Service) shouldRecordPull(req Request, requestRoute route, resp *Response, err error) bool {
+	return s != nil &&
+		s.metadata != nil &&
+		!req.SkipPullRecord &&
+		err == nil &&
+		resp != nil &&
+		routeCacheable(requestRoute) &&
+		resp.Status >= http.StatusOK &&
+		resp.Status < http.StatusMultipleChoices
+}
+
+func goPullKey(requestRoute route) meta.PullKey {
+	return meta.PullKey{
+		Alias:      ecosystem.ScopedAlias(ecosystem.Go, requestRoute.Alias),
+		Repository: requestRoute.Module,
+		Reference:  requestRoute.Reference,
+	}
+}
+
+func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream bool) {
+	now := time.Now().UTC()
+	if _, recordErr := s.metadata.RecordPull(ctx, key, now); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record go proxy pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
+	if !upstream {
+		return
+	}
+	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record go proxy upstream pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
 }
 
 func (s *Service) goUpstream(alias string) (config.UpstreamConfig, bool) {

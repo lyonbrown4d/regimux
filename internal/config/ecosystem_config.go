@@ -140,6 +140,7 @@ func (cfg DependencyUpstreamConfig) toUpstreamConfig(ecosystem string) UpstreamC
 		Mirrors:      cfg.Mirrors,
 		MirrorPolicy: cfg.MirrorPolicy,
 		TagTTL:       cfg.TagTTL,
+		Probe:        cfg.Probe,
 		Auth:         cfg.Auth,
 		HTTP:         cfg.HTTP,
 	}
@@ -151,6 +152,7 @@ func dependencyUpstreamFromUpstreamConfig(upstreamCfg UpstreamConfig) Dependency
 		Mirrors:      upstreamCfg.Mirrors,
 		MirrorPolicy: upstreamCfg.MirrorPolicy,
 		TagTTL:       upstreamCfg.TagTTL,
+		Probe:        upstreamCfg.Probe,
 		Auth:         upstreamCfg.Auth,
 		HTTP:         upstreamCfg.HTTP,
 	}

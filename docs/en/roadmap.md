@@ -9,7 +9,7 @@ RegiMux is expanding from a read-only OCI / Docker Registry V2 proxy mirror into
 - Keep the OCI / Docker Registry V2 API at `/v2/{containerAlias}/...` as the stable container path.
 - Use separate top-level ecosystem config blocks: `container`, `go`, `npm`, `pypi`, and `maven`.
 - Route registry, mirror, probe, and prefetch behavior through ecosystem runtimes registered by `dix`; the scheduler should dispatch by runtime capability rather than by ecosystem-specific imports.
-- Keep container as the first runtime with scheduled `probe` and `prefetch`; other ecosystems should attach to the same runtime abstraction before adding scheduler capabilities.
+- Keep container as the first runtime with predictive scheduled `prefetch`; Go, npm, PyPI, and Maven now share scheduled endpoint `probe` and recent-pull prefetch rewarming through the same runtime abstraction.
 - Add a Go module proxy read-through cache under `/go/{goAlias}/{module}/@v/...`. Done.
 - Keep the default example Go alias backed by `https://proxy.golang.org`. Clients can set `GOPROXY=http://localhost:5000/go/{goAlias}`.
 - Store Go proxy responses in the object store by content sha256, with metadata mapping request paths to object digests. Done.

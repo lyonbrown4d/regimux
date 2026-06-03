@@ -150,6 +150,43 @@ func DisabledCapability(reason string, upstreams *collectionlist.List[Upstream])
 	}
 }
 
+// EnabledCapability marks a capability as implemented and schedulable.
+func EnabledCapability(reason string, targets *collectionlist.List[CapabilityTarget]) Capability {
+	if targets == nil {
+		targets = collectionlist.NewList[CapabilityTarget]()
+	}
+	return Capability{
+		State:   CapabilityEnabled,
+		Reason:  reason,
+		Targets: targets,
+	}
+}
+
+// ProbeCapability reports whether an upstream set has any enabled probe targets.
+func ProbeCapability(upstreams *collectionlist.List[Upstream]) Capability {
+	targets := CapabilityTargetsFromProbeTargets(ProbeTargets(upstreams))
+	if targets.Len() == 0 {
+		return DisabledCapability("probe is not enabled for any upstream", upstreams)
+	}
+	return EnabledCapability("probe is enabled", targets)
+}
+
+// ProbeTargets returns enabled probe targets from upstream snapshots.
+func ProbeTargets(upstreams *collectionlist.List[Upstream]) *collectionlist.List[ProbeTarget] {
+	if upstreams == nil {
+		return collectionlist.NewList[ProbeTarget]()
+	}
+	targets := make([]ProbeTarget, 0, upstreams.Len())
+	upstreams.Range(func(_ int, upstream Upstream) bool {
+		probeCfg := upstream.Config.Probe
+		if probeCfg.Enabled && probeCfg.Interval > 0 {
+			targets = append(targets, ProbeTarget(upstream))
+		}
+		return true
+	})
+	return collectionlist.NewList(targets...)
+}
+
 // CapabilityTargets converts upstream snapshots to capability targets.
 func CapabilityTargets(upstreams *collectionlist.List[Upstream]) *collectionlist.List[CapabilityTarget] {
 	if upstreams == nil {
@@ -158,6 +195,19 @@ func CapabilityTargets(upstreams *collectionlist.List[Upstream]) *collectionlist
 	targets := make([]CapabilityTarget, 0, upstreams.Len())
 	upstreams.Range(func(_ int, upstream Upstream) bool {
 		targets = append(targets, CapabilityTarget(upstream))
+		return true
+	})
+	return collectionlist.NewList(targets...)
+}
+
+// CapabilityTargetsFromProbeTargets converts probe targets to capability metadata.
+func CapabilityTargetsFromProbeTargets(probes *collectionlist.List[ProbeTarget]) *collectionlist.List[CapabilityTarget] {
+	if probes == nil {
+		return collectionlist.NewList[CapabilityTarget]()
+	}
+	targets := make([]CapabilityTarget, 0, probes.Len())
+	probes.Range(func(_ int, target ProbeTarget) bool {
+		targets = append(targets, CapabilityTarget(target))
 		return true
 	})
 	return collectionlist.NewList(targets...)

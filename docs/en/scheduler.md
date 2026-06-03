@@ -10,9 +10,9 @@ Current jobs:
 - runtime `probe` capabilities
 - runtime `prefetch` capabilities
 
-When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas.
+When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas. Probe jobs also publish endpoint health into Redis/Valkey hot state, while SQL metadata remains the durable source of truth.
 
-The scheduler does not own ecosystem-specific fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises capabilities, and the scheduler creates jobs only for capabilities present in the runtime set. Container is the first runtime with scheduled `probe` and `prefetch`; Go, npm, PyPI, and Maven join through the same runtime abstraction and can expose scheduled capabilities later without changing scheduler wiring.
+The scheduler does not own ecosystem-specific fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises capabilities, and the scheduler creates jobs only for capabilities present in the runtime set. Container supports scheduled `probe` and `prefetch`; Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and can add ecosystem-specific prefetch later without changing scheduler wiring.
 
 ## Cleanup
 
@@ -35,7 +35,7 @@ When `max_bytes` and `target_bytes` are set, RegiMux evicts least-recently-acces
 
 ## Mirror Probing
 
-Runtimes that implement `probe` can schedule mirror health checks and persist endpoint health. Container aliases support this first:
+Runtimes that implement `probe` can schedule mirror health checks and persist endpoint health. Container aliases use this for latency-aware blob mirror selection:
 
 ```hcl
 container {
@@ -59,9 +59,30 @@ container {
 
 Container blob fetches prefer healthy low-latency endpoints. Failing endpoints enter cooldown windows, and content mismatches can downgrade an endpoint.
 
+Go, npm, PyPI, and Maven aliases can enable the same endpoint reachability probe:
+
+```hcl
+npm {
+  default {
+    registry = "https://registry.npmjs.org"
+    mirrors = ["https://registry.npmmirror.com"]
+
+    probe {
+      enabled = true
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+  }
+}
+```
+
+Endpoint health is stored in SQL metadata and, when the cache backend is Redis or Valkey, mirrored into a hot state index made of endpoint Hash records plus alias-level Set and ZSet indexes. Dependency ecosystem probe records use scoped metadata aliases such as `npm/default`, so they do not collide with container aliases.
+
 ## Predictive Prefetch
 
-Runtimes that implement `prefetch` can schedule predictive cache warming. Container prefetch predicts likely next tags from pull history, then warms manifests and referenced blobs through the same cache path as client pulls.
+Runtimes that implement `prefetch` can schedule cache warming. Container prefetch predicts likely next tags from pull history, then warms manifests and referenced blobs through the same cache path as client pulls. Go, npm, PyPI, and Maven currently implement recent-pull rewarming: once an artifact has been requested by a client, scheduled prefetch can refresh that exact artifact through the ecosystem proxy cache path.
 
 ```hcl
 scheduler {
@@ -80,7 +101,7 @@ scheduler {
 }
 ```
 
-Runs and outcomes are stored in metadata and can be viewed from Admin UI. Other ecosystems should preserve the same scheduler shape while mapping candidates and warmed artifacts to their own protocol model.
+Runs and outcomes are stored in metadata and can be viewed from Admin UI. Dependency ecosystem prefetch records use scoped aliases such as `go/default` or `npm/default`; version prediction for npm/PyPI/Maven/Go is intentionally left as a later ecosystem-specific layer.
 
 ## Worker Pool
 

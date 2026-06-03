@@ -110,6 +110,14 @@ go {
 npm {
   default {
     registry = "https://registry.npmjs.org"
+
+    probe {
+      enabled = true
+      interval = "1m"
+      timeout = "2s"
+      cooldown = "3m"
+      jitter = "10s"
+    }
   }
 }
 
@@ -221,6 +229,12 @@ func assertLoadedHCLNPMConfig(t *testing.T, cfg config.Config) {
 	npmUpstream, ok := cfg.NPMUpstream("default")
 	if !ok || npmUpstream.Type != "npm" || cfg.NPM["default"].Registry != "https://registry.npmjs.org" {
 		t.Fatalf("unexpected npm ecosystem config: %#v / %#v", cfg.NPM, npmUpstream)
+	}
+	if !npmUpstream.Probe.Enabled || npmUpstream.Probe.Interval != time.Minute ||
+		npmUpstream.Probe.Timeout != 2*time.Second ||
+		npmUpstream.Probe.Cooldown != 3*time.Minute ||
+		npmUpstream.Probe.Jitter != 10*time.Second {
+		t.Fatalf("unexpected npm probe config: %#v", npmUpstream.Probe)
 	}
 }
 

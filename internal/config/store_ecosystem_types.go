@@ -102,12 +102,13 @@ type ContainerRegistryConfig struct {
 type DependencyEcosystemConfig map[string]DependencyUpstreamConfig
 
 type DependencyUpstreamConfig struct {
-	Registry     string        `json:"registry"      koanf:"registry"      mapstructure:"registry"      validate:"omitempty,url"`
-	Mirrors      []string      `json:"mirrors"       koanf:"mirrors"       mapstructure:"mirrors"       validate:"dive,required,url"`
-	MirrorPolicy string        `json:"mirror_policy" koanf:"mirror_policy" mapstructure:"mirror_policy" validate:"omitempty,oneof=ordered failover round_robin"`
-	TagTTL       time.Duration `json:"tag_ttl"       koanf:"tag_ttl"       mapstructure:"tag_ttl"       validate:"min=0"`
-	Auth         AuthConfig    `json:"auth"          koanf:"auth"          mapstructure:"auth"`
-	HTTP         HTTPConfig    `json:"http"          koanf:"http"          mapstructure:"http"`
+	Registry     string              `json:"registry"      koanf:"registry"      mapstructure:"registry"      validate:"omitempty,url"`
+	Mirrors      []string            `json:"mirrors"       koanf:"mirrors"       mapstructure:"mirrors"       validate:"dive,required,url"`
+	MirrorPolicy string              `json:"mirror_policy" koanf:"mirror_policy" mapstructure:"mirror_policy" validate:"omitempty,oneof=ordered failover round_robin"`
+	TagTTL       time.Duration       `json:"tag_ttl"       koanf:"tag_ttl"       mapstructure:"tag_ttl"       validate:"min=0"`
+	Probe        UpstreamProbeConfig `json:"probe"         koanf:"probe"         mapstructure:"probe"`
+	Auth         AuthConfig          `json:"auth"          koanf:"auth"          mapstructure:"auth"`
+	HTTP         HTTPConfig          `json:"http"          koanf:"http"          mapstructure:"http"`
 }
 
 type UpstreamConfig struct {

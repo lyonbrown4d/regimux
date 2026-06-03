@@ -9,6 +9,7 @@ import (
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -23,6 +24,7 @@ type Client struct {
 	workers    *worker.Pools
 	events     events.Bus
 	metadata   meta.Store
+	hotHealth  probehealth.Store
 	logger     *slog.Logger
 
 	healthMu      sync.Mutex
@@ -48,6 +50,7 @@ type ClientDependencies struct {
 	Bus             events.Bus
 	Metadata        meta.Store
 	EndpointClients *EndpointClients
+	HotHealth       probehealth.Store
 }
 
 func NewClient(deps ClientDependencies) *Client {
@@ -73,6 +76,7 @@ func NewClient(deps ClientDependencies) *Client {
 			workers:       pools,
 			events:        bus,
 			metadata:      metadata,
+			hotHealth:     deps.HotHealth,
 			logger:        logger,
 			healthPending: collectionmapping.NewConcurrentMap[string, meta.EndpointHealthRecord](),
 		}
@@ -91,6 +95,7 @@ func NewClient(deps ClientDependencies) *Client {
 		workers:       pools,
 		events:        bus,
 		metadata:      metadata,
+		hotHealth:     deps.HotHealth,
 		logger:        logger,
 		healthPending: collectionmapping.NewConcurrentMap[string, meta.EndpointHealthRecord](),
 	}

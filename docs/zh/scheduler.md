@@ -10,9 +10,9 @@ RegiMux 使用 `gocron` 执行后台任务，并通过 worker 池限制异步任
 - runtime `probe` capability
 - runtime `prefetch` capability
 
-配置 Redis 或 Valkey 后，调度任务可以使用分布式锁，避免多个副本重复执行同一类后台任务。
+配置 Redis 或 Valkey 后，调度任务可以使用分布式锁，避免多个副本重复执行同一类后台任务。probe 任务也会把 endpoint 健康状态发布到 Redis/Valkey 热状态层，但 SQL 元数据仍是持久化事实来源。
 
-调度器不持有具体生态的 fetch 逻辑。生态模块通过 `dix` 注册 runtime，每个 runtime 声明自己的 capability，调度器只为 runtime 集合中存在的 capability 创建任务。container 是第一个具备定时 `probe` 和 `prefetch` 的 runtime；Go、npm、PyPI 和 Maven 通过同一 runtime 抽象接入，后续暴露调度能力时不需要改调度器装配。
+调度器不持有具体生态的 fetch 逻辑。生态模块通过 `dix` 注册 runtime，每个 runtime 声明自己的 capability，调度器只为 runtime 集合中存在的 capability 创建任务。container 支持定时 `probe` 和 `prefetch`；Go、npm、PyPI 和 Maven 支持通用 endpoint `probe` capability，后续增加各自的 prefetch 时不需要改调度器装配。
 
 ## 清理
 
@@ -35,7 +35,7 @@ scheduler {
 
 ## Mirror 探测
 
-实现 `probe` 的 runtime 可以调度 mirror 健康检查，并持久化 endpoint 健康状态。container alias 先支持这项能力：
+实现 `probe` 的 runtime 可以调度 mirror 健康检查，并持久化 endpoint 健康状态。container alias 会用它做基于延迟的 blob mirror 选择：
 
 ```hcl
 container {
@@ -59,9 +59,30 @@ container {
 
 container blob 拉取会优先选择健康且低延迟的 endpoint。失败 endpoint 会进入冷却窗口，内容不一致也会降低该 endpoint 的优先级。
 
+Go、npm、PyPI 和 Maven alias 也可以启用同一套 endpoint 可达性探测：
+
+```hcl
+npm {
+  default {
+    registry = "https://registry.npmjs.org"
+    mirrors = ["https://registry.npmmirror.com"]
+
+    probe {
+      enabled = true
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+  }
+}
+```
+
+endpoint 健康状态会写入 SQL 元数据；当 cache backend 是 Redis 或 Valkey 时，也会同步到由 endpoint Hash、alias 级 Set 和 ZSet 组成的热状态索引。依赖生态的 probe 记录会使用带生态前缀的元数据 alias，例如 `npm/default`，避免和 container alias 冲突。
+
 ## 预测预拉取
 
-实现 `prefetch` 的 runtime 可以调度预测性缓存预热。container prefetch 会基于拉取历史预测可能的后续 tag，然后通过和客户端拉取相同的缓存路径预热 manifest 和关联 blob。
+实现 `prefetch` 的 runtime 可以调度缓存预热。container prefetch 会基于拉取历史预测可能的后续 tag，然后通过和客户端拉取相同的缓存路径预热 manifest 和关联 blob。Go、npm、PyPI 和 Maven 当前实现的是 recent-pull rewarm：客户端请求过某个制品后，定时 prefetch 可以沿用对应生态 proxy 缓存路径刷新同一个制品。
 
 ```hcl
 scheduler {
@@ -80,7 +101,7 @@ scheduler {
 }
 ```
 
-运行记录和结果会存入元数据，并可在 Admin UI 中查看。其他生态应保留相同的调度形态，同时把候选项和预热制品映射到自己的协议模型。
+运行记录和结果会存入元数据，并可在 Admin UI 中查看。依赖生态 prefetch 记录使用 `go/default`、`npm/default` 这类 scoped alias；npm/PyPI/Maven/Go 的版本预测会作为后续生态专属层继续迭代。
 
 ## Worker 池
 

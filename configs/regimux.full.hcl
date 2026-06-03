@@ -362,6 +362,14 @@ go {
     registry = "https://proxy.golang.org"
     mirrors = []
 
+    probe {
+      enabled = false
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+
     auth {
       type = "anonymous"
     }
@@ -383,6 +391,15 @@ npm {
   default {
     registry = "https://registry.npmjs.org"
     tag_ttl = "5m"
+
+    probe {
+      enabled = false
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+
     auth {
       type = "anonymous"
     }
@@ -392,6 +409,15 @@ npm {
 pypi {
   default {
     registry = "https://pypi.org"
+
+    probe {
+      enabled = false
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+
     auth {
       type = "anonymous"
     }
@@ -402,6 +428,15 @@ maven {
   central {
     registry = "https://repo.maven.apache.org/maven2"
     tag_ttl = "5m"
+
+    probe {
+      enabled = false
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+
     auth {
       type = "anonymous"
     }

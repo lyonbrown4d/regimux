@@ -8,6 +8,7 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
@@ -16,7 +17,8 @@ var Module = dix.NewModule("upstream",
 	dix.Providers(
 		dix.Provider2[*EndpointClients, config.Config, *slog.Logger](newEndpointClients),
 		dix.Provider1[*Client, ClientDependencies](NewClient, dix.As[RegistryClient]()),
-		dix.Provider6[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus, meta.Store, *EndpointClients](
+		dix.Provider2[clientRuntimeDependencies, *EndpointClients, probehealth.Store](newClientRuntimeDependencies),
+		dix.Provider6[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus, meta.Store, clientRuntimeDependencies](
 			newClientDependencies,
 		),
 	),
@@ -37,7 +39,7 @@ func newClientDependencies(
 	pools *worker.Pools,
 	bus events.Bus,
 	metadata meta.Store,
-	endpointClients *EndpointClients,
+	runtime clientRuntimeDependencies,
 ) ClientDependencies {
 	return ClientDependencies{
 		Configs:         ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()),
@@ -45,7 +47,20 @@ func newClientDependencies(
 		Pools:           pools,
 		Bus:             bus,
 		Metadata:        metadata,
+		EndpointClients: runtime.EndpointClients,
+		HotHealth:       runtime.HotHealth,
+	}
+}
+
+type clientRuntimeDependencies struct {
+	EndpointClients *EndpointClients
+	HotHealth       probehealth.Store
+}
+
+func newClientRuntimeDependencies(endpointClients *EndpointClients, hotHealth probehealth.Store) clientRuntimeDependencies {
+	return clientRuntimeDependencies{
 		EndpointClients: endpointClients,
+		HotHealth:       hotHealth,
 	}
 }
 
