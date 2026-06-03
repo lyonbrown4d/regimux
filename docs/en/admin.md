@@ -34,11 +34,30 @@ Current views:
 
 ## Manual Sync
 
-Manual sync warms an image through the configured cache path:
+Manual sync is ecosystem-aware. In the upstream selector you can choose
+
+- `container:<alias>` for OCI/container images
+- `go:<alias>` for Go module proxy
+- `npm:<alias>` for npm
+- `pypi:<alias>` for PyPI
+- `maven:<alias>` for Maven
+
+For each ecosystem, fill the same `Repository` / `Reference` fields:
+
+- `container`: repository format uses container image path, e.g. `library/node` with reference `20`.
+- `go`: repository is the module path, e.g. `github.com/pkg/errors`, reference is version/tag like `v0.9.1`.
+- `npm`: repository is the package name, reference is the version/tag, e.g. `react`, `18.2.0`.
+- `pypi`: repository is package name, reference is version/tag.
+- `maven`: repository is group/artifact path, reference is version/version segment.
+
+Examples:
 
 ```text
-{containerAlias}/library/node:20
-{containerAlias}/gitlab/gitlab-ce:latest
+container:hub / repository=library/node / reference=20
+go:default / repository=github.com/pkg/errors / reference=v0.9.1
+npm:default / repository=react / reference=18.2.0
+pypi:default / repository=urllib3 / reference=2.2.0
+maven:central / repository=com/fasterxml/jackson/core/jackson-databind / reference=2.16.1
 ```
 
-It fetches the manifest and referenced blobs, then records outcomes in metadata.
+The job is created as async and can be viewed from the sync result panel. It prewarms the ecosystem cache path and records outcomes in metadata.

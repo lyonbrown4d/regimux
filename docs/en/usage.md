@@ -158,11 +158,11 @@ http://localhost:5000/admin
 
 The Admin UI is embedded in the binary. It includes dashboard, upstream health, pulls, activity, cache, storage, scheduler, manual sync, auth audit, and effective config views.
 
-Manual sync can warm an image through the existing manifest and blob cache path, for example:
+Manual sync is ecosystem-aware and prewarms the cache asynchronously:
 
 ```text
-{containerAlias}/library/node:20
-{containerAlias}/gitlab/gitlab-ce:latest
+container:hub / repository=library/node / reference=20
+go:default / repository=github.com/pkg/errors / reference=v0.9.1
 ```
 
 When `auth.enabled = true`, `/admin` is protected with HTTP Basic using the same configured users as Registry auth.

@@ -158,11 +158,11 @@ http://localhost:5000/admin
 
 Admin UI 已内嵌到二进制中，包含仪表盘、上游健康、拉取记录、活动、缓存、存储、调度器、手动同步、认证审计和有效配置等页面。
 
-手动同步会通过现有 manifest 和 blob 缓存流程预热镜像，例如：
+手动同步支持生态隔离（`container`、`go`、`npm`、`pypi`、`maven`）并异步执行：
 
 ```text
-{containerAlias}/library/node:20
-{containerAlias}/gitlab/gitlab-ce:latest
+container:hub / repository=library/node / reference=20
+go:default / repository=github.com/pkg/errors / reference=v0.9.1
 ```
 
 当 `auth.enabled = true` 时，`/admin` 会使用同一套配置用户做 HTTP Basic 认证。
