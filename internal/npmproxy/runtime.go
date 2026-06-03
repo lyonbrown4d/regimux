@@ -101,6 +101,9 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 	if err != nil {
 		return depprefetch.FetchResult{}, err
 	}
+	if resp == nil {
+		return depprefetch.FetchResult{}, oops.In("npm-proxy").Errorf("npm proxy prefetch response is empty")
+	}
 	defer closeReadCloser(resp.Body, nil, "close npm prefetch response body")
 	if resp.Cache != cacheMiss {
 		return depprefetch.FetchResult{}, nil
@@ -171,10 +174,10 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncO
 	if err != nil {
 		return nil, err
 	}
-	defer closeReadCloser(resp.Body, nil, "close npm manual sync response body")
 	if resp == nil {
 		return nil, oops.In("npm-proxy").Errorf("npm proxy manual sync response is empty")
 	}
+	defer closeReadCloser(resp.Body, nil, "close npm manual sync response body")
 	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
 		return nil, oops.In("npm-proxy").With("status", resp.Status).Errorf("manual sync request failed")
 	}

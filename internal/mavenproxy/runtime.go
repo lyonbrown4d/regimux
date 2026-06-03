@@ -97,6 +97,9 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 	if err != nil {
 		return depprefetch.FetchResult{}, err
 	}
+	if resp == nil {
+		return depprefetch.FetchResult{}, oops.In("maven-proxy").Errorf("maven proxy prefetch response is empty")
+	}
 	defer closeReadCloser(resp.Body, nil, "close maven prefetch response body")
 	if resp.Cache != cacheMiss {
 		return depprefetch.FetchResult{}, nil
@@ -174,10 +177,10 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncO
 	if err != nil {
 		return nil, err
 	}
-	defer closeReadCloser(resp.Body, nil, "close maven manual sync response body")
 	if resp == nil {
 		return nil, oops.In("maven-proxy").Errorf("maven proxy manual sync response is empty")
 	}
+	defer closeReadCloser(resp.Body, nil, "close maven manual sync response body")
 	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
 		return nil, oops.In("maven-proxy").With("status", resp.Status).Errorf("manual sync request failed")
 	}

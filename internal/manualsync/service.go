@@ -1,3 +1,4 @@
+// Package manualsync provides manual sync job coordination for on-demand upstream prefetch.
 package manualsync
 
 import (

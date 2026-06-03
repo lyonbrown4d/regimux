@@ -92,6 +92,9 @@ func RunAll(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
 	if tasks == nil || tasks.Len() == 0 {
 		return nil
 	}
+	if ctx == nil {
+		return oops.Errorf("worker context is required")
+	}
 
 	runtime := newConcContextPool(ctx, pool).WithCancelOnError().WithFirstError()
 	tasks.Range(func(_ int, task func(context.Context) error) bool {
@@ -109,6 +112,9 @@ func RunAll(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
 func RunAllSettled(ctx context.Context, pool *ants.Pool, tasks TaskIterable) error {
 	if tasks == nil || tasks.Len() == 0 {
 		return nil
+	}
+	if ctx == nil {
+		return oops.Errorf("worker context is required")
 	}
 
 	runtime := newConcContextPool(ctx, pool)
@@ -128,9 +134,6 @@ func RunAllSettled(ctx context.Context, pool *ants.Pool, tasks TaskIterable) err
 }
 
 func newConcContextPool(ctx context.Context, pool *ants.Pool) *concpool.ContextPool {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	runtimePool := concpool.New().WithContext(ctx)
 	if pool != nil {
 		limit := pool.Cap()
