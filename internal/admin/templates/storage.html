@@ -43,7 +43,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-800">
-            {{range .Storage.RecentBlobs}}
+            {{range values .Storage.RecentBlobs}}
             <tr class="hover:bg-zinc-900">
               <td class="max-w-sm truncate px-4 py-2 font-mono text-xs text-zinc-300">{{.Digest}}</td>
               <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Size}}</td>
@@ -72,7 +72,7 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-800">
-            {{range .Storage.LargeBlobs}}
+            {{range values .Storage.LargeBlobs}}
             <tr class="hover:bg-zinc-900">
               <td class="max-w-sm truncate px-4 py-2 font-mono text-xs text-zinc-300">{{.Digest}}</td>
               <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Size}}</td>
@@ -105,7 +105,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Storage.Repositories}}
+          {{range values .Storage.Repositories}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}/{{.Repository}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.PullCount}}</td>
@@ -139,7 +139,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Storage.RepoBlobLinks}}
+          {{range values .Storage.RepoBlobLinks}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}/{{.Repository}}</td>
             <td class="max-w-sm truncate px-4 py-2 font-mono text-xs text-zinc-300">{{.Digest}}</td>

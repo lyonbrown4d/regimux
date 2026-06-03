@@ -251,15 +251,15 @@ func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, erro
 		LanguageSwitchHref: languageSwitchHref(c, oppositeLocale(locale)),
 		CSRFToken:          csrf.TokenFromContext(c),
 		Summary:            summary,
-		Upstreams:          upstreams.Values(),
-		Pulls:              pulls.Values(),
+		Upstreams:          upstreams,
+		Pulls:              pulls,
 		Cache:              cache,
 		Activity:           activitySummary(rows),
 		Storage:            storageSummary(rows),
 		Audit:              auditSummary(s.cfg),
 		Scheduler:          scheduler,
-		ConfigRows:         configRows(s.cfg).Values(),
-		ConfigSources:      configSourceRows(locale, s.messages).Values(),
+		ConfigRows:         configRows(s.cfg),
+		ConfigSources:      configSourceRows(locale, s.messages),
 	}, nil
 }
 

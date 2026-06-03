@@ -22,7 +22,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Upstreams}}
+          {{range values .Upstreams}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}</td>
             <td class="px-4 py-2 text-zinc-300">{{.Registry}}</td>

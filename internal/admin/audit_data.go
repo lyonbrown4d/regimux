@@ -13,8 +13,8 @@ func auditSummary(cfg config.Config) AuditSummary {
 	return AuditSummary{
 		AuthEnabled:        cfg.Auth.Enabled,
 		UserCount:          len(cfg.Auth.Users),
-		Users:              auditUserRows(users).Values(),
-		RecentLogins:       nil,
+		Users:              auditUserRows(users),
+		RecentLogins:       collectionlist.NewList[AuditLoginRow](),
 		LoginDataAvailable: false,
 	}
 }

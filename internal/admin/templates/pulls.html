@@ -17,7 +17,7 @@
         </tr>
       </thead>
       <tbody class="divide-y divide-zinc-800">
-        {{range .Pulls}}
+        {{range values .Pulls}}
         <tr class="hover:bg-zinc-900">
           <td class="max-w-xs truncate px-4 py-2 font-mono text-xs text-zinc-400">{{.Key}}</td>
           <td class="px-4 py-2 text-zinc-300">{{.Alias}}</td>

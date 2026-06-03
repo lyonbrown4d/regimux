@@ -15,7 +15,7 @@ func cacheSummary(snapshot metadataSnapshot) CacheSummary {
 		BlobCount:            metadataCount(stats.BlobCount),
 		BlobBytes:            formatBytes(stats.BlobBytes),
 		RepoBlobCount:        metadataCount(stats.RepoBlobCount),
-		RecentBlobs:          recentBlobRows(snapshot.recentBlobs, 25).Values(),
+		RecentBlobs:          recentBlobRows(snapshot.recentBlobs, 25),
 	}
 }
 

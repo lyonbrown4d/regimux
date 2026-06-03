@@ -139,7 +139,7 @@ func syncRepositoryAndReference(form SyncForm) (string, SyncForm, error) {
 	return repo, form, nil
 }
 
-func (s *Service) syncUpstreamOptions(selected string) []SyncUpstreamOption {
+func (s *Service) syncUpstreamOptions(selected string) *collectionlist.List[SyncUpstreamOption] {
 	selected = normalizeSyncTarget(selected)
 	if selected == "" {
 		selected = defaultSyncUpstreamValue(s.cfg)
@@ -169,7 +169,7 @@ func (s *Service) syncUpstreamOptions(selected string) []SyncUpstreamOption {
 	addSyncOptions(ecosystem.NPM, s.cfg.OrderedNPMUpstreams())
 	addSyncOptions(ecosystem.PyPI, s.cfg.OrderedPyPIUpstreams())
 	addSyncOptions(ecosystem.Maven, s.cfg.OrderedMavenUpstreams())
-	return options.Values()
+	return options
 }
 
 func splitRepositoryReference(value string) (string, string, error) {

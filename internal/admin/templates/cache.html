@@ -22,7 +22,7 @@
     </div>
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs text-zinc-500">{{t . "label.recent_blobs"}}</div>
-      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len .Cache.RecentBlobs}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len (values .Cache.RecentBlobs)}}</div>
       <div class="mt-1 text-xs text-zinc-500">{{t . "hint.latest_records"}}</div>
     </div>
   </div>
@@ -44,7 +44,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Cache.RecentBlobs}}
+          {{range values .Cache.RecentBlobs}}
           <tr class="hover:bg-zinc-900">
             <td class="max-w-xl truncate px-4 py-2 font-mono text-xs text-zinc-300">{{.Digest}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Size}}</td>

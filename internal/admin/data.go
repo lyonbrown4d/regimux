@@ -244,7 +244,7 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 			row.LastActivityAt = formatTime(runtime.LastActivityAt)
 		}
 		runtimeSnapshot, _ := snapshots.Get(alias)
-		row.Endpoints = endpointRows(runtimeSnapshot).Values()
+		row.Endpoints = endpointRows(runtimeSnapshot)
 		rows.Add(row)
 		return true
 	})

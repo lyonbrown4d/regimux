@@ -14,7 +14,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .ConfigSources}}
+          {{range values .ConfigSources}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-mono text-xs text-cyan-200">{{.Name}}</td>
             <td class="px-4 py-2 text-zinc-300">{{.Status}}</td>
@@ -42,7 +42,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .ConfigRows}}
+          {{range values .ConfigRows}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-mono text-xs text-cyan-200">{{.Path}}</td>
             <td class="whitespace-pre-wrap px-4 py-2 font-mono text-xs text-zinc-300">{{.Value}}</td>

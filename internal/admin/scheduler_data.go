@@ -40,9 +40,9 @@ func (s *Service) schedulerSummary(ctx context.Context) (SchedulerSummary, error
 		PrefetchMaxRepositories:      cfg.Prefetch.MaxRepositories,
 		PrefetchFailureBackoff:       formatDuration(cfg.Prefetch.FailureBackoff),
 		PrefetchRetryWindow:          formatDuration(cfg.Prefetch.RetryWindow),
-		PrefetchRuns:                 runs.Values(),
-		PrefetchOutcomes:             outcomes.Values(),
-		ProbeJobs:                    probeJobRows(s.cfg).Values(),
+		PrefetchRuns:                 runs,
+		PrefetchOutcomes:             outcomes,
+		ProbeJobs:                    probeJobRows(s.cfg),
 	}, nil
 }
 

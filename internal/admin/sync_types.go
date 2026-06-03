@@ -1,8 +1,10 @@
 package admin
 
+import collectionlist "github.com/arcgolabs/collectionx/list"
+
 type SyncPageData struct {
 	Form      SyncForm
-	Upstreams []SyncUpstreamOption
+	Upstreams *collectionlist.List[SyncUpstreamOption]
 	Result    SyncResult
 	Job       SyncJobView
 	Error     string

@@ -12,7 +12,7 @@
     </div>
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs text-zinc-500">{{t . "label.recent_logins"}}</div>
-      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len .Audit.RecentLogins}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len (values .Audit.RecentLogins)}}</div>
       <div class="mt-1 text-xs text-zinc-500">{{t . "hint.login_data_unavailable"}}</div>
     </div>
   </div>
@@ -33,7 +33,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Audit.Users}}
+          {{range values .Audit.Users}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Username}}</td>
             <td class="px-4 py-2 font-mono text-xs text-zinc-300">{{.RepositoryScopes}}</td>
@@ -64,7 +64,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Audit.RecentLogins}}
+          {{range values .Audit.RecentLogins}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Username}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Remote}}</td>

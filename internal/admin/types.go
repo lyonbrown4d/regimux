@@ -1,5 +1,7 @@
 package admin
 
+import collectionlist "github.com/arcgolabs/collectionx/list"
+
 type PageData struct {
 	Title              string
 	Active             string
@@ -12,16 +14,16 @@ type PageData struct {
 	CSRFToken          string
 
 	Summary       Summary
-	Upstreams     []UpstreamRow
-	RecentPulls   []PullRow
-	Pulls         []PullRow
+	Upstreams     *collectionlist.List[UpstreamRow]
+	RecentPulls   *collectionlist.List[PullRow]
+	Pulls         *collectionlist.List[PullRow]
 	Cache         CacheSummary
 	Activity      ActivitySummary
 	Storage       StorageSummary
 	Audit         AuditSummary
 	Scheduler     SchedulerSummary
-	ConfigRows    []ConfigRow
-	ConfigSources []ConfigSourceRow
+	ConfigRows    *collectionlist.List[ConfigRow]
+	ConfigSources *collectionlist.List[ConfigSourceRow]
 	Sync          SyncPageData
 }
 
@@ -61,7 +63,7 @@ type UpstreamRow struct {
 	PullCount        int64
 	BlobBytes        string
 	LastActivityAt   string
-	Endpoints        []EndpointRow
+	Endpoints        *collectionlist.List[EndpointRow]
 }
 
 type EndpointRow struct {
@@ -92,7 +94,7 @@ type PullRow struct {
 
 type ActivitySummary struct {
 	RequestAuditAvailable bool
-	Rows                  []ActivityRow
+	Rows                  *collectionlist.List[ActivityRow]
 }
 
 type ActivityRow struct {
@@ -118,7 +120,7 @@ type CacheSummary struct {
 	BlobCount            int
 	BlobBytes            string
 	RepoBlobCount        int
-	RecentBlobs          []BlobRow
+	RecentBlobs          *collectionlist.List[BlobRow]
 }
 
 type BlobRow struct {
@@ -136,10 +138,10 @@ type StorageSummary struct {
 	BlobCount     int
 	ManifestCount int
 	RepoBlobCount int
-	RecentBlobs   []BlobRow
-	LargeBlobs    []BlobRow
-	Repositories  []RepositoryRow
-	RepoBlobLinks []RepoBlobRow
+	RecentBlobs   *collectionlist.List[BlobRow]
+	LargeBlobs    *collectionlist.List[BlobRow]
+	Repositories  *collectionlist.List[RepositoryRow]
+	RepoBlobLinks *collectionlist.List[RepoBlobRow]
 }
 
 type RepositoryRow struct {
@@ -167,8 +169,8 @@ type RepoBlobRow struct {
 type AuditSummary struct {
 	AuthEnabled        bool
 	UserCount          int
-	Users              []AuditUserRow
-	RecentLogins       []AuditLoginRow
+	Users              *collectionlist.List[AuditUserRow]
+	RecentLogins       *collectionlist.List[AuditLoginRow]
 	LoginDataAvailable bool
 }
 
@@ -209,11 +211,11 @@ type SchedulerSummary struct {
 	PrefetchMaxRepositories      int
 	PrefetchFailureBackoff       string
 	PrefetchRetryWindow          string
-	PrefetchRuns                 []PrefetchRunRow
-	PrefetchOutcomes             []PrefetchOutcomeRow
+	PrefetchRuns                 *collectionlist.List[PrefetchRunRow]
+	PrefetchOutcomes             *collectionlist.List[PrefetchOutcomeRow]
 	PrefetchControlMessage       string
 	PrefetchControlError         string
-	ProbeJobs                    []ProbeJobRow
+	ProbeJobs                    *collectionlist.List[ProbeJobRow]
 	CleanupControlMessage        string
 	CleanupControlError          string
 	ProbeControlMessage          string

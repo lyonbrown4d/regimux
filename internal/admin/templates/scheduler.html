@@ -83,7 +83,7 @@
   <section class="rounded border border-zinc-800 bg-zinc-900/50">
     <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
       <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_runs"}}</h2>
-      <span class="text-xs text-zinc-500">{{len .Scheduler.PrefetchRuns}} {{t . "total"}}</span>
+      <span class="text-xs text-zinc-500">{{len (values .Scheduler.PrefetchRuns)}} {{t . "total"}}</span>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full text-left text-sm">
@@ -100,7 +100,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Scheduler.PrefetchRuns}}
+          {{range values .Scheduler.PrefetchRuns}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 text-zinc-300">{{.StartedAt}}</td>
             <td class="px-4 py-2 text-zinc-100">{{.Status}}</td>
@@ -122,7 +122,7 @@
   <section class="rounded border border-zinc-800 bg-zinc-900/50">
     <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
       <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.prefetch_outcomes"}}</h2>
-      <span class="text-xs text-zinc-500">{{len .Scheduler.PrefetchOutcomes}} {{t . "total"}}</span>
+      <span class="text-xs text-zinc-500">{{len (values .Scheduler.PrefetchOutcomes)}} {{t . "total"}}</span>
     </div>
     <div class="overflow-x-auto">
       <table class="min-w-full text-left text-sm">
@@ -137,7 +137,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Scheduler.PrefetchOutcomes}}
+          {{range values .Scheduler.PrefetchOutcomes}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Candidate}}</td>
             <td class="px-4 py-2 text-zinc-300">{{.Status}}</td>
@@ -157,7 +157,7 @@
   <section class="rounded border border-zinc-800 bg-zinc-900/50">
       <div class="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
         <h2 class="text-sm font-semibold text-zinc-100">{{t . "section.probe_jobs"}}</h2>
-        <span class="text-xs text-zinc-500">{{len .Scheduler.ProbeJobs}} {{t . "jobs"}}</span>
+        <span class="text-xs text-zinc-500">{{len (values .Scheduler.ProbeJobs)}} {{t . "jobs"}}</span>
       </div>
       {{if .Scheduler.ProbeControlMessage}}
       <div class="border-b border-zinc-800 px-4 py-2 text-xs text-cyan-300">{{.Scheduler.ProbeControlMessage}}</div>
@@ -180,7 +180,7 @@
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
-          {{range .Scheduler.ProbeJobs}}
+          {{range values .Scheduler.ProbeJobs}}
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Ecosystem}}</td>
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}</td>

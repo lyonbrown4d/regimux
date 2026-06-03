@@ -14,10 +14,10 @@ func storageSummary(snapshot metadataSnapshot) StorageSummary {
 		BlobCount:     metadataCount(stats.BlobCount),
 		ManifestCount: metadataCount(stats.ManifestCount),
 		RepoBlobCount: metadataCount(stats.RepoBlobCount),
-		RecentBlobs:   recentBlobRows(snapshot.recentBlobs, 10).Values(),
-		LargeBlobs:    largeBlobRows(snapshot.largeBlobs, 10).Values(),
-		Repositories:  repositoryRows(snapshot.repositories, 25).Values(),
-		RepoBlobLinks: recentRepoBlobRows(snapshot.repoBlobs, 25).Values(),
+		RecentBlobs:   recentBlobRows(snapshot.recentBlobs, 10),
+		LargeBlobs:    largeBlobRows(snapshot.largeBlobs, 10),
+		Repositories:  repositoryRows(snapshot.repositories, 25),
+		RepoBlobLinks: recentRepoBlobRows(snapshot.repoBlobs, 25),
 	}
 }
 

@@ -8,7 +8,7 @@ import (
 func activitySummary(snapshot metadataSnapshot) ActivitySummary {
 	return ActivitySummary{
 		RequestAuditAvailable: false,
-		Rows:                  activityRowsFromPulls(snapshot.pulls, 50).Values(),
+		Rows:                  activityRowsFromPulls(snapshot.pulls, 50),
 	}
 }
 
