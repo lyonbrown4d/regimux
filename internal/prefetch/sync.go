@@ -11,6 +11,7 @@ import (
 
 // SyncOptions identifies one manifest reference to prefetch explicitly.
 type SyncOptions struct {
+	Ecosystem string
 	Alias     string
 	Repo      string
 	Reference string

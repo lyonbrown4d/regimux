@@ -107,11 +107,18 @@ func (s *Service) syncOptionsFromForm(c fiber.Ctx) (prefetch.SyncOptions, SyncFo
 	if err != nil {
 		return prefetch.SyncOptions{}, form, err
 	}
+	// For non-container ecosystems, route parsing is not required.
+	if route == nil {
+		if _, ok := s.syncUpstream(form.Ecosystem, form.Alias); !ok {
+			return prefetch.SyncOptions{}, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("unknown upstream %q in ecosystem %q", form.Alias, form.Ecosystem)
+		}
+	}
 
 	return prefetch.SyncOptions{
-		Alias:     route.Alias,
-		Repo:      route.Repo,
-		Reference: route.Reference,
+		Ecosystem: form.Ecosystem,
+		Alias:     routeToSyncAlias(form.Ecosystem, form.Alias, route),
+		Repo:      routeToSyncRepo(route, repo),
+		Reference: routeToSyncReference(route, form.Reference),
 		Accept:    s.cfg.Scheduler.Prefetch.Accept,
 	}, form, nil
 }
@@ -135,7 +142,7 @@ func syncRepositoryAndReference(form SyncForm) (string, SyncForm, error) {
 
 func (s *Service) syncRoute(form SyncForm, repo string) (*registryref.Route, SyncForm, error) {
 	if form.Ecosystem != ecosystem.Container {
-		return nil, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("manual sync for ecosystem %q is not supported", form.Ecosystem)
+		return nil, form, nil
 	}
 	route, err := registryref.ParseManifestPath("/v2/" + form.Alias + "/" + repo + "/manifests/" + form.Reference)
 	if err != nil {
@@ -149,6 +156,44 @@ func (s *Service) syncRoute(form SyncForm, repo string) (*registryref.Route, Syn
 	form.Repository = route.Repo
 	form.Reference = route.Reference
 	return route, form, nil
+}
+
+func (s *Service) syncUpstream(ecosystemName, alias string) (config.UpstreamConfig, bool) {
+	switch strings.TrimSpace(ecosystemName) {
+	case ecosystem.Container:
+		return s.cfg.ContainerUpstream(alias)
+	case ecosystem.Go:
+		return s.cfg.GoUpstream(alias)
+	case ecosystem.NPM:
+		return s.cfg.NPMUpstream(alias)
+	case ecosystem.PyPI:
+		return s.cfg.PyPIUpstream(alias)
+	case ecosystem.Maven:
+		return s.cfg.MavenUpstream(alias)
+	default:
+		return config.UpstreamConfig{}, false
+	}
+}
+
+func routeToSyncAlias(ecosystemValue, alias string, route *registryref.Route) string {
+	if route == nil {
+		return alias
+	}
+	return route.Alias
+}
+
+func routeToSyncRepo(route *registryref.Route, fallback string) string {
+	if route == nil {
+		return fallback
+	}
+	return route.Repo
+}
+
+func routeToSyncReference(route *registryref.Route, fallback string) string {
+	if route == nil {
+		return fallback
+	}
+	return route.Reference
 }
 
 func defaultSyncForm() SyncForm {

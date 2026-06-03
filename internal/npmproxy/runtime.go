@@ -10,6 +10,8 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/depprefetch"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
+	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/samber/oops"
@@ -19,10 +21,19 @@ type runtimeAdapter struct {
 	service    *Service
 	prober     *ecosystem.EndpointProber
 	prefetcher *depprefetch.Service
+	manualSync *manualsync.Service
 }
 
 func newRuntimeAdapter(service *Service, prober *ecosystem.EndpointProber, metadata meta.Store, pools *worker.Pools, logger *slog.Logger) *runtimeAdapter {
-	adapter := &runtimeAdapter{service: service, prober: prober}
+	adapter := &runtimeAdapter{
+		service: service,
+		prober:  prober,
+	}
+	adapter.manualSync = manualsync.NewService(manualsync.ServiceDependencies{
+		Execute: func(ctx context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
+			return adapter.syncDependency(ctx, opts)
+		},
+	})
 	adapter.prefetcher = depprefetch.New(depprefetch.Dependencies{
 		Ecosystem: ecosystem.NPM,
 		Metadata:  metadata,
@@ -102,13 +113,6 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 	return depprefetch.FetchResult{BytesWarmed: resp.Size}, nil
 }
 
-func npmTail(candidate depprefetch.Candidate) string {
-	if tarball, ok := strings.CutPrefix(candidate.Reference, "tarball:"); ok {
-		return candidate.Repository + "/-/" + tarball
-	}
-	return candidate.Repository
-}
-
 func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget) error {
 	if r == nil || r.prober == nil {
 		return oops.In("npm-proxy").Errorf("npm proxy endpoint prober is not configured")
@@ -117,6 +121,80 @@ func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget
 		return oops.Wrapf(err, "probe npm proxy upstream")
 	}
 	return nil
+}
+
+func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
+	if r == nil || r.manualSync == nil {
+		return prefetch.SyncJob{}, oops.In("npm-proxy").Errorf("npm proxy manual sync service is not configured")
+	}
+	job, err := r.manualSync.CreateSyncJob(ctx, opts)
+	if err != nil {
+		return prefetch.SyncJob{}, oops.Wrapf(err, "create npm proxy manual sync job")
+	}
+	return job, nil
+}
+
+func (r *runtimeAdapter) RunSyncJob(ctx context.Context, id string) error {
+	if r == nil || r.manualSync == nil {
+		return oops.In("npm-proxy").Errorf("npm proxy manual sync service is not configured")
+	}
+	if err := r.manualSync.RunSyncJob(ctx, id); err != nil {
+		return oops.With("job_id", id).Wrapf(err, "run npm proxy manual sync job")
+	}
+	return nil
+}
+
+func (r *runtimeAdapter) MarkSyncJobFailed(id string, err error) {
+	if r == nil || r.manualSync == nil {
+		return
+	}
+	r.manualSync.MarkSyncJobFailed(id, err)
+}
+
+func (r *runtimeAdapter) SyncJob(id string) (prefetch.SyncJob, bool) {
+	if r == nil || r.manualSync == nil {
+		return prefetch.SyncJob{}, false
+	}
+	return r.manualSync.SyncJob(id)
+}
+
+func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
+	if r == nil || r.service == nil {
+		return nil, oops.In("npm-proxy").Errorf("npm proxy manual sync service is not configured")
+	}
+	resp, err := r.service.Get(ctx, Request{
+		Alias:          opts.Alias,
+		Tail:           npmTail(depprefetch.Candidate{Alias: opts.Alias, Repository: opts.Repo, Reference: opts.Reference}),
+		Method:         http.MethodGet,
+		SkipPullRecord: true,
+	})
+	if err != nil {
+		return nil, err
+	}
+	defer closeReadCloser(resp.Body, nil, "close npm manual sync response body")
+	if resp == nil {
+		return nil, oops.In("npm-proxy").Errorf("npm proxy manual sync response is empty")
+	}
+	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
+		return nil, oops.In("npm-proxy").With("status", resp.Status).Errorf("manual sync request failed")
+	}
+	bytesWarmed, copyErr := io.Copy(io.Discard, resp.Body)
+	if copyErr != nil {
+		return nil, oops.With("status", resp.Status).Wrapf(copyErr, "drain npm manual sync response")
+	}
+	return &prefetch.SyncReport{
+		Alias:     opts.Alias,
+		Repo:      opts.Repo,
+		Reference: opts.Reference,
+		BlobCount: int(bytesWarmed),
+	}, nil
+}
+
+func npmTail(candidate depprefetch.Candidate) string {
+	if tarball, ok := strings.CutPrefix(candidate.Reference, "tarball:"); ok {
+		return candidate.Repository + "/-/" + tarball
+	}
+	return candidate.Repository
 }
 
 var _ ecosystem.Runtime = (*runtimeAdapter)(nil)

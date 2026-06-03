@@ -2,9 +2,11 @@ package scheduler
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/samber/oops"
 )
@@ -17,7 +19,8 @@ type manualSyncer interface {
 }
 
 func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
-	syncer := r.manualSyncer()
+	opts.Ecosystem = normalizeSyncEcosystem(opts.Ecosystem)
+	syncer := r.manualSyncer(opts.Ecosystem)
 	if syncer == nil {
 		return prefetch.SyncJob{}, oops.In("scheduler").Errorf("manual sync service is not configured")
 	}
@@ -41,7 +44,7 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (pr
 			return r.runManualSync(ctx, job.ID)
 		}),
 		gocron.WithName("regimux.manual_sync."+job.ID),
-		gocron.WithTags("manual-sync", opts.Alias),
+		gocron.WithTags("manual-sync", job.Options.Ecosystem, opts.Alias),
 		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 		gocron.WithDisabledDistributedJobLocker(true),
 	); err != nil {
@@ -55,6 +58,7 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (pr
 	r.logger.InfoContext(ctx,
 		"manual sync job submitted",
 		"job_id", job.ID,
+		"ecosystem", opts.Ecosystem,
 		"alias", opts.Alias,
 		"repository", opts.Repo,
 		"reference", opts.Reference,
@@ -66,24 +70,18 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (pr
 }
 
 func (r *Runtime) SyncJob(id string) (prefetch.SyncJob, bool) {
-	syncer := r.manualSyncer()
-	if syncer == nil {
+	syncer, job, ok := r.manualSyncerByJob(id)
+	if !ok || syncer == nil {
 		return prefetch.SyncJob{}, false
 	}
-	return syncer.SyncJob(id)
+	return job, true
 }
 
 func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 	startedAt := time.Now()
-	syncer := r.manualSyncer()
-	if syncer == nil {
+	syncer, job, ok := r.manualSyncerByJob(id)
+	if !ok || syncer == nil {
 		err := oops.In("scheduler").Errorf("manual sync service is not configured")
-		r.observeJob(ctx, "manual_sync", "", startedAt, err)
-		return err
-	}
-	job, ok := syncer.SyncJob(id)
-	if !ok {
-		err := oops.In("scheduler").With("job_id", id).Errorf("manual sync job not found")
 		r.observeJob(ctx, "manual_sync", "", startedAt, err)
 		return err
 	}
@@ -93,6 +91,7 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 		r.logger.WarnContext(ctx,
 			"manual sync job failed",
 			"job_id", id,
+			"ecosystem", job.Options.Ecosystem,
 			"alias", job.Options.Alias,
 			"repository", job.Options.Repo,
 			"reference", job.Options.Reference,
@@ -105,6 +104,7 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 	r.logger.InfoContext(ctx,
 		"manual sync job completed",
 		"job_id", id,
+		"ecosystem", job.Options.Ecosystem,
 		"alias", job.Options.Alias,
 		"repository", job.Options.Repo,
 		"reference", job.Options.Reference,
@@ -114,15 +114,44 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *Runtime) manualSyncer() manualSyncer {
-	if r == nil {
+func (r *Runtime) manualSyncer(ecosystemName string) manualSyncer {
+	if r == nil || ecosystemName == "" {
 		return nil
 	}
 	for _, runtime := range r.runtimes {
+		if runtime == nil || runtime.Name() != ecosystemName {
+			continue
+		}
 		syncer, ok := runtime.(manualSyncer)
 		if ok {
 			return syncer
 		}
 	}
 	return nil
+}
+
+func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, prefetch.SyncJob, bool) {
+	if r == nil || id == "" {
+		return nil, prefetch.SyncJob{}, false
+	}
+	for _, runtime := range r.runtimes {
+		syncer, ok := runtime.(manualSyncer)
+		if !ok {
+			continue
+		}
+		job, ok := syncer.SyncJob(id)
+		if !ok {
+			continue
+		}
+		return syncer, job, true
+	}
+	return nil, prefetch.SyncJob{}, false
+}
+
+func normalizeSyncEcosystem(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return ecosystem.Container
+	}
+	return value
 }

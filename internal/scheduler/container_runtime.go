@@ -7,6 +7,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/upstream"
@@ -17,13 +18,23 @@ type ContainerRuntime struct {
 	cfg      config.Config
 	upstream *upstream.Client
 	prefetch *prefetch.Service
+	manual   *manualsync.Service
 }
 
 func NewContainerRuntime(cfg config.Config, upstreamClient *upstream.Client, prefetchService *prefetch.Service) *ContainerRuntime {
+	manual := manualsync.NewService(manualsync.ServiceDependencies{
+		Execute: func(ctx context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
+			if prefetchService == nil {
+				return nil, oops.In("scheduler").With("ecosystem", ecosystem.Container).Errorf("container manual sync service is not configured")
+			}
+			return prefetchService.Sync(ctx, opts)
+		},
+	})
 	return &ContainerRuntime{
 		cfg:      cfg,
 		upstream: upstreamClient,
 		prefetch: prefetchService,
+		manual:   manual,
 	}
 }
 
@@ -116,10 +127,10 @@ func (r *ContainerRuntime) Prefetch(ctx context.Context, opts ecosystem.Prefetch
 }
 
 func (r *ContainerRuntime) CreateSyncJob(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
-	if r == nil || r.prefetch == nil {
+	if r == nil || r.manual == nil {
 		return prefetch.SyncJob{}, oops.In("scheduler").With("ecosystem", ecosystem.Container).Errorf("container manual sync service is not configured")
 	}
-	job, err := r.prefetch.CreateSyncJob(ctx, opts)
+	job, err := r.manual.CreateSyncJob(ctx, opts)
 	if err != nil {
 		return prefetch.SyncJob{}, oops.Wrapf(err, "create container manual sync job")
 	}
@@ -127,27 +138,27 @@ func (r *ContainerRuntime) CreateSyncJob(ctx context.Context, opts prefetch.Sync
 }
 
 func (r *ContainerRuntime) RunSyncJob(ctx context.Context, id string) error {
-	if r == nil || r.prefetch == nil {
+	if r == nil || r.manual == nil {
 		return oops.In("scheduler").With("ecosystem", ecosystem.Container).Errorf("container manual sync service is not configured")
 	}
-	if err := r.prefetch.RunSyncJob(ctx, id); err != nil {
+	if err := r.manual.RunSyncJob(ctx, id); err != nil {
 		return oops.With("job_id", id).Wrapf(err, "run container manual sync job")
 	}
 	return nil
 }
 
 func (r *ContainerRuntime) MarkSyncJobFailed(id string, err error) {
-	if r == nil || r.prefetch == nil {
+	if r == nil || r.manual == nil {
 		return
 	}
-	r.prefetch.MarkSyncJobFailed(id, err)
+	r.manual.MarkSyncJobFailed(id, err)
 }
 
 func (r *ContainerRuntime) SyncJob(id string) (prefetch.SyncJob, bool) {
-	if r == nil || r.prefetch == nil {
+	if r == nil || r.manual == nil {
 		return prefetch.SyncJob{}, false
 	}
-	return r.prefetch.SyncJob(id)
+	return r.manual.SyncJob(id)
 }
 
 func containerPrefetchReport(report *prefetch.RunReport) *ecosystem.PrefetchReport {
