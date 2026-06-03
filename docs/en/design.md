@@ -81,6 +81,20 @@ The scheduler consumes the runtime set from `dix` and registers background work 
 
 Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
+Manual sync is also standardized in the same abstraction:
+
+- Admin submits `prefetch.SyncOptions` with `(ecosystem, alias, repo, reference)`.
+- Scheduler selects the ecosystem runtime by `runtime.Name()` and submits a one-time background job via `SubmitSync`.
+- A runtime that supports manual sync exposes `CreateSyncJob`, `RunSyncJob`, `SyncJob`, and `MarkSyncJobFailed`.
+- Manual sync execution is isolated per ecosystem runtime but observed through shared scheduler metrics and admin job polling.
+- Job lifecycle is in-memory today (in a concurrent map); results are returned from the scheduler endpoint and UI polling.
+
+Because this is the same runtime boundary, adding a new ecosystem requires only:
+
+1. implementing `ecosystem.Runtime` plus relevant capability interfaces (`Probe`, `Prefetch`, manual-sync).
+2. registering it in `dix` with a stable key.
+3. no changes to scheduler orchestration code.
+
 ## Main Components
 
 ```text
@@ -174,6 +188,12 @@ Client-side layer concurrency already exists in Docker/containerd, so RegiMux fo
 ## Prefetch
 
 Container prefetch predicts likely next tags based on pull history, then warms manifests and blobs through the normal cache path. Dependency ecosystem prefetch currently rewinds recent pull history and refreshes the exact Go/npm/PyPI/Maven artifact through that ecosystem's proxy cache path. The scheduler invokes both through the runtime `prefetch` capability, so ecosystem-specific version prediction can be added behind the same job shape. Runs and outcomes are stored in metadata and shown in Admin UI.
+
+Manual sync and scheduler prefetch share the same job abstraction:
+
+- Prefetch jobs are periodic and periodicity is configured by `scheduler.prefetch`.
+- Manual sync jobs are one-time and triggered via `/admin/sync` (form submit) and submitted as gocron `OneTimeJob`.
+- Both produce `prefetch.SyncReport`-style outcomes and can be observed by admin endpoints and shared metrics.
 
 Prefetch supports:
 
