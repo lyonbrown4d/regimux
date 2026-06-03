@@ -30,12 +30,12 @@ func NewMessages() (*Messages, error) {
 	loaded := collectionmapping.NewTable[string, string, string]()
 	var loadErr error
 	locales.Range(func(_ int, locale string) bool {
-		entries, err := readLocaleMessages(locale)
+		localeMessages, err := readLocaleMessages(locale)
 		if err != nil {
 			loadErr = err
 			return false
 		}
-		loaded.SetRow(locale, entries)
+		loaded.SetRow(locale, localeMessages.Row(locale))
 		return true
 	})
 	if loadErr != nil {
@@ -44,7 +44,7 @@ func NewMessages() (*Messages, error) {
 	return &Messages{entries: loaded}, nil
 }
 
-func readLocaleMessages(locale string) (map[string]string, error) {
+func readLocaleMessages(locale string) (*collectionmapping.Table[string, string, string], error) {
 	content, err := localeFS.ReadFile("locales/" + locale + ".json")
 	if err != nil {
 		return nil, oops.In("admin").With("locale", locale).Wrapf(err, "read admin locale")
@@ -53,7 +53,9 @@ func readLocaleMessages(locale string) (map[string]string, error) {
 	if err := json.Unmarshal(content, &entries); err != nil {
 		return nil, oops.In("admin").With("locale", locale).Wrapf(err, "parse admin locale")
 	}
-	return entries, nil
+	messages := collectionmapping.NewTable[string, string, string]()
+	messages.SetRow(locale, entries)
+	return messages, nil
 }
 
 func localeFromRequest(c fiber.Ctx) string {

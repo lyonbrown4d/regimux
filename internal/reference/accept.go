@@ -75,8 +75,12 @@ func normalizeAcceptParams(rawParams []string) *collectionlist.List[string] {
 }
 
 func normalizeAcceptParamMap(params map[string]string) *collectionlist.List[string] {
-	return collectionlist.FilterMapList(collectionlist.NewList(collectionmapping.NewMapFrom(params).Keys()...), func(_ int, name string) (string, bool) {
-		value := params[name]
+	values := collectionmapping.NewMapFrom(params)
+	return collectionlist.FilterMapList(collectionlist.NewList(values.Keys()...), func(_ int, name string) (string, bool) {
+		value, ok := values.Get(name)
+		if !ok {
+			return "", false
+		}
 		param, ok := normalizeAcceptParam(name + "=" + value)
 		return param, ok
 	}).Sort(strings.Compare)
