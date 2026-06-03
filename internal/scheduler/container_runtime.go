@@ -47,16 +47,16 @@ func (r *ContainerRuntime) Upstreams() *collectionlist.List[ecosystem.Upstream] 
 		return collectionlist.NewList[ecosystem.Upstream]()
 	}
 	ordered := r.cfg.OrderedContainerUpstreams()
-	out := make([]ecosystem.Upstream, 0, ordered.Len())
+	out := collectionlist.NewList[ecosystem.Upstream]()
 	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out = append(out, ecosystem.Upstream{
+		out.Add(ecosystem.Upstream{
 			Ecosystem: r.Name(),
 			Alias:     alias,
 			Config:    cfg,
 		})
 		return true
 	})
-	return collectionlist.NewList(out...)
+	return out
 }
 
 func (r *ContainerRuntime) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {
@@ -64,15 +64,13 @@ func (r *ContainerRuntime) ProbeTargets() *collectionlist.List[ecosystem.ProbeTa
 		return collectionlist.NewList[ecosystem.ProbeTarget]()
 	}
 	upstreams := r.Upstreams()
-	targets := make([]ecosystem.ProbeTarget, 0, upstreams.Len())
-	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+	return collectionlist.FilterMapList(upstreams, func(_ int, upstream ecosystem.Upstream) (ecosystem.ProbeTarget, bool) {
 		probeCfg := upstream.Config.Probe
-		if probeCfg.Enabled && probeCfg.Interval > 0 {
-			targets = append(targets, ecosystem.ProbeTarget(upstream))
+		if !probeCfg.Enabled || probeCfg.Interval <= 0 {
+			return ecosystem.ProbeTarget{}, false
 		}
-		return true
+		return ecosystem.ProbeTarget(upstream), true
 	})
-	return collectionlist.NewList(targets...)
 }
 
 func (r *ContainerRuntime) Probe(ctx context.Context, target ecosystem.ProbeTarget) error {

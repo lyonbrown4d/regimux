@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -113,32 +114,38 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if !ok {
 		return nil, oops.In("go-proxy").With("alias", parsed.Alias).Errorf("go upstream is not configured")
 	}
-	resp, err := s.getFromUpstreams(ctx, req, parsed, []goUpstream{{alias: parsed.Alias, cfg: upstreamCfg}}, false)
+	resp, err := s.getFromUpstreams(ctx, req, parsed, collectionlist.NewList(goUpstream{alias: parsed.Alias, cfg: upstreamCfg}), false)
 	s.recordPull(ctx, req, parsed, resp, err)
 	return resp, err
 }
 
-func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute route, upstreams []goUpstream, fallback bool) (*Response, error) {
-	if len(upstreams) == 0 {
+func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute route, upstreams *collectionlist.List[goUpstream], fallback bool) (*Response, error) {
+	if upstreams == nil || upstreams.Len() == 0 {
 		return nil, oops.In("go-proxy").Errorf("go upstream is not configured")
 	}
+	total := upstreams.Len()
+	var result *Response
 	var lastErr error
-	for i := range upstreams {
-		upstream := upstreams[i]
+	upstreams.Range(func(i int, upstream goUpstream) bool {
 		requestRoute := routeForUpstream(baseRoute, upstream.alias)
 		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias)
 		if err != nil {
 			lastErr = err
-			if canFallback(fallback, i, len(upstreams)) {
-				continue
+			if canFallback(fallback, i, total) {
+				return true
 			}
-			return nil, err
+			lastErr = err
+			return false
 		}
-		if canFallbackResponse(resp, fallback, i, len(upstreams)) {
+		if canFallbackResponse(resp, fallback, i, total) {
 			closeResponseBody(resp)
-			continue
+			return true
 		}
-		return resp, nil
+		result = resp
+		return false
+	})
+	if result != nil {
+		return result, nil
 	}
 	if lastErr != nil {
 		return nil, lastErr
@@ -253,43 +260,42 @@ func (s *Service) goUpstream(alias string) (config.UpstreamConfig, bool) {
 	return s.cfg.GoUpstream(alias)
 }
 
-func (s *Service) Upstreams() []Upstream {
+func (s *Service) Upstreams() *collectionlist.List[Upstream] {
 	if s == nil {
-		return nil
+		return collectionlist.NewList[Upstream]()
 	}
 	upstreams := s.goUpstreams()
-	out := make([]Upstream, 0, len(upstreams))
-	for i := range upstreams {
-		out = append(out, Upstream{Alias: upstreams[i].alias, Config: upstreams[i].cfg})
-	}
-	return out
+	return collectionlist.MapList(upstreams, func(_ int, upstream goUpstream) Upstream {
+		return Upstream{Alias: upstream.alias, Config: upstream.cfg}
+	})
 }
 
-func (s *Service) goUpstreams() []goUpstream {
+func (s *Service) goUpstreams() *collectionlist.List[goUpstream] {
 	ordered := s.cfg.OrderedGoUpstreams()
 	if ordered.Len() == 0 {
-		return nil
+		return collectionlist.NewList[goUpstream]()
 	}
-	out := make([]goUpstream, 0, ordered.Len())
+	out := collectionlist.NewListWithCapacity[goUpstream](ordered.Len())
 	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out = append(out, goUpstream{alias: alias, cfg: cfg})
+		out.Add(goUpstream{alias: alias, cfg: cfg})
 		return true
 	})
 	return preferGoAlias(out, "default")
 }
 
-func preferGoAlias(upstreams []goUpstream, alias string) []goUpstream {
-	for i := range upstreams {
-		if upstreams[i].alias != alias {
+func preferGoAlias(upstreams *collectionlist.List[goUpstream], alias string) *collectionlist.List[goUpstream] {
+	values := upstreams.Values()
+	for i := range values {
+		if values[i].alias != alias {
 			continue
 		}
 		if i == 0 {
-			return upstreams
+			return collectionlist.NewList(values...)
 		}
-		preferred := upstreams[i]
-		copy(upstreams[1:i+1], upstreams[0:i])
-		upstreams[0] = preferred
-		return upstreams
+		preferred := values[i]
+		copy(values[1:i+1], values[0:i])
+		values[0] = preferred
+		return collectionlist.NewList(values...)
 	}
-	return upstreams
+	return collectionlist.NewList(values...)
 }

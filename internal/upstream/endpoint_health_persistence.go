@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
@@ -35,10 +36,10 @@ func (c *Client) loadHotEndpointHealth(ctx context.Context) int {
 		return 0
 	}
 	aliases := c.endpointHealthAliases()
-	if len(aliases) == 0 {
+	if aliases == nil || aliases.Len() == 0 {
 		return 0
 	}
-	records, err := c.hotHealth.List(ctx, aliases...)
+	records, err := c.hotHealth.List(ctx, aliases.Values()...)
 	if err != nil {
 		if c.logger != nil {
 			c.logger.DebugContext(ctx, "load upstream endpoint health hot state failed", "error", err)
@@ -52,13 +53,13 @@ func (c *Client) loadHotEndpointHealth(ctx context.Context) int {
 	return loaded
 }
 
-func (c *Client) endpointHealthAliases() []string {
+func (c *Client) endpointHealthAliases() *collectionlist.List[string] {
 	if c == nil || c.upstreams == nil {
-		return nil
+		return collectionlist.NewList[string]()
 	}
-	aliases := make([]string, 0, c.upstreams.Len())
+	aliases := collectionlist.NewListWithCapacity[string](c.upstreams.Len())
 	c.upstreams.Range(func(alias string, _ *upstreamPool) bool {
-		aliases = append(aliases, alias)
+		aliases.Add(alias)
 		return true
 	})
 	return aliases

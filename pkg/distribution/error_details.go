@@ -3,6 +3,8 @@ package distribution
 import (
 	"fmt"
 	"strings"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
 )
 
 type ManifestUnknownDetail struct {
@@ -83,25 +85,21 @@ func manifestUnknownSuggestionMessage(repo, reference string, tags, repositories
 }
 
 func manifestTagSuggestions(alias, repo string, tags []string) []ManifestSuggestion {
-	out := make([]ManifestSuggestion, 0, len(tags))
-	for _, tag := range tags {
-		out = append(out, ManifestSuggestion{
+	return collectionlist.MapList(collectionlist.NewList(tags...), func(_ int, tag string) ManifestSuggestion {
+		return ManifestSuggestion{
 			Reference: tag,
 			Image:     suggestedImage(alias, repo, tag),
-		})
-	}
-	return out
+		}
+	}).Values()
 }
 
 func manifestRepositorySuggestions(alias, reference string, repositories []string) []ManifestSuggestion {
-	out := make([]ManifestSuggestion, 0, len(repositories))
-	for _, repo := range repositories {
-		out = append(out, ManifestSuggestion{
+	return collectionlist.MapList(collectionlist.NewList(repositories...), func(_ int, repo string) ManifestSuggestion {
+		return ManifestSuggestion{
 			Reference: reference,
 			Image:     suggestedImage(alias, repo, reference),
-		})
-	}
-	return out
+		}
+	}).Values()
 }
 
 func suggestedImage(alias, repo, tag string) string {

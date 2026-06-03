@@ -2,10 +2,11 @@ package ecosystem
 
 import (
 	"context"
-	"sort"
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
@@ -42,7 +43,7 @@ func UpstreamEndpoints(
 		return endpoints
 	}
 
-	recordByEndpoint := make(map[string]meta.EndpointHealthRecord, len(records))
+	recordByEndpoint := collectionmapping.NewMapWithCapacity[string, meta.EndpointHealthRecord](len(records))
 	for _, record := range records {
 		registry := normalizeEndpoint(record.Registry)
 		if registry == "" {
@@ -50,22 +51,21 @@ func UpstreamEndpoints(
 		}
 		// Keep the latest record for each endpoint; records are already sorted by
 		// UpdatedAt/ID descending, so the first one is the freshest.
-		if existing, ok := recordByEndpoint[registry]; !ok || existing.UpdatedAt.Before(record.UpdatedAt) {
-			recordByEndpoint[registry] = record
+		existing, ok := recordByEndpoint.Get(registry)
+		if !ok || existing.UpdatedAt.Before(record.UpdatedAt) {
+			recordByEndpoint.Set(registry, record)
 		}
 	}
 
-	candidates := make([]endpointHealthCandidate, 0, len(endpoints))
 	now := time.Now()
-	for i, endpoint := range endpoints {
-		record, ok := recordByEndpoint[endpoint]
-		if !ok {
-			candidates = append(candidates, endpointHealthCandidate{
+	candidates := collectionlist.FilterMapList(collectionlist.NewList(endpoints...), func(i int, endpoint string) (endpointHealthCandidate, bool) {
+		record, hasRecord := recordByEndpoint.Get(endpoint)
+		if !hasRecord {
+			return endpointHealthCandidate{
 				endpoint:    endpoint,
 				score:       endpointUnknownLatency,
 				originalIdx: i,
-			})
-			continue
+			}, true
 		}
 
 		inCooldown := !record.CooldownUntil.IsZero() && now.Before(record.CooldownUntil)
@@ -78,68 +78,72 @@ func UpstreamEndpoints(
 		if inDegraded {
 			score += endpointFailurePenalty
 		}
-		candidates = append(candidates, endpointHealthCandidate{
+		return endpointHealthCandidate{
 			endpoint:    endpoint,
 			score:       score,
 			inCooldown:  inCooldown,
 			inDegraded:  inDegraded,
 			originalIdx: i,
-		})
-	}
-
-	if len(candidates) <= 1 {
-		out := make([]string, 0, len(candidates))
-		for _, candidate := range candidates {
-			out = append(out, candidate.endpoint)
-		}
-		return out
-	}
-
-	sort.SliceStable(candidates, func(i, j int) bool {
-		left, right := candidates[i], candidates[j]
-		if left.inCooldown != right.inCooldown {
-			return !left.inCooldown
-		}
-		if left.inDegraded != right.inDegraded {
-			return !left.inDegraded
-		}
-		if left.score != right.score {
-			return left.score < right.score
-		}
-		return left.originalIdx < right.originalIdx
+		}, true
 	})
 
-	healthy := make([]endpointHealthCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		if candidate.inCooldown || candidate.inDegraded {
-			continue
-		}
-		healthy = append(healthy, candidate)
+	if candidates.Len() <= 1 {
+		return collectionlist.MapList(candidates, func(_ int, candidate endpointHealthCandidate) string {
+			return candidate.endpoint
+		}).Values()
 	}
-	if len(healthy) == 0 {
+
+	candidates = candidates.Sort(compareEndpointHealthCandidate)
+	healthy := collectionlist.FilterList(candidates, func(_ int, candidate endpointHealthCandidate) bool {
+		return !candidate.inCooldown && !candidate.inDegraded
+	})
+	if healthy.Len() == 0 {
 		healthy = candidates
 	}
 
-	out := make([]string, 0, len(healthy))
-	for _, candidate := range healthy {
-		out = append(out, candidate.endpoint)
+	return collectionlist.MapList(healthy, func(_ int, candidate endpointHealthCandidate) string {
+		return candidate.endpoint
+	}).Values()
+}
+
+func compareEndpointHealthCandidate(left, right endpointHealthCandidate) int {
+	if left.inCooldown != right.inCooldown {
+		if left.inCooldown {
+			return 1
+		}
+		return -1
 	}
-	return out
+	if left.inDegraded != right.inDegraded {
+		if left.inDegraded {
+			return 1
+		}
+		return -1
+	}
+	if left.score != right.score {
+		if left.score < right.score {
+			return -1
+		}
+		return 1
+	}
+	if left.originalIdx < right.originalIdx {
+		return -1
+	}
+	if left.originalIdx > right.originalIdx {
+		return 1
+	}
+	return 0
 }
 
 func normalizedUpstreamEndpoints(cfg config.UpstreamConfig) []string {
-	out := make([]string, 0, 1+len(cfg.Mirrors))
-	if cfg.Registry != "" {
-		if registry := normalizeEndpoint(cfg.Registry); registry != "" {
-			out = append(out, registry)
-		}
-	}
-	for _, mirror := range cfg.Mirrors {
-		if mirror = normalizeEndpoint(mirror); mirror != "" {
-			out = append(out, mirror)
-		}
-	}
-	return out
+	return collectionlist.FilterMapList(
+		collectionlist.NewList(append([]string{cfg.Registry}, cfg.Mirrors...)...),
+		func(_ int, endpoint string) (string, bool) {
+			if endpoint = normalizeEndpoint(endpoint); endpoint != "" {
+				return endpoint, true
+			}
+			return "", false
+		},
+	).Values()
 }
 
 func normalizeEndpoint(endpoint string) string {

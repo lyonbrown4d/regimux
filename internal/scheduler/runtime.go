@@ -94,14 +94,15 @@ func (r *Runtime) Start(ctx context.Context) error {
 }
 
 func runtimeNames(runtimes []ecosystem.Runtime) *collectionlist.List[string] {
-	names := make([]string, 0, len(runtimes))
-	collectionlist.NewList(runtimes...).Range(func(_ int, runtime ecosystem.Runtime) bool {
-		if runtime != nil {
-			names = append(names, runtime.Name())
+	if len(runtimes) == 0 {
+		return collectionlist.NewList[string]()
+	}
+	return collectionlist.FilterMapList(collectionlist.NewList(runtimes...), func(_ int, runtime ecosystem.Runtime) (string, bool) {
+		if runtime == nil {
+			return "", false
 		}
-		return true
+		return runtime.Name(), true
 	})
-	return collectionlist.NewList(names...)
 }
 
 func (r *Runtime) Stop(ctx context.Context) error {

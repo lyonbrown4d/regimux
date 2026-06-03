@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
@@ -73,14 +74,14 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	return resp, err
 }
 
-func (s *Service) Upstreams() []Upstream {
+func (s *Service) Upstreams() *collectionlist.List[Upstream] {
 	if s == nil {
-		return nil
+		return collectionlist.NewList[Upstream]()
 	}
 	ordered := s.cfg.OrderedNPMUpstreams()
-	out := make([]Upstream, 0, ordered.Len())
+	out := collectionlist.NewListWithCapacity[Upstream](ordered.Len())
 	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out = append(out, Upstream{Alias: alias, Config: cfg})
+		out.Add(Upstream{Alias: alias, Config: cfg})
 		return true
 	})
 	return out

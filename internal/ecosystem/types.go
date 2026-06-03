@@ -176,15 +176,13 @@ func ProbeTargets(upstreams *collectionlist.List[Upstream]) *collectionlist.List
 	if upstreams == nil {
 		return collectionlist.NewList[ProbeTarget]()
 	}
-	targets := make([]ProbeTarget, 0, upstreams.Len())
-	upstreams.Range(func(_ int, upstream Upstream) bool {
+	return collectionlist.FilterMapList(upstreams, func(_ int, upstream Upstream) (ProbeTarget, bool) {
 		probeCfg := upstream.Config.Probe
-		if probeCfg.Enabled && probeCfg.Interval > 0 {
-			targets = append(targets, ProbeTarget(upstream))
+		if !probeCfg.Enabled || probeCfg.Interval <= 0 {
+			return ProbeTarget{}, false
 		}
-		return true
+		return ProbeTarget(upstream), true
 	})
-	return collectionlist.NewList(targets...)
 }
 
 // CapabilityTargets converts upstream snapshots to capability targets.
@@ -192,12 +190,9 @@ func CapabilityTargets(upstreams *collectionlist.List[Upstream]) *collectionlist
 	if upstreams == nil {
 		return collectionlist.NewList[CapabilityTarget]()
 	}
-	targets := make([]CapabilityTarget, 0, upstreams.Len())
-	upstreams.Range(func(_ int, upstream Upstream) bool {
-		targets = append(targets, CapabilityTarget(upstream))
-		return true
+	return collectionlist.MapList(upstreams, func(_ int, upstream Upstream) CapabilityTarget {
+		return CapabilityTarget(upstream)
 	})
-	return collectionlist.NewList(targets...)
 }
 
 // CapabilityTargetsFromProbeTargets converts probe targets to capability metadata.
@@ -205,12 +200,9 @@ func CapabilityTargetsFromProbeTargets(probes *collectionlist.List[ProbeTarget])
 	if probes == nil {
 		return collectionlist.NewList[CapabilityTarget]()
 	}
-	targets := make([]CapabilityTarget, 0, probes.Len())
-	probes.Range(func(_ int, target ProbeTarget) bool {
-		targets = append(targets, CapabilityTarget(target))
-		return true
+	return collectionlist.MapList(probes, func(_ int, target ProbeTarget) CapabilityTarget {
+		return CapabilityTarget(target)
 	})
-	return collectionlist.NewList(targets...)
 }
 
 // UpstreamAliases returns aliases from upstream snapshots in their configured order.
@@ -218,10 +210,7 @@ func UpstreamAliases(upstreams *collectionlist.List[Upstream]) *collectionlist.L
 	if upstreams == nil {
 		return collectionlist.NewList[string]()
 	}
-	aliases := make([]string, 0, upstreams.Len())
-	upstreams.Range(func(_ int, upstream Upstream) bool {
-		aliases = append(aliases, upstream.Alias)
-		return true
+	return collectionlist.MapList(upstreams, func(_ int, upstream Upstream) string {
+		return upstream.Alias
 	})
-	return collectionlist.NewList(aliases...)
 }

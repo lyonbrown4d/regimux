@@ -12,11 +12,10 @@ type ConfigRuntime struct {
 }
 
 func NewConfigRuntime(name string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) *ConfigRuntime {
-	values := make([]Upstream, 0)
+	values := collectionlist.NewList[Upstream]()
 	if upstreams != nil {
-		values = make([]Upstream, 0, upstreams.Len())
 		upstreams.Range(func(alias string, cfg config.UpstreamConfig) bool {
-			values = append(values, Upstream{
+			values.Add(Upstream{
 				Ecosystem: name,
 				Alias:     alias,
 				Config:    cfg,
@@ -26,7 +25,7 @@ func NewConfigRuntime(name string, upstreams *collectionmapping.OrderedMap[strin
 	}
 	return &ConfigRuntime{
 		name:      name,
-		upstreams: collectionlist.NewList(values...),
+		upstreams: values,
 	}
 }
 

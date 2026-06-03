@@ -49,15 +49,13 @@ func (r *runtimeAdapter) Upstreams() *collectionlist.List[ecosystem.Upstream] {
 		return collectionlist.NewList[ecosystem.Upstream]()
 	}
 	upstreams := r.service.Upstreams()
-	out := make([]ecosystem.Upstream, 0, len(upstreams))
-	for i := range upstreams {
-		out = append(out, ecosystem.Upstream{
+	return collectionlist.MapList(upstreams, func(_ int, upstream Upstream) ecosystem.Upstream {
+		return ecosystem.Upstream{
 			Ecosystem: r.Name(),
-			Alias:     upstreams[i].Alias,
-			Config:    upstreams[i].Config,
-		})
-	}
-	return collectionlist.NewList(out...)
+			Alias:     upstream.Alias,
+			Config:    upstream.Config,
+		}
+	})
 }
 
 func (r *runtimeAdapter) UpstreamAliases() *collectionlist.List[string] {

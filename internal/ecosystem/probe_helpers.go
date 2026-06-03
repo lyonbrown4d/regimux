@@ -9,16 +9,14 @@ import (
 )
 
 func probeEndpoints(cfg config.UpstreamConfig) *collectionlist.List[string] {
-	endpoints := make([]string, 0, 1+len(cfg.Mirrors))
-	if strings.TrimSpace(cfg.Registry) != "" {
-		endpoints = append(endpoints, strings.TrimRight(strings.TrimSpace(cfg.Registry), "/"))
-	}
-	for _, mirror := range cfg.Mirrors {
-		if strings.TrimSpace(mirror) != "" {
-			endpoints = append(endpoints, strings.TrimRight(strings.TrimSpace(mirror), "/"))
+	endpoints := collectionlist.NewList(append([]string{cfg.Registry}, cfg.Mirrors...)...)
+	return collectionlist.FilterMapList(endpoints, func(_ int, endpoint string) (string, bool) {
+		trimmed := strings.TrimRight(strings.TrimSpace(endpoint), "/")
+		if trimmed == "" {
+			return "", false
 		}
-	}
-	return collectionlist.NewList(endpoints...)
+		return trimmed, true
+	})
 }
 
 func probeURL(endpoint string) string {

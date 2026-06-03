@@ -186,8 +186,8 @@ func (p *upstreamPool) selectLatencyBlobRuntimes(repository, digest string, runt
 		return newRuntimeSelection(runtimes, nil)
 	}
 	candidates := p.health.rankRuntimeCandidates(runtimes, repository, now)
-	candidates = p.selectHealthyRuntimeCandidates(candidates, repository, operationBlob)
-	return p.scheduler.schedule(digest, candidates, p.blobTopN, p.blobAttemptConcurrency(), now)
+	filtered := p.selectHealthyRuntimeCandidates(collectionlist.NewList(candidates...), repository, operationBlob)
+	return p.scheduler.schedule(digest, filtered.Values(), p.blobTopN, p.blobAttemptConcurrency(), now)
 }
 
 func (p *upstreamPool) nextOffset(modulo int, blob bool) int {
@@ -214,30 +214,27 @@ func (p *upstreamPool) selectHealthyRuntimes(runtimes []upstreamRuntime, reposit
 	}
 
 	runtimeCandidates := p.toUpstreamRuntimeCandidates(runtimes, repository, now)
-	// Order candidates by health score first so healthier endpoints are preferred for ordered
-	// and round-robin selection paths before failover sequencing.
-	// keep original index as deterministic tie-breaker.
-	if p.health != nil && len(runtimeCandidates) > 1 {
-		runtimeCandidates = p.health.rankRuntimeCandidates(runtimes, repository, now)
+	if p.health != nil && runtimeCandidates != nil && runtimeCandidates.Len() > 1 {
+		runtimeCandidates = collectionlist.NewList(p.health.rankRuntimeCandidates(runtimes, repository, now)...)
 	}
 	selectedCandidates := p.selectHealthyRuntimeCandidates(runtimeCandidates, repository, operation)
 	return candidatesToRuntimes(selectedCandidates)
 }
 
 func (p *upstreamPool) selectHealthyRuntimeCandidates(
-	candidates []endpointRuntimeCandidate,
+	candidates *collectionlist.List[endpointRuntimeCandidate],
 	repository string,
 	operation string,
-) []endpointRuntimeCandidate {
-	if p == nil || p.health == nil || len(candidates) <= 1 {
+) *collectionlist.List[endpointRuntimeCandidate] {
+	if p == nil || p.health == nil || candidates == nil || candidates.Len() <= 1 {
 		return candidates
 	}
 
 	filtered := p.filterUnhealthyEndpointCandidates(candidates)
-	if len(filtered) == len(candidates) {
+	if filtered.Len() == candidates.Len() {
 		return candidates
 	}
-	if len(filtered) == 0 {
+	if filtered.Len() == 0 {
 		if p.logger != nil {
 			p.logger.Debug(
 				"no healthy upstream endpoint candidates available, using all candidates",
@@ -256,43 +253,40 @@ func (p *upstreamPool) selectHealthyRuntimeCandidates(
 			"operation", operation,
 			"repository", repository,
 			"candidate_endpoints", runtimeRegistries(candidatesToRuntimes(candidates)),
-			"skipped_endpoints", len(candidates)-len(filtered),
+			"skipped_endpoints", candidates.Len()-filtered.Len(),
 			"selected_endpoints", runtimeRegistries(candidatesToRuntimes(filtered)),
 		)
 	}
 	return filtered
 }
 
-func (p *upstreamPool) toUpstreamRuntimeCandidates(runtimes []upstreamRuntime, repository string, now time.Time) []endpointRuntimeCandidate {
+func (p *upstreamPool) toUpstreamRuntimeCandidates(runtimes []upstreamRuntime, repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
 	if p == nil {
-		return nil
+		return collectionlist.NewList[endpointRuntimeCandidate]()
 	}
-	candidates := make([]endpointRuntimeCandidate, 0, len(runtimes))
-	for i := range runtimes {
-		runtime := runtimes[i]
-		candidates = append(candidates, endpointRuntimeCandidate{
+	return collectionlist.MapList(collectionlist.NewList(runtimes...), func(i int, runtime upstreamRuntime) endpointRuntimeCandidate {
+		return endpointRuntimeCandidate{
 			runtime: runtime,
 			state:   p.health.runtimeSnapshot(runtime.config.Registry, repository, now),
 			index:   i,
-		})
-	}
-	return candidates
-}
-
-func (p *upstreamPool) filterUnhealthyEndpointCandidates(candidates []endpointRuntimeCandidate) []endpointRuntimeCandidate {
-	healthy := make([]endpointRuntimeCandidate, 0, len(candidates))
-	for i := range candidates {
-		candidate := candidates[i]
-		if candidate.state.InCooldown || candidate.state.InDegraded {
-			continue
 		}
-		healthy = append(healthy, candidate)
-	}
-	return healthy
+	})
 }
 
-func candidatesToRuntimes(candidates []endpointRuntimeCandidate) []upstreamRuntime {
-	return collectionlist.MapList(collectionlist.NewList(candidates...), func(_ int, item endpointRuntimeCandidate) upstreamRuntime {
+func (p *upstreamPool) filterUnhealthyEndpointCandidates(candidates *collectionlist.List[endpointRuntimeCandidate]) *collectionlist.List[endpointRuntimeCandidate] {
+	if candidates == nil {
+		return collectionlist.NewList[endpointRuntimeCandidate]()
+	}
+	return collectionlist.FilterList(candidates, func(_ int, candidate endpointRuntimeCandidate) bool {
+		return !candidate.state.InCooldown && !candidate.state.InDegraded
+	})
+}
+
+func candidatesToRuntimes(candidates *collectionlist.List[endpointRuntimeCandidate]) []upstreamRuntime {
+	if candidates == nil {
+		return nil
+	}
+	return collectionlist.MapList(candidates, func(_ int, item endpointRuntimeCandidate) upstreamRuntime {
 		return item.runtime
 	}).Values()
 }
