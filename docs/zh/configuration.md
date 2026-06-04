@@ -66,7 +66,7 @@ maven {
 - `server.middleware.rate_limit.enabled = false`
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`
-- `cache.backend = "memory"`
+- `cache.backend = ""`（KV 缓存默认不启用；需要时显式设置 `memory`、`redis` 或 `valkey`）
 - `cache.blob.stream_and_cache = true`
 - `cache.blob.small_cache.enabled = false`
 - `cache.blob.small_cache.max_size_bytes = 4194304`
@@ -201,6 +201,7 @@ regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=deb
 - `sqlite`
 - `mysql`
 - `postgres`
+- `postgresql`（`postgres` 的等价写法）
 
 支持的对象存储驱动：
 

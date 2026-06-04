@@ -15,7 +15,7 @@ func TestLoadCacheDefaults(t *testing.T) {
 		t.Fatalf("load default config: %v", err)
 	}
 
-	if cfg.Cache.Backend != "memory" {
+	if cfg.Cache.Backend != "" {
 		t.Fatalf("unexpected cache backend %q", cfg.Cache.Backend)
 	}
 	if cfg.Cache.Prefix != "regimux" {

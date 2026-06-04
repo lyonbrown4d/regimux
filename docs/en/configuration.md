@@ -66,7 +66,7 @@ Important defaults:
 - `server.middleware.rate_limit.enabled = false`
 - `server.middleware.csrf.enabled = false`
 - `server.middleware.pprof.enabled = false`
-- `cache.backend = "memory"`
+- `cache.backend = ""` (KV cache disabled by default; set `memory`, `redis`, or `valkey` explicitly when needed)
 - `cache.blob.stream_and_cache = true`
 - `cache.blob.small_cache.enabled = false`
 - `cache.blob.small_cache.max_size_bytes = 4194304`
@@ -201,6 +201,7 @@ Supported metadata drivers:
 - `sqlite`
 - `mysql`
 - `postgres`
+- `postgresql` (alias of `postgres`)
 
 Supported object drivers:
 

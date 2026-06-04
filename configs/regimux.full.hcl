@@ -84,7 +84,7 @@ log {
 }
 
 cache {
-  backend = "memory"
+  backend = ""
   prefix = "regimux"
   default_ttl = "10m"
 

@@ -90,7 +90,7 @@ func defaultLogConfig() LogConfig {
 
 func defaultCacheConfig() CacheConfig {
 	return CacheConfig{
-		Backend:    "memory",
+		Backend:    "",
 		Prefix:     "regimux",
 		DefaultTTL: 10 * time.Minute,
 		Memory:     MemoryCacheConfig{MaxItems: 10000},

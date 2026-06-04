@@ -155,7 +155,7 @@ func (c *Config) normalizeLog() {
 }
 
 func (c *Config) normalizeCache() {
-	c.Cache.Backend = lo.CoalesceOrEmpty(strings.ToLower(strings.TrimSpace(c.Cache.Backend)), "memory")
+	c.Cache.Backend = strings.ToLower(strings.TrimSpace(c.Cache.Backend))
 	if c.Cache.Blob.SmallCache.Enabled {
 		c.Cache.Blob.SmallCache.MaxSizeBytes = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.MaxSizeBytes, defaultSmallBlobCacheMaxSize)
 		c.Cache.Blob.SmallCache.TTL = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.TTL, defaultSmallBlobCacheTTL)

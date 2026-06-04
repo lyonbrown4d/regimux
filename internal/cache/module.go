@@ -49,6 +49,16 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 	logger = componentLogger(logger, "cache")
 	logger.Info("opening cache backend", "backend", cfg.Backend, "prefix", cfg.Prefix)
 	switch cfg.Backend {
+	case "":
+		logger.Info("cache backend disabled", "backend", "none", "prefix", cfg.Prefix)
+		return backend.Noop{}, nil
+	case "memory":
+		cache := backend.NewMemory(backend.MemoryOptions{
+			MaxItems: cfg.Memory.MaxItems,
+			Prefix:   cfg.Prefix,
+		})
+		logger.Info("cache backend opened", "backend", "memory", "max_items", cfg.Memory.MaxItems)
+		return cache, nil
 	case "redis":
 		cache, err := backend.NewRedis(backend.KVOptions{
 			Addrs:    cfg.Redis.Addrs,
@@ -80,13 +90,12 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 		logger.Info("cache backend opened", "backend", "valkey", "addrs", cfg.Valkey.Addrs)
 		return cache, nil
 	default:
-		cache := backend.NewMemory(backend.MemoryOptions{
-			MaxItems: cfg.Memory.MaxItems,
-			Prefix:   cfg.Prefix,
-		})
-		logger.Info("cache backend opened", "backend", "memory", "max_items", cfg.Memory.MaxItems)
-		return cache, nil
+		return nil, oops.Wrapf(errInvalidCacheBackend(cfg.Backend), "create cache backend")
 	}
+}
+
+func errInvalidCacheBackend(backend string) error {
+	return oops.In("cache").With("backend", backend).Errorf("unsupported cache backend")
 }
 
 func newProxyDependencies(
