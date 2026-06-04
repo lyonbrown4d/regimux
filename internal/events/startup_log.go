@@ -2,7 +2,6 @@ package events
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net"
 	"sort"
@@ -28,12 +27,7 @@ type startupEndpoint struct {
 func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, version build.Version) error {
 	ordered := cfg.OrderedContainerUpstreams()
 	logger = startupLogger(logger)
-	configJSON, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		logger.Error("failed to marshal config as json", "error", err)
-	} else {
-		logger.Info("parsed config", "config_json", string(configJSON))
-	}
+	logger.Info("parsed config", "config", cfg)
 	logger.Info("regimuxd starting",
 		"version", string(version),
 		"listen", cfg.Server.Listen,
