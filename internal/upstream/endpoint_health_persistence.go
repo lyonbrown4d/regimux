@@ -5,6 +5,7 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
@@ -98,12 +99,14 @@ func (c *Client) restoreEndpointHealthRecords(records *collectionlist.List[meta.
 func (c *Client) recordProbeSuccess(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime, latency time.Duration) {
 	now := time.Now()
 	snapshot := pool.recordProbeSuccess(runtime, latency, now)
+	c.logProbeHealthSnapshot(ctx, pool.alias, snapshot, "container upstream probe success", now, nil)
 	c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
 }
 
 func (c *Client) recordProbeFailure(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) {
 	now := time.Now()
 	snapshot := pool.recordProbeFailure(runtime, now)
+	c.logProbeHealthSnapshot(ctx, pool.alias, snapshot, "container upstream probe failure", now, nil)
 	c.persistEndpointHealthSnapshot(ctx, pool.alias, snapshot)
 }
 
@@ -145,6 +148,48 @@ func (c *Client) persistEndpointHealthSnapshot(ctx context.Context, alias string
 		c.enqueueEndpointHealth(record)
 	}
 	c.putEndpointHealthHot(ctx, record)
+}
+
+func (c *Client) logProbeHealthSnapshot(
+	ctx context.Context,
+	alias string,
+	snapshot EndpointHealthSnapshot,
+	outcome string,
+	now time.Time,
+	err error,
+) {
+	if c == nil || c.logger == nil || snapshot.Registry == "" {
+		return
+	}
+	if now.IsZero() {
+		now = time.Now()
+	}
+	args := []any{
+		"ecosystem", ecosystem.Container,
+		"alias", alias,
+		"registry", snapshot.Registry,
+		"repository", snapshot.Repository,
+		"outcome", outcome,
+		"latency_ewma", snapshot.LatencyEWMA,
+		"latency_samples", snapshot.LatencySamples,
+		"inflight", snapshot.Inflight,
+		"consecutive_failures", snapshot.ConsecutiveFailures,
+		"success_count", snapshot.SuccessCount,
+		"failure_count", snapshot.FailureCount,
+		"content_mismatch_count", snapshot.ContentMismatchCount,
+		"cooldown_until", snapshot.CooldownUntil,
+		"degraded_until", snapshot.DegradedUntil,
+		"in_cooldown", !snapshot.CooldownUntil.IsZero() && now.Before(snapshot.CooldownUntil),
+		"in_degraded", !snapshot.DegradedUntil.IsZero() && now.Before(snapshot.DegradedUntil),
+		"last_success_at", snapshot.LastSuccessAt,
+		"last_failure_at", snapshot.LastFailureAt,
+		"last_probe_at", snapshot.LastProbeAt,
+	}
+	if err != nil {
+		c.logger.WarnContext(ctx, "container upstream probe health snapshot", append(args, "error", err)...)
+		return
+	}
+	c.logger.DebugContext(ctx, "container upstream probe health snapshot", args...)
 }
 
 func (c *Client) putEndpointHealthHot(ctx context.Context, record meta.EndpointHealthRecord) {

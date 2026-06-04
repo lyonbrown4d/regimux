@@ -56,6 +56,7 @@
           <thead class="bg-zinc-900 text-xs uppercase tracking-wide text-zinc-500">
             <tr>
               <th class="px-4 py-2 font-medium">{{t . "field.alias"}}</th>
+              <th class="px-4 py-2 font-medium">{{t . "field.ecosystem"}}</th>
               <th class="px-4 py-2 font-medium">{{t . "field.registry"}}</th>
               <th class="px-4 py-2 font-medium">{{t . "field.namespace"}}</th>
               <th class="px-4 py-2 font-medium">{{t . "field.mirrors"}}</th>
@@ -63,16 +64,17 @@
             </tr>
           </thead>
           <tbody class="divide-y divide-zinc-800">
-            {{range values .Upstreams}}
-            <tr class="hover:bg-zinc-900">
-              <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}</td>
-              <td class="px-4 py-2 text-zinc-300">{{.Registry}}</td>
+          {{range values .Upstreams}}
+          <tr class="hover:bg-zinc-900">
+            <td class="px-4 py-2 font-medium text-zinc-100">{{.DisplayAlias}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Ecosystem}}</td>
+            <td class="px-4 py-2 text-zinc-300">{{.Registry}}</td>
               <td class="px-4 py-2 text-zinc-400">{{.DefaultNamespace}}</td>
               <td class="px-4 py-2 tabular-nums text-zinc-300">{{.MirrorCount}}</td>
               <td class="px-4 py-2 text-zinc-400">{{.MirrorPolicy}} / {{.BlobPolicy}}</td>
             </tr>
             {{else}}
-            <tr><td colspan="5" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstreams"}}</td></tr>
+            <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.upstreams"}}</td></tr>
             {{end}}
           </tbody>
         </table>

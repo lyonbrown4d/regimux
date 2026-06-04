@@ -51,8 +51,11 @@ func (p *EndpointProber) Probe(ctx context.Context, target ProbeTarget) error {
 	}
 	endpoints := probeEndpoints(target.Config)
 	if endpoints.Len() == 0 {
-		return oops.In("ecosystem").With("ecosystem", target.Ecosystem, "alias", target.Alias).Errorf("probe endpoints are not configured")
+		err := oops.In("ecosystem").With("ecosystem", target.Ecosystem, "alias", target.Alias).Errorf("probe endpoints are not configured")
+		p.logProbeStarted(ctx, target, endpoints.Len(), err)
+		return err
 	}
+	p.logProbeStarted(ctx, target, endpoints.Len(), nil)
 
 	var successes atomic.Int32
 	var failures atomic.Int32
@@ -87,9 +90,21 @@ func (p *EndpointProber) probeEndpoint(ctx context.Context, target ProbeTarget, 
 	defer cancel()
 
 	startedAt := time.Now()
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodHead, probeURL(endpoint), http.NoBody)
+	probeURLValue := probeURL(endpoint)
+	if p.logger != nil {
+		p.logger.DebugContext(ctx,
+			"ecosystem probe request started",
+			"ecosystem", target.Ecosystem,
+			"alias", target.Alias,
+			"registry", endpoint,
+			"url", probeURLValue,
+			"timeout", target.Config.Probe.Timeout,
+		)
+	}
+	req, err := http.NewRequestWithContext(probeCtx, http.MethodHead, probeURLValue, http.NoBody)
 	if err != nil {
 		p.recordFailure(ctx, target, endpoint, time.Now())
+		p.logEndpoint(ctx, target, endpoint, 0, 0, err)
 		return oops.Wrapf(err, "create ecosystem probe request")
 	}
 	req.Header.Set("User-Agent", "regimux/dev")
@@ -100,7 +115,7 @@ func (p *EndpointProber) probeEndpoint(ctx context.Context, target ProbeTarget, 
 	now := time.Now()
 	if err != nil {
 		p.recordFailure(ctx, target, endpoint, now)
-		p.logEndpoint(ctx, target, endpoint, latency, err)
+		p.logEndpoint(ctx, target, endpoint, latency, 0, err)
 		return oops.Wrapf(err, "send ecosystem probe request")
 	}
 	defer func() {
@@ -112,13 +127,13 @@ func (p *EndpointProber) probeEndpoint(ctx context.Context, target ProbeTarget, 
 		if recordErr := p.recordSuccess(ctx, target, endpoint, latency, now); recordErr != nil {
 			return recordErr
 		}
-		p.logEndpoint(ctx, target, endpoint, latency, nil)
+		p.logEndpoint(ctx, target, endpoint, latency, resp.StatusCode, nil)
 		return nil
 	}
 
 	err = oops.With("status", resp.StatusCode).Errorf("ecosystem probe endpoint returned unreachable status")
 	p.recordFailure(ctx, target, endpoint, now)
-	p.logEndpoint(ctx, target, endpoint, latency, err)
+	p.logEndpoint(ctx, target, endpoint, latency, resp.StatusCode, err)
 	return err
 }
 
@@ -163,7 +178,9 @@ func (p *EndpointProber) recordSuccess(ctx context.Context, target ProbeTarget, 
 	record.DegradedUntil = time.Time{}
 	record.LastSuccessAt = at.UTC()
 	record.LastProbeAt = at.UTC()
-	return p.persistRecord(ctx, target, endpoint, record, "persist ecosystem endpoint probe success")
+	persistErr := p.persistRecord(ctx, target, endpoint, record, "persist ecosystem endpoint probe success")
+	p.logHealthSnapshot(ctx, target, at, "ecosystem endpoint probe success", record, persistErr)
+	return persistErr
 }
 
 func (p *EndpointProber) recordFailure(ctx context.Context, target ProbeTarget, endpoint string, at time.Time) {
@@ -182,9 +199,11 @@ func (p *EndpointProber) recordFailure(ctx context.Context, target ProbeTarget, 
 	if target.Config.Probe.Cooldown > 0 {
 		record.CooldownUntil = at.Add(target.Config.Probe.Cooldown).UTC()
 	}
-	if err := p.persistRecord(ctx, target, endpoint, record, "persist ecosystem endpoint probe failure"); err != nil {
-		p.logPersistError(ctx, target, endpoint, err)
+	persistErr := p.persistRecord(ctx, target, endpoint, record, "persist ecosystem endpoint probe failure")
+	if persistErr != nil {
+		p.logPersistError(ctx, target, endpoint, persistErr)
 	}
+	p.logHealthSnapshot(ctx, target, at, "ecosystem endpoint probe failure", record, persistErr)
 }
 
 func (p *EndpointProber) persistRecord(ctx context.Context, target ProbeTarget, endpoint string, record meta.EndpointHealthRecord, message string) error {
@@ -224,42 +243,4 @@ func (p *EndpointProber) endpointRecord(ctx context.Context, target ProbeTarget,
 		return *record, nil
 	}
 	return meta.EndpointHealthRecord{Alias: key.Alias, Registry: key.Registry}, nil
-}
-
-func (p *EndpointProber) logEndpoint(ctx context.Context, target ProbeTarget, endpoint string, latency time.Duration, err error) {
-	if p == nil || p.logger == nil {
-		return
-	}
-	args := []any{"ecosystem", target.Ecosystem, "alias", target.Alias, "registry", endpoint, "latency", latency}
-	if err != nil {
-		p.logger.DebugContext(ctx, "ecosystem endpoint probe failed", append(args, "error", err)...)
-		return
-	}
-	p.logger.DebugContext(ctx, "ecosystem endpoint probe completed", args...)
-}
-
-func (p *EndpointProber) logSummary(ctx context.Context, target ProbeTarget, successes, failures int, err error) {
-	if p == nil || p.logger == nil {
-		return
-	}
-	args := []any{"ecosystem", target.Ecosystem, "alias", target.Alias, "successes", successes, "failures", failures}
-	if err != nil {
-		p.logger.WarnContext(ctx, "ecosystem probe failed for all endpoints", append(args, "error", err)...)
-		return
-	}
-	p.logger.DebugContext(ctx, "ecosystem probe completed", args...)
-}
-
-func (p *EndpointProber) logPersistError(ctx context.Context, target ProbeTarget, endpoint string, err error) {
-	if p == nil || p.logger == nil {
-		return
-	}
-	p.logger.WarnContext(ctx, "persist ecosystem endpoint probe failed", "ecosystem", target.Ecosystem, "alias", target.Alias, "registry", endpoint, "error", err)
-}
-
-func nextLatencyEWMA(current time.Duration, samples int, latency time.Duration) time.Duration {
-	if samples <= 0 || current <= 0 {
-		return latency
-	}
-	return time.Duration(float64(current)*(1-endpointHealthAlpha) + float64(latency)*endpointHealthAlpha)
 }

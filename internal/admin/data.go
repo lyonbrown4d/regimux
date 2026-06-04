@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"fmt"
 	"context"
 	"time"
 
@@ -224,10 +225,36 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 	snapshots := upstreamSnapshotMap(snapshot.Upstreams)
 	stats := upstreamMetadataMap(metadata)
 
-	ordered := s.cfg.OrderedContainerUpstreams()
-	rows := collectionlist.NewListWithCapacity[UpstreamRow](ordered.Len())
+	rows := collectionlist.NewList[UpstreamRow]()
+	addUpstreamSnapshotRows(rows, "oci", s.cfg.OrderedContainerUpstreams(), stats, snapshots)
+	addUpstreamSnapshotRows(rows, "go", s.cfg.OrderedGoUpstreams(), stats, snapshots)
+	addUpstreamSnapshotRows(rows, "npm", s.cfg.OrderedNPMUpstreams(), stats, snapshots)
+	addUpstreamSnapshotRows(rows, "pypi", s.cfg.OrderedPyPIUpstreams(), stats, snapshots)
+	addUpstreamSnapshotRows(rows, "maven", s.cfg.OrderedMavenUpstreams(), stats, snapshots)
+	return rows
+}
+
+func addUpstreamSnapshotRows(
+	rows *collectionlist.List[UpstreamRow],
+	ecosystem string,
+	ordered *collectionmapping.OrderedMap[string, config.UpstreamConfig],
+	stats *collectionmapping.Map[string, meta.Upstream],
+	snapshots *collectionmapping.Map[string, upstream.UpstreamSnapshot],
+) {
+	if rows == nil {
+		return
+	}
+	if ordered == nil {
+		return
+	}
 	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+		displayAlias := alias
+		if ecosystem != "" {
+			displayAlias = fmt.Sprintf("%s/%s", ecosystem, alias)
+		}
 		row := UpstreamRow{
+			Ecosystem:        ecosystem,
+			DisplayAlias:     displayAlias,
 			Alias:            alias,
 			Registry:         upstreamCfg.Registry,
 			DefaultNamespace: upstreamCfg.DefaultNamespace,
@@ -247,51 +274,5 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 		row.Endpoints = endpointRows(runtimeSnapshot)
 		rows.Add(row)
 		return true
-	})
-	return rows
-}
-
-func upstreamMetadataMap(records *collectionlist.List[meta.Upstream]) *collectionmapping.Map[string, meta.Upstream] {
-	if records == nil {
-		return collectionmapping.NewMapWithCapacity[string, meta.Upstream](0)
-	}
-	return collectionmapping.AssociateList(
-		records,
-		func(_ int, row meta.Upstream) (string, meta.Upstream) {
-			return row.Alias, row
-		},
-	)
-}
-
-func upstreamSnapshotMap(records *collectionlist.List[upstream.UpstreamSnapshot]) *collectionmapping.Map[string, upstream.UpstreamSnapshot] {
-	if records == nil {
-		return collectionmapping.NewMapWithCapacity[string, upstream.UpstreamSnapshot](0)
-	}
-	return collectionmapping.AssociateList(
-		records,
-		func(_ int, row upstream.UpstreamSnapshot) (string, upstream.UpstreamSnapshot) {
-			return row.Alias, row
-		},
-	)
-}
-
-func endpointRows(snapshot upstream.UpstreamSnapshot) *collectionlist.List[EndpointRow] {
-	return collectionlist.MapList(snapshot.Endpoints, func(_ int, endpoint upstream.EndpointSnapshot) EndpointRow {
-		health := endpoint.Health
-		return EndpointRow{
-			Registry:      endpoint.Registry,
-			Role:          endpoint.Role,
-			Latency:       formatLatency(health),
-			Score:         formatDuration(health.Score),
-			Inflight:      health.Inflight,
-			Failures:      health.ConsecutiveFailures,
-			SuccessRate:   formatSuccessRate(health),
-			Mismatches:    health.ContentMismatchCount,
-			Cooldown:      formatCooldown(health),
-			Degraded:      formatDegraded(health),
-			LastSuccessAt: formatTime(health.LastSuccessAt),
-			LastFailureAt: formatTime(health.LastFailureAt),
-			Status:        endpointStatus(health),
-		}
 	})
 }

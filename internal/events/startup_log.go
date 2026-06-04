@@ -2,6 +2,8 @@ package events
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net"
 	"sort"
@@ -28,6 +30,11 @@ func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, versi
 	ordered := cfg.OrderedContainerUpstreams()
 	logger = startupLogger(logger)
 	logger.Info("parsed config", "config", cfg)
+	if configJSON, err := json.MarshalIndent(cfg, "", "  "); err == nil {
+		logger.Info(fmt.Sprintf("parsed config (pretty)\n%s", configJSON))
+	} else {
+		logger.Error("failed to render parsed config as pretty json", "error", err)
+	}
 	logger.Info("regimuxd starting",
 		"version", string(version),
 		"listen", cfg.Server.Listen,

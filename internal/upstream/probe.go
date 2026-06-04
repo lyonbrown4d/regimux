@@ -10,6 +10,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/panjf2000/ants/v2"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"go.uber.org/multierr"
@@ -19,11 +20,19 @@ func (c *Client) Probe(ctx context.Context) error {
 	if c == nil || c.upstreams == nil {
 		return newError("upstream registry is not configured")
 	}
+	if c.logger != nil {
+		c.logger.DebugContext(ctx, "starting container upstream probe sweep", "ecosystem", ecosystem.Container)
+	}
 	var probeErr error
+	var aliasCount int
 	c.upstreams.Range(func(alias string, _ *upstreamPool) bool {
+		aliasCount++
 		probeErr = multierr.Append(probeErr, c.ProbeAlias(ctx, alias))
 		return true
 	})
+	if c.logger != nil {
+		c.logger.DebugContext(ctx, "completed container upstream probe sweep", "ecosystem", ecosystem.Container, "upstream_count", aliasCount)
+	}
 	if probeErr != nil {
 		return wrapError(probeErr, "probe upstream aliases")
 	}
@@ -35,7 +44,13 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 	if err != nil {
 		return err
 	}
+	if c.logger != nil {
+		c.logger.DebugContext(ctx, "starting container upstream probe", "ecosystem", ecosystem.Container, "alias", alias)
+	}
 	if !pool.probeEnabled() {
+		if c.logger != nil {
+			c.logger.DebugContext(ctx, "container upstream probe disabled", "ecosystem", ecosystem.Container, "alias", alias)
+		}
 		return nil
 	}
 
@@ -46,6 +61,9 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 		tasks.Add(c.probeTask(pool, runtime, &successes, &failures))
 		return true
 	})
+	if c.logger != nil {
+		c.logger.DebugContext(ctx, "starting container upstream alias endpoint probes", "ecosystem", ecosystem.Container, "alias", alias, "endpoint_count", tasks.Len())
+	}
 	if tasks.IsEmpty() {
 		return distribution.ErrNameUnknown.WithDetail("upstream alias has no endpoints")
 	}
@@ -132,6 +150,7 @@ func (c *Client) logProbeResult(ctx context.Context, alias string, runtime upstr
 		return
 	}
 	args := []any{
+		"ecosystem", ecosystem.Container,
 		"alias", alias,
 		"registry", runtime.config.Registry,
 		"latency", latency,
@@ -148,6 +167,7 @@ func (c *Client) logProbeSummary(ctx context.Context, alias string, successes, f
 		return
 	}
 	args := []any{
+		"ecosystem", ecosystem.Container,
 		"alias", alias,
 		"successes", successes,
 		"failures", failures,

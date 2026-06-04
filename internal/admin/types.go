@@ -51,6 +51,8 @@ type Summary struct {
 }
 
 type UpstreamRow struct {
+	Ecosystem        string
+	DisplayAlias     string
 	Alias            string
 	Registry         string
 	DefaultNamespace string
