@@ -54,6 +54,7 @@ require (
 	github.com/samber/lo v1.53.0
 	github.com/samber/mo v1.17.0
 	github.com/samber/oops v1.22.0
+	github.com/samber/slog-fiber v1.22.2
 	github.com/sethvargo/go-retry v0.3.0
 	github.com/sourcegraph/conc v0.3.0
 	github.com/spf13/afero v1.15.0

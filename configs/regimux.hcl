@@ -11,6 +11,10 @@ server {
       header = "X-Request-ID"
     }
 
+    request_logger {
+      enabled = false
+    }
+
     healthcheck {
       enabled = true
       liveness_path = "/livez"

@@ -2,8 +2,10 @@ package events
 
 import (
 	"context"
+	"encoding/json"
 	"log/slog"
 	"net"
+	"sort"
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -18,13 +20,20 @@ const (
 )
 
 type startupEndpoint struct {
-	name string
-	url  string
+	name    string
+	url     string
+	aliases []string
 }
 
 func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, version build.Version) error {
 	ordered := cfg.OrderedContainerUpstreams()
 	logger = startupLogger(logger)
+	configJSON, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		logger.Error("failed to marshal config as json", "error", err)
+	} else {
+		logger.Info("parsed config", "config_json", string(configJSON))
+	}
 	logger.Info("regimuxd starting",
 		"version", string(version),
 		"listen", cfg.Server.Listen,
@@ -38,7 +47,14 @@ func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, versi
 func logRuntimeAccess(_ context.Context, cfg config.Config, logger *slog.Logger) error {
 	logger = startupLogger(logger)
 	startupServiceEndpoints(cfg).Range(func(_ int, endpoint startupEndpoint) bool {
-		logger.Info("service endpoint available", "name", endpoint.name, "url", endpoint.url)
+		fields := []any{
+			"name", endpoint.name,
+			"url", endpoint.url,
+		}
+		if len(endpoint.aliases) > 0 {
+			fields = append(fields, "aliases", endpoint.aliases)
+		}
+		logger.Info("service endpoint available", fields...)
 		return true
 	})
 	logRegisteredUpstreams(logger, cfg)
@@ -84,7 +100,35 @@ func startupServiceEndpoints(cfg config.Config) *collectionlist.List[startupEndp
 	if cfg.Server.Middleware.Pprof.Enabled {
 		endpoints.Add(startupEndpoint{name: "pprof", url: joinStartupURL(base, startupPprofPath(cfg.Server.Middleware.Pprof))})
 	}
+	if aliases := sortedDependencyAliases(cfg.Go); len(aliases) > 0 {
+		endpoints.Add(startupEndpoint{name: "go-proxy", url: joinStartupURL(base, "/go"), aliases: aliases})
+	}
+	if aliases := sortedDependencyAliases(cfg.NPM); len(aliases) > 0 {
+		endpoints.Add(startupEndpoint{name: "npm-proxy", url: joinStartupURL(base, "/npm"), aliases: aliases})
+	}
+	if aliases := sortedDependencyAliases(cfg.PyPI); len(aliases) > 0 {
+		endpoints.Add(startupEndpoint{name: "pypi-proxy", url: joinStartupURL(base, "/pypi"), aliases: aliases})
+	}
+	if aliases := sortedDependencyAliases(cfg.Maven); len(aliases) > 0 {
+		endpoints.Add(startupEndpoint{name: "maven-proxy", url: joinStartupURL(base, "/maven"), aliases: aliases})
+	}
 	return endpoints
+}
+
+func sortedDependencyAliases(cfg config.DependencyEcosystemConfig) []string {
+	if len(cfg) == 0 {
+		return nil
+	}
+	aliases := make([]string, 0, len(cfg))
+	for alias := range cfg {
+		alias = strings.TrimSpace(alias)
+		if alias == "" {
+			continue
+		}
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	return aliases
 }
 
 func upstreamEndpointRegistries(cfg config.UpstreamConfig) *collectionlist.List[string] {

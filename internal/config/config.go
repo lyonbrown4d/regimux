@@ -103,6 +103,7 @@ func (c *Config) Normalize() error {
 		return oops.In("config").Errorf("config is nil")
 	}
 	c.normalizeServer()
+	c.normalizeLog()
 	c.normalizeAuthDefaults()
 	c.normalizeCache()
 	if err := c.normalizeUpstreams(); err != nil {
@@ -143,6 +144,14 @@ func (c *Config) normalizeAuthDefaults() {
 	c.Auth.Realm = strings.TrimSpace(c.Auth.Realm)
 	c.Auth.Issuer = lo.CoalesceOrEmpty(strings.TrimSpace(c.Auth.Issuer), c.Auth.Service)
 	c.Auth.TokenTTL = lo.CoalesceOrEmpty(c.Auth.TokenTTL, 15*time.Minute)
+}
+
+func (c *Config) normalizeLog() {
+	if c.Log.Debug {
+		c.Log.Level = "debug"
+		return
+	}
+	c.Log.Level = strings.ToLower(strings.TrimSpace(c.Log.Level))
 }
 
 func (c *Config) normalizeCache() {

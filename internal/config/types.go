@@ -30,6 +30,7 @@ type ServerConfig struct {
 
 type ServerMiddlewareConfig struct {
 	RequestID       MiddlewareRequestIDConfig       `json:"request_id"       koanf:"request_id"       mapstructure:"request_id"`
+	RequestLogger   MiddlewareRequestLoggerConfig   `json:"request_logger"   koanf:"request_logger"   mapstructure:"request_logger"`
 	Healthcheck     MiddlewareHealthcheckConfig     `json:"healthcheck"      koanf:"healthcheck"      mapstructure:"healthcheck"`
 	ETag            MiddlewareToggleConfig          `json:"etag"             koanf:"etag"             mapstructure:"etag"`
 	SecurityHeaders MiddlewareSecurityHeadersConfig `json:"security_headers" koanf:"security_headers" mapstructure:"security_headers"`
@@ -46,6 +47,10 @@ type MiddlewareToggleConfig struct {
 type MiddlewareRequestIDConfig struct {
 	Enabled bool   `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
 	Header  string `json:"header"  koanf:"header"  mapstructure:"header"`
+}
+
+type MiddlewareRequestLoggerConfig struct {
+	Enabled bool `json:"enabled" koanf:"enabled" mapstructure:"enabled"`
 }
 
 type MiddlewareHealthcheckConfig struct {
@@ -104,6 +109,7 @@ type AuthUserConfig struct {
 
 type LogConfig struct {
 	Level      string `json:"level"        koanf:"level"        mapstructure:"level"        validate:"omitempty,oneof=trace debug info warn error fatal panic disabled"`
+	Debug      bool   `json:"debug"        koanf:"debug"        mapstructure:"debug"`
 	Console    bool   `json:"console"      koanf:"console"      mapstructure:"console"`
 	File       string `json:"file"         koanf:"file"         mapstructure:"file"`
 	AddCaller  bool   `json:"add_caller"   koanf:"add_caller"   mapstructure:"add_caller"`

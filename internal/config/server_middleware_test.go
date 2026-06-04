@@ -45,7 +45,7 @@ func assertDefaultResponseMiddleware(t *testing.T, middleware config.ServerMiddl
 
 func assertOptInMiddleware(t *testing.T, middleware config.ServerMiddlewareConfig) {
 	t.Helper()
-	if middleware.RateLimit.Enabled || middleware.CSRF.Enabled || middleware.Pprof.Enabled {
+	if middleware.RequestLogger.Enabled || middleware.RateLimit.Enabled || middleware.CSRF.Enabled || middleware.Pprof.Enabled {
 		t.Fatalf("unsafe/debug middleware should be opt-in by default: %#v", middleware)
 	}
 }

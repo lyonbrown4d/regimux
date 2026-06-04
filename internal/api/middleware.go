@@ -16,6 +16,7 @@ import (
 	"github.com/gofiber/fiber/v3/middleware/recover"
 	"github.com/gofiber/fiber/v3/middleware/requestid"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	slogfiber "github.com/samber/slog-fiber"
 )
 
 const (
@@ -27,6 +28,7 @@ func installFiberMiddleware(app *fiber.App, cfg config.ServerMiddlewareConfig, l
 	logger = apiLogger(logger, "api.middleware")
 	logger.Info("installing fiber middleware",
 		"request_id", cfg.RequestID.Enabled,
+		"request_logger", cfg.RequestLogger.Enabled,
 		"healthcheck", cfg.Healthcheck.Enabled,
 		"etag", cfg.ETag.Enabled,
 		"security_headers", cfg.SecurityHeaders.Enabled,
@@ -37,6 +39,7 @@ func installFiberMiddleware(app *fiber.App, cfg config.ServerMiddlewareConfig, l
 	)
 	app.Use(recover.New())
 	installRequestID(app, cfg.RequestID)
+	installRequestLogger(app, cfg.RequestLogger, cfg.RequestID.Header, logger)
 	installHealthcheck(app, cfg.Healthcheck)
 	installPprof(app, cfg.Pprof)
 	installSecurityHeaders(app, cfg.SecurityHeaders)
@@ -52,6 +55,35 @@ func installRequestID(app *fiber.App, cfg config.MiddlewareRequestIDConfig) {
 		return
 	}
 	app.Use(requestid.New(requestid.Config{Header: cfg.Header}))
+}
+
+func installRequestLogger(app *fiber.App, cfg config.MiddlewareRequestLoggerConfig, requestIDHeader string, logger *slog.Logger) {
+	if !cfg.Enabled {
+		return
+	}
+	headerKey := strings.TrimSpace(requestIDHeader)
+	if headerKey == "" {
+		headerKey = "X-Request-ID"
+	}
+	slogfiber.RequestIDContextKey = "requestid"
+	slogfiber.RequestIDHeaderKey = headerKey
+
+	app.Use(slogfiber.NewWithConfig(
+		apiLogger(logger, "api.request"),
+		slogfiber.Config{
+			DefaultLevel:       slog.LevelInfo,
+			ClientErrorLevel:   slog.LevelWarn,
+			ServerErrorLevel:   slog.LevelError,
+			WithRequestID:      true,
+			WithUserAgent:      true,
+			WithRequestBody:    true,
+			WithResponseBody:   false,
+			WithRequestHeader:  true,
+			WithResponseHeader: false,
+			WithTraceID:        false,
+			WithSpanID:         false,
+		},
+	))
 }
 
 func installHealthcheck(app *fiber.App, cfg config.MiddlewareHealthcheckConfig) {

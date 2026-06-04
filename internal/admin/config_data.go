@@ -45,6 +45,7 @@ func addServerRows(rows *collectionlist.List[ConfigRow], cfg config.ServerConfig
 func addServerMiddlewareRows(rows *collectionlist.List[ConfigRow], cfg config.ServerMiddlewareConfig) {
 	addRow(rows, "server.middleware.request_id.enabled", boolString(cfg.RequestID.Enabled))
 	addRow(rows, "server.middleware.request_id.header", cfg.RequestID.Header)
+	addRow(rows, "server.middleware.request_logger.enabled", boolString(cfg.RequestLogger.Enabled))
 	addRow(rows, "server.middleware.healthcheck.enabled", boolString(cfg.Healthcheck.Enabled))
 	addRow(rows, "server.middleware.healthcheck.liveness_path", cfg.Healthcheck.LivenessPath)
 	addRow(rows, "server.middleware.healthcheck.readiness_path", cfg.Healthcheck.ReadinessPath)

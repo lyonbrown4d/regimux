@@ -57,6 +57,7 @@ Important defaults:
 - `server.listen = ":5000"`
 - `server.public_url = "http://localhost:5000"`
 - `server.middleware.request_id.enabled = true`
+- `server.middleware.request_logger.enabled = false`
 - `server.middleware.healthcheck.enabled = true` with `/livez` and `/readyz`
 - `server.middleware.etag.enabled = true`, scoped away from registry `/v2` traffic
 - `server.middleware.compress.enabled = true`, scoped away from registry `/v2` traffic
@@ -162,6 +163,8 @@ Environment variables use `REGIMUX_` and `__` for nesting:
 REGIMUX_SERVER__LISTEN=:5000
 REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
 REGIMUX_LOG__LEVEL=debug
+REGIMUX_LOG__DEBUG=true
+REGIMUX_SERVER__MIDDLEWARE__REQUEST_LOGGER__ENABLED=true
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
@@ -184,6 +187,8 @@ Unknown Cobra flags are passed to `configx` as config overrides:
 ```bash
 regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=debug
 ```
+
+`log.debug = true` and `REGIMUX_LOG__DEBUG=true` are accepted as compatibility aliases for setting debug logging, but `log.level = "debug"` is the preferred form.
 
 Use this for small operational overrides. Keep larger configuration in HCL or environment variables.
 

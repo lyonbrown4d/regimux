@@ -57,6 +57,7 @@ maven {
 - `server.listen = ":5000"`
 - `server.public_url = "http://localhost:5000"`
 - `server.middleware.request_id.enabled = true`
+- `server.middleware.request_logger.enabled = false`
 - `server.middleware.healthcheck.enabled = true`，提供 `/livez` 和 `/readyz`
 - `server.middleware.etag.enabled = true`，但跳过 registry `/v2` 流量
 - `server.middleware.compress.enabled = true`，但跳过 registry `/v2` 流量
@@ -162,6 +163,8 @@ docker {
 REGIMUX_SERVER__LISTEN=:5000
 REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
 REGIMUX_LOG__LEVEL=debug
+REGIMUX_LOG__DEBUG=true
+REGIMUX_SERVER__MIDDLEWARE__REQUEST_LOGGER__ENABLED=true
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
@@ -184,6 +187,8 @@ Cobra 未识别的 flag 会传给 `configx` 作为配置覆盖：
 ```bash
 regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=debug
 ```
+
+`log.debug = true` 和 `REGIMUX_LOG__DEBUG=true` 被保留作为兼容写法，会等价为 debug 日志级别；推荐优先使用 `log.level = "debug"`。
 
 小范围运行时覆盖可以用命令行；较完整的配置建议放在 HCL 或环境变量里。
 

@@ -45,6 +45,9 @@ func defaultServerMiddlewareConfig() ServerMiddlewareConfig {
 			Enabled: true,
 			Header:  "X-Request-ID",
 		},
+		RequestLogger: MiddlewareRequestLoggerConfig{
+			Enabled: false,
+		},
 		Healthcheck: MiddlewareHealthcheckConfig{
 			Enabled:       true,
 			LivenessPath:  "/livez",
