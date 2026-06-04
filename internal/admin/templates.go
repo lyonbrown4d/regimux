@@ -28,19 +28,18 @@ func NewTemplateEngine(messages *Messages) (fiber.Views, error) {
 	}
 	engine := html.NewFileSystem(http.FS(templates), ".html")
 	engine.AddFunc("t", messages.TemplateTranslate)
-	engine.AddFunc("values", func(value any) any {
-		if value == nil {
-			return nil
-		}
-		method := reflect.ValueOf(value).MethodByName("Values")
-		if !method.IsValid() {
-			return value
-		}
-		if method.Type().NumIn() != 0 || method.Type().NumOut() != 1 {
-			return value
-		}
-		result := method.Call(nil)
-		return result[0].Interface()
-	})
+	engine.AddFunc("values", templateValues)
 	return engine, nil
+}
+
+func templateValues(value any) any {
+	if value == nil {
+		return nil
+	}
+	method := reflect.ValueOf(value).MethodByName("Values")
+	if !method.IsValid() || method.Type().NumIn() != 0 || method.Type().NumOut() != 1 {
+		return value
+	}
+	result := method.Call(nil)
+	return result[0].Interface()
 }

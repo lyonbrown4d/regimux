@@ -86,7 +86,7 @@ func (noopStore) Put(context.Context, meta.EndpointHealthRecord) error {
 }
 
 func (noopStore) List(context.Context, ...string) (*collectionlist.List[meta.EndpointHealthRecord], error) {
-	return nil, nil
+	return collectionlist.NewList[meta.EndpointHealthRecord](), nil
 }
 
 func (noopStore) Close() error {

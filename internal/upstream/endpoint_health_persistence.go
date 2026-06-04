@@ -32,13 +32,25 @@ func (c *Client) LoadEndpointHealth(ctx context.Context) error {
 }
 
 func (c *Client) loadHotEndpointHealth(ctx context.Context) int {
-	if c == nil || c.hotHealth == nil || c.upstreams == nil || c.upstreams.Len() == 0 {
+	if !c.canLoadHotEndpointHealth() {
 		return 0
 	}
+
 	aliases := c.endpointHealthAliases()
 	if aliases == nil || aliases.Len() == 0 {
 		return 0
 	}
+	return c.loadHotEndpointHealthAliases(ctx, aliases)
+}
+
+func (c *Client) canLoadHotEndpointHealth() bool {
+	return c != nil &&
+		c.hotHealth != nil &&
+		c.upstreams != nil &&
+		c.upstreams.Len() > 0
+}
+
+func (c *Client) loadHotEndpointHealthAliases(ctx context.Context, aliases *collectionlist.List[string]) int {
 	records, err := c.hotHealth.List(ctx, aliases.Values()...)
 	if err != nil {
 		if c.logger != nil {
@@ -46,6 +58,7 @@ func (c *Client) loadHotEndpointHealth(ctx context.Context) int {
 		}
 		return 0
 	}
+
 	loaded := c.restoreEndpointHealthRecords(records)
 	if loaded > 0 && c.logger != nil {
 		c.logger.DebugContext(ctx, "loaded upstream endpoint health hot state", "records", loaded)
@@ -165,10 +178,7 @@ func (p *upstreamPool) hasRegistry(registry string) bool {
 		}
 		return true
 	})
-	if found {
-		return true
-	}
-	return false
+	return found
 }
 
 func endpointHealthRecordFromSnapshot(alias string, snapshot EndpointHealthSnapshot) meta.EndpointHealthRecord {

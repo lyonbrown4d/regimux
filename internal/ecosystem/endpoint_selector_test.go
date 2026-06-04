@@ -28,7 +28,7 @@ func TestUpstreamEndpointsUsesHealthForRouting(t *testing.T) {
 	alias := ecosystem.ScopedAlias(ecosystem.Go, "default")
 	now := time.Now().UTC()
 
-	writeEndpointHealth(t, ctx, store, alias, "https://registry.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, alias, "https://registry.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:         400 * time.Millisecond,
 		LatencySamples:      3,
 		SuccessCount:        5,
@@ -38,7 +38,7 @@ func TestUpstreamEndpointsUsesHealthForRouting(t *testing.T) {
 		UpdatedAt:           now.Add(-time.Minute),
 		ConsecutiveFailures: 1,
 	})
-	writeEndpointHealth(t, ctx, store, alias, "https://mirror-better.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, alias, "https://mirror-better.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:    50 * time.Millisecond,
 		LatencySamples: 3,
 		SuccessCount:   3,
@@ -46,7 +46,7 @@ func TestUpstreamEndpointsUsesHealthForRouting(t *testing.T) {
 		CreatedAt:      now.Add(-time.Minute),
 		UpdatedAt:      now.Add(-time.Minute),
 	})
-	writeEndpointHealth(t, ctx, store, alias, "https://mirror-cooldown.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, alias, "https://mirror-cooldown.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:         10 * time.Millisecond,
 		LatencySamples:      3,
 		DegradedUntil:       now.Add(10 * time.Minute),
@@ -84,19 +84,19 @@ func TestUpstreamEndpointsFallsBackWhenAllEndpointsAreUnhealthy(t *testing.T) {
 	alias := ecosystem.ScopedAlias(ecosystem.Go, "default")
 	now := time.Now().UTC()
 
-	writeEndpointHealth(t, ctx, store, alias, "https://primary.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, alias, "https://primary.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:   100 * time.Millisecond,
 		CooldownUntil: now.Add(10 * time.Minute),
 		CreatedAt:     now.Add(-time.Minute),
 		UpdatedAt:     now.Add(-time.Minute),
 	})
-	writeEndpointHealth(t, ctx, store, alias, "https://mirror-a.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, alias, "https://mirror-a.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:   20 * time.Millisecond,
 		CooldownUntil: now.Add(10 * time.Minute),
 		CreatedAt:     now.Add(-time.Minute),
 		UpdatedAt:     now.Add(-time.Minute),
 	})
-	writeEndpointHealth(t, ctx, store, alias, "https://mirror-b.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, alias, "https://mirror-b.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:   30 * time.Millisecond,
 		CooldownUntil: now.Add(10 * time.Minute),
 		CreatedAt:     now.Add(-time.Minute),
@@ -131,20 +131,20 @@ func TestUpstreamEndpointsUsesLatestRecordPerEndpoint(t *testing.T) {
 
 	alias := ecosystem.ScopedAlias(ecosystem.Go, "latest")
 	// Insert an older degraded latency sample for the primary endpoint.
-	writeEndpointHealthWithRepository(t, ctx, store, alias, "https://primary.internal", "older-repo", meta.EndpointHealthRecord{
+	writeEndpointHealthWithRepository(ctx, t, store, alias, "https://primary.internal", "older-repo", meta.EndpointHealthRecord{
 		LatencyEWMA:    500 * time.Millisecond,
 		LatencySamples: 1,
 		FailureCount:   1,
 	})
 	time.Sleep(20 * time.Millisecond)
 	// Insert a later healthier sample for the same endpoint under a different repository.
-	writeEndpointHealthWithRepository(t, ctx, store, alias, "https://primary.internal", "newer-repo", meta.EndpointHealthRecord{
+	writeEndpointHealthWithRepository(ctx, t, store, alias, "https://primary.internal", "newer-repo", meta.EndpointHealthRecord{
 		LatencyEWMA:    10 * time.Millisecond,
 		LatencySamples: 2,
 		SuccessCount:   2,
 	})
 	// Make sure the fallback endpoint remains a bit slower than the fresh primary sample.
-	writeEndpointHealthWithRepository(t, ctx, store, alias, "https://fallback.internal", "f-repo", meta.EndpointHealthRecord{
+	writeEndpointHealthWithRepository(ctx, t, store, alias, "https://fallback.internal", "f-repo", meta.EndpointHealthRecord{
 		LatencyEWMA:    100 * time.Millisecond,
 		LatencySamples: 2,
 		SuccessCount:   2,
@@ -174,19 +174,19 @@ func TestUpstreamEndpointsIsScopedByEcosystemAndAlias(t *testing.T) {
 
 	now := time.Now().UTC()
 	// Add a fast healthy record in Maven for the same mirror used by Go.
-	writeEndpointHealth(t, ctx, store, ecosystem.ScopedAlias(ecosystem.Maven, "default"), "https://go-mirror.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, ecosystem.ScopedAlias(ecosystem.Maven, "default"), "https://go-mirror.internal", meta.EndpointHealthRecord{
 		LatencyEWMA: 5 * time.Millisecond,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	})
 	// Go has only unhealthy records; if cross-ecosystem records leaked, mirror would be incorrectly preferred.
-	writeEndpointHealth(t, ctx, store, ecosystem.ScopedAlias(ecosystem.Go, "default"), "https://go-primary.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, ecosystem.ScopedAlias(ecosystem.Go, "default"), "https://go-primary.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:   100 * time.Millisecond,
 		CooldownUntil: now.Add(10 * time.Minute),
 		CreatedAt:     now,
 		UpdatedAt:     now,
 	})
-	writeEndpointHealth(t, ctx, store, ecosystem.ScopedAlias(ecosystem.Go, "default"), "https://go-mirror.internal", meta.EndpointHealthRecord{
+	writeEndpointHealth(ctx, t, store, ecosystem.ScopedAlias(ecosystem.Go, "default"), "https://go-mirror.internal", meta.EndpointHealthRecord{
 		LatencyEWMA:   200 * time.Millisecond,
 		CooldownUntil: now.Add(10 * time.Minute),
 		CreatedAt:     now,
@@ -203,7 +203,7 @@ func TestUpstreamEndpointsIsScopedByEcosystemAndAlias(t *testing.T) {
 	}
 }
 
-func writeEndpointHealth(t *testing.T, ctx context.Context, store meta.Store, alias, registry string, record meta.EndpointHealthRecord) {
+func writeEndpointHealth(ctx context.Context, t *testing.T, store meta.Store, alias, registry string, record meta.EndpointHealthRecord) {
 	t.Helper()
 	record.Alias = alias
 	record.Registry = registry
@@ -213,8 +213,8 @@ func writeEndpointHealth(t *testing.T, ctx context.Context, store meta.Store, al
 }
 
 func writeEndpointHealthWithRepository(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	store meta.Store,
 	alias, registry, repository string,
 	record meta.EndpointHealthRecord,

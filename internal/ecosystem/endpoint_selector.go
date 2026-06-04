@@ -38,59 +38,80 @@ func UpstreamEndpoints(
 		return endpoints
 	}
 
+	recordByEndpoint := latestEndpointHealthByEndpoint(ctx, metadata, ecosystem, alias)
+	if recordByEndpoint == nil {
+		return endpoints
+	}
+	candidates := endpointHealthCandidates(endpoints, recordByEndpoint)
+	return mapEndpointCandidates(prioritizeEndpointCandidates(candidates))
+}
+
+func latestEndpointHealthByEndpoint(ctx context.Context, metadata meta.EndpointHealthRepository, ecosystem, alias string) *collectionmapping.Map[string, meta.EndpointHealthRecord] {
 	records, err := metadata.ListEndpointHealth(ctx, meta.EndpointHealthListAlias(ScopedAlias(ecosystem, alias)))
 	if err != nil || len(records) == 0 {
-		return endpoints
+		return nil
 	}
 
 	recordByEndpoint := collectionmapping.NewMapWithCapacity[string, meta.EndpointHealthRecord](len(records))
-	for _, record := range records {
+	foundAny := false
+	for i := range records {
+		record := records[i]
 		registry := normalizeEndpoint(record.Registry)
 		if registry == "" {
 			continue
 		}
-		// Keep the latest record for each endpoint; records are already sorted by
-		// UpdatedAt/ID descending, so the first one is the freshest.
 		existing, ok := recordByEndpoint.Get(registry)
 		if !ok || existing.UpdatedAt.Before(record.UpdatedAt) {
 			recordByEndpoint.Set(registry, record)
+			foundAny = true
 		}
 	}
+	if !foundAny {
+		return nil
+	}
+	return recordByEndpoint
+}
 
+func endpointHealthCandidates(endpoints []string, recordByEndpoint *collectionmapping.Map[string, meta.EndpointHealthRecord]) *collectionlist.List[endpointHealthCandidate] {
 	now := time.Now()
-	candidates := collectionlist.FilterMapList(collectionlist.NewList(endpoints...), func(i int, endpoint string) (endpointHealthCandidate, bool) {
-		record, hasRecord := recordByEndpoint.Get(endpoint)
-		if !hasRecord {
-			return endpointHealthCandidate{
-				endpoint:    endpoint,
-				score:       endpointUnknownLatency,
-				originalIdx: i,
-			}, true
-		}
+	candidates := collectionlist.NewListWithCapacity[endpointHealthCandidate](len(endpoints))
+	for i, endpoint := range endpoints {
+		candidates.Add(buildEndpointHealthCandidate(endpoint, i, now, recordByEndpoint))
+	}
+	return candidates
+}
 
-		inCooldown := !record.CooldownUntil.IsZero() && now.Before(record.CooldownUntil)
-		inDegraded := !record.DegradedUntil.IsZero() && now.Before(record.DegradedUntil)
-		score := endpointUnknownLatency
-		if record.LatencySamples > 0 {
-			score = record.LatencyEWMA
-		}
-		score += time.Duration(record.ConsecutiveFailures) * endpointFailurePenalty
-		if inDegraded {
-			score += endpointFailurePenalty
-		}
+func buildEndpointHealthCandidate(
+	endpoint string,
+	originalIdx int,
+	now time.Time,
+	recordByEndpoint *collectionmapping.Map[string, meta.EndpointHealthRecord],
+) endpointHealthCandidate {
+	record, hasRecord := recordByEndpoint.Get(endpoint)
+	if !hasRecord {
 		return endpointHealthCandidate{
 			endpoint:    endpoint,
-			score:       score,
-			inCooldown:  inCooldown,
-			inDegraded:  inDegraded,
-			originalIdx: i,
-		}, true
-	})
+			score:       endpointUnknownLatency,
+			originalIdx: originalIdx,
+		}
+	}
+	candidate := endpointHealthCandidate{
+		endpoint:    endpoint,
+		originalIdx: originalIdx,
+		score:       record.LatencyEWMA,
+		inCooldown:  !record.CooldownUntil.IsZero() && now.Before(record.CooldownUntil),
+		inDegraded:  !record.DegradedUntil.IsZero() && now.Before(record.DegradedUntil),
+	}
+	candidate.score += time.Duration(record.ConsecutiveFailures) * endpointFailurePenalty
+	if candidate.inDegraded {
+		candidate.score += endpointFailurePenalty
+	}
+	return candidate
+}
 
-	if candidates.Len() <= 1 {
-		return collectionlist.MapList(candidates, func(_ int, candidate endpointHealthCandidate) string {
-			return candidate.endpoint
-		}).Values()
+func prioritizeEndpointCandidates(candidates *collectionlist.List[endpointHealthCandidate]) *collectionlist.List[endpointHealthCandidate] {
+	if candidates == nil || candidates.Len() <= 1 {
+		return candidates
 	}
 
 	candidates = candidates.Sort(compareEndpointHealthCandidate)
@@ -98,37 +119,56 @@ func UpstreamEndpoints(
 		return !candidate.inCooldown && !candidate.inDegraded
 	})
 	if healthy.Len() == 0 {
-		healthy = candidates
+		return candidates
 	}
+	return healthy
+}
 
-	return collectionlist.MapList(healthy, func(_ int, candidate endpointHealthCandidate) string {
+func mapEndpointCandidates(candidates *collectionlist.List[endpointHealthCandidate]) []string {
+	if candidates == nil {
+		return nil
+	}
+	return collectionlist.MapList(candidates, func(_ int, candidate endpointHealthCandidate) string {
 		return candidate.endpoint
 	}).Values()
 }
 
 func compareEndpointHealthCandidate(left, right endpointHealthCandidate) int {
-	if left.inCooldown != right.inCooldown {
-		if left.inCooldown {
-			return 1
-		}
+	if cmp := compareInts(endpointHealthPenalty(left), endpointHealthPenalty(right)); cmp != 0 {
+		return cmp
+	}
+	if cmp := compareDurations(left.score, right.score); cmp != 0 {
+		return cmp
+	}
+	return compareInts(left.originalIdx, right.originalIdx)
+}
+
+func endpointHealthPenalty(candidate endpointHealthCandidate) int {
+	penalty := 0
+	if candidate.inCooldown {
+		penalty += 2
+	}
+	if candidate.inDegraded {
+		penalty++
+	}
+	return penalty
+}
+
+func compareInts(left, right int) int {
+	if left < right {
 		return -1
 	}
-	if left.inDegraded != right.inDegraded {
-		if left.inDegraded {
-			return 1
-		}
-		return -1
-	}
-	if left.score != right.score {
-		if left.score < right.score {
-			return -1
-		}
+	if left > right {
 		return 1
 	}
-	if left.originalIdx < right.originalIdx {
+	return 0
+}
+
+func compareDurations(left, right time.Duration) int {
+	if left < right {
 		return -1
 	}
-	if left.originalIdx > right.originalIdx {
+	if left > right {
 		return 1
 	}
 	return 0
