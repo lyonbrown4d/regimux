@@ -72,6 +72,12 @@ store {
   }
 }
 
+cache {
+  backend = "%s"
+  prefix  = "regimux-test"
+  default_ttl = "0s"
+}
+
 container {
   hub {
     registry = "https://registry-1.docker.io"
@@ -80,7 +86,7 @@ container {
     }
   }
 }
-`, cfg.Server.Listen, cfg.Server.PublicURL, cfg.Log.Level, cfg.Log.Console, cfg.Store.Meta.Driver, escapeHCLPath(cfg.Store.Meta.Path), cfg.Store.Object.Driver, escapeHCLPath(cfg.Store.Object.Path))
+`, cfg.Server.Listen, cfg.Server.PublicURL, cfg.Log.Level, cfg.Log.Console, cfg.Store.Meta.Driver, escapeHCLPath(cfg.Store.Meta.Path), cfg.Store.Object.Driver, escapeHCLPath(cfg.Store.Object.Path), cfg.Cache.Backend)
 
 	configPath := filepath.Join(t.TempDir(), "regimux.hcl")
 	if err := os.WriteFile(configPath, []byte(strings.TrimSpace(content)+"\n"), 0o600); err != nil {
@@ -110,6 +116,9 @@ func validTestConfig(t *testing.T) config.Config {
 				Driver: "local",
 				Path:   t.TempDir(),
 			},
+		},
+		Cache: config.CacheConfig{
+			Backend: "memory",
 		},
 		Container: config.ContainerConfig{
 			"hub": {
