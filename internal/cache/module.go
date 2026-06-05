@@ -94,8 +94,8 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 	}
 }
 
-func errInvalidCacheBackend(backend string) error {
-	return oops.In("cache").With("backend", backend).Errorf("unsupported cache backend")
+func errInvalidCacheBackend(backendName string) error {
+	return oops.In("cache").With("backend", backendName).Errorf("unsupported cache backend")
 }
 
 func newProxyDependencies(
