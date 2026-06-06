@@ -5,7 +5,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/dustin/go-humanize"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 func formatTime(value time.Time) string {
@@ -32,14 +32,14 @@ func formatBytes(value int64) string {
 	return humanize.IBytes(uint64(value))
 }
 
-func formatLatency(snapshot upstream.EndpointHealthSnapshot) string {
+func formatLatency(snapshot ecosystem.EndpointHealthSnapshot) string {
 	if !snapshot.HasLatency {
 		return "-"
 	}
 	return formatDuration(snapshot.LatencyEWMA)
 }
 
-func formatCooldown(snapshot upstream.EndpointHealthSnapshot) string {
+func formatCooldown(snapshot ecosystem.EndpointHealthSnapshot) string {
 	if snapshot.CooldownUntil.IsZero() {
 		return "-"
 	}
@@ -49,7 +49,7 @@ func formatCooldown(snapshot upstream.EndpointHealthSnapshot) string {
 	return "expired"
 }
 
-func formatDegraded(snapshot upstream.EndpointHealthSnapshot) string {
+func formatDegraded(snapshot ecosystem.EndpointHealthSnapshot) string {
 	if snapshot.DegradedUntil.IsZero() {
 		return "-"
 	}
@@ -59,14 +59,14 @@ func formatDegraded(snapshot upstream.EndpointHealthSnapshot) string {
 	return "expired"
 }
 
-func formatSuccessRate(snapshot upstream.EndpointHealthSnapshot) string {
+func formatSuccessRate(snapshot ecosystem.EndpointHealthSnapshot) string {
 	if !snapshot.HasSuccessRate {
 		return "-"
 	}
 	return humanize.FormatFloat("#,###.##", snapshot.SuccessRate*100) + "%"
 }
 
-func endpointStatus(snapshot upstream.EndpointHealthSnapshot) string {
+func endpointStatus(snapshot ecosystem.EndpointHealthSnapshot) string {
 	switch {
 	case snapshot.InCooldown:
 		return "cooldown"

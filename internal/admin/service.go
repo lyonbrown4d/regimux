@@ -13,7 +13,8 @@ import (
 	authpkg "github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
@@ -23,7 +24,7 @@ const basePath = "/admin"
 type Service struct {
 	cfg       config.Config
 	metadata  meta.Store
-	upstream  *upstream.Client
+	runtimes  *collectionlist.List[ecosystem.Runtime]
 	version   build.Version
 	logger    *slog.Logger
 	auth      *authpkg.Service
@@ -44,7 +45,7 @@ func NewService(deps Dependencies) *Service {
 	service := &Service{
 		cfg:       deps.Config,
 		metadata:  deps.Metadata,
-		upstream:  deps.Upstream,
+		runtimes:  deps.Runtimes,
 		version:   deps.Version,
 		logger:    logger.With("component", "admin"),
 		auth:      deps.Auth,

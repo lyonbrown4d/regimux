@@ -8,8 +8,8 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/build"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 )
 
@@ -63,14 +63,14 @@ func TestAdditionalMetricsRecordBytesAndReports(t *testing.T) {
 func TestObserveUpstreamSnapshotRecordsEndpointHealth(t *testing.T) {
 	recorder := &metricsRecorder{}
 	metrics := observability.NewMetricsFromObservability(recorder, nil)
-	snapshot := upstream.ClientSnapshot{Upstreams: collectionlist.NewList(
-		upstream.UpstreamSnapshot{
+	snapshot := ecosystem.ClientSnapshot{Upstreams: collectionlist.NewList(
+		ecosystem.UpstreamSnapshot{
 			Alias: "hub",
 			Endpoints: collectionlist.NewList(
-				upstream.EndpointSnapshot{
+				ecosystem.EndpointSnapshot{
 					Registry: "https://mirror.example.com",
 					Role:     "mirror",
-					Health: upstream.EndpointHealthSnapshot{
+					Health: ecosystem.EndpointHealthSnapshot{
 						LatencyEWMA:         25 * time.Millisecond,
 						HasLatency:          true,
 						ConsecutiveFailures: 2,

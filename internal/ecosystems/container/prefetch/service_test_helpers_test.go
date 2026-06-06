@@ -16,7 +16,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/opencontainers/go-digest"

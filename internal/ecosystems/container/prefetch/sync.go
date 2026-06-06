@@ -6,33 +6,12 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
-// SyncOptions identifies one manifest reference to prefetch explicitly.
-type SyncOptions struct {
-	Ecosystem string
-	Alias     string
-	Repo      string
-	Reference string
-	Accept    string
-}
-
-// SyncReport summarizes artifacts warmed by a manual sync.
-type SyncReport struct {
-	Alias              string
-	Repo               string
-	Reference          string
-	ManifestDigest     string
-	MediaType          string
-	LayerCount         int
-	BlobCount          int
-	ChildManifestCount int
-	Duration           time.Duration
-}
-
 // Sync fetches one manifest and its directly referenced artifacts into cache.
-func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, error) {
+func (s *Service) Sync(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
 	if err := s.validateSync(ctx, opts); err != nil {
 		return nil, err
 	}
@@ -78,7 +57,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 		"child_manifests", result.childManifestCount,
 		"duration", duration,
 	)
-	return &SyncReport{
+	return &manualsync.SyncReport{
 		Alias:              opts.Alias,
 		Repo:               opts.Repo,
 		Reference:          opts.Reference,
@@ -91,7 +70,7 @@ func (s *Service) Sync(ctx context.Context, opts SyncOptions) (*SyncReport, erro
 	}, nil
 }
 
-func (s *Service) validateSync(ctx context.Context, opts SyncOptions) error {
+func (s *Service) validateSync(ctx context.Context, opts manualsync.SyncOptions) error {
 	if ctx == nil {
 		return cacheError("sync context is required")
 	}

@@ -6,7 +6,8 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -211,7 +212,7 @@ func TestServiceSyncPrefetchesImageManifestBlobs(t *testing.T) {
 		Blobs:     blobs,
 	})
 
-	report, err := service.Sync(ctx, prefetch.SyncOptions{
+	report, err := service.Sync(ctx, manualsync.SyncOptions{
 		Alias:     testAlias,
 		Repo:      testRepo,
 		Reference: targetTag,

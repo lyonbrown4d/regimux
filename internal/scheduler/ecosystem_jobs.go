@@ -75,6 +75,9 @@ func (r *Runtime) runJobSpec(ctx context.Context, spec ecosystem.JobSpec) error 
 	if result.PrefetchReport != nil {
 		r.observePrefetchReport(ctx, result.PrefetchReport)
 	}
+	if result.CleanupReport != nil {
+		r.observeCleanupReport(ctx, result.CleanupReport)
+	}
 	if spec.ObserveEndpointHealth {
 		r.observeEndpointHealth(ctx)
 	}

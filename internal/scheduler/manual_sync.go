@@ -7,26 +7,26 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/samber/oops"
 )
 
 type manualSyncer interface {
-	CreateSyncJob(context.Context, prefetch.SyncOptions) (prefetch.SyncJob, error)
+	CreateSyncJob(context.Context, manualsync.SyncOptions) (manualsync.SyncJob, error)
 	RunSyncJob(context.Context, string) error
 	MarkSyncJobFailed(string, error)
-	SyncJob(string) (prefetch.SyncJob, bool)
+	SyncJob(string) (manualsync.SyncJob, bool)
 }
 
-func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
+func (r *Runtime) SubmitSync(ctx context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
 	opts.Ecosystem = normalizeSyncEcosystem(opts.Ecosystem)
 	syncer := r.manualSyncer(opts.Ecosystem)
 	if syncer == nil {
-		return prefetch.SyncJob{}, oops.In("scheduler").Errorf("manual sync service is not configured")
+		return manualsync.SyncJob{}, oops.In("scheduler").Errorf("manual sync service is not configured")
 	}
 	job, err := syncer.CreateSyncJob(ctx, opts)
 	if err != nil {
-		return prefetch.SyncJob{}, oops.Wrapf(err, "create manual sync job")
+		return manualsync.SyncJob{}, oops.Wrapf(err, "create manual sync job")
 	}
 	if r.scheduler == nil {
 		err := oops.In("scheduler").Errorf("scheduler is not running")
@@ -69,10 +69,10 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts prefetch.SyncOptions) (pr
 	return job, nil
 }
 
-func (r *Runtime) SyncJob(id string) (prefetch.SyncJob, bool) {
+func (r *Runtime) SyncJob(id string) (manualsync.SyncJob, bool) {
 	syncer, job, ok := r.manualSyncerByJob(id)
 	if !ok || syncer == nil {
-		return prefetch.SyncJob{}, false
+		return manualsync.SyncJob{}, false
 	}
 	return job, true
 }
@@ -133,12 +133,12 @@ func (r *Runtime) manualSyncer(ecosystemName string) manualSyncer {
 	return match
 }
 
-func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, prefetch.SyncJob, bool) {
+func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, manualsync.SyncJob, bool) {
 	if r == nil || id == "" {
-		return nil, prefetch.SyncJob{}, false
+		return nil, manualsync.SyncJob{}, false
 	}
 	var matched manualSyncer
-	var job prefetch.SyncJob
+	var job manualsync.SyncJob
 	var ok bool
 	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
 		if matched != nil {
@@ -158,7 +158,7 @@ func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, prefetch.SyncJob, 
 	if matched != nil && ok {
 		return matched, job, true
 	}
-	return nil, prefetch.SyncJob{}, false
+	return nil, manualsync.SyncJob{}, false
 }
 
 func normalizeSyncEcosystem(value string) string {

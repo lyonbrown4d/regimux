@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/arcgolabs/observabilityx"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 type upstreamMetrics struct {
@@ -74,12 +74,12 @@ func (m *Metrics) ObserveUpstreamFailover(ctx context.Context, alias, operation,
 	)
 }
 
-func (m *Metrics) ObserveUpstreamSnapshot(ctx context.Context, snapshot upstream.ClientSnapshot) {
+func (m *Metrics) ObserveUpstreamSnapshot(ctx context.Context, snapshot ecosystem.ClientSnapshot) {
 	if m == nil {
 		return
 	}
-	snapshot.Upstreams.Range(func(_ int, upstreamSnapshot upstream.UpstreamSnapshot) bool {
-		upstreamSnapshot.Endpoints.Range(func(_ int, endpoint upstream.EndpointSnapshot) bool {
+	snapshot.Upstreams.Range(func(_ int, upstreamSnapshot ecosystem.UpstreamSnapshot) bool {
+		upstreamSnapshot.Endpoints.Range(func(_ int, endpoint ecosystem.EndpointSnapshot) bool {
 			m.observeEndpointSnapshot(ctx, upstreamSnapshot, endpoint)
 			return true
 		})

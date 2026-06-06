@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/arcgolabs/observabilityx"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 func newUpstreamRequests(obs observabilityx.Observability) observabilityx.Counter {
@@ -53,7 +53,7 @@ func upstreamRequestLabels(req UpstreamRequestMetric, result string) []observabi
 	}
 }
 
-func (m *Metrics) observeEndpointSnapshot(ctx context.Context, snapshot upstream.UpstreamSnapshot, endpoint upstream.EndpointSnapshot) {
+func (m *Metrics) observeEndpointSnapshot(ctx context.Context, snapshot ecosystem.UpstreamSnapshot, endpoint ecosystem.EndpointSnapshot) {
 	labels := endpointLabels(snapshot.Alias, endpoint)
 	health := endpoint.Health
 	m.upstream.endpointConfigured.Set(ctx, 1, labels...)
@@ -70,7 +70,7 @@ func (m *Metrics) observeEndpointSnapshot(ctx context.Context, snapshot upstream
 	}
 }
 
-func endpointLabels(alias string, endpoint upstream.EndpointSnapshot) []observabilityx.Attribute {
+func endpointLabels(alias string, endpoint ecosystem.EndpointSnapshot) []observabilityx.Attribute {
 	return []observabilityx.Attribute{
 		observabilityx.String("alias", alias),
 		observabilityx.String("registry", endpoint.Registry),

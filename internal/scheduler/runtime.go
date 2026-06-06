@@ -10,7 +10,6 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/oops"
@@ -20,7 +19,6 @@ import (
 type Runtime struct {
 	cfg      config.Config
 	logger   *slog.Logger
-	cleanup  *cache.CleanupService
 	runtimes *collectionlist.List[ecosystem.Runtime]
 	metrics  *observability.Metrics
 
@@ -31,7 +29,6 @@ type Runtime struct {
 func NewRuntime(deps RuntimeDependencies) *Runtime {
 	cfg := deps.Config
 	logger := deps.Logger
-	cleanup := deps.Cleanup
 	metrics := deps.Metrics
 	if logger == nil {
 		logger = slog.Default()
@@ -43,7 +40,6 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 	return &Runtime{
 		cfg:      cfg,
 		logger:   logger.With("component", "scheduler"),
-		cleanup:  cleanup,
 		runtimes: runtimes,
 		metrics:  metrics,
 	}
@@ -74,14 +70,8 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 	r.scheduler = scheduler
 
-	registrations := []func(context.Context, gocron.Scheduler) error{
-		r.registerCleanup,
-		r.registerEcosystemJobs,
-	}
-	for _, register := range registrations {
-		if err := register(ctx, scheduler); err != nil {
-			return join(err, r.Stop(ctx))
-		}
+	if err := r.registerEcosystemJobs(ctx, scheduler); err != nil {
+		return join(err, r.Stop(ctx))
 	}
 	scheduler.Start()
 	if r.metrics != nil {

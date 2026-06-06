@@ -9,13 +9,13 @@ import (
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/samber/oops"
 )
 
 type ManualSyncer interface {
-	SubmitSync(context.Context, prefetch.SyncOptions) (prefetch.SyncJob, error)
-	SyncJob(id string) (prefetch.SyncJob, bool)
+	SubmitSync(context.Context, manualsync.SyncOptions) (manualsync.SyncJob, error)
+	SyncJob(id string) (manualsync.SyncJob, bool)
 }
 
 func (s *Service) syncPage(c fiber.Ctx) error {
@@ -82,7 +82,7 @@ func (s *Service) syncJobPartial(c fiber.Ctx) error {
 	return s.render(c, "partials/sync_result", "", data)
 }
 
-func (s *Service) syncOptionsFromForm(c fiber.Ctx) (prefetch.SyncOptions, SyncForm, error) {
+func (s *Service) syncOptionsFromForm(c fiber.Ctx) (manualsync.SyncOptions, SyncForm, error) {
 	form := SyncForm{
 		UpstreamAlias: strings.TrimSpace(c.FormValue("upstream_alias")),
 		Repository:    strings.TrimSpace(c.FormValue("repository")),
@@ -95,25 +95,25 @@ func (s *Service) syncOptionsFromForm(c fiber.Ctx) (prefetch.SyncOptions, SyncFo
 	form.UpstreamAlias = syncTargetValue(form.Ecosystem, form.Alias)
 
 	if form.Repository == "" {
-		return prefetch.SyncOptions{}, form, oops.In("admin").Errorf("repository is required")
+		return manualsync.SyncOptions{}, form, oops.In("admin").Errorf("repository is required")
 	}
 
 	repo, form, err := syncRepositoryAndReference(form)
 	if err != nil {
-		return prefetch.SyncOptions{}, form, err
+		return manualsync.SyncOptions{}, form, err
 	}
 	route, form, err := s.syncRoute(form, repo)
 	if err != nil {
-		return prefetch.SyncOptions{}, form, err
+		return manualsync.SyncOptions{}, form, err
 	}
 	// For non-container ecosystems, route parsing is not required.
 	if route == nil {
 		if _, ok := s.syncUpstream(form.Ecosystem, form.Alias); !ok {
-			return prefetch.SyncOptions{}, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("unknown upstream %q in ecosystem %q", form.Alias, form.Ecosystem)
+			return manualsync.SyncOptions{}, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("unknown upstream %q in ecosystem %q", form.Alias, form.Ecosystem)
 		}
 	}
 
-	return prefetch.SyncOptions{
+	return manualsync.SyncOptions{
 		Ecosystem: form.Ecosystem,
 		Alias:     routeToSyncAlias(form.Alias, route),
 		Repo:      routeToSyncRepo(route, repo),
@@ -228,7 +228,7 @@ func normalizeSyncTarget(value string) string {
 	return syncTargetValue(eco, alias)
 }
 
-func syncResultFromReport(report *prefetch.SyncReport) SyncResult {
+func syncResultFromReport(report *manualsync.SyncReport) SyncResult {
 	if report == nil {
 		return SyncResult{}
 	}
@@ -245,7 +245,7 @@ func syncResultFromReport(report *prefetch.SyncReport) SyncResult {
 	}
 }
 
-func syncJobViewFromJob(job prefetch.SyncJob) SyncJobView {
+func syncJobViewFromJob(job manualsync.SyncJob) SyncJobView {
 	view := SyncJobView{
 		ID:         job.ID,
 		Status:     job.Status,
@@ -254,7 +254,7 @@ func syncJobViewFromJob(job prefetch.SyncJob) SyncJobView {
 		CreatedAt:  formatTime(job.CreatedAt),
 		StartedAt:  formatTime(job.StartedAt),
 		FinishedAt: formatTime(job.FinishedAt),
-		Poll:       job.Status == prefetch.SyncJobStatusQueued || job.Status == prefetch.SyncJobStatusRunning,
+		Poll:       job.Status == manualsync.SyncJobStatusQueued || job.Status == manualsync.SyncJobStatusRunning,
 	}
 	if job.Result != nil {
 		view.Result = syncResultFromReport(job.Result)

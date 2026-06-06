@@ -6,7 +6,7 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
 )
 
 func TestGenerateCandidatesMajorTags(t *testing.T) {

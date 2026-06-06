@@ -11,7 +11,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/depprefetch"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/samber/oops"
@@ -27,7 +26,7 @@ type runtimeAdapter struct {
 func newRuntimeAdapter(service *Service, prober *ecosystem.EndpointProber, metadata meta.Store, pools *worker.Pools, logger *slog.Logger) *runtimeAdapter {
 	adapter := &runtimeAdapter{service: service, prober: prober}
 	adapter.manualSync = manualsync.NewService(manualsync.ServiceDependencies{
-		Execute: func(ctx context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
+		Execute: func(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
 			return adapter.syncDependency(ctx, opts)
 		},
 	})
@@ -138,13 +137,13 @@ func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget
 	return nil
 }
 
-func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
+func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
 	if r == nil || r.manualSync == nil {
-		return prefetch.SyncJob{}, oops.In("pypi").Errorf("pypi proxy manual sync service is not configured")
+		return manualsync.SyncJob{}, oops.In("pypi").Errorf("pypi proxy manual sync service is not configured")
 	}
 	job, err := r.manualSync.CreateSyncJob(ctx, opts)
 	if err != nil {
-		return prefetch.SyncJob{}, oops.Wrapf(err, "create pypi proxy manual sync job")
+		return manualsync.SyncJob{}, oops.Wrapf(err, "create pypi proxy manual sync job")
 	}
 	return job, nil
 }
@@ -166,14 +165,14 @@ func (r *runtimeAdapter) MarkSyncJobFailed(id string, err error) {
 	r.manualSync.MarkSyncJobFailed(id, err)
 }
 
-func (r *runtimeAdapter) SyncJob(id string) (prefetch.SyncJob, bool) {
+func (r *runtimeAdapter) SyncJob(id string) (manualsync.SyncJob, bool) {
 	if r == nil || r.manualSync == nil {
-		return prefetch.SyncJob{}, false
+		return manualsync.SyncJob{}, false
 	}
 	return r.manualSync.SyncJob(id)
 }
 
-func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
+func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
 	if r == nil || r.service == nil {
 		return nil, oops.In("pypi").Errorf("pypi proxy manual sync service is not configured")
 	}
@@ -197,7 +196,7 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncO
 	if copyErr != nil {
 		return nil, oops.With("status", resp.Status).Wrapf(copyErr, "drain pypi manual sync response")
 	}
-	return &prefetch.SyncReport{
+	return &manualsync.SyncReport{
 		Alias:     opts.Alias,
 		Repo:      opts.Repo,
 		Reference: opts.Reference,

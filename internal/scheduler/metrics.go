@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 )
 
@@ -16,7 +15,7 @@ func (r *Runtime) observeJob(ctx context.Context, job, alias string, startedAt t
 	r.metrics.ObserveSchedulerJob(ctx, job, alias, time.Since(startedAt), err)
 }
 
-func (r *Runtime) observeCleanupReport(ctx context.Context, report *cache.CleanupReport) {
+func (r *Runtime) observeCleanupReport(ctx context.Context, report *ecosystem.CleanupReport) {
 	if r == nil || r.metrics == nil || report == nil {
 		return
 	}

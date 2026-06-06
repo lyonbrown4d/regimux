@@ -2,13 +2,9 @@ package admin
 
 import (
 	"context"
-	"fmt"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
@@ -215,64 +211,4 @@ func metadataCount(value int64) int {
 		return int(maxInt)
 	}
 	return int(value)
-}
-
-func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta.Upstream]) *collectionlist.List[UpstreamRow] {
-	snapshot := upstream.ClientSnapshot{}
-	if s.upstream != nil {
-		snapshot = s.upstream.Snapshot(now)
-	}
-	snapshots := upstreamSnapshotMap(snapshot.Upstreams)
-	stats := upstreamMetadataMap(metadata)
-
-	rows := collectionlist.NewList[UpstreamRow]()
-	addUpstreamSnapshotRows(rows, "oci", s.cfg.OrderedContainerUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "go", s.cfg.OrderedGoUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "npm", s.cfg.OrderedNPMUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "pypi", s.cfg.OrderedPyPIUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "maven", s.cfg.OrderedMavenUpstreams(), stats, snapshots)
-	return rows
-}
-
-func addUpstreamSnapshotRows(
-	rows *collectionlist.List[UpstreamRow],
-	ecosystem string,
-	ordered *collectionmapping.OrderedMap[string, config.UpstreamConfig],
-	stats *collectionmapping.Map[string, meta.Upstream],
-	snapshots *collectionmapping.Map[string, upstream.UpstreamSnapshot],
-) {
-	if rows == nil {
-		return
-	}
-	if ordered == nil {
-		return
-	}
-	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		displayAlias := alias
-		if ecosystem != "" {
-			displayAlias = fmt.Sprintf("%s/%s", ecosystem, alias)
-		}
-		row := UpstreamRow{
-			Ecosystem:        ecosystem,
-			DisplayAlias:     displayAlias,
-			Alias:            alias,
-			Registry:         upstreamCfg.Registry,
-			DefaultNamespace: upstreamCfg.DefaultNamespace,
-			AuthType:         upstreamCfg.Auth.Type,
-			MirrorPolicy:     upstreamCfg.MirrorPolicy,
-			BlobPolicy:       upstreamCfg.Blob.MirrorPolicy,
-			ProbeEnabled:     upstreamCfg.Probe.Enabled,
-			MirrorCount:      len(upstreamCfg.Mirrors),
-		}
-		if runtime, ok := stats.Get(alias); ok {
-			row.RepositoryCount = metadataCount(runtime.RepositoryCount)
-			row.PullCount = runtime.PullCount
-			row.BlobBytes = formatBytes(runtime.BlobBytes)
-			row.LastActivityAt = formatTime(runtime.LastActivityAt)
-		}
-		runtimeSnapshot, _ := snapshots.Get(alias)
-		row.Endpoints = endpointRows(runtimeSnapshot)
-		rows.Add(row)
-		return true
-	})
 }

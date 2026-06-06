@@ -8,11 +8,12 @@ import (
 	"strings"
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 func TestServiceSchedulerCleanupSubmitTriggersCleanup(t *testing.T) {
@@ -148,7 +149,7 @@ func newAdminSchedulerTestApp(t *testing.T, schedulerController admin.SchedulerC
 	service := admin.NewService(admin.Dependencies{
 		Config:    cfg,
 		Metadata:  metadata,
-		Upstream:  upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), nil, nil, nil),
+		Runtimes:  collectionlist.NewList[ecosystem.Runtime](),
 		Version:   build.Version("test-version"),
 		Messages:  newAdminMessages(t),
 		Scheduler: schedulerController,

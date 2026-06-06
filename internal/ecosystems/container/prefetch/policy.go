@@ -6,6 +6,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -19,17 +20,11 @@ const (
 	outcomeStatusFailed  = "failed"
 	outcomeStatusSkipped = "skipped"
 
-	prefetchControlCancel = "cancel"
-	prefetchControlRetry  = "retry"
+	prefetchControlCancel = ecosystem.PrefetchControlActionCancel
+	prefetchControlRetry  = ecosystem.PrefetchControlActionRetry
 )
 
 var errPrefetchBudgetExceeded = errors.New("prefetch budget exceeded")
-
-type ControlReport struct {
-	Action    string
-	ActiveRun bool
-	At        time.Time
-}
 
 type candidatePlan struct {
 	candidate   Candidate

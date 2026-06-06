@@ -4,22 +4,19 @@ import (
 	"context"
 
 	"github.com/gofiber/fiber/v3"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
-type PrefetchController interface {
-	CancelPrefetch(context.Context) (*prefetch.ControlReport, error)
-	RetryPrefetch(context.Context) (*prefetch.ControlReport, error)
-}
+type PrefetchController = ecosystem.PrefetchController
 
 func (s *Service) prefetchCancelSubmit(c fiber.Ctx) error {
-	return s.prefetchControlSubmit(c, "action.prefetch_cancel_requested", func(ctx context.Context) (*prefetch.ControlReport, error) {
+	return s.prefetchControlSubmit(c, "action.prefetch_cancel_requested", func(ctx context.Context) (*ecosystem.PrefetchControlReport, error) {
 		return s.prefetch.CancelPrefetch(ctx)
 	})
 }
 
 func (s *Service) prefetchRetrySubmit(c fiber.Ctx) error {
-	return s.prefetchControlSubmit(c, "action.prefetch_retry_requested", func(ctx context.Context) (*prefetch.ControlReport, error) {
+	return s.prefetchControlSubmit(c, "action.prefetch_retry_requested", func(ctx context.Context) (*ecosystem.PrefetchControlReport, error) {
 		return s.prefetch.RetryPrefetch(ctx)
 	})
 }
@@ -27,7 +24,7 @@ func (s *Service) prefetchRetrySubmit(c fiber.Ctx) error {
 func (s *Service) prefetchControlSubmit(
 	c fiber.Ctx,
 	messageKey string,
-	action func(context.Context) (*prefetch.ControlReport, error),
+	action func(context.Context) (*ecosystem.PrefetchControlReport, error),
 ) error {
 	data, err := s.pageData(c, "page.scheduler", "scheduler")
 	if err != nil {

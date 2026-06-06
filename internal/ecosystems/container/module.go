@@ -9,15 +9,30 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/observability"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
+
+type PrefetchServiceDependencies struct {
+	Metadata  meta.Store
+	Tags      cache.TagService
+	Manifests cache.ManifestService
+	Blobs     cache.BlobService
+	Logger    *slog.Logger
+	Pools     *worker.Pools
+}
 
 var Module = dix.NewModule("container",
 	dix.Providers(
-		dix.Provider3[*Runtime, config.Config, *upstream.Client, *prefetch.Service](
+		dix.Provider6[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
+			newPrefetchServiceDependencies,
+		),
+		dix.Provider1[*prefetch.Service, PrefetchServiceDependencies](NewPrefetchService),
+		dix.Provider4[*Runtime, config.Config, *upstream.Client, *prefetch.Service, *cache.CleanupService](
 			NewRuntime,
 			dix.Into[ecosystem.Runtime](dix.Key("container"), dix.Order(0)),
 		),
@@ -28,6 +43,35 @@ var Module = dix.NewModule("container",
 		),
 	),
 )
+
+func NewPrefetchService(deps PrefetchServiceDependencies) *prefetch.Service {
+	return prefetch.NewService(prefetch.ServiceDependencies{
+		Metadata:  deps.Metadata,
+		Tags:      deps.Tags,
+		Manifests: deps.Manifests,
+		Blobs:     deps.Blobs,
+		Logger:    deps.Logger,
+		Workers:   deps.Pools,
+	})
+}
+
+func newPrefetchServiceDependencies(
+	metadata meta.Store,
+	tags cache.TagService,
+	manifests cache.ManifestService,
+	blobs cache.BlobService,
+	logger *slog.Logger,
+	pools *worker.Pools,
+) PrefetchServiceDependencies {
+	return PrefetchServiceDependencies{
+		Metadata:  metadata,
+		Tags:      tags,
+		Manifests: manifests,
+		Blobs:     blobs,
+		Logger:    logger,
+		Pools:     pools,
+	}
+}
 
 func newRegistryEndpointOptions(
 	cfg config.Config,

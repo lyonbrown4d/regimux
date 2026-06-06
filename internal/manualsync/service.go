@@ -8,13 +8,12 @@ import (
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/google/uuid"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/samber/oops"
 )
 
 const defaultSyncJobTimeout = 5 * time.Minute
 
-type ExecuteFunc func(context.Context, prefetch.SyncOptions) (*prefetch.SyncReport, error)
+type ExecuteFunc func(context.Context, SyncOptions) (*SyncReport, error)
 
 type ServiceDependencies struct {
 	Logger  *slog.Logger
@@ -26,7 +25,7 @@ type Service struct {
 	execute  ExecuteFunc
 	timeout  time.Duration
 	logger   *slog.Logger
-	syncJobs *collectionmapping.ConcurrentMap[string, prefetch.SyncJob]
+	syncJobs *collectionmapping.ConcurrentMap[string, SyncJob]
 }
 
 func NewService(deps ServiceDependencies) *Service {
@@ -42,17 +41,17 @@ func NewService(deps ServiceDependencies) *Service {
 		execute:  deps.Execute,
 		timeout:  timeout,
 		logger:   logger.With("component", "manual-sync"),
-		syncJobs: collectionmapping.NewConcurrentMap[string, prefetch.SyncJob](),
+		syncJobs: collectionmapping.NewConcurrentMap[string, SyncJob](),
 	}
 }
 
-func (s *Service) CreateSyncJob(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
+func (s *Service) CreateSyncJob(ctx context.Context, opts SyncOptions) (SyncJob, error) {
 	if err := s.validate(ctx, opts); err != nil {
-		return prefetch.SyncJob{}, err
+		return SyncJob{}, err
 	}
-	job := prefetch.SyncJob{
+	job := SyncJob{
 		ID:        s.nextSyncJobID(),
-		Status:    prefetch.SyncJobStatusQueued,
+		Status:    SyncJobStatusQueued,
 		Options:   opts,
 		CreatedAt: time.Now().UTC(),
 	}
@@ -76,8 +75,8 @@ func (s *Service) RunSyncJob(ctx context.Context, id string) error {
 		return oops.In("manual-sync").With("job_id", id).Errorf("manual sync job not found")
 	}
 	startedAt := time.Now().UTC()
-	s.updateSyncJob(id, func(job prefetch.SyncJob) prefetch.SyncJob {
-		job.Status = prefetch.SyncJobStatusRunning
+	s.updateSyncJob(id, func(job SyncJob) SyncJob {
+		job.Status = SyncJobStatusRunning
 		job.StartedAt = startedAt
 		return job
 	})
@@ -86,14 +85,14 @@ func (s *Service) RunSyncJob(ctx context.Context, id string) error {
 	defer cancel()
 	report, err := s.execute(syncCtx, job.Options)
 	finishedAt := time.Now().UTC()
-	s.updateSyncJob(id, func(job prefetch.SyncJob) prefetch.SyncJob {
+	s.updateSyncJob(id, func(job SyncJob) SyncJob {
 		job.FinishedAt = finishedAt
 		if err != nil {
-			job.Status = prefetch.SyncJobStatusFailed
+			job.Status = SyncJobStatusFailed
 			job.Error = err.Error()
 			return job
 		}
-		job.Status = prefetch.SyncJobStatusSucceeded
+		job.Status = SyncJobStatusSucceeded
 		job.Result = report
 		return job
 	})
@@ -104,17 +103,17 @@ func (s *Service) MarkSyncJobFailed(id string, err error) {
 	if err == nil {
 		return
 	}
-	s.updateSyncJob(id, func(job prefetch.SyncJob) prefetch.SyncJob {
-		job.Status = prefetch.SyncJobStatusFailed
+	s.updateSyncJob(id, func(job SyncJob) SyncJob {
+		job.Status = SyncJobStatusFailed
 		job.Error = err.Error()
 		job.FinishedAt = time.Now().UTC()
 		return job
 	})
 }
 
-func (s *Service) SyncJob(id string) (prefetch.SyncJob, bool) {
+func (s *Service) SyncJob(id string) (SyncJob, bool) {
 	if s == nil || s.syncJobs == nil {
-		return prefetch.SyncJob{}, false
+		return SyncJob{}, false
 	}
 	return s.syncJobs.Get(id)
 }
@@ -123,17 +122,17 @@ func (s *Service) nextSyncJobID() string {
 	return "sync-" + uuid.NewString()
 }
 
-func (s *Service) storeSyncJob(job prefetch.SyncJob) {
+func (s *Service) storeSyncJob(job SyncJob) {
 	if s == nil {
 		return
 	}
 	if s.syncJobs == nil {
-		s.syncJobs = collectionmapping.NewConcurrentMap[string, prefetch.SyncJob]()
+		s.syncJobs = collectionmapping.NewConcurrentMap[string, SyncJob]()
 	}
 	s.syncJobs.Set(job.ID, job)
 }
 
-func (s *Service) updateSyncJob(id string, update func(prefetch.SyncJob) prefetch.SyncJob) {
+func (s *Service) updateSyncJob(id string, update func(SyncJob) SyncJob) {
 	if s == nil || update == nil {
 		return
 	}
@@ -144,7 +143,7 @@ func (s *Service) updateSyncJob(id string, update func(prefetch.SyncJob) prefetc
 	s.storeSyncJob(update(job))
 }
 
-func (s *Service) validate(ctx context.Context, opts prefetch.SyncOptions) error {
+func (s *Service) validate(ctx context.Context, opts SyncOptions) error {
 	if err := s.validateContext(ctx); err != nil {
 		return err
 	}

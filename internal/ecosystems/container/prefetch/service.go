@@ -28,7 +28,6 @@ type Service struct {
 	blobs           cache.BlobService
 	workers         *worker.Pools
 	logger          *slog.Logger
-	syncJobs        *collectionmapping.ConcurrentMap[string, SyncJob]
 	activeMu        sync.Mutex
 	activeRunID     int64
 	activeRunCancel context.CancelFunc
@@ -86,7 +85,6 @@ func NewService(deps ServiceDependencies) *Service {
 		blobs:     deps.Blobs,
 		workers:   deps.Workers,
 		logger:    logger.With("component", prefetchLogGroup),
-		syncJobs:  collectionmapping.NewConcurrentMap[string, SyncJob](),
 	}
 }
 

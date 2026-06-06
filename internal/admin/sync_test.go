@@ -9,12 +9,13 @@ import (
 	"testing"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
-	"github.com/lyonbrown4d/regimux/internal/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -70,16 +71,16 @@ func TestServiceSyncSubmitCallsSyncer(t *testing.T) {
 }
 
 func TestServiceSyncJobPartialRendersCompletedJob(t *testing.T) {
-	syncer := &fakeManualSyncer{jobs: map[string]prefetch.SyncJob{}}
-	syncer.jobs["sync-test"] = prefetch.SyncJob{
+	syncer := &fakeManualSyncer{jobs: map[string]manualsync.SyncJob{}}
+	syncer.jobs["sync-test"] = manualsync.SyncJob{
 		ID:     "sync-test",
-		Status: prefetch.SyncJobStatusSucceeded,
-		Options: prefetch.SyncOptions{
+		Status: manualsync.SyncJobStatusSucceeded,
+		Options: manualsync.SyncOptions{
 			Alias:     "hub",
 			Repo:      "library/node",
 			Reference: "20",
 		},
-		Result: &prefetch.SyncReport{
+		Result: &manualsync.SyncReport{
 			Alias:              "hub",
 			Repo:               "library/node",
 			Reference:          "20",
@@ -110,7 +111,7 @@ func newAdminSyncTestApp(t *testing.T, syncer *fakeManualSyncer) (*fiber.App, *f
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
-		Upstream: upstream.NewClientFromConfigs(upstream.ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), nil, nil, nil),
+		Runtimes: collectionlist.NewList[ecosystem.Runtime](),
 		Version:  build.Version("test-version"),
 		Messages: newAdminMessages(t),
 		Syncer:   syncer,
@@ -146,33 +147,33 @@ func adminPostForm(t *testing.T, app *fiber.App, path string, form url.Values) (
 
 type fakeManualSyncer struct {
 	called bool
-	opts   prefetch.SyncOptions
+	opts   manualsync.SyncOptions
 	err    error
-	jobs   map[string]prefetch.SyncJob
+	jobs   map[string]manualsync.SyncJob
 }
 
-func (f *fakeManualSyncer) SubmitSync(_ context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
+func (f *fakeManualSyncer) SubmitSync(_ context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
 	f.called = true
 	f.opts = opts
 	if f.err != nil {
-		return prefetch.SyncJob{}, f.err
+		return manualsync.SyncJob{}, f.err
 	}
-	job := prefetch.SyncJob{
+	job := manualsync.SyncJob{
 		ID:        "sync-test",
-		Status:    prefetch.SyncJobStatusQueued,
+		Status:    manualsync.SyncJobStatusQueued,
 		Options:   opts,
 		CreatedAt: time.Now().UTC(),
 	}
 	if f.jobs == nil {
-		f.jobs = map[string]prefetch.SyncJob{}
+		f.jobs = map[string]manualsync.SyncJob{}
 	}
 	f.jobs[job.ID] = job
 	return job, nil
 }
 
-func (f *fakeManualSyncer) SyncJob(id string) (prefetch.SyncJob, bool) {
+func (f *fakeManualSyncer) SyncJob(id string) (manualsync.SyncJob, bool) {
 	if f.jobs == nil {
-		return prefetch.SyncJob{}, false
+		return manualsync.SyncJob{}, false
 	}
 	job, ok := f.jobs[id]
 	return job, ok

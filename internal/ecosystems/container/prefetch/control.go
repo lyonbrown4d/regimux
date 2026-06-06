@@ -4,10 +4,11 @@ import (
 	"context"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func (s *Service) CancelPrefetch(ctx context.Context) (*ControlReport, error) {
+func (s *Service) CancelPrefetch(ctx context.Context) (*ecosystem.PrefetchControlReport, error) {
 	if err := s.validateControl(ctx); err != nil {
 		return nil, err
 	}
@@ -16,7 +17,7 @@ func (s *Service) CancelPrefetch(ctx context.Context) (*ControlReport, error) {
 	if active {
 		cancel()
 		s.logger.InfoContext(ctx, "active prefetch run cancel requested", "at", at)
-		return &ControlReport{Action: prefetchControlCancel, ActiveRun: true, At: at}, nil
+		return &ecosystem.PrefetchControlReport{Action: prefetchControlCancel, ActiveRun: true, At: at}, nil
 	}
 	if _, err := s.metadata.RequestPrefetchControl(ctx, meta.PrefetchControlRecord{
 		Action:      prefetchControlCancel,
@@ -26,10 +27,10 @@ func (s *Service) CancelPrefetch(ctx context.Context) (*ControlReport, error) {
 		return nil, cacheWrap(err, "request prefetch cancel")
 	}
 	s.logger.InfoContext(ctx, "prefetch cancel requested", "at", at)
-	return &ControlReport{Action: prefetchControlCancel, At: at}, nil
+	return &ecosystem.PrefetchControlReport{Action: prefetchControlCancel, At: at}, nil
 }
 
-func (s *Service) RetryPrefetch(ctx context.Context) (*ControlReport, error) {
+func (s *Service) RetryPrefetch(ctx context.Context) (*ecosystem.PrefetchControlReport, error) {
 	if err := s.validateControl(ctx); err != nil {
 		return nil, err
 	}
@@ -42,7 +43,7 @@ func (s *Service) RetryPrefetch(ctx context.Context) (*ControlReport, error) {
 		return nil, cacheWrap(err, "request prefetch retry")
 	}
 	s.logger.InfoContext(ctx, "prefetch retry requested", "at", at)
-	return &ControlReport{Action: prefetchControlRetry, At: at}, nil
+	return &ecosystem.PrefetchControlReport{Action: prefetchControlRetry, At: at}, nil
 }
 
 func (s *Service) validateControl(ctx context.Context) error {
