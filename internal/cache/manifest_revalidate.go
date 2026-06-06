@@ -80,7 +80,7 @@ func (p manifestProxy) manifestRecordForRevalidation(ctx context.Context, req Ma
 	if err != nil {
 		return nil, false, wrapError(err, "lookup manifest for revalidation")
 	}
-	if !ok || !acceptMatches(record.AcceptKey, reference.AcceptKey(req.Accept)) {
+	if !ok {
 		return nil, false, nil
 	}
 	return record, true, nil

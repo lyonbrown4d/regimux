@@ -155,6 +155,63 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 	}
 }
 
+func TestManifestProxyManifestCacheIgnoresAcceptMismatch(t *testing.T) {
+	ctx := context.Background()
+	body := []byte(`{"schemaVersion":2}`)
+	client := &fakeRegistryClient{
+		manifestBody:  body,
+		manifestMedia: distribution.MediaTypeDockerManifest,
+	}
+	metadata, objects := newTestStores(t)
+	proxy := newTestProxy(
+		client,
+		metadata,
+		objects,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Manifest: config.ManifestCacheConfig{
+					TagTTL: time.Minute,
+				},
+			},
+		},
+	)
+
+	first, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Accept:        distribution.MediaTypeDockerManifest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first manifest get: %v", err)
+	}
+	if first.Cache != cache.CacheBypass {
+		t.Fatalf("first cache status = %s, want bypass", first.Cache)
+	}
+
+	second, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Accept:        distribution.MediaTypeOCIManifest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("second manifest get: %v", err)
+	}
+	if second.Cache != cache.CacheHit {
+		t.Fatalf("second cache status = %s, want hit", second.Cache)
+	}
+	if !bytes.Equal(second.Body, body) {
+		t.Fatalf("unexpected second body: %q", second.Body)
+	}
+	if client.manifestGets != 1 {
+		t.Fatalf("manifest gets = %d, want 1", client.manifestGets)
+	}
+}
+
 func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 	ctx := context.Background()
 	body := []byte(`{"schemaVersion":2}`)

@@ -89,14 +89,13 @@ func (p manifestProxy) canServeStale() bool {
 }
 
 func (p manifestProxy) lookupStaleRecord(ctx context.Context, req ManifestRequest, now time.Time) (*meta.ManifestRecord, bool, error) {
-	acceptKey := reference.AcceptKey(req.Accept)
 	if reference.IsDigest(req.Reference) {
-		return p.lookupStaleDigestRecord(ctx, req, acceptKey, now)
+		return p.lookupStaleDigestRecord(ctx, req, now)
 	}
-	return p.lookupStaleTagRecord(ctx, req, acceptKey, now)
+	return p.lookupStaleTagRecord(ctx, req, now)
 }
 
-func (p manifestProxy) lookupStaleDigestRecord(ctx context.Context, req ManifestRequest, acceptKey string, now time.Time) (*meta.ManifestRecord, bool, error) {
+func (p manifestProxy) lookupStaleDigestRecord(ctx context.Context, req ManifestRequest, now time.Time) (*meta.ManifestRecord, bool, error) {
 	digest, err := digestFromReference(req.Reference, nil)
 	if err != nil {
 		return nil, false, err
@@ -109,13 +108,13 @@ func (p manifestProxy) lookupStaleDigestRecord(ctx context.Context, req Manifest
 	if err != nil {
 		return nil, false, wrapError(err, "lookup stale manifest by digest")
 	}
-	if !ok || !p.validStaleManifest(record, acceptKey, now) {
+	if !ok || !p.validStaleManifest(record, now) {
 		return nil, false, nil
 	}
 	return record, true, nil
 }
 
-func (p manifestProxy) lookupStaleTagRecord(ctx context.Context, req ManifestRequest, acceptKey string, now time.Time) (*meta.ManifestRecord, bool, error) {
+func (p manifestProxy) lookupStaleTagRecord(ctx context.Context, req ManifestRequest, now time.Time) (*meta.ManifestRecord, bool, error) {
 	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
 		Alias:      req.UpstreamAlias,
 		Repository: req.Repo,
@@ -136,17 +135,17 @@ func (p manifestProxy) lookupStaleTagRecord(ctx context.Context, req ManifestReq
 	if err != nil {
 		return nil, false, wrapError(err, "lookup stale tagged manifest")
 	}
-	if !ok || !p.validStaleManifest(record, acceptKey, now) {
+	if !ok || !p.validStaleManifest(record, now) {
 		return nil, false, nil
 	}
 	return record, true, nil
 }
 
-func (p manifestProxy) validStaleManifest(record *meta.ManifestRecord, acceptKey string, now time.Time) bool {
+func (p manifestProxy) validStaleManifest(record *meta.ManifestRecord, now time.Time) bool {
 	if !p.withinStaleWindow(record.ExpiresAt, now) {
 		return false
 	}
-	return record.AcceptKey == "" || record.AcceptKey == acceptKey
+	return true
 }
 
 func (p manifestProxy) withinStaleWindow(expiresAt, now time.Time) bool {
@@ -196,7 +195,6 @@ func (p manifestProxy) storedManifestBody(ctx context.Context, req ManifestReque
 
 func (p manifestProxy) lookupMetadata(ctx context.Context, req ManifestRequest) (*meta.ManifestRecord, bool, error) {
 	now := time.Now()
-	acceptKey := reference.AcceptKey(req.Accept)
 	if reference.IsDigest(req.Reference) {
 		digest, err := digestFromReference(req.Reference, nil)
 		if err != nil {
@@ -206,7 +204,7 @@ func (p manifestProxy) lookupMetadata(ctx context.Context, req ManifestRequest) 
 			Alias:      req.UpstreamAlias,
 			Repository: req.Repo,
 			Digest:     digest,
-		}, acceptKey, now)
+		}, now)
 	}
 
 	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
@@ -224,24 +222,20 @@ func (p manifestProxy) lookupMetadata(ctx context.Context, req ManifestRequest) 
 		Alias:      req.UpstreamAlias,
 		Repository: req.Repo,
 		Digest:     tag.Digest,
-	}, acceptKey, now)
+	}, now)
 }
 
 func tagExpired(tag *meta.TagRecord, now time.Time) bool {
 	return !tag.ExpiresAt.IsZero() && !now.Before(tag.ExpiresAt)
 }
 
-func (p manifestProxy) lookupManifestRecord(ctx context.Context, key meta.ManifestKey, acceptKey string, now time.Time) (*meta.ManifestRecord, bool, error) {
+func (p manifestProxy) lookupManifestRecord(ctx context.Context, key meta.ManifestKey, now time.Time) (*meta.ManifestRecord, bool, error) {
 	record, ok, err := p.metadata.Manifest(ctx, key)
 	if err != nil {
 		return nil, false, wrapError(err, "lookup manifest record")
 	}
-	if !ok || record.Expired(now) || !acceptMatches(record.AcceptKey, acceptKey) {
+	if !ok || record.Expired(now) {
 		return nil, false, nil
 	}
 	return record, true, nil
-}
-
-func acceptMatches(recordAcceptKey, requestAcceptKey string) bool {
-	return recordAcceptKey == "" || recordAcceptKey == requestAcceptKey
 }
