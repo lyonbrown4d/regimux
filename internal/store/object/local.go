@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/spf13/afero"
 )

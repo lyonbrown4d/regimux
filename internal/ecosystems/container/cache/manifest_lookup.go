@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"

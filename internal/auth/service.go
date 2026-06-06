@@ -12,7 +12,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/samber/oops"
 )
 

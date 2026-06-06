@@ -10,7 +10,7 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )

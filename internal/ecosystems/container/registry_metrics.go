@@ -6,8 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/observability"
-	"github.com/lyonbrown4d/regimux/internal/reference"
 )
 
 func (e *RegistryEndpoint) SetMetrics(metrics *observability.Metrics) {

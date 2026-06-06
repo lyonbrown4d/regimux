@@ -3,8 +3,8 @@ package container
 import (
 	"context"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
-	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 

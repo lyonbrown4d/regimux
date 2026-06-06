@@ -4,7 +4,7 @@ package reference_test
 import (
 	"testing"
 
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 )
 
 func TestParseRange(t *testing.T) {

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
-	"github.com/lyonbrown4d/regimux/internal/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 

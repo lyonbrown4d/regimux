@@ -9,7 +9,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 )
 
 func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {

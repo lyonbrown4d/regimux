@@ -3,7 +3,7 @@ package cache
 import (
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/reference"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocidigest "github.com/opencontainers/go-digest"
 )
