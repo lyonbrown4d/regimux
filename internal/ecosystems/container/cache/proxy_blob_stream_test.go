@@ -9,7 +9,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
 func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
@@ -32,7 +32,7 @@ func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
 		},
 	)
 
-	httpRange := &reference.HTTPRange{Start: 2, End: 5}
+	httpRange := &object.HTTPRange{Start: 2, End: 5}
 	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",

@@ -6,8 +6,6 @@ import (
 	"io"
 	"strings"
 	"time"
-
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 )
 
 var (
@@ -81,7 +79,7 @@ type Info struct {
 }
 
 type GetOptions struct {
-	Range *reference.HTTPRange
+	Range *HTTPRange
 }
 
 type PutOptions struct {

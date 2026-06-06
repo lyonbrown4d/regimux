@@ -10,7 +10,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -51,7 +50,7 @@ func TestBlobProxyStreamsFullMissAndServesRangeHit(t *testing.T) {
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
-		Range:         &reference.HTTPRange{Start: 2, End: 5},
+		Range:         &object.HTTPRange{Start: 2, End: 5},
 		Method:        http.MethodGet,
 	})
 	if err != nil {

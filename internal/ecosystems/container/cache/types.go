@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
 )
 
@@ -61,7 +61,7 @@ type BlobRequest struct {
 	UpstreamAlias string
 	Repo          string
 	Digest        string
-	Range         *reference.HTTPRange
+	Range         *object.HTTPRange
 	Method        string
 }
 
@@ -69,7 +69,7 @@ type BlobReadResult struct {
 	Reader  io.ReadCloser
 	Digest  string
 	Size    int64
-	Range   *reference.HTTPRange
+	Range   *object.HTTPRange
 	Status  int
 	Headers http.Header
 	Cache   CacheStatus

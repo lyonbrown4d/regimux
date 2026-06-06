@@ -16,6 +16,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 	"github.com/samber/mo"
@@ -192,7 +193,7 @@ func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, r
 }
 
 func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
-	httpRange, err := reference.ParseRange(input.Range)
+	httpRange, err := object.ParseRange(input.Range)
 	if err != nil {
 		return errorOutput(distribution.ErrRangeInvalid.WithDetail(err.Error()))
 	}

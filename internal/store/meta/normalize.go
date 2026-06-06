@@ -3,7 +3,6 @@ package meta
 import (
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/samber/lo"
 )
 
@@ -255,7 +254,7 @@ func normalizeRepository(value string) string {
 }
 
 func normalizeDigest(value string) (string, error) {
-	digest, err := reference.NormalizeDigest(value)
+	digest, err := normalizeDigestValue(value)
 	if err != nil {
 		return "", errorf("%w: %w", ErrInvalidKey, err)
 	}

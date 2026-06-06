@@ -11,7 +11,6 @@ import (
 	"path/filepath"
 	"testing"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocidigest "github.com/opencontainers/go-digest"
@@ -71,7 +70,7 @@ func TestLocalStoreGetRangeReadsPartialObject(t *testing.T) {
 	digest, _ := putTestObject(ctx, t, store, body)
 
 	ranged, info, err := store.Get(ctx, digest, object.GetOptions{
-		Range: &reference.HTTPRange{Start: 9, End: 14},
+		Range: &object.HTTPRange{Start: 9, End: 14},
 	})
 	requireNoError(t, "range get", err)
 	data := readAllAndClose(t, ranged)

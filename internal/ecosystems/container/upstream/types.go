@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
 type AuthConfig struct {
@@ -105,7 +105,7 @@ type GetBlobRequest struct {
 	UpstreamAlias string
 	Repo          string
 	Digest        string
-	Range         *reference.HTTPRange
+	Range         *object.HTTPRange
 	Method        string
 }
 

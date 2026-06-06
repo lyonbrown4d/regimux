@@ -15,7 +15,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -48,7 +47,7 @@ func TestS3StorePutGetRangeDelete(t *testing.T) {
 	}
 
 	reader, ranged, err := store.Get(ctx, digest, object.GetOptions{
-		Range: &reference.HTTPRange{Start: 9, End: 10},
+		Range: &object.HTTPRange{Start: 9, End: 10},
 	})
 	requireNoError(t, "get s3 range", err)
 	data := readAllAndClose(t, reader)

@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -32,7 +32,7 @@ func TestClientGetBlobPreservesHeadRangeAndBearerToken(t *testing.T) {
 		UpstreamAlias: "hub",
 		Repo:          "library/nginx",
 		Digest:        digest,
-		Range:         &reference.HTTPRange{Start: 2, End: 5},
+		Range:         &object.HTTPRange{Start: 2, End: 5},
 		Method:        http.MethodHead,
 	})
 	requireNoError(t, err, "GetBlob")

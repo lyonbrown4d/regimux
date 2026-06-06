@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/spf13/afero"
 )
@@ -205,7 +204,7 @@ func (s *aferoStore) path(digest string) (string, string, error) {
 	if s == nil || s.fs == nil || s.root == "" {
 		return "", "", errorf("object store is not configured")
 	}
-	normalized, err := reference.NormalizeDigest(digest)
+	normalized, err := normalizeDigest(digest)
 	if err != nil {
 		return "", "", wrapError(err, "normalize object digest")
 	}
