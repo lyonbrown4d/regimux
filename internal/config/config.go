@@ -106,6 +106,7 @@ func (c *Config) Normalize() error {
 	c.normalizeLog()
 	c.normalizeAuthDefaults()
 	c.normalizeCache()
+	c.normalizeScheduler()
 	if err := c.normalizeUpstreams(); err != nil {
 		return err
 	}

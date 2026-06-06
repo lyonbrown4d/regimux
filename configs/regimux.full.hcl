@@ -222,6 +222,29 @@ scheduler {
     enabled = false
     interval = "30m"
     distributed = true
+
+    ecosystems {
+      container {
+        enabled = false
+        interval = "15m"
+      }
+
+      go {
+        enabled = false
+      }
+
+      npm {
+        enabled = false
+      }
+
+      pypi {
+        enabled = false
+      }
+
+      maven {
+        enabled = false
+      }
+    }
   }
 }
 

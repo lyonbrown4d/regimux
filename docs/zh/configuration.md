@@ -78,6 +78,7 @@ maven {
 - `scheduler.cleanup.enabled = true`
 - `scheduler.prefetch.enabled = false`
 - `scheduler.manifest_refresh.enabled = false`
+- `scheduler.manifest_refresh.ecosystems` 可按生态覆盖 manifest refresh（`container`、`go`、`npm`、`pypi`、`maven`）
 - `docker.enabled = false`
 - `docker.observe = true`
 - `docker.prewarm.alias = "hub"`
@@ -171,6 +172,8 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
+REGIMUX_SCHEDULER__MANIFEST_REFRESH__ECOSYSTEMS__CONTAINER__ENABLED=true
+REGIMUX_SCHEDULER__MANIFEST_REFRESH__ECOSYSTEMS__CONTAINER__INTERVAL=10m
 REGIMUX_CONTAINER__HUB__REGISTRY=https://registry-1.docker.io
 REGIMUX_CONTAINER__HUB__HTTP__HTTP2__ENABLED=true
 REGIMUX_GO__DEFAULT__REGISTRY=https://proxy.golang.org

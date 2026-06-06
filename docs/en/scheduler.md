@@ -114,9 +114,21 @@ scheduler {
     enabled = true
     interval = "30m"
     distributed = true
+
+    ecosystems {
+      container {
+        interval = "10m"
+      }
+
+      go {
+        enabled = false
+      }
+    }
   }
 }
 ```
+
+When `ecosystems` is omitted, one manifest refresh job covers every runtime with prefetch support. When `ecosystems` is present, each runtime gets its own effective schedule: unspecified fields inherit from the top-level `manifest_refresh` block, and `enabled = false` disables that ecosystem.
 
 ## Worker Pool
 

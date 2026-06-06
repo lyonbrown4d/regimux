@@ -4,7 +4,9 @@ import (
 	"context"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/go-co-op/gocron/v2"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
 	"golang.org/x/sync/errgroup"
@@ -18,6 +20,7 @@ func (r *Runtime) registerPrefetch(ctx context.Context, scheduler gocron.Schedul
 		cfg.Enabled,
 		cfg.Interval,
 		cfg.Distributed,
+		r.prefetchers(),
 		gocron.WithName("regimux.prefetch"),
 		[]string{"maintenance", "prefetch"},
 		"register prefetch job",
@@ -27,22 +30,76 @@ func (r *Runtime) registerPrefetch(ctx context.Context, scheduler gocron.Schedul
 }
 
 func (r *Runtime) runPrefetch(ctx context.Context) error {
-	return r.runEcosystemPrefetchJobs(ctx, r.prefetchOptions(false), "prefetch")
+	return r.runEcosystemPrefetchJobs(ctx, r.prefetchers(), r.prefetchOptions(false), "prefetch")
 }
 
 func (r *Runtime) registerManifestRefresh(ctx context.Context, scheduler gocron.Scheduler) error {
 	cfg := r.cfg.Scheduler.ManifestRefresh
+	prefetchers := r.prefetchers()
+	if len(cfg.Ecosystems) > 0 {
+		return r.registerManifestRefreshByEcosystem(ctx, scheduler, prefetchers, cfg)
+	}
 	return r.registerPrefetchJob(
 		ctx,
 		scheduler,
 		cfg.Enabled,
 		cfg.Interval,
 		cfg.Distributed,
+		prefetchers,
 		gocron.WithName("regimux.manifest_refresh"),
 		[]string{"maintenance", "manifest-refresh"},
 		"register manifest refresh job",
 		"manifest refresh job skipped because no ecosystem exposes prefetch capability",
 		gocron.NewTask(r.runManifestRefresh),
+	)
+}
+
+func (r *Runtime) registerManifestRefreshByEcosystem(
+	ctx context.Context,
+	scheduler gocron.Scheduler,
+	prefetchers *collectionlist.List[ecosystem.Prefetcher],
+	cfg config.SchedulerManifestRefreshConfig,
+) error {
+	if prefetchers == nil || prefetchers.Len() == 0 {
+		r.logger.InfoContext(ctx, "manifest refresh job skipped because no ecosystem exposes prefetch capability")
+		return nil
+	}
+	var registerErr error
+	prefetchers.Range(func(_ int, prefetcher ecosystem.Prefetcher) bool {
+		if prefetcher == nil {
+			return true
+		}
+		ecosystemName := prefetcher.Name()
+		refreshCfg := cfg.EffectiveFor(ecosystemName)
+		jobPrefetchers := collectionlist.NewList(prefetcher)
+		registerErr = r.registerManifestRefreshForEcosystem(ctx, scheduler, ecosystemName, refreshCfg, jobPrefetchers)
+		return registerErr == nil
+	})
+	return registerErr
+}
+
+func (r *Runtime) registerManifestRefreshForEcosystem(
+	ctx context.Context,
+	scheduler gocron.Scheduler,
+	ecosystemName string,
+	cfg config.SchedulerResolvedRefreshConfig,
+	prefetchers *collectionlist.List[ecosystem.Prefetcher],
+) error {
+	jobPrefetchers := prefetchers
+	return r.registerPrefetchJob(
+		ctx,
+		scheduler,
+		cfg.Enabled,
+		cfg.Interval,
+		cfg.Distributed,
+		jobPrefetchers,
+		gocron.WithName("regimux."+ecosystemName+".manifest_refresh"),
+		[]string{"maintenance", "manifest-refresh", ecosystemName},
+		"register ecosystem manifest refresh job",
+		"manifest refresh job skipped because ecosystem does not expose prefetch capability",
+		gocron.NewTask(func(ctx context.Context) error {
+			return r.runEcosystemPrefetchJobs(ctx, jobPrefetchers, r.prefetchOptions(true), "manifest_refresh")
+		}),
 	)
 }
 
@@ -52,6 +109,7 @@ func (r *Runtime) registerPrefetchJob(
 	enabled bool,
 	interval time.Duration,
 	distributed bool,
+	prefetchers *collectionlist.List[ecosystem.Prefetcher],
 	nameOption gocron.JobOption,
 	tags []string,
 	errorMessage string,
@@ -61,7 +119,7 @@ func (r *Runtime) registerPrefetchJob(
 	if !enabled || interval <= 0 {
 		return nil
 	}
-	if r.prefetchers().Len() == 0 {
+	if prefetchers == nil || prefetchers.Len() == 0 {
 		r.logger.InfoContext(ctx, skipMessage)
 		return nil
 	}
@@ -81,7 +139,7 @@ func (r *Runtime) registerPrefetchJob(
 }
 
 func (r *Runtime) runManifestRefresh(ctx context.Context) error {
-	return r.runEcosystemPrefetchJobs(ctx, r.prefetchOptions(true), "manifest_refresh")
+	return r.runEcosystemPrefetchJobs(ctx, r.prefetchers(), r.prefetchOptions(true), "manifest_refresh")
 }
 
 func (r *Runtime) prefetchOptions(manifestOnly bool) ecosystem.PrefetchOptions {
@@ -104,10 +162,14 @@ func (r *Runtime) prefetchOptions(manifestOnly bool) ecosystem.PrefetchOptions {
 
 func (r *Runtime) runEcosystemPrefetchJobs(
 	ctx context.Context,
+	prefetchers *collectionlist.List[ecosystem.Prefetcher],
 	options ecosystem.PrefetchOptions, jobType string,
 ) error {
+	if prefetchers == nil || prefetchers.Len() == 0 {
+		return nil
+	}
 	group, groupCtx := errgroup.WithContext(ctx)
-	r.prefetchers().Range(func(_ int, prefetcher ecosystem.Prefetcher) bool {
+	prefetchers.Range(func(_ int, prefetcher ecosystem.Prefetcher) bool {
 		jobPrefetcher := prefetcher
 		group.Go(func() error {
 			return r.runEcosystemPrefetch(groupCtx, jobPrefetcher, options, jobType)

@@ -28,6 +28,7 @@ func testHCLConfig() string {
 	return testHCLServer +
 		testHCLAuth +
 		testHCLCache +
+		testHCLScheduler +
 		testHCLContainer +
 		testHCLDependencyEcosystems +
 		testHCLWorker
@@ -149,6 +150,7 @@ func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 	}
 	assertLoadedHCLAuth(t, cfg.Auth)
 	assertLoadedHCLCache(t, cfg.Cache)
+	assertLoadedHCLScheduler(t, cfg.Scheduler)
 	local, ok := cfg.ContainerUpstream("local")
 	if !ok {
 		t.Fatal("missing local container upstream")

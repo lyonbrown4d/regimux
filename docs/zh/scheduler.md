@@ -114,9 +114,21 @@ scheduler {
     enabled = true
     interval = "30m"
     distributed = true
+
+    ecosystems {
+      container {
+        interval = "10m"
+      }
+
+      go {
+        enabled = false
+      }
+    }
   }
 }
 ```
+
+如果不配置 `ecosystems`，一个 manifest refresh job 会覆盖所有支持 prefetch 的 runtime。配置 `ecosystems` 后，每个 runtime 会按自己的有效配置注册独立 job；未指定字段继承上层 `manifest_refresh`，`enabled = false` 可关闭某个生态。
 
 ## Worker 池
 

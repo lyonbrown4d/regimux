@@ -3,6 +3,7 @@ package admin
 import (
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -132,6 +133,25 @@ func addSchedulerRows(rows *collectionlist.List[ConfigRow], cfg config.Scheduler
 	addRow(rows, "scheduler.manifest_refresh.enabled", boolString(cfg.ManifestRefresh.Enabled))
 	addRow(rows, "scheduler.manifest_refresh.interval", durationString(cfg.ManifestRefresh.Interval))
 	addRow(rows, "scheduler.manifest_refresh.distributed", boolString(cfg.ManifestRefresh.Distributed))
+	addManifestRefreshEcosystemRows(rows, cfg.ManifestRefresh)
+}
+
+func addManifestRefreshEcosystemRows(rows *collectionlist.List[ConfigRow], cfg config.SchedulerManifestRefreshConfig) {
+	if len(cfg.Ecosystems) == 0 {
+		return
+	}
+	ecosystems := collectionlist.NewListWithCapacity[string](len(cfg.Ecosystems))
+	for ecosystemName := range cfg.Ecosystems {
+		ecosystems.Add(ecosystemName)
+	}
+	ecosystems.Sort(strings.Compare).Range(func(_ int, ecosystemName string) bool {
+		prefix := "scheduler.manifest_refresh.ecosystems." + ecosystemName
+		effective := cfg.EffectiveFor(ecosystemName)
+		addRow(rows, prefix+".enabled", boolString(effective.Enabled))
+		addRow(rows, prefix+".interval", durationString(effective.Interval))
+		addRow(rows, prefix+".distributed", boolString(effective.Distributed))
+		return true
+	})
 }
 
 func addWorkerRows(rows *collectionlist.List[ConfigRow], cfg config.WorkerConfig) {

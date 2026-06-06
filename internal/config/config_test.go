@@ -147,7 +147,8 @@ func assertDefaultPrefetch(t *testing.T, prefetch config.SchedulerPrefetchConfig
 func assertDefaultManifestRefresh(t *testing.T, manifestRefresh config.SchedulerManifestRefreshConfig) {
 	t.Helper()
 
-	if manifestRefresh.Enabled || manifestRefresh.Interval != 30*time.Minute || !manifestRefresh.Distributed {
+	if manifestRefresh.Enabled || manifestRefresh.Interval != 30*time.Minute || !manifestRefresh.Distributed ||
+		len(manifestRefresh.Ecosystems) != 0 {
 		t.Fatalf("unexpected manifest_refresh defaults: %#v", manifestRefresh)
 	}
 }

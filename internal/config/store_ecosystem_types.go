@@ -82,9 +82,16 @@ type SchedulerPrefetchConfig struct {
 }
 
 type SchedulerManifestRefreshConfig struct {
-	Enabled     bool          `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
+	Enabled     bool                                       `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
+	Interval    time.Duration                              `json:"interval"    koanf:"interval"    mapstructure:"interval"    validate:"min=0"`
+	Distributed bool                                       `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
+	Ecosystems  map[string]SchedulerEcosystemRefreshConfig `json:"ecosystems"  koanf:"ecosystems"  mapstructure:"ecosystems"`
+}
+
+type SchedulerEcosystemRefreshConfig struct {
+	Enabled     *bool         `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
 	Interval    time.Duration `json:"interval"    koanf:"interval"    mapstructure:"interval"    validate:"min=0"`
-	Distributed bool          `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
+	Distributed *bool         `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
 }
 
 type WorkerConfig struct {
