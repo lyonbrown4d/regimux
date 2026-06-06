@@ -102,16 +102,16 @@ func startupServiceEndpoints(cfg config.Config) *collectionlist.List[startupEndp
 		endpoints.Add(startupEndpoint{name: "pprof", url: joinStartupURL(base, startupPprofPath(cfg.Server.Middleware.Pprof))})
 	}
 	if aliases := sortedDependencyAliases(cfg.Go); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "go-proxy", url: joinStartupURL(base, "/go"), aliases: aliases})
+		endpoints.Add(startupEndpoint{name: "go", url: joinStartupURL(base, "/go"), aliases: aliases})
 	}
 	if aliases := sortedDependencyAliases(cfg.NPM); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "npm-proxy", url: joinStartupURL(base, "/npm"), aliases: aliases})
+		endpoints.Add(startupEndpoint{name: "npm", url: joinStartupURL(base, "/npm"), aliases: aliases})
 	}
 	if aliases := sortedDependencyAliases(cfg.PyPI); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "pypi-proxy", url: joinStartupURL(base, "/pypi"), aliases: aliases})
+		endpoints.Add(startupEndpoint{name: "pypi", url: joinStartupURL(base, "/pypi"), aliases: aliases})
 	}
 	if aliases := sortedDependencyAliases(cfg.Maven); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "maven-proxy", url: joinStartupURL(base, "/maven"), aliases: aliases})
+		endpoints.Add(startupEndpoint{name: "maven", url: joinStartupURL(base, "/maven"), aliases: aliases})
 	}
 	return endpoints
 }

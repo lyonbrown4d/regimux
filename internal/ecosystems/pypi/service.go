@@ -44,7 +44,7 @@ func NewService(deps ServiceDependencies) *Service {
 		cache:     cache,
 		metadata:  deps.Metadata,
 		client:    client,
-		logger:    logger.With("component", "pypi-proxy"),
+		logger:    logger.With("component", "pypi"),
 		publicURL: strings.TrimRight(deps.Config.Server.PublicURL, "/"),
 		now:       now,
 	}
@@ -52,7 +52,7 @@ func NewService(deps ServiceDependencies) *Service {
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if s == nil {
-		return nil, oops.In("pypi-proxy").Errorf("service is nil")
+		return nil, oops.In("pypi").Errorf("service is nil")
 	}
 	requestRoute, err := ParseTail(req.Alias, req.Tail)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	requestRoute.Query = strings.TrimSpace(req.Query)
 	upstreamCfg, ok := s.upstream(requestRoute.Alias)
 	if !ok {
-		return nil, oops.In("pypi-proxy").With("alias", requestRoute.Alias).Errorf("pypi upstream is not configured")
+		return nil, oops.In("pypi").With("alias", requestRoute.Alias).Errorf("pypi upstream is not configured")
 	}
 	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
 	s.recordPull(ctx, req, requestRoute, resp, err)

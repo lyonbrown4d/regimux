@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
-	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/samber/oops"
 )
 

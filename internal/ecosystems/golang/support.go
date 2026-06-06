@@ -45,5 +45,5 @@ func wrapError(err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return oops.In("go-proxy").Wrapf(err, "%s", message)
+	return oops.In("go").Wrapf(err, "%s", message)
 }

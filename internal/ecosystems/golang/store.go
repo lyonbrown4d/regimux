@@ -16,11 +16,11 @@ import (
 
 func (s *Service) store(ctx context.Context, requestRoute route, fetched *upstreamFetch) (storedResponse, error) {
 	if fetched == nil || fetched.body == nil {
-		return storedResponse{}, oops.In("go-proxy").Errorf("go proxy upstream body is empty")
+		return storedResponse{}, oops.In("go").Errorf("go proxy upstream body is empty")
 	}
 	defer closeReadCloser(fetched.body, s.logger, "close go proxy upstream body")
 
-	tmp, err := os.CreateTemp("", "regimux-go-proxy-*")
+	tmp, err := os.CreateTemp("", "regimux-go-*")
 	if err != nil {
 		return storedResponse{}, wrapError(err, "create go proxy temp file")
 	}
@@ -84,7 +84,7 @@ func (s *Service) storeContentMetadata(ctx context.Context, requestRoute route, 
 		Alias:      requestRoute.Alias,
 		Repository: requestRoute.Module,
 		Reference:  requestRoute.Reference,
-		AcceptKey:  "go-proxy",
+		AcceptKey:  "go",
 		Digest:     digest,
 		MediaType:  contentType,
 		Size:       info.Size,

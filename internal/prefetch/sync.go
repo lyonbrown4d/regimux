@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 

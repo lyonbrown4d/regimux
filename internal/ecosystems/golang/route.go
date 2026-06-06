@@ -22,7 +22,7 @@ type route struct {
 func parseRoute(alias, tail string) (route, error) {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
-		return route{}, oops.In("go-proxy").Errorf("upstream alias is required")
+		return route{}, oops.In("go").Errorf("upstream alias is required")
 	}
 	parsed, err := parseRootRoute(tail)
 	if err != nil {
@@ -35,20 +35,20 @@ func parseRoute(alias, tail string) (route, error) {
 func parseRootRoute(tail string) (route, error) {
 	tail = strings.Trim(strings.TrimSpace(tail), "/")
 	if tail == "" {
-		return route{}, oops.In("go-proxy").Errorf("go proxy path is required")
+		return route{}, oops.In("go").Errorf("go proxy path is required")
 	}
 	if err := validateTail(tail); err != nil {
 		return route{}, err
 	}
 	if module, ok := strings.CutSuffix(tail, routeLatestSuffix); ok {
 		if module == "" {
-			return route{}, oops.In("go-proxy").Errorf("module path is required")
+			return route{}, oops.In("go").Errorf("module path is required")
 		}
 		return route{Tail: tail, Module: module, Reference: "@latest"}, nil
 	}
 	module, file, ok := strings.Cut(tail, routeVersionMarker)
 	if !ok || module == "" || file == "" {
-		return route{}, oops.In("go-proxy").Errorf("go proxy path must contain /@v/ or end with /@latest")
+		return route{}, oops.In("go").Errorf("go proxy path must contain /@v/ or end with /@latest")
 	}
 	return route{
 		Tail:      tail,
@@ -61,7 +61,7 @@ func validateTail(tail string) error {
 	for segment := range strings.SplitSeq(tail, "/") {
 		switch segment {
 		case "", ".", "..":
-			return oops.In("go-proxy").With("path", tail).Errorf("go proxy path contains an invalid segment")
+			return oops.In("go").With("path", tail).Errorf("go proxy path contains an invalid segment")
 		}
 	}
 	return nil

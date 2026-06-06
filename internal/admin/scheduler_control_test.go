@@ -12,7 +12,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 )
 
 func TestServiceSchedulerCleanupSubmitTriggersCleanup(t *testing.T) {

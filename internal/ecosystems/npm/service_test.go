@@ -182,7 +182,7 @@ func newTestService(ctx context.Context, t *testing.T, upstreamURL string, metad
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	objects, err := object.NewMemory("npm-proxy-test")
+	objects, err := object.NewMemory("npm-test")
 	requireNoError(t, "open objects", err)
 	return npm.NewService(npm.ServiceDependencies{
 		Config: config.Config{

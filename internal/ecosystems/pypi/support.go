@@ -51,5 +51,5 @@ func wrapError(err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return oops.In("pypi-proxy").Wrapf(err, "%s", message)
+	return oops.In("pypi").Wrapf(err, "%s", message)
 }

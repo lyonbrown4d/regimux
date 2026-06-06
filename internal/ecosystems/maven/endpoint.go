@@ -35,7 +35,7 @@ func NewEndpoint(service *Service) *Endpoint {
 
 func (e *Endpoint) EndpointSpec() httpx.EndpointSpec {
 	return httpx.EndpointSpec{
-		Tags:       httpx.Tags("maven-proxy"),
+		Tags:       httpx.Tags("maven"),
 		Security:   httpx.SecurityRequirements(),
 		Parameters: httpx.Parameters(),
 		Extensions: httpx.Extensions(nil),

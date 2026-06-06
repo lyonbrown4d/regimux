@@ -2,9 +2,9 @@
 
 ## Positioning
 
-RegiMux is a read-only developer dependency cache gateway. The stable handlers today are an OCI / Docker Registry V2 proxy mirror and a Go module proxy read-through cache. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, and `maven` blocks.
+RegiMux is a read-only developer dependency cache gateway. Container registry, Go, npm, PyPI, and Maven are first-class ecosystems. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, and `maven` blocks, and each ecosystem owns its endpoint service and runtime implementation under `internal/ecosystems/*`.
 
-The OCI side exposes a Registry-compatible pull API while routing requests to configured container registries by container alias. The Go side exposes the Go module proxy protocol under `/go/{goAlias}/...` and routes requests to upstreams configured under the `go` block.
+The container ecosystem exposes a Registry-compatible pull API and routes requests to configured upstream registries by container alias. Go, npm, PyPI, and Maven expose read-through proxy cache APIs under their own path prefixes and route requests to upstreams configured in their matching ecosystem blocks.
 
 RegiMux is not a push registry. Upload, manifest write, and delete APIs are intentionally out of scope.
 
@@ -62,7 +62,7 @@ The Go alias is resolved only within the `go` block. It does not share a namespa
 
 ## Other Ecosystem Prefixes
 
-npm, PyPI, and Maven use independent alias namespaces under their own path prefixes:
+npm, PyPI, and Maven are first-class read-through proxy ecosystems with independent alias namespaces under their own path prefixes:
 
 ```text
 GET /npm/{npmAlias}/...
@@ -72,7 +72,7 @@ GET /maven/{mavenAlias}/...
 
 ## Ecosystem Runtime Abstraction
 
-Registry, mirror, probe, and prefetch behavior is exposed through ecosystem runtimes instead of being hard-coded into the scheduler. Each runtime owns the protocol details for one ecosystem and advertises the capabilities and jobs it supports.
+Registry, mirror, probe, and prefetch behavior is exposed through ecosystem runtimes instead of being hard-coded into the scheduler. Each runtime owns the protocol details for one ecosystem, advertises the capabilities and jobs it supports, and is registered through `dix`.
 
 Ecosystem implementations live under `internal/ecosystems/*`:
 
@@ -231,7 +231,7 @@ The application is assembled with `dix`.
 
 Important lifecycle decisions:
 
-- logger, config, auth, ecosystem runtimes, cache, upstream, scheduler, worker, admin, and store are separate modules
+- logger, config, auth, scheduler, worker, admin, and store are shared modules; container-owned cache, upstream, registry tooling, suggestion, and Docker daemon integration live under the container ecosystem module set
 - ecosystem runtime implementations are registered with `dix`; the scheduler consumes the registered runtime set rather than importing per-ecosystem handlers
 - metadata mapper is a DI singleton
 - `*dbx.DB` is managed by DI lifecycle and closed on stop

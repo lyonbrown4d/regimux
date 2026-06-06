@@ -29,15 +29,15 @@ func (s *Service) cached(ctx context.Context, requestRoute route) (storedRespons
 
 func (s *Service) store(ctx context.Context, requestRoute route, fetched *upstreamFetch) (storedResponse, error) {
 	if s.cache == nil {
-		return storedResponse{}, oops.In("npm-proxy").Errorf("npm proxy cache store is not configured")
+		return storedResponse{}, oops.In("npm").Errorf("npm proxy cache store is not configured")
 	}
 	if fetched == nil || fetched.body == nil {
-		return storedResponse{}, oops.In("npm-proxy").Errorf("npm upstream body is empty")
+		return storedResponse{}, oops.In("npm").Errorf("npm upstream body is empty")
 	}
 	defer closeReadCloser(fetched.body, s.logger, "close npm upstream body")
 	entry, err := s.cache.Put(ctx, artifactcache.PutRequest{
 		Key:         artifactKey(requestRoute),
-		AcceptKey:   ecosystemNPM + "-proxy",
+		AcceptKey:   ecosystemNPM,
 		Body:        fetched.body,
 		Headers:     fetched.headers,
 		ContentType: contentType(requestRoute, fetched.headers),

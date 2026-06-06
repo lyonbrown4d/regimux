@@ -20,9 +20,9 @@ const (
 	cacheHit            = "hit"
 	cacheMiss           = "miss"
 	cacheStale          = "stale"
-	acceptKeyPyPIProxy  = "pypi-proxy"
+	acceptKeyPyPI       = "pypi"
 	defaultUserAgent    = "regimux/dev"
-	defaultObjectPrefix = "regimux-pypi-proxy-*"
+	defaultObjectPrefix = "regimux-pypi-*"
 )
 
 type ServiceDependencies struct {

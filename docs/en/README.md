@@ -1,6 +1,6 @@
 # RegiMux Documentation
 
-RegiMux is a read-only developer dependency cache gateway. It currently supports OCI / Docker Registry V2 proxy mirrors and Go module proxy caching.
+RegiMux is a read-only developer dependency cache gateway. Container registry, Go, npm, PyPI, and Maven are first-class ecosystems with independent configuration blocks, endpoint services, and runtime capabilities. The scheduler consumes runtime-declared jobs and capabilities instead of importing per-ecosystem orchestration logic.
 
 ## Start Here
 

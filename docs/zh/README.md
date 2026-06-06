@@ -1,6 +1,6 @@
 # RegiMux 文档
 
-RegiMux 是一个只读研发依赖缓存网关，当前支持 OCI / Docker Registry V2 代理镜像和 Go module proxy 缓存。
+RegiMux 是一个只读研发依赖缓存网关。container registry、Go、npm、PyPI 和 Maven 都是一等生态，分别拥有独立配置块、endpoint service 和 runtime capability。调度器消费各生态 runtime 声明的 job 和 capability，而不是直接导入具体生态的编排逻辑。
 
 ## 入门
 

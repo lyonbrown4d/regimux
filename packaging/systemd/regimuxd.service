@@ -1,5 +1,5 @@
 [Unit]
-Description=RegiMux registry proxy mirror gateway
+Description=RegiMux developer dependency cache gateway
 Documentation=https://github.com/lyonbrown4d/regimux
 After=network-online.target
 Wants=network-online.target

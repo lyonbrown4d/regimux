@@ -44,7 +44,7 @@ func NewService(deps ServiceDependencies) *Service {
 		metadata:    deps.Metadata,
 		cache:       cache,
 		client:      client,
-		logger:      logger.With("component", "npm-proxy"),
+		logger:      logger.With("component", "npm"),
 		publicURL:   strings.TrimRight(deps.Config.Server.PublicURL, "/"),
 		metadataTTL: deps.MetadataTTL,
 		now:         now,
@@ -53,7 +53,7 @@ func NewService(deps ServiceDependencies) *Service {
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if s == nil {
-		return nil, oops.In("npm-proxy").Errorf("service is nil")
+		return nil, oops.In("npm").Errorf("service is nil")
 	}
 	requestRoute, err := parseRoute(req)
 	if err != nil {
@@ -61,7 +61,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	}
 	upstreamCfg, ok := s.upstream(requestRoute.Alias)
 	if !ok {
-		return nil, oops.In("npm-proxy").
+		return nil, oops.In("npm").
 			With("alias", requestRoute.Alias).
 			Errorf("npm upstream is not configured")
 	}

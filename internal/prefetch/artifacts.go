@@ -4,7 +4,7 @@ import (
 	"context"
 	"net/http"
 
-	"github.com/lyonbrown4d/regimux/internal/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
 

@@ -220,7 +220,7 @@ func newTestService(ctx context.Context, t *testing.T, upstreams map[string]conf
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	objects, err := object.NewMemory("maven-proxy-test")
+	objects, err := object.NewMemory("maven-test")
 	requireNoError(t, "open objects", err)
 	return maven.NewService(maven.ServiceDependencies{
 		Config: config.Config{

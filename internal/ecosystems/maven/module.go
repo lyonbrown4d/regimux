@@ -12,12 +12,12 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
-var Module = dix.NewModule("maven-proxy",
+var Module = dix.NewModule("maven",
 	dix.Providers(
 		dix.Provider4[ServiceDependencies, config.Config, *artifactcache.Store, meta.Store, *slog.Logger](newServiceDependencies),
 		dix.Provider1[*Service, ServiceDependencies](NewService),
-		dix.Provider5[*runtimeAdapter, *Service, *ecosystem.EndpointProber, meta.Store, *worker.Pools, *slog.Logger](newRuntimeAdapter, dix.Into[ecosystem.Runtime](dix.Key("maven-proxy"), dix.Order(32))),
-		dix.Provider1[*Endpoint, *Service](NewEndpoint, dix.Into[httpx.Endpoint](dix.Key("maven-proxy"), dix.Order(32))),
+		dix.Provider5[*runtimeAdapter, *Service, *ecosystem.EndpointProber, meta.Store, *worker.Pools, *slog.Logger](newRuntimeAdapter, dix.Into[ecosystem.Runtime](dix.Key("maven"), dix.Order(32))),
+		dix.Provider1[*Endpoint, *Service](NewEndpoint, dix.Into[httpx.Endpoint](dix.Key("maven"), dix.Order(32))),
 	),
 )
 

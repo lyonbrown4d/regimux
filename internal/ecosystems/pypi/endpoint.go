@@ -35,7 +35,7 @@ func NewEndpoint(service *Service) *Endpoint {
 
 func (e *Endpoint) EndpointSpec() httpx.EndpointSpec {
 	return httpx.EndpointSpec{
-		Tags:       httpx.Tags("pypi-proxy"),
+		Tags:       httpx.Tags("pypi"),
 		Security:   httpx.SecurityRequirements(),
 		Parameters: httpx.Parameters(),
 		Extensions: httpx.Extensions(nil),

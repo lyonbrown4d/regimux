@@ -12,6 +12,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -20,7 +21,7 @@ func TestServerAuthenticatesRegistryPullWithBearerToken(t *testing.T) {
 	baseURL := startAPIServerWithOptions(t, api.Options{
 		Auth: authService,
 		Endpoints: collectionlist.NewList[httpx.Endpoint](
-			api.NewRegistryEndpointFromConfig(
+			container.NewRegistryEndpointFromConfig(
 				&recordingManifestService{},
 				nil,
 				nil,

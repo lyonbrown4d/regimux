@@ -89,13 +89,13 @@ func NewService(deps ServiceDependencies) *Service {
 		metadata: deps.Metadata,
 		objects:  deps.Objects,
 		client:   &http.Client{},
-		logger:   logger.With("component", "go-proxy"),
+		logger:   logger.With("component", "go"),
 	}
 }
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if s == nil {
-		return nil, oops.In("go-proxy").Errorf("service is nil")
+		return nil, oops.In("go").Errorf("service is nil")
 	}
 	if strings.TrimSpace(req.Alias) == "" {
 		parsed, err := parseRootRoute(req.Tail)
@@ -111,7 +111,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	}
 	upstreamCfg, ok := s.goUpstream(parsed.Alias)
 	if !ok {
-		return nil, oops.In("go-proxy").With("alias", parsed.Alias).Errorf("go upstream is not configured")
+		return nil, oops.In("go").With("alias", parsed.Alias).Errorf("go upstream is not configured")
 	}
 	resp, err := s.getFromUpstreams(ctx, req, parsed, collectionlist.NewList(goUpstream{alias: parsed.Alias, cfg: upstreamCfg}), false)
 	s.recordPull(ctx, req, parsed, resp, err)
@@ -120,7 +120,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 
 func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute route, upstreams *collectionlist.List[goUpstream], fallback bool) (*Response, error) {
 	if upstreams == nil || upstreams.Len() == 0 {
-		return nil, oops.In("go-proxy").Errorf("go upstream is not configured")
+		return nil, oops.In("go").Errorf("go upstream is not configured")
 	}
 
 	total := upstreams.Len()
@@ -144,7 +144,7 @@ func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute r
 	if lastErr != nil {
 		return nil, lastErr
 	}
-	return nil, oops.In("go-proxy").Errorf("go upstream did not return module content")
+	return nil, oops.In("go").Errorf("go upstream did not return module content")
 }
 
 func (s *Service) shouldFallbackFromResponse(resp *Response, err error, fallback bool, index, total int) bool {

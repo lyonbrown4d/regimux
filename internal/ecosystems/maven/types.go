@@ -20,9 +20,9 @@ const (
 	cacheHit            = "hit"
 	cacheMiss           = "miss"
 	cacheStale          = "stale"
-	acceptKeyMavenProxy = "maven-proxy"
+	acceptKeyMaven      = "maven"
 	defaultUserAgent    = "regimux/dev"
-	defaultObjectPrefix = "regimux-maven-proxy-*"
+	defaultObjectPrefix = "regimux-maven-*"
 )
 
 type ServiceDependencies struct {

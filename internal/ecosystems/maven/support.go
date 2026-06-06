@@ -44,5 +44,5 @@ func wrapError(err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return oops.In("maven-proxy").Wrapf(err, "%s", message)
+	return oops.In("maven").Wrapf(err, "%s", message)
 }

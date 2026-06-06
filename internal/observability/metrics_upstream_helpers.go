@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/arcgolabs/observabilityx"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 )
 
 func newUpstreamRequests(obs observabilityx.Observability) observabilityx.Counter {

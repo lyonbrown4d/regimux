@@ -89,7 +89,7 @@ func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarg
 
 func (r *runtimeAdapter) Prefetch(ctx context.Context, opts ecosystem.PrefetchOptions) (*ecosystem.PrefetchReport, error) {
 	if r == nil || r.prefetcher == nil {
-		return nil, oops.In("go-proxy").Errorf("go proxy prefetcher is not configured")
+		return nil, oops.In("go").Errorf("go proxy prefetcher is not configured")
 	}
 	report, err := r.prefetcher.Prefetch(ctx, opts)
 	if err != nil {
@@ -123,7 +123,7 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 
 func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget) error {
 	if r == nil || r.prober == nil {
-		return oops.In("go-proxy").Errorf("go proxy endpoint prober is not configured")
+		return oops.In("go").Errorf("go proxy endpoint prober is not configured")
 	}
 	if err := r.prober.Probe(ctx, target); err != nil {
 		return oops.Wrapf(err, "probe go proxy upstream")
@@ -133,7 +133,7 @@ func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget
 
 func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts prefetch.SyncOptions) (prefetch.SyncJob, error) {
 	if r == nil || r.manualSync == nil {
-		return prefetch.SyncJob{}, oops.In("go-proxy").Errorf("go proxy manual sync service is not configured")
+		return prefetch.SyncJob{}, oops.In("go").Errorf("go proxy manual sync service is not configured")
 	}
 	job, err := r.manualSync.CreateSyncJob(ctx, opts)
 	if err != nil {
@@ -144,7 +144,7 @@ func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts prefetch.SyncOp
 
 func (r *runtimeAdapter) RunSyncJob(ctx context.Context, id string) error {
 	if r == nil || r.manualSync == nil {
-		return oops.In("go-proxy").Errorf("go proxy manual sync service is not configured")
+		return oops.In("go").Errorf("go proxy manual sync service is not configured")
 	}
 	if err := r.manualSync.RunSyncJob(ctx, id); err != nil {
 		return oops.With("job_id", id).Wrapf(err, "run go proxy manual sync job")
@@ -168,7 +168,7 @@ func (r *runtimeAdapter) SyncJob(id string) (prefetch.SyncJob, bool) {
 
 func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncOptions) (*prefetch.SyncReport, error) {
 	if r == nil || r.service == nil {
-		return nil, oops.In("go-proxy").Errorf("go proxy manual sync service is not configured")
+		return nil, oops.In("go").Errorf("go proxy manual sync service is not configured")
 	}
 	resp, err := r.service.Get(ctx, Request{
 		Alias:          opts.Alias,
@@ -181,10 +181,10 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts prefetch.SyncO
 	}
 	defer closeResponseBody(resp)
 	if resp == nil {
-		return nil, oops.In("go-proxy").Errorf("go proxy manual sync response is empty")
+		return nil, oops.In("go").Errorf("go proxy manual sync response is empty")
 	}
 	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
-		return nil, oops.In("go-proxy").With("status", resp.Status).Errorf("manual sync request failed")
+		return nil, oops.In("go").With("status", resp.Status).Errorf("manual sync request failed")
 	}
 	bytesWarmed, copyErr := io.Copy(io.Discard, resp.Body)
 	if copyErr != nil {

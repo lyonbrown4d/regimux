@@ -39,7 +39,7 @@ func NewEndpoint(service *Service) *Endpoint {
 
 func (e *Endpoint) EndpointSpec() httpx.EndpointSpec {
 	return httpx.EndpointSpec{
-		Tags:       httpx.Tags("go-proxy"),
+		Tags:       httpx.Tags("go"),
 		Security:   httpx.SecurityRequirements(),
 		Parameters: httpx.Parameters(),
 		Extensions: httpx.Extensions(nil),

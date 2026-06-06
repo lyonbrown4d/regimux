@@ -16,11 +16,11 @@ var (
 func ParseTail(alias, tail string) (Route, error) {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
-		return Route{}, oops.In("pypi-proxy").Errorf("upstream alias is required")
+		return Route{}, oops.In("pypi").Errorf("upstream alias is required")
 	}
 	tail = strings.Trim(strings.TrimSpace(tail), "/")
 	if tail == "" {
-		return Route{}, oops.In("pypi-proxy").Errorf("pypi proxy path is required")
+		return Route{}, oops.In("pypi").Errorf("pypi proxy path is required")
 	}
 	if project, ok := strings.CutPrefix(tail, "simple/"); ok {
 		return parseSimpleTail(alias, tail, project)
@@ -28,17 +28,17 @@ func ParseTail(alias, tail string) (Route, error) {
 	if packageTail, ok := strings.CutPrefix(tail, "packages/"); ok {
 		return parsePackageTail(alias, packageTail)
 	}
-	return Route{}, oops.In("pypi-proxy").With("path", tail).Errorf("pypi proxy path must start with simple/ or packages/")
+	return Route{}, oops.In("pypi").With("path", tail).Errorf("pypi proxy path must start with simple/ or packages/")
 }
 
 func parseSimpleTail(alias, tail, project string) (Route, error) {
 	project = strings.Trim(project, "/")
 	if project == "" || strings.Contains(project, "/") {
-		return Route{}, oops.In("pypi-proxy").With("path", tail).Errorf("pypi simple path must contain one project")
+		return Route{}, oops.In("pypi").With("path", tail).Errorf("pypi simple path must contain one project")
 	}
 	unescaped, err := url.PathUnescape(project)
 	if err != nil {
-		return Route{}, oops.In("pypi-proxy").Wrapf(err, "decode pypi project name")
+		return Route{}, oops.In("pypi").Wrapf(err, "decode pypi project name")
 	}
 	normalized, err := NormalizeProjectName(unescaped)
 	if err != nil {
@@ -79,10 +79,10 @@ func parsePackageTail(alias, packageTail string) (Route, error) {
 func NormalizeProjectName(name string) (string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
-		return "", oops.In("pypi-proxy").Errorf("pypi project name is required")
+		return "", oops.In("pypi").Errorf("pypi project name is required")
 	}
 	if !pyPINameRE.MatchString(name) {
-		return "", oops.In("pypi-proxy").With("project", name).Errorf("pypi project name is invalid")
+		return "", oops.In("pypi").With("project", name).Errorf("pypi project name is invalid")
 	}
 	return strings.ToLower(pep503SeparatorRE.ReplaceAllString(name, "-")), nil
 }
@@ -101,11 +101,11 @@ func decodeAbsolutePackageTail(tail string) (*url.URL, bool) {
 
 func validatePackageTail(tail string) error {
 	if tail == "" {
-		return oops.In("pypi-proxy").Errorf("pypi package path is required")
+		return oops.In("pypi").Errorf("pypi package path is required")
 	}
 	for segment := range strings.SplitSeq(tail, "/") {
 		if segment == "" || segment == "." || segment == ".." {
-			return oops.In("pypi-proxy").With("path", tail).Errorf("pypi package path contains an invalid segment")
+			return oops.In("pypi").With("path", tail).Errorf("pypi package path contains an invalid segment")
 		}
 	}
 	return nil

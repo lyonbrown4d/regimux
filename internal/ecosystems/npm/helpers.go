@@ -18,7 +18,7 @@ func materializeBody(body io.ReadCloser) (io.ReadCloser, error) {
 	if body == nil {
 		return http.NoBody, nil
 	}
-	tmp, err := os.CreateTemp("", "regimux-npm-proxy-upstream-*")
+	tmp, err := os.CreateTemp("", "regimux-npm-upstream-*")
 	if err != nil {
 		return nil, wrapError(err, "create npm proxy upstream temp file")
 	}
@@ -141,5 +141,5 @@ func wrapError(err error, message string) error {
 	if err == nil {
 		return nil
 	}
-	return oops.In("npm-proxy").Wrapf(err, "%s", message)
+	return oops.In("npm").Wrapf(err, "%s", message)
 }

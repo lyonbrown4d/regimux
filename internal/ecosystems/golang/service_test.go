@@ -222,7 +222,7 @@ func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams ma
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	objects, err := object.NewMemory("go-proxy-test")
+	objects, err := object.NewMemory("go-test")
 	requireNoError(t, "open objects", err)
 	return golang.NewService(golang.ServiceDependencies{
 		Config: config.Config{

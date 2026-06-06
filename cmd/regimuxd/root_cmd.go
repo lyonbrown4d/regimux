@@ -13,7 +13,7 @@ func newRootCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:           "regimuxd",
-		Short:         "Run the RegiMux registry proxy mirror gateway",
+		Short:         "Run the RegiMux developer dependency cache gateway",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		RunE: func(cmd *cobra.Command, args []string) error {

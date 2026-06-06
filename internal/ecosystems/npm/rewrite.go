@@ -11,7 +11,7 @@ import (
 func rewriteMetadata(body []byte, proxyBase string) ([]byte, bool, error) {
 	var doc map[string]any
 	if err := json.Unmarshal(body, &doc); err != nil {
-		return nil, false, oops.In("npm-proxy").Wrapf(err, "decode npm metadata")
+		return nil, false, oops.In("npm").Wrapf(err, "decode npm metadata")
 	}
 	versions, ok := doc["versions"].(map[string]any)
 	if !ok {
@@ -28,7 +28,7 @@ func rewriteMetadata(body []byte, proxyBase string) ([]byte, bool, error) {
 	}
 	rewritten, err := json.Marshal(doc)
 	if err != nil {
-		return nil, false, oops.In("npm-proxy").Wrapf(err, "encode npm metadata")
+		return nil, false, oops.In("npm").Wrapf(err, "encode npm metadata")
 	}
 	return rewritten, true, nil
 }

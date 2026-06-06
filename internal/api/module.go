@@ -10,10 +10,8 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/auth"
-	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/observability"
-	"github.com/lyonbrown4d/regimux/internal/suggestion"
 )
 
 type fiberOptions struct {
@@ -25,11 +23,6 @@ var EndpointsModule = dix.NewModule("api-endpoints",
 	dix.Providers(
 		dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
 			dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
-		),
-		dix.Provider3[RegistryEndpointOptions, config.Config, *observability.Metrics, suggestion.ManifestService](newRegistryEndpointOptions),
-		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, RegistryEndpointOptions](
-			NewRegistryEndpointFromOptions,
-			dix.Into[httpx.Endpoint](dix.Key("registry"), dix.Order(10)),
 		),
 	),
 )
@@ -86,18 +79,6 @@ func newFiberOptions(routes *collectionlist.List[FiberRoute], views *collectionl
 		opts.views = views.Values()[0]
 	}
 	return opts
-}
-
-func newRegistryEndpointOptions(
-	cfg config.Config,
-	metrics *observability.Metrics,
-	suggestions suggestion.ManifestService,
-) RegistryEndpointOptions {
-	return RegistryEndpointOptions{
-		Config:      cfg,
-		Metrics:     metrics,
-		Suggestions: suggestions,
-	}
 }
 
 func startServer(ctx context.Context, server *Server) error {

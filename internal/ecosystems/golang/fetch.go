@@ -70,7 +70,7 @@ func materializeHTTPBody(body io.ReadCloser) (io.ReadCloser, error) {
 	if body == nil {
 		return http.NoBody, nil
 	}
-	tmp, err := os.CreateTemp("", "regimux-go-proxy-upstream-*")
+	tmp, err := os.CreateTemp("", "regimux-go-upstream-*")
 	if err != nil {
 		return nil, wrapError(err, "create go proxy upstream temp file")
 	}

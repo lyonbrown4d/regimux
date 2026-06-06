@@ -9,8 +9,8 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/observability"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
 )
 
 func TestObserveStaticConfigRecordsConfiguredUpstreamMetrics(t *testing.T) {

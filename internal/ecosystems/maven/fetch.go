@@ -67,7 +67,7 @@ func materializeHTTPBody(body io.ReadCloser) (io.ReadCloser, error) {
 	if body == nil {
 		return http.NoBody, nil
 	}
-	tmp, err := os.CreateTemp("", "regimux-maven-proxy-upstream-*")
+	tmp, err := os.CreateTemp("", "regimux-maven-upstream-*")
 	if err != nil {
 		return nil, wrapError(err, "create maven upstream temp file")
 	}

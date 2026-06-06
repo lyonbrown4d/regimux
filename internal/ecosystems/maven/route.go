@@ -11,11 +11,11 @@ import (
 func ParseTail(alias, tail string) (Route, error) {
 	alias = strings.TrimSpace(alias)
 	if alias == "" {
-		return Route{}, oops.In("maven-proxy").Errorf("upstream alias is required")
+		return Route{}, oops.In("maven").Errorf("upstream alias is required")
 	}
 	tail = strings.Trim(strings.TrimSpace(tail), "/")
 	if tail == "" {
-		return Route{}, oops.In("maven-proxy").Errorf("maven path is required")
+		return Route{}, oops.In("maven").Errorf("maven path is required")
 	}
 	if err := validateTail(tail); err != nil {
 		return Route{}, err
@@ -23,7 +23,7 @@ func ParseTail(alias, tail string) (Route, error) {
 	directory, file := path.Split(tail)
 	directory = strings.Trim(directory, "/")
 	if file == "" {
-		return Route{}, oops.In("maven-proxy").With("path", tail).Errorf("maven path must name a file")
+		return Route{}, oops.In("maven").With("path", tail).Errorf("maven path must name a file")
 	}
 	if directory == "" {
 		directory = "_root"
@@ -48,10 +48,10 @@ func validateTail(tail string) error {
 	for segment := range strings.SplitSeq(tail, "/") {
 		switch segment {
 		case "", ".", "..":
-			return oops.In("maven-proxy").With("path", tail).Errorf("maven path contains an invalid segment")
+			return oops.In("maven").With("path", tail).Errorf("maven path contains an invalid segment")
 		}
 		if strings.Contains(segment, "\\") {
-			return oops.In("maven-proxy").With("path", tail).Errorf("maven path contains an invalid segment")
+			return oops.In("maven").With("path", tail).Errorf("maven path contains an invalid segment")
 		}
 	}
 	return nil

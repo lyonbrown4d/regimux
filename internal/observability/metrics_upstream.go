@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/arcgolabs/observabilityx"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 )
 
 type upstreamMetrics struct {

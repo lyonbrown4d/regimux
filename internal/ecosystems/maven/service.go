@@ -42,14 +42,14 @@ func NewService(deps ServiceDependencies) *Service {
 		cache:    cache,
 		metadata: deps.Metadata,
 		client:   client,
-		logger:   logger.With("component", "maven-proxy"),
+		logger:   logger.With("component", "maven"),
 		now:      now,
 	}
 }
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if s == nil {
-		return nil, oops.In("maven-proxy").Errorf("service is nil")
+		return nil, oops.In("maven").Errorf("service is nil")
 	}
 	requestRoute, err := ParseTail(req.Alias, req.Tail)
 	if err != nil {
@@ -58,7 +58,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	requestRoute.Query = strings.TrimSpace(req.Query)
 	upstreamCfg, ok := s.upstream(requestRoute.Alias)
 	if !ok {
-		return nil, oops.In("maven-proxy").With("alias", requestRoute.Alias).Errorf("maven upstream is not configured")
+		return nil, oops.In("maven").With("alias", requestRoute.Alias).Errorf("maven upstream is not configured")
 	}
 	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
 	s.recordPull(ctx, req, requestRoute, resp, err)

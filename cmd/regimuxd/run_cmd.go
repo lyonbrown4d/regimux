@@ -11,12 +11,15 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
-	"github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/dockerintegration"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/dockerintegration"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/registrytool"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/npm"
@@ -24,11 +27,8 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
-	"github.com/lyonbrown4d/regimux/internal/registrytool"
 	"github.com/lyonbrown4d/regimux/internal/scheduler"
 	storemodule "github.com/lyonbrown4d/regimux/internal/store"
-	"github.com/lyonbrown4d/regimux/internal/suggestion"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/samber/oops"
 )
@@ -57,30 +57,30 @@ func buildApp(configPath string, args ...string) *dix.App {
 	authModule := auth.Module
 	buildModule := build.Module
 	eventsModule := events.Module
-	registryToolModule := registrytool.Module
+	containerRegistryToolModule := registrytool.Module
 	workerModule := worker.Module
 	probeHealthModule := probehealth.Module
-	upstreamModule := upstream.Module
+	containerUpstreamModule := upstream.Module
 	storeModule := storemodule.Module
 	ecosystemModule := ecosystem.Module
-	cacheModule := cache.Module
-	suggestionModule := suggestion.Module
+	containerCacheModule := cache.Module
+	containerSuggestionModule := suggestion.Module
 	schedulerModule := scheduler.Module
-	dockerModule := dockerintegration.Module
+	containerDockerModule := dockerintegration.Module
 	containerModule := container.Module
-	goProxyModule := golang.Module
-	npmProxyModule := npm.Module
-	pypiProxyModule := pypi.Module
-	mavenProxyModule := maven.Module
+	goModule := golang.Module
+	npmModule := npm.Module
+	pypiModule := pypi.Module
+	mavenModule := maven.Module
 	adminModule := admin.Module
 	endpointModule := api.EndpointsModule
 	apiModule := api.Module
 
 	return dix.New("regimuxd",
 		dix.Version(version),
-		dix.AppDescription("RegiMux registry proxy mirror gateway"),
+		dix.AppDescription("RegiMux developer dependency cache gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, registryToolModule, workerModule, probeHealthModule, upstreamModule, storeModule, ecosystemModule, cacheModule, suggestionModule, schedulerModule, adminModule, containerModule, goProxyModule, npmProxyModule, pypiProxyModule, mavenProxyModule, endpointModule, apiModule, dockerModule),
+		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, containerRegistryToolModule, workerModule, probeHealthModule, containerUpstreamModule, storeModule, ecosystemModule, containerCacheModule, containerSuggestionModule, schedulerModule, adminModule, containerModule, goModule, npmModule, pypiModule, mavenModule, endpointModule, apiModule, containerDockerModule),
 	)
 }

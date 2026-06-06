@@ -12,12 +12,12 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
-var Module = dix.NewModule("pypi-proxy",
+var Module = dix.NewModule("pypi",
 	dix.Providers(
 		dix.Provider4[ServiceDependencies, config.Config, *artifactcache.Store, meta.Store, *slog.Logger](newServiceDependencies),
 		dix.Provider1[*Service, ServiceDependencies](NewService),
-		dix.Provider5[*runtimeAdapter, *Service, *ecosystem.EndpointProber, meta.Store, *worker.Pools, *slog.Logger](newRuntimeAdapter, dix.Into[ecosystem.Runtime](dix.Key("pypi-proxy"), dix.Order(31))),
-		dix.Provider1[*Endpoint, *Service](NewEndpoint, dix.Into[httpx.Endpoint](dix.Key("pypi-proxy"), dix.Order(31))),
+		dix.Provider5[*runtimeAdapter, *Service, *ecosystem.EndpointProber, meta.Store, *worker.Pools, *slog.Logger](newRuntimeAdapter, dix.Into[ecosystem.Runtime](dix.Key("pypi"), dix.Order(31))),
+		dix.Provider1[*Endpoint, *Service](NewEndpoint, dix.Into[httpx.Endpoint](dix.Key("pypi"), dix.Order(31))),
 	),
 )
 

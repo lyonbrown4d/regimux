@@ -173,7 +173,7 @@ func newTestService(ctx context.Context, t *testing.T, upstreamURL string, now f
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	objects, err := object.NewMemory("pypi-proxy-test")
+	objects, err := object.NewMemory("pypi-test")
 	requireNoError(t, "open objects", err)
 	return pypi.NewService(pypi.ServiceDependencies{
 		Config: config.Config{

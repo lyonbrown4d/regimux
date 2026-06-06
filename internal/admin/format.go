@@ -5,7 +5,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/dustin/go-humanize"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 )
 
 func formatTime(value time.Time) string {

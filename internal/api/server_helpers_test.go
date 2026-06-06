@@ -14,15 +14,6 @@ import (
 	"github.com/samber/oops"
 )
 
-func startAPIServer(t *testing.T, endpoints ...httpx.Endpoint) string {
-	t.Helper()
-	all := collectionlist.NewList[httpx.Endpoint]()
-	for _, endpoint := range endpoints {
-		all.Add(endpoint)
-	}
-	return startAPIServerWithOptions(t, api.Options{Endpoints: all})
-}
-
 func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 	t.Helper()
 

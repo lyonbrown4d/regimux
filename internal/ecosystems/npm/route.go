@@ -13,18 +13,18 @@ import (
 func parseRoute(req Request) (route, error) {
 	alias := strings.TrimSpace(req.Alias)
 	if alias == "" {
-		return route{}, oops.In("npm-proxy").Errorf("upstream alias is required")
+		return route{}, oops.In("npm").Errorf("upstream alias is required")
 	}
 	tail := strings.Trim(strings.TrimSpace(req.Tail), "/")
 	if tail == "" {
-		return route{}, oops.In("npm-proxy").Errorf("npm proxy path is required")
+		return route{}, oops.In("npm").Errorf("npm proxy path is required")
 	}
 	if err := validateTail(tail); err != nil {
 		return route{}, err
 	}
 	decodedTail, err := url.PathUnescape(tail)
 	if err != nil {
-		return route{}, oops.In("npm-proxy").With("path", tail).Wrapf(err, "decode npm proxy path")
+		return route{}, oops.In("npm").With("path", tail).Wrapf(err, "decode npm proxy path")
 	}
 	requestRoute := route{
 		Alias: alias,
@@ -80,7 +80,7 @@ func validateTail(tail string) error {
 	for segment := range strings.SplitSeq(tail, "/") {
 		switch segment {
 		case "", ".", "..":
-			return oops.In("npm-proxy").With("path", tail).Errorf("npm proxy path contains an invalid segment")
+			return oops.In("npm").With("path", tail).Errorf("npm proxy path contains an invalid segment")
 		}
 	}
 	return nil
