@@ -14,7 +14,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
-	"github.com/lyonbrown4d/regimux/internal/upstream"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
@@ -40,10 +39,6 @@ var Module = dix.NewModule("scheduler",
 	dix.Providers(
 		dix.Provider6[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
 			newPrefetchServiceDependencies,
-		),
-		dix.Provider3[*ContainerRuntime, config.Config, *upstream.Client, *prefetch.Service](
-			NewContainerRuntime,
-			dix.Into[ecosystem.Runtime](dix.Key("container"), dix.Order(0)),
 		),
 		dix.Provider5[RuntimeDependencies, config.Config, *slog.Logger, *cache.CleanupService, *collectionlist.List[ecosystem.Runtime], *observability.Metrics](
 			newRuntimeDependencies,

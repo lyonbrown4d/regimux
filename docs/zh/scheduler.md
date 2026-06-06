@@ -7,13 +7,13 @@ RegiMux 使用 `gocron` 执行后台任务，并通过 worker 池限制异步任
 当前任务包括：
 
 - 缓存清理和对象容量控制
-- runtime `probe` capability
-- runtime `prefetch` capability
-- runtime `manifest_refresh` capability（仅刷新 manifest）
+- runtime 声明的 `probe` job
+- runtime 声明的 `prefetch` job
+- runtime 声明的 `manifest_refresh` job（适用时仅刷新 manifest）
 
 配置 Redis 或 Valkey 后，调度任务可以使用分布式锁，避免多个副本重复执行同一类后台任务。probe 任务也会把 endpoint 健康状态发布到 Redis/Valkey 热状态层，但 SQL 元数据仍是持久化事实来源。
 
-调度器不持有具体生态的 fetch 逻辑。生态模块通过 `dix` 注册 runtime，每个 runtime 声明自己的 capability，调度器只为 runtime 集合中存在的 capability 创建任务。container 支持定时 `probe` 和 `prefetch`；Go、npm、PyPI 和 Maven 支持通用 endpoint `probe` capability，后续增加各自的 prefetch 时不需要改调度器装配。
+调度器不持有具体生态的 fetch 逻辑。生态模块通过 `dix` 注册 runtime，每个 runtime 通过 `JobProvider` 声明 `ecosystem.JobSpec`，调度器只把这些 spec 翻译成 `gocron` job。container、Go、npm、PyPI 和 Maven 后续增减生态专属后台任务时，不需要改调度器主流程。
 
 ## 清理
 

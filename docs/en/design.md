@@ -72,12 +72,22 @@ GET /maven/{mavenAlias}/...
 
 ## Ecosystem Runtime Abstraction
 
-Registry, mirror, probe, and prefetch behavior is exposed through ecosystem runtimes instead of being hard-coded into the scheduler. Each runtime owns the protocol details for one ecosystem and advertises the capabilities it supports.
+Registry, mirror, probe, and prefetch behavior is exposed through ecosystem runtimes instead of being hard-coded into the scheduler. Each runtime owns the protocol details for one ecosystem and advertises the capabilities and jobs it supports.
 
-The scheduler consumes the runtime set from `dix` and registers background work from capabilities:
+Ecosystem implementations live under `internal/ecosystems/*`:
+
+- `internal/ecosystems/container`
+- `internal/ecosystems/golang`
+- `internal/ecosystems/npm`
+- `internal/ecosystems/pypi`
+- `internal/ecosystems/maven`
+
+The scheduler consumes the runtime set from `dix` and registers background work from `ecosystem.JobProvider` / `ecosystem.JobSpec`:
 
 - `probe`: discover endpoint health and latency for aliases that configure mirror probing.
 - `prefetch`: warm likely future artifacts through the same cache path used by client requests.
+- `manifest_refresh`: refresh manifest metadata without forcing blob downloads where the ecosystem supports that distinction.
+- `endpoint_health_flush`: persist buffered endpoint health state for runtimes that maintain a hot health layer.
 
 Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
@@ -91,7 +101,7 @@ Manual sync is also standardized in the same abstraction:
 
 Because this is the same runtime boundary, adding a new ecosystem requires only:
 
-1. implementing `ecosystem.Runtime` plus relevant capability interfaces (`Probe`, `Prefetch`, manual-sync).
+1. implementing `ecosystem.Runtime` plus relevant capability interfaces (`Probe`, `Prefetch`, manual-sync, `JobProvider`).
 2. registering it in `dix` with a stable key.
 3. no changes to scheduler orchestration code.
 
@@ -128,8 +138,8 @@ Storage
 Background services run through the scheduler and worker pool:
 
 - cache cleanup and capacity control
-- capability-based mirror probing
-- capability-based predictive prefetch
+- runtime-declared mirror probing
+- runtime-declared predictive prefetch and manifest refresh
 - distributed locks when Redis or Valkey is configured
 - Redis/Valkey endpoint health hot state when a remote cache backend is configured
 

@@ -6,84 +6,9 @@ import (
 	"math/big"
 	"time"
 
-	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
 )
-
-func (r *Runtime) registerProbe(ctx context.Context, scheduler gocron.Scheduler) error {
-	var registerErr error
-	r.probers().Range(func(_ int, prober ecosystem.Prober) bool {
-		if err := r.registerProbeTargets(ctx, scheduler, prober); err != nil {
-			registerErr = err
-			return false
-		}
-		return true
-	})
-	return registerErr
-}
-
-func (r *Runtime) registerProbeTargets(ctx context.Context, scheduler gocron.Scheduler, prober ecosystem.Prober) error {
-	if prober == nil {
-		return nil
-	}
-	targets := prober.ProbeTargets()
-	if targets == nil {
-		return nil
-	}
-	var registerErr error
-	targets.Range(func(_ int, target ecosystem.ProbeTarget) bool {
-		if !probeTargetEnabled(target) {
-			return true
-		}
-		registerErr = r.registerProbeTarget(ctx, scheduler, prober, target)
-		return registerErr == nil
-	})
-	return registerErr
-}
-
-func probeTargetEnabled(target ecosystem.ProbeTarget) bool {
-	probeCfg := target.Config.Probe
-	return probeCfg.Enabled && probeCfg.Interval > 0
-}
-
-func (r *Runtime) registerProbeTarget(
-	ctx context.Context,
-	scheduler gocron.Scheduler,
-	prober ecosystem.Prober,
-	target ecosystem.ProbeTarget,
-) error {
-	probeCfg := target.Config.Probe
-	jobProber := prober
-	jobTarget := target
-	options := []gocron.JobOption{
-		gocron.WithName("regimux." + jobTarget.Ecosystem + ".probe." + jobTarget.Alias),
-		gocron.WithTags("maintenance", "probe", jobTarget.Ecosystem, jobTarget.Alias),
-		gocron.WithContext(ctx),
-		gocron.WithSingletonMode(gocron.LimitModeReschedule),
-		gocron.WithDisabledDistributedJobLocker(true),
-		gocron.WithStartAt(gocron.WithStartImmediately()),
-	}
-	if _, err := scheduler.NewJob(
-		gocron.DurationJob(probeCfg.Interval),
-		gocron.NewTask(func(ctx context.Context) error {
-			return r.runProbe(ctx, jobProber, jobTarget)
-		}),
-		options...,
-	); err != nil {
-		return oops.Wrapf(err, "register ecosystem probe job")
-	}
-	r.logger.InfoContext(ctx,
-		"registered ecosystem probe job",
-		"ecosystem", jobTarget.Ecosystem,
-		"alias", jobTarget.Alias,
-		"interval", probeCfg.Interval,
-		"timeout", probeCfg.Timeout,
-		"cooldown", probeCfg.Cooldown,
-		"jitter", probeCfg.Jitter,
-	)
-	return nil
-}
 
 func (r *Runtime) runProbe(ctx context.Context, prober ecosystem.Prober, target ecosystem.ProbeTarget) error {
 	startedAt := time.Now()

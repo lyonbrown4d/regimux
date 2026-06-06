@@ -7,13 +7,13 @@ RegiMux uses `gocron` for background jobs and a worker pool for bounded asynchro
 Current jobs:
 
 - cache cleanup and object capacity control
-- runtime `probe` capabilities
-- runtime `prefetch` capabilities
-- runtime `manifest_refresh` capability (manifest-only warmup)
+- runtime-declared `probe` jobs
+- runtime-declared `prefetch` jobs
+- runtime-declared `manifest_refresh` jobs (manifest-only warmup where applicable)
 
 When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas. Probe jobs also publish endpoint health into Redis/Valkey hot state, while SQL metadata remains the durable source of truth.
 
-The scheduler does not own ecosystem-specific fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises capabilities, and the scheduler creates jobs only for capabilities present in the runtime set. Container supports scheduled `probe` and `prefetch`; Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and can add ecosystem-specific prefetch later without changing scheduler wiring.
+The scheduler does not own ecosystem-specific fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises `ecosystem.JobSpec` values through `JobProvider`, and the scheduler only translates those specs into `gocron` jobs. Container, Go, npm, PyPI, and Maven can add or remove ecosystem-specific background work without changing scheduler orchestration.
 
 ## Cleanup
 

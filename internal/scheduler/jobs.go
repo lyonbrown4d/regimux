@@ -6,12 +6,8 @@ import (
 
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cache"
-	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
-	"go.uber.org/multierr"
 )
-
-const endpointHealthFlushInterval = 2 * time.Second
 
 func (r *Runtime) registerCleanup(ctx context.Context, scheduler gocron.Scheduler) error {
 	cfg := r.cfg.Scheduler.Cleanup
@@ -34,28 +30,6 @@ func (r *Runtime) registerCleanup(ctx context.Context, scheduler gocron.Schedule
 	); err != nil {
 		return oops.Wrapf(err, "register cleanup job")
 	}
-	return nil
-}
-
-func (r *Runtime) registerEndpointHealthFlush(ctx context.Context, scheduler gocron.Scheduler) error {
-	if r.endpointHealthFlushers().Len() == 0 {
-		return nil
-	}
-	options := []gocron.JobOption{
-		gocron.WithName("regimux.endpoint_health.flush"),
-		gocron.WithTags("maintenance", "endpoint-health"),
-		gocron.WithContext(ctx),
-		gocron.WithSingletonMode(gocron.LimitModeReschedule),
-		gocron.WithDisabledDistributedJobLocker(true),
-	}
-	if _, err := scheduler.NewJob(
-		gocron.DurationJob(endpointHealthFlushInterval),
-		gocron.NewTask(r.runEndpointHealthFlush),
-		options...,
-	); err != nil {
-		return oops.Wrapf(err, "register endpoint health flush job")
-	}
-	r.logger.InfoContext(ctx, "registered endpoint health flush job", "interval", endpointHealthFlushInterval)
 	return nil
 }
 
@@ -89,28 +63,5 @@ func (r *Runtime) runCleanup(ctx context.Context) error {
 	)
 	r.observeCleanupReport(ctx, report)
 	r.observeJob(ctx, "cleanup", "", startedAt, nil)
-	return nil
-}
-
-func (r *Runtime) runEndpointHealthFlush(ctx context.Context) error {
-	startedAt := time.Now()
-	var flushErr error
-	r.endpointHealthFlushers().Range(func(_ int, flusher ecosystem.EndpointHealthFlusher) bool {
-		if flusher == nil {
-			return true
-		}
-		if err := flusher.FlushEndpointHealth(ctx); err != nil {
-			flushErr = multierr.Append(flushErr, oops.With("ecosystem", flusher.Name()).Wrapf(err, "flush endpoint health"))
-		}
-		return flushErr == nil
-	})
-	if flushErr != nil {
-		err := oops.Wrapf(flushErr, "run endpoint health flush job")
-		r.observeJob(ctx, "endpoint_health_flush", "", startedAt, err)
-		r.observeEndpointHealth(ctx)
-		return err
-	}
-	r.observeEndpointHealth(ctx)
-	r.observeJob(ctx, "endpoint_health_flush", "", startedAt, nil)
 	return nil
 }

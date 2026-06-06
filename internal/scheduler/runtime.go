@@ -76,10 +76,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 
 	registrations := []func(context.Context, gocron.Scheduler) error{
 		r.registerCleanup,
-		r.registerPrefetch,
-		r.registerManifestRefresh,
-		r.registerProbe,
-		r.registerEndpointHealthFlush,
+		r.registerEcosystemJobs,
 	}
 	for _, register := range registrations {
 		if err := register(ctx, scheduler); err != nil {

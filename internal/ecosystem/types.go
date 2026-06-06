@@ -22,6 +22,41 @@ type Runtime interface {
 	Name() string
 }
 
+type JobKind string
+
+const (
+	JobCleanup             JobKind = "cleanup"
+	JobProbe               JobKind = "probe"
+	JobPrefetch            JobKind = "prefetch"
+	JobManifestRefresh     JobKind = "manifest_refresh"
+	JobEndpointHealthFlush JobKind = "endpoint_health_flush"
+	JobManualSync          JobKind = "manual_sync"
+)
+
+type JobSpec struct {
+	Name                  string
+	Kind                  JobKind
+	Ecosystem             string
+	Alias                 string
+	Tags                  *collectionlist.List[string]
+	Interval              time.Duration
+	Enabled               bool
+	Distributed           bool
+	StartImmediately      bool
+	ProbeJitter           time.Duration
+	ObserveEndpointHealth bool
+	Run                   func(context.Context) (JobRunResult, error)
+}
+
+type JobRunResult struct {
+	PrefetchReport *PrefetchReport
+}
+
+type JobProvider interface {
+	Runtime
+	Jobs() *collectionlist.List[JobSpec]
+}
+
 // Upstream describes one upstream alias within an ecosystem.
 type Upstream struct {
 	Ecosystem string
@@ -109,6 +144,23 @@ type PrefetchOptions struct {
 	FailureBackoff       time.Duration
 	RetryWindow          time.Duration
 	Now                  time.Time
+}
+
+func PrefetchOptionsFromConfig(cfg config.SchedulerPrefetchConfig, manifestOnly bool) PrefetchOptions {
+	return PrefetchOptions{
+		MaxRecords:           cfg.MaxRecords,
+		MinPullCount:         cfg.MinPullCount,
+		TagsPageSize:         cfg.TagsPageSize,
+		MaxCandidatesPerRepo: cfg.MaxCandidatesPerRepo,
+		MaxVersionDistance:   cfg.MaxVersionDistance,
+		MaxBytes:             cfg.MaxBytes,
+		MaxTasks:             cfg.MaxTasks,
+		MaxRepositories:      cfg.MaxRepositories,
+		FailureBackoff:       cfg.FailureBackoff,
+		RetryWindow:          cfg.RetryWindow,
+		Accept:               cfg.Accept,
+		ManifestOnly:         manifestOnly,
+	}
 }
 
 // PrefetchReport summarizes a prefetch run for any ecosystem.
