@@ -11,17 +11,31 @@ import (
 )
 
 func (s *Service) serviceName() string {
-	if s == nil || strings.TrimSpace(s.auth.Service) == "" {
-		return "regimux"
+	if s == nil {
+		return registryAuthServiceName(config.RegistryAuthConfig{})
 	}
-	return strings.TrimSpace(s.auth.Service)
+	return registryAuthServiceName(s.auth)
 }
 
 func (s *Service) issuer() string {
-	if s == nil || strings.TrimSpace(s.auth.Issuer) == "" {
-		return s.serviceName()
+	if s == nil {
+		return registryAuthIssuer(config.RegistryAuthConfig{})
 	}
-	return strings.TrimSpace(s.auth.Issuer)
+	return registryAuthIssuer(s.auth)
+}
+
+func registryAuthServiceName(auth config.RegistryAuthConfig) string {
+	if strings.TrimSpace(auth.Service) == "" {
+		return "regimux"
+	}
+	return strings.TrimSpace(auth.Service)
+}
+
+func registryAuthIssuer(auth config.RegistryAuthConfig) string {
+	if strings.TrimSpace(auth.Issuer) == "" {
+		return registryAuthServiceName(auth)
+	}
+	return strings.TrimSpace(auth.Issuer)
 }
 
 func verifyPassword(user config.AuthUserConfig, password string) error {

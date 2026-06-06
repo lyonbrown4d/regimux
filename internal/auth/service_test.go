@@ -141,10 +141,14 @@ func newTestService(t *testing.T) *auth.Service {
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		t.Fatalf("validate config: %v", err)
 	}
+	providers := collectionlist.NewList[authx.AuthenticationProvider](
+		auth.NewBasicAuthenticationProvider(cfg.Auth),
+		auth.NewJWTAuthenticationProvider(cfg.Auth),
+	)
 	resolvers := collectionlist.NewList[auth.ResourceResolver]()
 	resolvers.Add(containerauth.NewResourceResolver(cfg))
 
-	service, err := auth.NewService(cfg, nil, resolvers)
+	service, err := auth.NewService(cfg, nil, providers, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}

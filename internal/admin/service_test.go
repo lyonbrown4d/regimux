@@ -2,6 +2,7 @@ package admin_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"path/filepath"
@@ -9,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/arcgolabs/authx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/admin"
@@ -62,9 +64,7 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 
 func TestServiceSkipsAuthWhenRegistryAuthDisabled(t *testing.T) {
 	cfg := config.DefaultConfig()
-	resolvers := collectionlist.NewList[auth.ResourceResolver]()
-	resolvers.Add(containerauth.NewResourceResolver(cfg))
-	authService, err := auth.NewService(cfg, nil, resolvers)
+	authService, err := newTestAuthService(t, cfg)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
@@ -75,9 +75,7 @@ func TestServiceSkipsAuthWhenRegistryAuthDisabled(t *testing.T) {
 
 func TestServiceRequiresBasicAuthWhenRegistryAuthEnabled(t *testing.T) {
 	cfg := adminAuthConfig(t)
-	resolvers := collectionlist.NewList[auth.ResourceResolver]()
-	resolvers.Add(containerauth.NewResourceResolver(cfg))
-	authService, err := auth.NewService(cfg, nil, resolvers)
+	authService, err := newTestAuthService(t, cfg)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
@@ -95,9 +93,7 @@ func TestServiceRequiresBasicAuthWhenRegistryAuthEnabled(t *testing.T) {
 
 func TestServiceAllowsValidBasicAuthWhenRegistryAuthEnabled(t *testing.T) {
 	cfg := adminAuthConfig(t)
-	resolvers := collectionlist.NewList[auth.ResourceResolver]()
-	resolvers.Add(containerauth.NewResourceResolver(cfg))
-	authService, err := auth.NewService(cfg, nil, resolvers)
+	authService, err := newTestAuthService(t, cfg)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
@@ -159,6 +155,21 @@ func newAdminMessages(t *testing.T) *admin.Messages {
 		t.Fatalf("new admin messages: %v", err)
 	}
 	return messages
+}
+
+func newTestAuthService(t *testing.T, cfg config.Config) (*auth.Service, error) {
+	t.Helper()
+	providers := collectionlist.NewList[authx.AuthenticationProvider](
+		auth.NewBasicAuthenticationProvider(cfg.Auth),
+		auth.NewJWTAuthenticationProvider(cfg.Auth),
+	)
+	resolvers := collectionlist.NewList[auth.ResourceResolver]()
+	resolvers.Add(containerauth.NewResourceResolver(cfg))
+	service, err := auth.NewService(cfg, nil, providers, resolvers)
+	if err != nil {
+		return nil, fmt.Errorf("new auth service: %w", err)
+	}
+	return service, nil
 }
 
 func adminAuthConfig(t *testing.T) config.Config {

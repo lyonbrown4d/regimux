@@ -18,6 +18,7 @@ import (
 type Service struct {
 	cfg       config.Config
 	auth      config.RegistryAuthConfig
+	providers *collectionlist.List[authx.AuthenticationProvider]
 	resolvers *collectionlist.List[ResourceResolver]
 	logger    *slog.Logger
 	engine    *authx.Engine
@@ -25,13 +26,19 @@ type Service struct {
 	secret    []byte
 }
 
-func NewService(cfg config.Config, logger *slog.Logger, resolvers *collectionlist.List[ResourceResolver]) (*Service, error) {
+func NewService(
+	cfg config.Config,
+	logger *slog.Logger,
+	providers *collectionlist.List[authx.AuthenticationProvider],
+	resolvers *collectionlist.List[ResourceResolver],
+) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	service := &Service{
 		cfg:       cfg,
 		auth:      cfg.Auth,
+		providers: providers,
 		resolvers: resolvers,
 		logger:    logger.With("component", "auth"),
 		tokenTTL:  cfg.Auth.TokenTTL,
@@ -45,23 +52,21 @@ func NewService(cfg config.Config, logger *slog.Logger, resolvers *collectionlis
 		return service, nil
 	}
 
-	manager := authx.NewProviderManager(
-		authx.NewAuthenticationProviderFunc(service.authenticateBasic),
-		authjwt.NewAuthenticationProvider(
-			authjwt.WithHMACSecret(service.secret),
-			authjwt.WithIssuer(service.issuer()),
-			authjwt.WithAudience(service.serviceName()),
-			authjwt.WithRequiredExpiration(),
-			authjwt.WithRequiredIssuedAt(),
-			authjwt.WithClockSkew(time.Minute),
-		),
-	)
+	manager := authx.NewProviderManager(service.authenticationProviders().Values()...)
 	service.engine = authx.NewEngine(
 		authx.WithAuthenticationManager(manager),
 		authx.WithAuthorizer(authx.AuthorizerFunc(service.authorize)),
 		authx.WithLogger(logger),
 	)
-	service.logger.Info("registry auth enabled", "users", len(cfg.Auth.Users), "service", service.serviceName(), "issuer", service.issuer(), "token_ttl", service.tokenTTL)
+	service.logger.Info(
+		"registry auth enabled",
+		"users", len(cfg.Auth.Users),
+		"service", service.serviceName(),
+		"issuer", service.issuer(),
+		"token_ttl", service.tokenTTL,
+		"providers", service.authenticationProviders().Len(),
+		"resource_resolvers", service.resolversOrFallback().Len(),
+	)
 	return service, nil
 }
 
@@ -183,27 +188,6 @@ func (s *Service) validateRequestedScopes(scopes []string, username string) erro
 		return true
 	})
 	return validateErr
-}
-
-func (s *Service) authenticateBasic(_ context.Context, credential BasicCredential) (authx.AuthenticationResult, error) {
-	username := strings.TrimSpace(credential.Username)
-	if username == "" || credential.Password == "" {
-		return authx.AuthenticationResult{}, newAuthError(authx.ErrorCodeUnauthenticated, "registry credentials are required")
-	}
-	user, ok := s.auth.Users[username]
-	if !ok {
-		return authx.AuthenticationResult{}, newAuthError(authx.ErrorCodeUnauthenticated, "registry credentials are invalid")
-	}
-	if err := verifyPassword(user, credential.Password); err != nil {
-		return authx.AuthenticationResult{}, err
-	}
-	return authx.AuthenticationResult{
-		Principal: authx.Principal{
-			ID:          username,
-			Roles:       collectionlist.NewListWithCapacity[string](len(user.Groups), user.Groups...),
-			Permissions: collectionlist.NewListWithCapacity[string](len(user.Repositories), user.Repositories...),
-		},
-	}, nil
 }
 
 func (s *Service) authorize(_ context.Context, input authx.AuthorizationModel) (authx.Decision, error) {

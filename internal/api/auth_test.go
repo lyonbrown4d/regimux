@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/arcgolabs/authx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
@@ -90,10 +91,15 @@ func requestAuthToken(t *testing.T, baseURL, scope string) string {
 
 func newTestAuthService(t *testing.T) *auth.Service {
 	t.Helper()
+	cfg := authTestConfig()
+	providers := collectionlist.NewList[authx.AuthenticationProvider](
+		auth.NewBasicAuthenticationProvider(cfg.Auth),
+		auth.NewJWTAuthenticationProvider(cfg.Auth),
+	)
 	resolvers := collectionlist.NewList[auth.ResourceResolver]()
-	resolvers.Add(containerauth.NewResourceResolver(authTestConfig()))
+	resolvers.Add(containerauth.NewResourceResolver(cfg))
 
-	service, err := auth.NewService(authTestConfig(), nil, resolvers)
+	service, err := auth.NewService(cfg, nil, providers, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
