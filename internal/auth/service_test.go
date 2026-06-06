@@ -7,8 +7,10 @@ import (
 
 	"github.com/arcgolabs/authx"
 	authxhttp "github.com/arcgolabs/authx/http"
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -139,7 +141,10 @@ func newTestService(t *testing.T) *auth.Service {
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		t.Fatalf("validate config: %v", err)
 	}
-	service, err := auth.NewService(cfg, nil)
+	resolvers := collectionlist.NewList[auth.ResourceResolver]()
+	resolvers.Add(containerauth.NewResourceResolver(cfg))
+
+	service, err := auth.NewService(cfg, nil, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}

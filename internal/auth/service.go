@@ -12,29 +12,30 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/samber/oops"
 )
 
 type Service struct {
-	cfg      config.Config
-	auth     config.RegistryAuthConfig
-	logger   *slog.Logger
-	engine   *authx.Engine
-	tokenTTL time.Duration
-	secret   []byte
+	cfg       config.Config
+	auth      config.RegistryAuthConfig
+	resolvers *collectionlist.List[ResourceResolver]
+	logger    *slog.Logger
+	engine    *authx.Engine
+	tokenTTL  time.Duration
+	secret    []byte
 }
 
-func NewService(cfg config.Config, logger *slog.Logger) (*Service, error) {
+func NewService(cfg config.Config, logger *slog.Logger, resolvers *collectionlist.List[ResourceResolver]) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	service := &Service{
-		cfg:      cfg,
-		auth:     cfg.Auth,
-		logger:   logger.With("component", "auth"),
-		tokenTTL: cfg.Auth.TokenTTL,
-		secret:   []byte(strings.TrimSpace(cfg.Auth.TokenSecret)),
+		cfg:       cfg,
+		auth:      cfg.Auth,
+		resolvers: resolvers,
+		logger:    logger.With("component", "auth"),
+		tokenTTL:  cfg.Auth.TokenTTL,
+		secret:    []byte(strings.TrimSpace(cfg.Auth.TokenSecret)),
 	}
 	if service.tokenTTL <= 0 {
 		service.tokenTTL = 15 * time.Minute
@@ -237,49 +238,4 @@ func (s *Service) userAllows(username, resource string) bool {
 	return collectionlist.NewList(user.Repositories...).AnyMatch(func(_ int, pattern string) bool {
 		return repositoryPatternMatches(pattern, resource)
 	})
-}
-
-func (s *Service) AuthorizationForPath(path string, principal any) (authx.AuthorizationModel, error) {
-	if isRegistryPingPath(path) {
-		return authx.AuthorizationModel{
-			Principal: principal,
-			Action:    ActionRegistryPing,
-			Resource:  "registry",
-		}, nil
-	}
-	resource, err := s.ResourceFromPath(path)
-	if err != nil {
-		return authx.AuthorizationModel{}, err
-	}
-	return authx.AuthorizationModel{
-		Principal: principal,
-		Action:    ActionPull,
-		Resource:  resource,
-	}, nil
-}
-
-func (s *Service) ResourceFromPath(path string) (string, error) {
-	route, err := reference.Parse(path)
-	if err != nil {
-		return "", oops.Wrapf(err, "parse registry auth resource")
-	}
-	if route.Repo == "" {
-		return "", oops.In("auth").With("path", path).Errorf("registry auth resource is missing repository")
-	}
-	repo := route.Repo
-	if upstreamCfg, ok := s.cfg.ContainerUpstream(route.Alias); ok && upstreamCfg.DefaultNamespace != "" {
-		repo = route.WithDefaultNamespace(upstreamCfg.DefaultNamespace).Repo
-	}
-	return route.Alias + "/" + strings.Trim(repo, "/"), nil
-}
-
-func (s *Service) ScopeForPath(path string) string {
-	if isRegistryPingPath(path) {
-		return ""
-	}
-	resource, err := s.ResourceFromPath(path)
-	if err != nil || resource == "" {
-		return ""
-	}
-	return ScopeTypeRepository + ":" + resource + ":" + ActionPull
 }

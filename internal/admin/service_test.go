@@ -16,6 +16,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -61,7 +62,9 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 
 func TestServiceSkipsAuthWhenRegistryAuthDisabled(t *testing.T) {
 	cfg := config.DefaultConfig()
-	authService, err := auth.NewService(cfg, nil)
+	resolvers := collectionlist.NewList[auth.ResourceResolver]()
+	resolvers.Add(containerauth.NewResourceResolver(cfg))
+	authService, err := auth.NewService(cfg, nil, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
@@ -72,7 +75,9 @@ func TestServiceSkipsAuthWhenRegistryAuthDisabled(t *testing.T) {
 
 func TestServiceRequiresBasicAuthWhenRegistryAuthEnabled(t *testing.T) {
 	cfg := adminAuthConfig(t)
-	authService, err := auth.NewService(cfg, nil)
+	resolvers := collectionlist.NewList[auth.ResourceResolver]()
+	resolvers.Add(containerauth.NewResourceResolver(cfg))
+	authService, err := auth.NewService(cfg, nil, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
@@ -90,7 +95,9 @@ func TestServiceRequiresBasicAuthWhenRegistryAuthEnabled(t *testing.T) {
 
 func TestServiceAllowsValidBasicAuthWhenRegistryAuthEnabled(t *testing.T) {
 	cfg := adminAuthConfig(t)
-	authService, err := auth.NewService(cfg, nil)
+	resolvers := collectionlist.NewList[auth.ResourceResolver]()
+	resolvers.Add(containerauth.NewResourceResolver(cfg))
+	authService, err := auth.NewService(cfg, nil, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}

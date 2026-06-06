@@ -15,6 +15,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
+	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/dockerintegration"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/registrytool"
@@ -64,6 +65,7 @@ func buildApp(configPath string, args ...string) *dix.App {
 	storeModule := storemodule.Module
 	ecosystemModule := ecosystem.Module
 	containerCacheModule := cache.Module
+	containerAuthModule := containerauth.Module
 	containerSuggestionModule := suggestion.Module
 	schedulerModule := scheduler.Module
 	containerDockerModule := dockerintegration.Module
@@ -81,6 +83,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux developer dependency cache gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, containerRegistryToolModule, workerModule, probeHealthModule, containerUpstreamModule, storeModule, ecosystemModule, containerCacheModule, containerSuggestionModule, schedulerModule, adminModule, containerModule, goModule, npmModule, pypiModule, mavenModule, endpointModule, apiModule, containerDockerModule),
+		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, containerRegistryToolModule, workerModule, probeHealthModule, containerUpstreamModule, storeModule, ecosystemModule, containerCacheModule, containerAuthModule, containerSuggestionModule, schedulerModule, adminModule, containerModule, goModule, npmModule, pypiModule, mavenModule, endpointModule, apiModule, containerDockerModule),
 	)
 }

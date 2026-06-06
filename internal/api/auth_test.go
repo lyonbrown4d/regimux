@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
+	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -89,8 +90,10 @@ func requestAuthToken(t *testing.T, baseURL, scope string) string {
 
 func newTestAuthService(t *testing.T) *auth.Service {
 	t.Helper()
+	resolvers := collectionlist.NewList[auth.ResourceResolver]()
+	resolvers.Add(containerauth.NewResourceResolver(authTestConfig()))
 
-	service, err := auth.NewService(authTestConfig(), nil)
+	service, err := auth.NewService(authTestConfig(), nil, resolvers)
 	if err != nil {
 		t.Fatalf("new auth service: %v", err)
 	}
