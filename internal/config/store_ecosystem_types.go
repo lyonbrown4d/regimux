@@ -44,11 +44,12 @@ type StoreObjectSFTPConfig struct {
 }
 
 type SchedulerConfig struct {
-	Enabled         bool                    `json:"enabled"          koanf:"enabled"          mapstructure:"enabled"`
-	DistributedLock bool                    `json:"distributed_lock" koanf:"distributed_lock" mapstructure:"distributed_lock"`
-	LockTTL         time.Duration           `json:"lock_ttl"         koanf:"lock_ttl"         mapstructure:"lock_ttl"         validate:"min=0"`
-	Cleanup         SchedulerCleanupConfig  `json:"cleanup"          koanf:"cleanup"          mapstructure:"cleanup"`
-	Prefetch        SchedulerPrefetchConfig `json:"prefetch"         koanf:"prefetch"         mapstructure:"prefetch"`
+	Enabled         bool                           `json:"enabled"          koanf:"enabled"          mapstructure:"enabled"`
+	DistributedLock bool                           `json:"distributed_lock" koanf:"distributed_lock" mapstructure:"distributed_lock"`
+	LockTTL         time.Duration                  `json:"lock_ttl"         koanf:"lock_ttl"         mapstructure:"lock_ttl"         validate:"min=0"`
+	Cleanup         SchedulerCleanupConfig         `json:"cleanup"          koanf:"cleanup"          mapstructure:"cleanup"`
+	Prefetch        SchedulerPrefetchConfig        `json:"prefetch"         koanf:"prefetch"         mapstructure:"prefetch"`
+	ManifestRefresh SchedulerManifestRefreshConfig `json:"manifest_refresh" koanf:"manifest_refresh" mapstructure:"manifest_refresh"`
 }
 
 type SchedulerCleanupConfig struct {
@@ -78,6 +79,12 @@ type SchedulerPrefetchConfig struct {
 	RetryWindow          time.Duration `json:"retry_window"            koanf:"retry_window"            mapstructure:"retry_window"            validate:"min=0"`
 	Accept               string        `json:"accept"                  koanf:"accept"                  mapstructure:"accept"`
 	Distributed          bool          `json:"distributed"             koanf:"distributed"             mapstructure:"distributed"`
+}
+
+type SchedulerManifestRefreshConfig struct {
+	Enabled     bool          `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
+	Interval    time.Duration `json:"interval"    koanf:"interval"    mapstructure:"interval"    validate:"min=0"`
+	Distributed bool          `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
 }
 
 type WorkerConfig struct {

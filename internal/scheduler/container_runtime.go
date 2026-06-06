@@ -117,6 +117,7 @@ func (r *ContainerRuntime) Prefetch(ctx context.Context, opts ecosystem.Prefetch
 		FailureBackoff:       opts.FailureBackoff,
 		RetryWindow:          opts.RetryWindow,
 		Now:                  opts.Now,
+		ManifestOnly:         opts.ManifestOnly,
 	})
 	if err != nil {
 		return nil, oops.Wrapf(err, "run container prefetch")

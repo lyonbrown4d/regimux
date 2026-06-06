@@ -142,10 +142,7 @@ func (p manifestProxy) lookupStaleTagRecord(ctx context.Context, req ManifestReq
 }
 
 func (p manifestProxy) validStaleManifest(record *meta.ManifestRecord, now time.Time) bool {
-	if !p.withinStaleWindow(record.ExpiresAt, now) {
-		return false
-	}
-	return true
+	return p.withinStaleWindow(record.ExpiresAt, now)
 }
 
 func (p manifestProxy) withinStaleWindow(expiresAt, now time.Time) bool {

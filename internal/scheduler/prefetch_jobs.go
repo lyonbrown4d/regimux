@@ -12,51 +12,105 @@ import (
 
 func (r *Runtime) registerPrefetch(ctx context.Context, scheduler gocron.Scheduler) error {
 	cfg := r.cfg.Scheduler.Prefetch
-	if !cfg.Enabled || cfg.Interval <= 0 {
+	return r.registerPrefetchJob(
+		ctx,
+		scheduler,
+		cfg.Enabled,
+		cfg.Interval,
+		cfg.Distributed,
+		gocron.WithName("regimux.prefetch"),
+		[]string{"maintenance", "prefetch"},
+		"register prefetch job",
+		"prefetch job skipped because no ecosystem exposes prefetch capability",
+		gocron.NewTask(r.runPrefetch),
+	)
+}
+
+func (r *Runtime) runPrefetch(ctx context.Context) error {
+	return r.runEcosystemPrefetchJobs(ctx, r.prefetchOptions(false), "prefetch")
+}
+
+func (r *Runtime) registerManifestRefresh(ctx context.Context, scheduler gocron.Scheduler) error {
+	cfg := r.cfg.Scheduler.ManifestRefresh
+	return r.registerPrefetchJob(
+		ctx,
+		scheduler,
+		cfg.Enabled,
+		cfg.Interval,
+		cfg.Distributed,
+		gocron.WithName("regimux.manifest_refresh"),
+		[]string{"maintenance", "manifest-refresh"},
+		"register manifest refresh job",
+		"manifest refresh job skipped because no ecosystem exposes prefetch capability",
+		gocron.NewTask(r.runManifestRefresh),
+	)
+}
+
+func (r *Runtime) registerPrefetchJob(
+	ctx context.Context,
+	scheduler gocron.Scheduler,
+	enabled bool,
+	interval time.Duration,
+	distributed bool,
+	nameOption gocron.JobOption,
+	tags []string,
+	errorMessage string,
+	skipMessage string,
+	task gocron.Task,
+) error {
+	if !enabled || interval <= 0 {
 		return nil
 	}
 	if r.prefetchers().Len() == 0 {
-		r.logger.InfoContext(ctx, "prefetch job skipped because no ecosystem exposes prefetch capability")
+		r.logger.InfoContext(ctx, skipMessage)
 		return nil
 	}
 	options := []gocron.JobOption{
-		gocron.WithName("regimux.prefetch"),
-		gocron.WithTags("maintenance", "prefetch"),
+		nameOption,
+		gocron.WithTags(tags...),
 		gocron.WithContext(ctx),
 		gocron.WithSingletonMode(gocron.LimitModeReschedule),
 	}
-	if !cfg.Distributed {
+	if !distributed {
 		options = append(options, gocron.WithDisabledDistributedJobLocker(true))
 	}
-	if _, err := scheduler.NewJob(
-		gocron.DurationJob(cfg.Interval),
-		gocron.NewTask(r.runPrefetch),
-		options...,
-	); err != nil {
-		return oops.Wrapf(err, "register prefetch job")
+	if _, err := scheduler.NewJob(gocron.DurationJob(interval), task, options...); err != nil {
+		return oops.With("message", errorMessage).Wrap(err)
 	}
 	return nil
 }
 
-func (r *Runtime) runPrefetch(ctx context.Context) error {
-	options := ecosystem.PrefetchOptions{
-		MaxRecords:           r.cfg.Scheduler.Prefetch.MaxRecords,
-		MinPullCount:         r.cfg.Scheduler.Prefetch.MinPullCount,
-		TagsPageSize:         r.cfg.Scheduler.Prefetch.TagsPageSize,
-		MaxCandidatesPerRepo: r.cfg.Scheduler.Prefetch.MaxCandidatesPerRepo,
-		MaxVersionDistance:   r.cfg.Scheduler.Prefetch.MaxVersionDistance,
-		MaxBytes:             r.cfg.Scheduler.Prefetch.MaxBytes,
-		MaxTasks:             r.cfg.Scheduler.Prefetch.MaxTasks,
-		MaxRepositories:      r.cfg.Scheduler.Prefetch.MaxRepositories,
-		FailureBackoff:       r.cfg.Scheduler.Prefetch.FailureBackoff,
-		RetryWindow:          r.cfg.Scheduler.Prefetch.RetryWindow,
-		Accept:               r.cfg.Scheduler.Prefetch.Accept,
+func (r *Runtime) runManifestRefresh(ctx context.Context) error {
+	return r.runEcosystemPrefetchJobs(ctx, r.prefetchOptions(true), "manifest_refresh")
+}
+
+func (r *Runtime) prefetchOptions(manifestOnly bool) ecosystem.PrefetchOptions {
+	cfg := r.cfg.Scheduler.Prefetch
+	return ecosystem.PrefetchOptions{
+		MaxRecords:           cfg.MaxRecords,
+		MinPullCount:         cfg.MinPullCount,
+		TagsPageSize:         cfg.TagsPageSize,
+		MaxCandidatesPerRepo: cfg.MaxCandidatesPerRepo,
+		MaxVersionDistance:   cfg.MaxVersionDistance,
+		MaxBytes:             cfg.MaxBytes,
+		MaxTasks:             cfg.MaxTasks,
+		MaxRepositories:      cfg.MaxRepositories,
+		FailureBackoff:       cfg.FailureBackoff,
+		RetryWindow:          cfg.RetryWindow,
+		Accept:               cfg.Accept,
+		ManifestOnly:         manifestOnly,
 	}
+}
+
+func (r *Runtime) runEcosystemPrefetchJobs(
+	ctx context.Context,
+	options ecosystem.PrefetchOptions, jobType string,
+) error {
 	group, groupCtx := errgroup.WithContext(ctx)
 	r.prefetchers().Range(func(_ int, prefetcher ecosystem.Prefetcher) bool {
 		jobPrefetcher := prefetcher
 		group.Go(func() error {
-			return r.runEcosystemPrefetch(groupCtx, jobPrefetcher, options)
+			return r.runEcosystemPrefetch(groupCtx, jobPrefetcher, options, jobType)
 		})
 		return true
 	})
@@ -66,19 +120,20 @@ func (r *Runtime) runPrefetch(ctx context.Context) error {
 	return nil
 }
 
-func (r *Runtime) runEcosystemPrefetch(ctx context.Context, prefetcher ecosystem.Prefetcher, options ecosystem.PrefetchOptions) error {
+func (r *Runtime) runEcosystemPrefetch(ctx context.Context, prefetcher ecosystem.Prefetcher, options ecosystem.PrefetchOptions, jobType string) error {
 	startedAt := time.Now()
 	if prefetcher == nil {
 		return nil
 	}
 	report, err := prefetcher.Prefetch(ctx, options)
 	if err != nil {
-		err = oops.With("ecosystem", prefetcher.Name()).Wrapf(err, "run ecosystem prefetch job")
-		r.observeJob(ctx, "prefetch", prefetcher.Name(), startedAt, err)
+		err = oops.With("ecosystem", prefetcher.Name()).With("job_type", jobType).Wrapf(err, "run ecosystem prefetch job")
+		r.observeJob(ctx, jobType, prefetcher.Name(), startedAt, err)
 		return err
 	}
 	r.logger.InfoContext(ctx, "ecosystem prefetch job completed",
 		"ecosystem", prefetcher.Name(),
+		"job_type", jobType,
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 		"scanned_records", report.ScannedRecords,
 		"skipped_records", report.SkippedRecords,
@@ -92,6 +147,6 @@ func (r *Runtime) runEcosystemPrefetch(ctx context.Context, prefetcher ecosystem
 		"retry_requested", report.RetryRequested,
 	)
 	r.observePrefetchReport(ctx, report)
-	r.observeJob(ctx, "prefetch", prefetcher.Name(), startedAt, nil)
+	r.observeJob(ctx, jobType, prefetcher.Name(), startedAt, nil)
 	return nil
 }

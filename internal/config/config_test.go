@@ -39,6 +39,7 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	assertDefaultCleanup(t, cfg.Scheduler.Cleanup)
 	assertDefaultPrefetch(t, cfg.Scheduler.Prefetch)
 	assertDefaultBlobCache(t, cfg.Cache.Blob)
+	assertDefaultManifestRefresh(t, cfg.Scheduler.ManifestRefresh)
 	if hub.HTTP.HTTP2.Enabled {
 		t.Fatalf("unexpected upstream http2 default: %#v", hub.HTTP.HTTP2)
 	}
@@ -140,6 +141,14 @@ func assertDefaultPrefetch(t *testing.T, prefetch config.SchedulerPrefetchConfig
 	}
 	if prefetch.FailureBackoff != time.Hour || prefetch.RetryWindow != 24*time.Hour {
 		t.Fatalf("unexpected prefetch retry defaults: %#v", prefetch)
+	}
+}
+
+func assertDefaultManifestRefresh(t *testing.T, manifestRefresh config.SchedulerManifestRefreshConfig) {
+	t.Helper()
+
+	if manifestRefresh.Enabled || manifestRefresh.Interval != 30*time.Minute || !manifestRefresh.Distributed {
+		t.Fatalf("unexpected manifest_refresh defaults: %#v", manifestRefresh)
 	}
 }
 

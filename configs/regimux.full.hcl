@@ -217,6 +217,12 @@ scheduler {
     retry_window = "24h"
     distributed = true
   }
+
+  manifest_refresh {
+    enabled = false
+    interval = "30m"
+    distributed = true
+  }
 }
 
 worker {

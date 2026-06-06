@@ -139,6 +139,11 @@ func defaultSchedulerConfig() SchedulerConfig {
 			RetryWindow:          24 * time.Hour,
 			Distributed:          true,
 		},
+		ManifestRefresh: SchedulerManifestRefreshConfig{
+			Enabled:     false,
+			Interval:    30 * time.Minute,
+			Distributed: true,
+		},
 	}
 }
 

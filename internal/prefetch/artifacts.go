@@ -53,6 +53,9 @@ func (s *Service) prefetchManifestArtifacts(
 	mediaType := cachedManifestMediaType(manifest)
 	switch {
 	case isImageManifestMediaType(mediaType):
+		if opts.ManifestOnly {
+			return result, nil
+		}
 		next, err := s.prefetchImageManifestBlobs(ctx, execution, candidate, manifest)
 		return result.add(next), err
 	case isIndexManifestMediaType(mediaType):

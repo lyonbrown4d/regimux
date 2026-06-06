@@ -97,6 +97,25 @@ func TestServiceRunCountsMissingBlobService(t *testing.T) {
 	assertReport(t, report, 0, 1)
 }
 
+func TestServiceRunManifestOnlySkipsBlobRequests(t *testing.T) {
+	ctx := context.Background()
+	store := newPrefetchMetaStore(ctx, t)
+	recordObservedPull(ctx, t, store)
+
+	manifests := newFakeManifestService(map[string]*cache.CachedManifest{
+		targetTag: cachedManifest(testDigest("x"), distribution.MediaTypeOCIManifest, imageManifestBody(t, testDigest("y"), testDigest("z"))),
+	})
+	opts := defaultRunOptions()
+	opts.ManifestOnly = true
+
+	report, err := runPrefetchWithOptions(ctx, t, store, manifests, nil, opts)
+	if err != nil {
+		t.Fatalf("run manifest-only prefetch: %v", err)
+	}
+	assertReport(t, report, 1, 0)
+	assertManifestReferences(t, manifests.requestSnapshot(), []string{targetTag})
+}
+
 func TestServiceRunRespectsByteBudgetAndRecordsHistory(t *testing.T) {
 	ctx := context.Background()
 	store := newPrefetchMetaStore(ctx, t)

@@ -9,6 +9,7 @@ Current jobs:
 - cache cleanup and object capacity control
 - runtime `probe` capabilities
 - runtime `prefetch` capabilities
+- runtime `manifest_refresh` capability (manifest-only warmup)
 
 When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas. Probe jobs also publish endpoint health into Redis/Valkey hot state, while SQL metadata remains the durable source of truth.
 
@@ -102,6 +103,20 @@ scheduler {
 ```
 
 Runs and outcomes are stored in metadata and can be viewed from Admin UI. Dependency ecosystem prefetch records use scoped aliases such as `go/default` or `npm/default`; version prediction for npm/PyPI/Maven/Go is intentionally left as a later ecosystem-specific layer.
+
+## Manifest Refresh
+
+Manifest refresh runs the same prefetch scheduling pipeline, but in manifest-only mode. It only fetches manifest metadata (including index child manifests) and does not download blob content. This is useful for keeping repository manifest metadata fresh across aliases and mirrors without bandwidth cost of full blob prefetch.
+
+```hcl
+scheduler {
+  manifest_refresh {
+    enabled = true
+    interval = "30m"
+    distributed = true
+  }
+}
+```
 
 ## Worker Pool
 

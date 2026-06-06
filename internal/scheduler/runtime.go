@@ -60,6 +60,7 @@ func (r *Runtime) Start(ctx context.Context) error {
 	r.logger.Info("scheduler starting",
 		"cleanup_enabled", r.cfg.Scheduler.Cleanup.Enabled,
 		"prefetch_enabled", r.cfg.Scheduler.Prefetch.Enabled,
+		"manifest_refresh_enabled", r.cfg.Scheduler.ManifestRefresh.Enabled,
 		"distributed_lock", r.cfg.Scheduler.DistributedLock,
 		"ecosystems", runtimeNames(r.runtimes).Values(),
 	)
@@ -73,17 +74,17 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 	r.scheduler = scheduler
 
-	if err := r.registerCleanup(ctx, scheduler); err != nil {
-		return join(err, r.Stop(ctx))
+	registrations := []func(context.Context, gocron.Scheduler) error{
+		r.registerCleanup,
+		r.registerPrefetch,
+		r.registerManifestRefresh,
+		r.registerProbe,
+		r.registerEndpointHealthFlush,
 	}
-	if err := r.registerPrefetch(ctx, scheduler); err != nil {
-		return join(err, r.Stop(ctx))
-	}
-	if err := r.registerProbe(ctx, scheduler); err != nil {
-		return join(err, r.Stop(ctx))
-	}
-	if err := r.registerEndpointHealthFlush(ctx, scheduler); err != nil {
-		return join(err, r.Stop(ctx))
+	for _, register := range registrations {
+		if err := register(ctx, scheduler); err != nil {
+			return join(err, r.Stop(ctx))
+		}
 	}
 	scheduler.Start()
 	if r.metrics != nil {

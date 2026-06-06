@@ -129,6 +129,9 @@ func addSchedulerRows(rows *collectionlist.List[ConfigRow], cfg config.Scheduler
 	addRow(rows, "scheduler.prefetch.failure_backoff", durationString(cfg.Prefetch.FailureBackoff))
 	addRow(rows, "scheduler.prefetch.retry_window", durationString(cfg.Prefetch.RetryWindow))
 	addRow(rows, "scheduler.prefetch.distributed", boolString(cfg.Prefetch.Distributed))
+	addRow(rows, "scheduler.manifest_refresh.enabled", boolString(cfg.ManifestRefresh.Enabled))
+	addRow(rows, "scheduler.manifest_refresh.interval", durationString(cfg.ManifestRefresh.Interval))
+	addRow(rows, "scheduler.manifest_refresh.distributed", boolString(cfg.ManifestRefresh.Distributed))
 }
 
 func addWorkerRows(rows *collectionlist.List[ConfigRow], cfg config.WorkerConfig) {

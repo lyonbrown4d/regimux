@@ -102,6 +102,7 @@ type PrefetchOptions struct {
 	MaxCandidatesPerRepo int
 	MaxVersionDistance   int
 	Accept               string
+	ManifestOnly         bool
 	MaxBytes             int64
 	MaxTasks             int
 	MaxRepositories      int

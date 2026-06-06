@@ -41,6 +41,7 @@ type RunOptions struct {
 	MaxCandidatesPerRepo int
 	MaxVersionDistance   int
 	Accept               string
+	ManifestOnly         bool
 	MaxBytes             int64
 	MaxTasks             int
 	MaxRepositories      int
@@ -101,6 +102,7 @@ func (s *Service) Run(ctx context.Context, opts RunOptions) (*RunReport, error) 
 		"min_pull_count", opts.MinPullCount,
 		"max_candidates_per_repo", opts.MaxCandidatesPerRepo,
 		"max_version_distance", opts.MaxVersionDistance,
+		"manifest_only", opts.ManifestOnly,
 		"max_bytes", opts.MaxBytes,
 		"max_tasks", opts.MaxTasks,
 		"max_repositories", opts.MaxRepositories,

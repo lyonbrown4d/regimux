@@ -77,6 +77,7 @@ Important defaults:
 - `store.object.path = "data/objects"`
 - `scheduler.cleanup.enabled = true`
 - `scheduler.prefetch.enabled = false`
+- `scheduler.manifest_refresh.enabled = false`
 - `docker.enabled = false`
 - `docker.observe = true`
 - `docker.prewarm.alias = "hub"`

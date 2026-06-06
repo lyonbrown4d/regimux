@@ -9,6 +9,7 @@ RegiMux 使用 `gocron` 执行后台任务，并通过 worker 池限制异步任
 - 缓存清理和对象容量控制
 - runtime `probe` capability
 - runtime `prefetch` capability
+- runtime `manifest_refresh` capability（仅刷新 manifest）
 
 配置 Redis 或 Valkey 后，调度任务可以使用分布式锁，避免多个副本重复执行同一类后台任务。probe 任务也会把 endpoint 健康状态发布到 Redis/Valkey 热状态层，但 SQL 元数据仍是持久化事实来源。
 
@@ -102,6 +103,20 @@ scheduler {
 ```
 
 运行记录和结果会存入元数据，并可在 Admin UI 中查看。依赖生态 prefetch 记录使用 `go/default`、`npm/default` 这类 scoped alias；npm/PyPI/Maven/Go 的版本预测会作为后续生态专属层继续迭代。
+
+## Manifest 刷新
+
+`manifest_refresh` 使用同一套预热管道，但只执行 manifest 刷新：会拉取 manifest 和索引 manifest 子 manifest，不会下载 blob。适合在低带宽场景下定期保持镜像元数据新鲜。
+
+```hcl
+scheduler {
+  manifest_refresh {
+    enabled = true
+    interval = "30m"
+    distributed = true
+  }
+}
+```
 
 ## Worker 池
 
