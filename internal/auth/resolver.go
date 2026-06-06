@@ -1,26 +1,27 @@
 package auth
 
 type ResourceResolver interface {
-	MatchPath(path string) bool
-	IsPingPath(path string) bool
-	ResourceFromPath(path string) (string, error)
-	ScopeFromResource(resource string) string
+	ResolvePath(path string) (ResolvedResource, bool, error)
+}
+
+type ResolvedResource struct {
+	Ping     bool
+	Resource string
+	Scope    string
 }
 
 type defaultResourceResolver struct{}
 
-func (defaultResourceResolver) MatchPath(path string) bool {
-	return isRegistryPingPath(path)
+func (defaultResourceResolver) ResolvePath(path string) (ResolvedResource, bool, error) {
+	if !isRegistryPingPath(path) {
+		return ResolvedResource{}, false, nil
+	}
+	return ResolvedResource{Ping: true, Resource: "registry"}, true, nil
 }
 
-func (defaultResourceResolver) IsPingPath(path string) bool {
-	return isRegistryPingPath(path)
-}
-
-func (defaultResourceResolver) ResourceFromPath(path string) (string, error) {
-	return "", nil
-}
-
-func (defaultResourceResolver) ScopeFromResource(resource string) string {
-	return ""
+func RepositoryPullResource(resource string) ResolvedResource {
+	return ResolvedResource{
+		Resource: resource,
+		Scope:    ScopeTypeRepository + ":" + resource + ":" + ActionPull,
+	}
 }

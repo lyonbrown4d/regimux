@@ -16,33 +16,47 @@ import (
 )
 
 type Service struct {
-	cfg       config.Config
-	auth      config.RegistryAuthConfig
-	providers *collectionlist.List[authx.AuthenticationProvider]
-	resolvers *collectionlist.List[ResourceResolver]
-	logger    *slog.Logger
-	engine    *authx.Engine
-	tokenTTL  time.Duration
-	secret    []byte
+	cfg              config.Config
+	auth             config.RegistryAuthConfig
+	users            *UserDirectory
+	resolvers        *collectionlist.List[ResourceResolver]
+	logger           *slog.Logger
+	engine           *authx.Engine
+	tokenTTL         time.Duration
+	secret           []byte
+	serviceNameValue string
+	issuerValue      string
+	providers        int
+	resolverCount    int
 }
 
 func NewService(
 	cfg config.Config,
 	logger *slog.Logger,
+	users *UserDirectory,
 	providers *collectionlist.List[authx.AuthenticationProvider],
 	resolvers *collectionlist.List[ResourceResolver],
 ) (*Service, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	if users == nil {
+		users = NewUserDirectory(cfg.Auth)
+	}
+	providerList := authenticationProviders(providers)
+	resolverList := resourceResolvers(resolvers)
 	service := &Service{
-		cfg:       cfg,
-		auth:      cfg.Auth,
-		providers: providers,
-		resolvers: resolvers,
-		logger:    logger.With("component", "auth"),
-		tokenTTL:  cfg.Auth.TokenTTL,
-		secret:    []byte(strings.TrimSpace(cfg.Auth.TokenSecret)),
+		cfg:              cfg,
+		auth:             cfg.Auth,
+		users:            users,
+		resolvers:        resolverList,
+		logger:           logger.With("component", "auth"),
+		tokenTTL:         cfg.Auth.TokenTTL,
+		secret:           []byte(strings.TrimSpace(cfg.Auth.TokenSecret)),
+		serviceNameValue: registryAuthServiceName(cfg.Auth),
+		issuerValue:      registryAuthIssuer(cfg.Auth),
+		providers:        providerList.Len(),
+		resolverCount:    resolverList.Len(),
 	}
 	if service.tokenTTL <= 0 {
 		service.tokenTTL = 15 * time.Minute
@@ -52,7 +66,7 @@ func NewService(
 		return service, nil
 	}
 
-	manager := authx.NewProviderManager(service.authenticationProviders().Values()...)
+	manager := authx.NewProviderManager(providerList.Values()...)
 	service.engine = authx.NewEngine(
 		authx.WithAuthenticationManager(manager),
 		authx.WithAuthorizer(authx.AuthorizerFunc(service.authorize)),
@@ -60,12 +74,12 @@ func NewService(
 	)
 	service.logger.Info(
 		"registry auth enabled",
-		"users", len(cfg.Auth.Users),
+		"users", users.Len(),
 		"service", service.serviceName(),
 		"issuer", service.issuer(),
 		"token_ttl", service.tokenTTL,
-		"providers", service.authenticationProviders().Len(),
-		"resource_resolvers", service.resolversOrFallback().Len(),
+		"providers", service.providers,
+		"resource_resolvers", service.resolverCount,
 	)
 	return service, nil
 }
@@ -215,11 +229,8 @@ func (s *Service) authorize(_ context.Context, input authx.AuthorizationModel) (
 }
 
 func (s *Service) userAllows(username, resource string) bool {
-	user, ok := s.auth.Users[username]
-	if !ok {
+	if s == nil || s.users == nil {
 		return false
 	}
-	return collectionlist.NewList(user.Repositories...).AnyMatch(func(_ int, pattern string) bool {
-		return repositoryPatternMatches(pattern, resource)
-	})
+	return s.users.Allows(username, resource)
 }

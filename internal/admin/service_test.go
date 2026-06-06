@@ -159,13 +159,14 @@ func newAdminMessages(t *testing.T) *admin.Messages {
 
 func newTestAuthService(t *testing.T, cfg config.Config) (*auth.Service, error) {
 	t.Helper()
+	users := auth.NewUserDirectory(cfg.Auth)
 	providers := collectionlist.NewList[authx.AuthenticationProvider](
-		auth.NewBasicAuthenticationProvider(cfg.Auth),
+		auth.NewBasicAuthenticationProvider(users),
 		auth.NewJWTAuthenticationProvider(cfg.Auth),
 	)
 	resolvers := collectionlist.NewList[auth.ResourceResolver]()
 	resolvers.Add(containerauth.NewResourceResolver(cfg))
-	service, err := auth.NewService(cfg, nil, providers, resolvers)
+	service, err := auth.NewService(cfg, nil, users, providers, resolvers)
 	if err != nil {
 		return nil, fmt.Errorf("new auth service: %w", err)
 	}

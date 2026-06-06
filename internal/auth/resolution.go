@@ -9,70 +9,76 @@ import (
 )
 
 func (s *Service) AuthorizationForPath(path string, principal any) (authx.AuthorizationModel, error) {
-	resolver, err := s.resolvePath(path)
+	resolved, err := s.resolvePath(path)
 	if err != nil {
 		return authx.AuthorizationModel{}, err
 	}
-	if resolver.IsPingPath(path) {
+	if resolved.Ping {
 		return authx.AuthorizationModel{
 			Principal: principal,
 			Action:    ActionRegistryPing,
 			Resource:  "registry",
 		}, nil
 	}
-	resource, err := resolver.ResourceFromPath(path)
-	if err != nil {
-		return authx.AuthorizationModel{}, oops.With("path", path).Wrapf(err, "resolve auth resource")
-	}
 	return authx.AuthorizationModel{
 		Principal: principal,
 		Action:    ActionPull,
-		Resource:  resource,
+		Resource:  resolved.Resource,
 	}, nil
 }
 
 func (s *Service) ResourceFromPath(path string) (string, error) {
-	resolver, err := s.resolvePath(path)
+	resolved, err := s.resolvePath(path)
 	if err != nil {
 		return "", err
 	}
-	resource, err := resolver.ResourceFromPath(path)
-	if err != nil {
-		return "", oops.With("path", path).Wrapf(err, "resolve auth resource")
-	}
-	return resource, nil
+	return resolved.Resource, nil
 }
 
 func (s *Service) ScopeForPath(path string) string {
-	resolver, err := s.resolvePath(path)
+	resolved, err := s.resolvePath(path)
 	if err != nil {
 		return ""
 	}
-	if resolver.IsPingPath(path) {
+	if resolved.Ping || strings.TrimSpace(resolved.Resource) == "" {
 		return ""
 	}
-	resource, err := resolver.ResourceFromPath(path)
-	if err != nil || strings.TrimSpace(resource) == "" {
-		return ""
-	}
-	return resolver.ScopeFromResource(resource)
+	return resolved.Scope
 }
 
-func (s *Service) resolvePath(path string) (ResourceResolver, error) {
-	for _, resolver := range s.resolversOrFallback().Values() {
-		if resolver != nil && resolver.MatchPath(path) {
-			return resolver, nil
+func (s *Service) resolvePath(path string) (ResolvedResource, error) {
+	var resolved ResolvedResource
+	var resolvedErr error
+	var matched bool
+	s.resolvers.Range(func(_ int, resolver ResourceResolver) bool {
+		if resolver == nil {
+			return true
 		}
+		value, ok, err := resolver.ResolvePath(path)
+		if !ok {
+			return true
+		}
+		matched = true
+		if err != nil {
+			resolvedErr = oops.With("path", path).Wrapf(err, "resolve auth resource")
+			return false
+		}
+		resolved = value
+		return false
+	})
+	if matched {
+		return resolved, resolvedErr
 	}
-	if isRegistryPingPath(path) {
-		return defaultResourceResolver{}, nil
+	resolved, matched, resolvedErr = defaultResourceResolver{}.ResolvePath(path)
+	if matched {
+		return resolved, resolvedErr
 	}
-	return nil, oops.In("auth").With("path", path).Errorf("no resource resolver for path")
+	return ResolvedResource{}, oops.In("auth").With("path", path).Errorf("no resource resolver for path")
 }
 
-func (s *Service) resolversOrFallback() *collectionlist.List[ResourceResolver] {
-	if s.resolvers == nil || s.resolvers.Len() == 0 {
+func resourceResolvers(resolvers *collectionlist.List[ResourceResolver]) *collectionlist.List[ResourceResolver] {
+	if resolvers == nil || resolvers.Len() == 0 {
 		return collectionlist.NewList[ResourceResolver]()
 	}
-	return s.resolvers
+	return resolvers
 }

@@ -17,34 +17,25 @@ func NewResourceResolver(cfg config.Config) auth.ResourceResolver {
 	return &Resolver{cfg: cfg}
 }
 
-func (r *Resolver) MatchPath(path string) bool {
-	_, err := reference.Parse(strings.TrimSpace(path))
-	return err == nil
-}
-
-func (r *Resolver) IsPingPath(path string) bool {
-	route, err := reference.Parse(strings.TrimSpace(path))
-	if err != nil {
-		return false
+func (r *Resolver) ResolvePath(path string) (auth.ResolvedResource, bool, error) {
+	cleanPath := strings.TrimSpace(path)
+	if !strings.HasPrefix(cleanPath, "/v2") {
+		return auth.ResolvedResource{}, false, nil
 	}
-	return route.Kind == reference.RoutePing
-}
-
-func (r *Resolver) ResourceFromPath(path string) (string, error) {
-	route, err := reference.Parse(strings.TrimSpace(path))
+	route, err := reference.Parse(cleanPath)
 	if err != nil {
-		return "", oops.Wrapf(err, "parse container auth resource")
+		return auth.ResolvedResource{}, true, oops.Wrapf(err, "parse container auth resource")
 	}
-	if route.Kind == reference.RoutePing || route.Repo == "" || route.Alias == "" {
-		return "", oops.In("auth").Errorf("path is not a pullable container resource")
+	if route.Kind == reference.RoutePing {
+		return auth.ResolvedResource{Ping: true, Resource: "registry"}, true, nil
+	}
+	if route.Repo == "" || route.Alias == "" {
+		return auth.ResolvedResource{}, true, oops.In("auth").Errorf("path is not a pullable container resource")
 	}
 	repo := route.Repo
 	if upstreamCfg, ok := r.cfg.ContainerUpstream(route.Alias); ok && strings.TrimSpace(upstreamCfg.DefaultNamespace) != "" {
 		repo = route.WithDefaultNamespace(upstreamCfg.DefaultNamespace).Repo
 	}
-	return route.Alias + "/" + strings.Trim(repo, "/"), nil
-}
-
-func (r *Resolver) ScopeFromResource(resource string) string {
-	return auth.ScopeTypeRepository + ":" + strings.Trim(resource, "/") + ":" + auth.ActionPull
+	resource := route.Alias + "/" + strings.Trim(repo, "/")
+	return auth.RepositoryPullResource(resource), true, nil
 }

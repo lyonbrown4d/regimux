@@ -14,28 +14,30 @@ func (s *Service) serviceName() string {
 	if s == nil {
 		return registryAuthServiceName(config.RegistryAuthConfig{})
 	}
-	return registryAuthServiceName(s.auth)
+	return s.serviceNameValue
 }
 
 func (s *Service) issuer() string {
 	if s == nil {
 		return registryAuthIssuer(config.RegistryAuthConfig{})
 	}
-	return registryAuthIssuer(s.auth)
+	return s.issuerValue
 }
 
 func registryAuthServiceName(auth config.RegistryAuthConfig) string {
-	if strings.TrimSpace(auth.Service) == "" {
+	service := strings.TrimSpace(auth.Service)
+	if service == "" {
 		return "regimux"
 	}
-	return strings.TrimSpace(auth.Service)
+	return service
 }
 
 func registryAuthIssuer(auth config.RegistryAuthConfig) string {
-	if strings.TrimSpace(auth.Issuer) == "" {
+	issuer := strings.TrimSpace(auth.Issuer)
+	if issuer == "" {
 		return registryAuthServiceName(auth)
 	}
-	return strings.TrimSpace(auth.Issuer)
+	return issuer
 }
 
 func verifyPassword(user config.AuthUserConfig, password string) error {

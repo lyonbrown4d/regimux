@@ -5,9 +5,9 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 )
 
-func (s *Service) authenticationProviders() *collectionlist.List[authx.AuthenticationProvider] {
-	if s.providers == nil || s.providers.Len() == 0 {
+func authenticationProviders(providers *collectionlist.List[authx.AuthenticationProvider]) *collectionlist.List[authx.AuthenticationProvider] {
+	if providers == nil || providers.Len() == 0 {
 		return collectionlist.NewList[authx.AuthenticationProvider]()
 	}
-	return s.providers
+	return providers
 }

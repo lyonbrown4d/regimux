@@ -14,7 +14,8 @@ var Module = dix.NewModule("auth",
 		dix.Provider1[config.RegistryAuthConfig, config.Config](func(cfg config.Config) config.RegistryAuthConfig {
 			return cfg.Auth
 		}),
-		dix.Provider1[*BasicAuthenticationProvider, config.RegistryAuthConfig](
+		dix.Provider1[*UserDirectory, config.RegistryAuthConfig](NewUserDirectory),
+		dix.Provider1[*BasicAuthenticationProvider, *UserDirectory](
 			NewBasicAuthenticationProvider,
 			dix.Into[authx.AuthenticationProvider](dix.Key("auth.basic"), dix.Order(0)),
 		),
@@ -22,6 +23,6 @@ var Module = dix.NewModule("auth",
 			NewJWTAuthenticationProvider,
 			dix.Into[authx.AuthenticationProvider](dix.Key("auth.jwt"), dix.Order(10)),
 		),
-		dix.ProviderErr4[*Service, config.Config, *slog.Logger, *collectionlist.List[authx.AuthenticationProvider], *collectionlist.List[ResourceResolver]](NewService),
+		dix.ProviderErr5[*Service, config.Config, *slog.Logger, *UserDirectory, *collectionlist.List[authx.AuthenticationProvider], *collectionlist.List[ResourceResolver]](NewService),
 	),
 )
