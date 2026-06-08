@@ -60,7 +60,7 @@ func (s *Service) CreateSyncJob(ctx context.Context, opts SyncOptions) (SyncJob,
 		"job_id", job.ID,
 		"ecosystem", opts.Ecosystem,
 		"alias", opts.Alias,
-		"repository", opts.Repo,
+		"artifact", opts.Artifact,
 		"reference", opts.Reference,
 	)
 	return job, nil
@@ -150,11 +150,14 @@ func (s *Service) validate(ctx context.Context, opts SyncOptions) error {
 	if s == nil || s.execute == nil {
 		return oops.In("manual-sync").Errorf("manual sync service is not configured")
 	}
+	if opts.Ecosystem == "" {
+		return oops.In("manual-sync").Errorf("manual sync ecosystem is required")
+	}
 	if opts.Alias == "" {
 		return oops.In("manual-sync").Errorf("manual sync upstream alias is required")
 	}
-	if opts.Repo == "" {
-		return oops.In("manual-sync").Errorf("manual sync repository is required")
+	if opts.Artifact == "" {
+		return oops.In("manual-sync").Errorf("manual sync artifact is required")
 	}
 	if opts.Reference == "" {
 		return oops.In("manual-sync").Errorf("manual sync reference is required")

@@ -34,6 +34,7 @@ type SyncResult struct {
 	Reference          string
 	ManifestDigest     string
 	MediaType          string
+	BytesWarmed        string
 	LayerCount         int
 	BlobCount          int
 	ChildManifestCount int

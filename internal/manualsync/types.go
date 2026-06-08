@@ -11,22 +11,23 @@ const (
 	SyncJobStatusFailed    = "failed"
 )
 
-// SyncOptions identifies one artifact reference to prefetch explicitly.
+// SyncOptions identifies one ecosystem artifact reference to warm explicitly.
 type SyncOptions struct {
 	Ecosystem string
 	Alias     string
-	Repo      string
+	Artifact  string
 	Reference string
 	Accept    string
 }
 
-// SyncReport summarizes artifacts warmed by a manual sync.
+// SyncReport summarizes the artifact data warmed by a manual sync.
 type SyncReport struct {
 	Alias              string
-	Repo               string
+	Artifact           string
 	Reference          string
-	ManifestDigest     string
+	Digest             string
 	MediaType          string
+	BytesWarmed        int64
 	LayerCount         int
 	BlobCount          int
 	ChildManifestCount int

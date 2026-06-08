@@ -24,6 +24,7 @@ func (s *Service) syncPage(c fiber.Ctx) error {
 		return err
 	}
 	data.Sync.Form = defaultSyncForm()
+	data.Sync.Form.UpstreamAlias = defaultSyncUpstreamValue(s.cfg)
 	data.Sync.Upstreams = s.syncUpstreamOptions(data.Sync.Form.UpstreamAlias)
 	return s.render(c, "sync", "layout", data)
 }
@@ -93,36 +94,32 @@ func (s *Service) syncOptionsFromForm(c fiber.Ctx) (manualsync.SyncOptions, Sync
 	}
 	form.Ecosystem, form.Alias = parseSyncTarget(form.UpstreamAlias)
 	form.UpstreamAlias = syncTargetValue(form.Ecosystem, form.Alias)
+	if form.Ecosystem == "" || form.Alias == "" {
+		return manualsync.SyncOptions{}, form, oops.In("admin").Errorf("sync upstream is required")
+	}
 
 	if form.Repository == "" {
 		return manualsync.SyncOptions{}, form, oops.In("admin").Errorf("repository is required")
 	}
 
-	repo, form, err := syncRepositoryAndReference(form)
+	artifact, form, err := syncArtifactAndReference(form)
 	if err != nil {
 		return manualsync.SyncOptions{}, form, err
 	}
-	route, form, err := s.syncRoute(form, repo)
-	if err != nil {
-		return manualsync.SyncOptions{}, form, err
-	}
-	// For non-container ecosystems, route parsing is not required.
-	if route == nil {
-		if _, ok := s.syncUpstream(form.Ecosystem, form.Alias); !ok {
-			return manualsync.SyncOptions{}, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("unknown upstream %q in ecosystem %q", form.Alias, form.Ecosystem)
-		}
+	if _, ok := s.syncUpstream(form.Ecosystem, form.Alias); !ok {
+		return manualsync.SyncOptions{}, form, oops.In("admin").With("ecosystem", form.Ecosystem, "alias", form.Alias).Errorf("unknown upstream %q in ecosystem %q", form.Alias, form.Ecosystem)
 	}
 
 	return manualsync.SyncOptions{
 		Ecosystem: form.Ecosystem,
-		Alias:     routeToSyncAlias(form.Alias, route),
-		Repo:      routeToSyncRepo(route, repo),
-		Reference: routeToSyncReference(route, form.Reference),
+		Alias:     form.Alias,
+		Artifact:  artifact,
+		Reference: form.Reference,
 		Accept:    s.cfg.Scheduler.Prefetch.Accept,
 	}, form, nil
 }
 
-func syncRepositoryAndReference(form SyncForm) (string, SyncForm, error) {
+func syncArtifactAndReference(form SyncForm) (string, SyncForm, error) {
 	repo, embeddedReference, err := splitRepositoryReference(form.Repository)
 	if err != nil {
 		return "", form, err
@@ -202,22 +199,19 @@ func splitRepositoryReference(value string) (string, string, error) {
 func parseSyncTarget(value string) (targetEcosystem, alias string) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return ecosystem.Container, ""
+		return "", ""
 	}
 	if strings.Contains(value, ":") {
 		parts := strings.SplitN(value, ":", 2)
 		return strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 	}
-	return ecosystem.Container, value
+	return "", strings.TrimSpace(value)
 }
 
 func syncTargetValue(targetEcosystem, alias string) string {
 	alias = strings.TrimSpace(alias)
 	targetEcosystem = strings.TrimSpace(targetEcosystem)
-	if targetEcosystem == "" {
-		targetEcosystem = ecosystem.Container
-	}
-	if alias == "" {
+	if targetEcosystem == "" || alias == "" {
 		return ""
 	}
 	return targetEcosystem + ":" + alias
@@ -234,10 +228,11 @@ func syncResultFromReport(report *manualsync.SyncReport) SyncResult {
 	}
 	return SyncResult{
 		Alias:              report.Alias,
-		Repository:         report.Repo,
+		Repository:         report.Artifact,
 		Reference:          report.Reference,
-		ManifestDigest:     report.ManifestDigest,
+		ManifestDigest:     report.Digest,
 		MediaType:          report.MediaType,
+		BytesWarmed:        formatBytes(report.BytesWarmed),
 		LayerCount:         report.LayerCount,
 		BlobCount:          report.BlobCount,
 		ChildManifestCount: report.ChildManifestCount,
@@ -249,7 +244,7 @@ func syncJobViewFromJob(job manualsync.SyncJob) SyncJobView {
 	view := SyncJobView{
 		ID:         job.ID,
 		Status:     job.Status,
-		Target:     job.Options.Alias + "/" + job.Options.Repo + ":" + job.Options.Reference,
+		Target:     syncJobTarget(job.Options),
 		Error:      job.Error,
 		CreatedAt:  formatTime(job.CreatedAt),
 		StartedAt:  formatTime(job.StartedAt),
@@ -261,6 +256,14 @@ func syncJobViewFromJob(job manualsync.SyncJob) SyncJobView {
 		view.HasResult = true
 	}
 	return view
+}
+
+func syncJobTarget(opts manualsync.SyncOptions) string {
+	prefix := opts.Alias
+	if opts.Ecosystem != "" {
+		prefix = opts.Ecosystem + ":" + opts.Alias
+	}
+	return prefix + "/" + opts.Artifact + ":" + opts.Reference
 }
 
 func (s *Service) renderSyncResponse(c fiber.Ctx, data PageData) error {

@@ -8,7 +8,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
-	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/samber/oops"
 )
 
@@ -157,41 +156,6 @@ func (r *Runtime) Prefetch(ctx context.Context, opts ecosystem.PrefetchOptions) 
 		return nil, oops.Wrapf(err, "run container prefetch")
 	}
 	return containerPrefetchReport(report), nil
-}
-
-func (r *Runtime) CreateSyncJob(ctx context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
-	if r == nil || r.manual == nil {
-		return manualsync.SyncJob{}, oops.In("container").With("ecosystem", ecosystem.Container).Errorf("container manual sync service is not configured")
-	}
-	job, err := r.manual.CreateSyncJob(ctx, opts)
-	if err != nil {
-		return manualsync.SyncJob{}, oops.Wrapf(err, "create container manual sync job")
-	}
-	return job, nil
-}
-
-func (r *Runtime) RunSyncJob(ctx context.Context, id string) error {
-	if r == nil || r.manual == nil {
-		return oops.In("container").With("ecosystem", ecosystem.Container).Errorf("container manual sync service is not configured")
-	}
-	if err := r.manual.RunSyncJob(ctx, id); err != nil {
-		return oops.With("job_id", id).Wrapf(err, "run container manual sync job")
-	}
-	return nil
-}
-
-func (r *Runtime) MarkSyncJobFailed(id string, err error) {
-	if r == nil || r.manual == nil {
-		return
-	}
-	r.manual.MarkSyncJobFailed(id, err)
-}
-
-func (r *Runtime) SyncJob(id string) (manualsync.SyncJob, bool) {
-	if r == nil || r.manual == nil {
-		return manualsync.SyncJob{}, false
-	}
-	return r.manual.SyncJob(id)
 }
 
 func containerPrefetchReport(report *prefetch.RunReport) *ecosystem.PrefetchReport {

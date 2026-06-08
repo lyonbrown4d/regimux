@@ -79,6 +79,13 @@ func (r *runtimeAdapter) PrefetchCapability() ecosystem.Capability {
 	return depprefetch.Capability(r.Name(), r.Upstreams())
 }
 
+func (r *runtimeAdapter) ManualSyncCapability() ecosystem.Capability {
+	if r == nil || r.manualSync == nil {
+		return ecosystem.DisabledCapability("maven proxy manual sync service is not configured", r.Upstreams())
+	}
+	return ecosystem.EnabledCapability("maven proxy manual sync is enabled", ecosystem.CapabilityTargets(r.Upstreams()))
+}
+
 func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {
 	return ecosystem.ProbeTargets(r.Upstreams())
 }
@@ -140,6 +147,7 @@ func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts manualsync.Sync
 	if r == nil || r.manualSync == nil {
 		return manualsync.SyncJob{}, oops.In("maven").Errorf("maven proxy manual sync service is not configured")
 	}
+	opts.Ecosystem = r.Name()
 	job, err := r.manualSync.CreateSyncJob(ctx, opts)
 	if err != nil {
 		return manualsync.SyncJob{}, oops.Wrapf(err, "create maven proxy manual sync job")
@@ -177,7 +185,7 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 	}
 	resp, err := r.service.Get(ctx, Request{
 		Alias:          opts.Alias,
-		Tail:           mavenTail(depprefetch.Candidate{Alias: opts.Alias, Repository: opts.Repo, Reference: opts.Reference}),
+		Tail:           mavenTail(depprefetch.Candidate{Alias: opts.Alias, Repository: opts.Artifact, Reference: opts.Reference}),
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
 	})
@@ -196,10 +204,10 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 		return nil, oops.With("status", resp.Status).Wrapf(copyErr, "drain maven manual sync response")
 	}
 	return &manualsync.SyncReport{
-		Alias:     opts.Alias,
-		Repo:      opts.Repo,
-		Reference: opts.Reference,
-		BlobCount: int(bytesWarmed),
+		Alias:       opts.Alias,
+		Artifact:    opts.Artifact,
+		Reference:   opts.Reference,
+		BytesWarmed: bytesWarmed,
 	}, nil
 }
 
@@ -210,3 +218,4 @@ var _ ecosystem.CapabilityProvider = (*runtimeAdapter)(nil)
 var _ ecosystem.Prober = (*runtimeAdapter)(nil)
 var _ ecosystem.Prefetcher = (*runtimeAdapter)(nil)
 var _ ecosystem.JobProvider = (*runtimeAdapter)(nil)
+var _ ecosystem.ManualSyncer = (*runtimeAdapter)(nil)

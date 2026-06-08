@@ -26,6 +26,7 @@
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.reference"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.Reference}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.digest"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.ManifestDigest}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.media_type"}}</dt><dd class="break-all text-right text-zinc-100">{{.Sync.Job.Result.MediaType}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.bytes_warmed"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.BytesWarmed}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.layers"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.LayerCount}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.blobs"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.BlobCount}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.child_manifests"}}</dt><dd class="tabular-nums text-zinc-100">{{.Sync.Job.Result.ChildManifestCount}}</dd></div>

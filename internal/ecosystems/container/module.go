@@ -8,8 +8,11 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/dockerintegration"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/registrytool"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/observability"
@@ -27,6 +30,14 @@ type PrefetchServiceDependencies struct {
 }
 
 var Module = dix.NewModule("container",
+	dix.Imports(
+		registrytool.Module,
+		upstream.Module,
+		cache.Module,
+		containerauth.Module,
+		suggestion.Module,
+		dockerintegration.Module,
+	),
 	dix.Providers(
 		dix.Provider6[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
 			newPrefetchServiceDependencies,

@@ -19,23 +19,6 @@ func upstreamMetadataMap(records *collectionlist.List[meta.Upstream]) *collectio
 	)
 }
 
-func endpointRows(snapshot ecosystem.UpstreamSnapshot) *collectionlist.List[EndpointRow] {
-	return collectionlist.MapList(snapshot.Endpoints, func(_ int, endpoint ecosystem.EndpointSnapshot) EndpointRow {
-		health := endpoint.Health
-		return EndpointRow{
-			Registry:      endpoint.Registry,
-			Role:          endpoint.Role,
-			Latency:       formatLatency(health),
-			Score:         formatDuration(health.Score),
-			Inflight:      health.Inflight,
-			Failures:      health.ConsecutiveFailures,
-			SuccessRate:   formatSuccessRate(health),
-			Mismatches:    health.ContentMismatchCount,
-			Cooldown:      formatCooldown(health),
-			Degraded:      formatDegraded(health),
-			LastSuccessAt: formatTime(health.LastSuccessAt),
-			LastFailureAt: formatTime(health.LastFailureAt),
-			Status:        endpointStatus(health),
-		}
-	})
+func (s *Service) endpointRows(snapshot ecosystem.UpstreamSnapshot) (*collectionlist.List[EndpointRow], error) {
+	return s.mapper.EndpointRows(snapshot)
 }

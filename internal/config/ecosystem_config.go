@@ -43,14 +43,25 @@ func (c *Config) normalizeUpstreams() error {
 
 func (c *Config) normalizeContainerUpstreams() (map[string]UpstreamConfig, error) {
 	out := map[string]UpstreamConfig{}
+	mapper := newUpstreamConfigMapper()
 	var normalizeErr error
 	sortedConfigAliases(c.Container).Range(func(_ int, alias string) bool {
-		upstreamCfg, err := normalizeUpstreamConfig(alias, c.Container[alias].toUpstreamConfig())
+		upstreamCfg, err := mapper.ContainerRegistryToUpstream(c.Container[alias])
 		if err != nil {
 			normalizeErr = err
 			return false
 		}
-		c.Container[alias] = containerRegistryFromUpstreamConfig(upstreamCfg)
+		upstreamCfg, err = normalizeUpstreamConfig(alias, upstreamCfg)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		containerCfg, err := mapper.UpstreamToContainerRegistry(upstreamCfg)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		c.Container[alias] = containerCfg
 		out[alias] = upstreamCfg
 		return true
 	})
@@ -58,14 +69,25 @@ func (c *Config) normalizeContainerUpstreams() (map[string]UpstreamConfig, error
 }
 
 func (c *Config) normalizeDependencyUpstreams(ecosystem string, upstreams DependencyEcosystemConfig) error {
+	mapper := newUpstreamConfigMapper()
 	var normalizeErr error
 	sortedConfigAliases(upstreams).Range(func(_ int, alias string) bool {
-		upstreamCfg, err := normalizeUpstreamConfig(alias, upstreams[alias].toUpstreamConfig(ecosystem))
+		upstreamCfg, err := mapper.DependencyUpstreamToUpstream(upstreams[alias], ecosystem)
 		if err != nil {
 			normalizeErr = err
 			return false
 		}
-		upstreams[alias] = dependencyUpstreamFromUpstreamConfig(upstreamCfg)
+		upstreamCfg, err = normalizeUpstreamConfig(alias, upstreamCfg)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		dependencyCfg, err := mapper.UpstreamToDependencyUpstream(upstreamCfg)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		upstreams[alias] = dependencyCfg
 		return true
 	})
 	return normalizeErr
@@ -105,55 +127,17 @@ func (c *Config) ensurePyPIConfig() DependencyEcosystemConfig {
 }
 
 func (cfg ContainerRegistryConfig) toUpstreamConfig() UpstreamConfig {
-	return UpstreamConfig{
-		Type:             ecosystemContainer,
-		Registry:         cfg.Registry,
-		Mirrors:          cfg.Mirrors,
-		MirrorPolicy:     cfg.MirrorPolicy,
-		DefaultNamespace: cfg.DefaultNamespace,
-		TagTTL:           cfg.TagTTL,
-		Blob:             cfg.Blob,
-		Probe:            cfg.Probe,
-		Auth:             cfg.Auth,
-		HTTP:             cfg.HTTP,
-	}
+	return mustMapUpstreamConfig(newUpstreamConfigMapper().ContainerRegistryToUpstream(cfg))
 }
 
 func containerRegistryFromUpstreamConfig(upstreamCfg UpstreamConfig) ContainerRegistryConfig {
-	return ContainerRegistryConfig{
-		Registry:         upstreamCfg.Registry,
-		Mirrors:          upstreamCfg.Mirrors,
-		MirrorPolicy:     upstreamCfg.MirrorPolicy,
-		DefaultNamespace: upstreamCfg.DefaultNamespace,
-		TagTTL:           upstreamCfg.TagTTL,
-		Blob:             upstreamCfg.Blob,
-		Probe:            upstreamCfg.Probe,
-		Auth:             upstreamCfg.Auth,
-		HTTP:             upstreamCfg.HTTP,
-	}
+	return mustMapUpstreamConfig(newUpstreamConfigMapper().UpstreamToContainerRegistry(upstreamCfg))
 }
 
 func (cfg DependencyUpstreamConfig) toUpstreamConfig(ecosystem string) UpstreamConfig {
-	return UpstreamConfig{
-		Type:         ecosystem,
-		Registry:     cfg.Registry,
-		Mirrors:      cfg.Mirrors,
-		MirrorPolicy: cfg.MirrorPolicy,
-		TagTTL:       cfg.TagTTL,
-		Probe:        cfg.Probe,
-		Auth:         cfg.Auth,
-		HTTP:         cfg.HTTP,
-	}
+	return mustMapUpstreamConfig(newUpstreamConfigMapper().DependencyUpstreamToUpstream(cfg, ecosystem))
 }
 
 func dependencyUpstreamFromUpstreamConfig(upstreamCfg UpstreamConfig) DependencyUpstreamConfig {
-	return DependencyUpstreamConfig{
-		Registry:     upstreamCfg.Registry,
-		Mirrors:      upstreamCfg.Mirrors,
-		MirrorPolicy: upstreamCfg.MirrorPolicy,
-		TagTTL:       upstreamCfg.TagTTL,
-		Probe:        upstreamCfg.Probe,
-		Auth:         upstreamCfg.Auth,
-		HTTP:         upstreamCfg.HTTP,
-	}
+	return mustMapUpstreamConfig(newUpstreamConfigMapper().UpstreamToDependencyUpstream(upstreamCfg))
 }

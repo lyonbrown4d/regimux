@@ -1,12 +1,23 @@
 package admin
 
-import (
-	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/lyonbrown4d/regimux/internal/store/meta"
-)
-
-func storageSummary(snapshot metadataSnapshot) StorageSummary {
+func (s *Service) storageSummary(snapshot metadataSnapshot) (StorageSummary, error) {
 	stats := snapshot.stats
+	recentBlobs, err := s.mapper.BlobRows(snapshot.recentBlobs, 10)
+	if err != nil {
+		return StorageSummary{}, err
+	}
+	largeBlobs, err := s.mapper.BlobRows(snapshot.largeBlobs, 10)
+	if err != nil {
+		return StorageSummary{}, err
+	}
+	repositories, err := s.mapper.RepositoryRows(snapshot.repositories, 25)
+	if err != nil {
+		return StorageSummary{}, err
+	}
+	repoBlobLinks, err := s.mapper.RepoBlobRows(snapshot.repoBlobs, 25)
+	if err != nil {
+		return StorageSummary{}, err
+	}
 	return StorageSummary{
 		TotalBytes:    formatBytes(stats.BlobBytes + stats.ManifestBytes),
 		BlobBytes:     formatBytes(stats.BlobBytes),
@@ -14,60 +25,9 @@ func storageSummary(snapshot metadataSnapshot) StorageSummary {
 		BlobCount:     metadataCount(stats.BlobCount),
 		ManifestCount: metadataCount(stats.ManifestCount),
 		RepoBlobCount: metadataCount(stats.RepoBlobCount),
-		RecentBlobs:   recentBlobRows(snapshot.recentBlobs, 10),
-		LargeBlobs:    largeBlobRows(snapshot.largeBlobs, 10),
-		Repositories:  repositoryRows(snapshot.repositories, 25),
-		RepoBlobLinks: recentRepoBlobRows(snapshot.repoBlobs, 25),
-	}
-}
-
-func largeBlobRows(records *collectionlist.List[meta.BlobRecord], limit int) *collectionlist.List[BlobRow] {
-	if records == nil {
-		return collectionlist.NewList[BlobRow]()
-	}
-	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.BlobRecord) BlobRow {
-		return BlobRow{
-			Digest:       record.Digest,
-			Size:         formatBytes(record.Size),
-			MediaType:    dash(record.MediaType),
-			LastAccessAt: formatTime(record.LastAccessAt),
-			UpdatedAt:    formatTime(record.UpdatedAt),
-		}
-	})
-}
-
-func recentRepoBlobRows(records *collectionlist.List[meta.RepoBlobRecord], limit int) *collectionlist.List[RepoBlobRow] {
-	if records == nil {
-		return collectionlist.NewList[RepoBlobRow]()
-	}
-	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.RepoBlobRecord) RepoBlobRow {
-		return RepoBlobRow{
-			Key:            record.Key,
-			Alias:          record.Alias,
-			Repository:     record.Repository,
-			Digest:         record.Digest,
-			SourceManifest: dash(record.SourceManifest),
-			LastAccessAt:   formatTime(record.LastAccessAt),
-			LastVerifiedAt: formatTime(record.LastVerifiedAt),
-			UpdatedAt:      formatTime(record.UpdatedAt),
-		}
-	})
-}
-
-func repositoryRows(records *collectionlist.List[meta.Repository], limit int) *collectionlist.List[RepositoryRow] {
-	if records == nil {
-		return collectionlist.NewList[RepositoryRow]()
-	}
-	return collectionlist.MapList(records.Take(limit), func(_ int, record meta.Repository) RepositoryRow {
-		return RepositoryRow{
-			Alias:            record.Alias,
-			Repository:       record.Name,
-			PullCount:        record.PullCount,
-			BlobBytes:        formatBytes(record.BlobBytes),
-			BlobLinkCount:    record.BlobLinkCount,
-			LastPullAt:       formatTime(record.LastPullAt),
-			LastBlobAccessAt: formatTime(record.LastBlobAccessAt),
-			LastActivityAt:   formatTime(record.LastActivityAt),
-		}
-	})
+		RecentBlobs:   recentBlobs,
+		LargeBlobs:    largeBlobs,
+		Repositories:  repositories,
+		RepoBlobLinks: repoBlobLinks,
+	}, nil
 }

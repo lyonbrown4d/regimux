@@ -214,13 +214,13 @@ func TestServiceSyncPrefetchesImageManifestBlobs(t *testing.T) {
 
 	report, err := service.Sync(ctx, manualsync.SyncOptions{
 		Alias:     testAlias,
-		Repo:      testRepo,
+		Artifact:  testRepo,
 		Reference: targetTag,
 	})
 	if err != nil {
 		t.Fatalf("sync prefetch: %v", err)
 	}
-	if report.ManifestDigest != manifestDigest || report.BlobCount != 2 || report.LayerCount != 1 {
+	if report.Digest != manifestDigest || report.BlobCount != 2 || report.LayerCount != 1 {
 		t.Fatalf("unexpected sync report: %#v", report)
 	}
 	assertManifestReferences(t, manifests.requestSnapshot(), []string{targetTag})

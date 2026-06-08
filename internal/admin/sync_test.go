@@ -29,7 +29,7 @@ func TestServiceSyncSubmitValidatesRepository(t *testing.T) {
 	app, _ := newAdminSyncTestApp(t, &fakeManualSyncer{})
 
 	resp, body := adminPostForm(t, app, "/admin/sync", url.Values{
-		"upstream_alias": {"hub"},
+		"upstream_alias": {"container:hub"},
 	})
 	defer closeResponseBody(t, resp)
 	if resp.StatusCode != http.StatusBadRequest {
@@ -45,7 +45,7 @@ func TestServiceSyncSubmitCallsSyncer(t *testing.T) {
 	app, fake := newAdminSyncTestApp(t, syncer)
 
 	resp, body := adminPostForm(t, app, "/admin/sync", url.Values{
-		"upstream_alias": {"hub"},
+		"upstream_alias": {"container:hub"},
 		"repository":     {"library/node:20"},
 	})
 	defer closeResponseBody(t, resp)
@@ -55,7 +55,7 @@ func TestServiceSyncSubmitCallsSyncer(t *testing.T) {
 	if !fake.called {
 		t.Fatal("syncer was not called")
 	}
-	if fake.opts.Alias != "hub" || fake.opts.Repo != "library/node" || fake.opts.Reference != "20" {
+	if fake.opts.Alias != "hub" || fake.opts.Artifact != "library/node" || fake.opts.Reference != "20" {
 		t.Fatalf("sync options = %+v", fake.opts)
 	}
 	for _, value := range []string{
@@ -77,14 +77,14 @@ func TestServiceSyncJobPartialRendersCompletedJob(t *testing.T) {
 		Status: manualsync.SyncJobStatusSucceeded,
 		Options: manualsync.SyncOptions{
 			Alias:     "hub",
-			Repo:      "library/node",
+			Artifact:  "library/node",
 			Reference: "20",
 		},
 		Result: &manualsync.SyncReport{
 			Alias:              "hub",
-			Repo:               "library/node",
+			Artifact:           "library/node",
 			Reference:          "20",
-			ManifestDigest:     "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+			Digest:             "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			MediaType:          distribution.MediaTypeOCIManifest,
 			LayerCount:         3,
 			BlobCount:          4,

@@ -82,6 +82,13 @@ func (r *runtimeAdapter) PrefetchCapability() ecosystem.Capability {
 	return depprefetch.Capability(r.Name(), r.Upstreams())
 }
 
+func (r *runtimeAdapter) ManualSyncCapability() ecosystem.Capability {
+	if r == nil || r.manualSync == nil {
+		return ecosystem.DisabledCapability("go proxy manual sync service is not configured", r.Upstreams())
+	}
+	return ecosystem.EnabledCapability("go proxy manual sync is enabled", ecosystem.CapabilityTargets(r.Upstreams()))
+}
+
 func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {
 	return ecosystem.ProbeTargets(r.Upstreams())
 }
@@ -134,6 +141,7 @@ func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts manualsync.Sync
 	if r == nil || r.manualSync == nil {
 		return manualsync.SyncJob{}, oops.In("go").Errorf("go proxy manual sync service is not configured")
 	}
+	opts.Ecosystem = r.Name()
 	job, err := r.manualSync.CreateSyncJob(ctx, opts)
 	if err != nil {
 		return manualsync.SyncJob{}, oops.Wrapf(err, "create go proxy manual sync job")
@@ -171,7 +179,7 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 	}
 	resp, err := r.service.Get(ctx, Request{
 		Alias:          opts.Alias,
-		Tail:           opts.Repo + "/" + opts.Reference,
+		Tail:           opts.Artifact + "/" + opts.Reference,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
 	})
@@ -191,10 +199,10 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 	}
 	// go proxy has a dynamic artifact surface; report only common fields.
 	return &manualsync.SyncReport{
-		Alias:     opts.Alias,
-		Repo:      opts.Repo,
-		Reference: opts.Reference,
-		BlobCount: int(bytesWarmed),
+		Alias:       opts.Alias,
+		Artifact:    opts.Artifact,
+		Reference:   opts.Reference,
+		BytesWarmed: bytesWarmed,
 	}, nil
 }
 
@@ -205,3 +213,4 @@ var _ ecosystem.CapabilityProvider = (*runtimeAdapter)(nil)
 var _ ecosystem.Prober = (*runtimeAdapter)(nil)
 var _ ecosystem.Prefetcher = (*runtimeAdapter)(nil)
 var _ ecosystem.JobProvider = (*runtimeAdapter)(nil)
+var _ ecosystem.ManualSyncer = (*runtimeAdapter)(nil)

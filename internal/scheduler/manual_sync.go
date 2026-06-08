@@ -2,7 +2,6 @@ package scheduler
 
 import (
 	"context"
-	"strings"
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
@@ -11,18 +10,13 @@ import (
 	"github.com/samber/oops"
 )
 
-type manualSyncer interface {
-	CreateSyncJob(context.Context, manualsync.SyncOptions) (manualsync.SyncJob, error)
-	RunSyncJob(context.Context, string) error
-	MarkSyncJobFailed(string, error)
-	SyncJob(string) (manualsync.SyncJob, bool)
-}
-
 func (r *Runtime) SubmitSync(ctx context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
-	opts.Ecosystem = normalizeSyncEcosystem(opts.Ecosystem)
+	if opts.Ecosystem == "" {
+		return manualsync.SyncJob{}, oops.In("scheduler").Errorf("manual sync ecosystem is required")
+	}
 	syncer := r.manualSyncer(opts.Ecosystem)
 	if syncer == nil {
-		return manualsync.SyncJob{}, oops.In("scheduler").Errorf("manual sync service is not configured")
+		return manualsync.SyncJob{}, oops.In("scheduler").With("ecosystem", opts.Ecosystem).Errorf("manual sync service is not configured")
 	}
 	job, err := syncer.CreateSyncJob(ctx, opts)
 	if err != nil {
@@ -60,7 +54,7 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts manualsync.SyncOptions) (
 		"job_id", job.ID,
 		"ecosystem", opts.Ecosystem,
 		"alias", opts.Alias,
-		"repository", opts.Repo,
+		"artifact", opts.Artifact,
 		"reference", opts.Reference,
 	)
 	if current, ok := syncer.SyncJob(job.ID); ok {
@@ -93,7 +87,7 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 			"job_id", id,
 			"ecosystem", job.Options.Ecosystem,
 			"alias", job.Options.Alias,
-			"repository", job.Options.Repo,
+			"artifact", job.Options.Artifact,
 			"reference", job.Options.Reference,
 			"duration_ms", time.Since(startedAt).Milliseconds(),
 			"error", err,
@@ -106,7 +100,7 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 		"job_id", id,
 		"ecosystem", job.Options.Ecosystem,
 		"alias", job.Options.Alias,
-		"repository", job.Options.Repo,
+		"artifact", job.Options.Artifact,
 		"reference", job.Options.Reference,
 		"duration_ms", time.Since(startedAt).Milliseconds(),
 	)
@@ -114,16 +108,16 @@ func (r *Runtime) runManualSync(ctx context.Context, id string) error {
 	return nil
 }
 
-func (r *Runtime) manualSyncer(ecosystemName string) manualSyncer {
+func (r *Runtime) manualSyncer(ecosystemName string) ecosystem.ManualSyncer {
 	if r == nil || ecosystemName == "" {
 		return nil
 	}
-	var match manualSyncer
+	var match ecosystem.ManualSyncer
 	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
 		if runtime == nil || runtime.Name() != ecosystemName {
 			return true
 		}
-		syncer, ok := runtime.(manualSyncer)
+		syncer, ok := runtime.(ecosystem.ManualSyncer)
 		if ok {
 			match = syncer
 			return false
@@ -133,18 +127,18 @@ func (r *Runtime) manualSyncer(ecosystemName string) manualSyncer {
 	return match
 }
 
-func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, manualsync.SyncJob, bool) {
+func (r *Runtime) manualSyncerByJob(id string) (ecosystem.ManualSyncer, manualsync.SyncJob, bool) {
 	if r == nil || id == "" {
 		return nil, manualsync.SyncJob{}, false
 	}
-	var matched manualSyncer
+	var matched ecosystem.ManualSyncer
 	var job manualsync.SyncJob
 	var ok bool
 	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
 		if matched != nil {
 			return false
 		}
-		syncer, isSyncer := runtime.(manualSyncer)
+		syncer, isSyncer := runtime.(ecosystem.ManualSyncer)
 		if !isSyncer {
 			return true
 		}
@@ -159,12 +153,4 @@ func (r *Runtime) manualSyncerByJob(id string) (manualSyncer, manualsync.SyncJob
 		return matched, job, true
 	}
 	return nil, manualsync.SyncJob{}, false
-}
-
-func normalizeSyncEcosystem(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ecosystem.Container
-	}
-	return value
 }

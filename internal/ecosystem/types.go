@@ -7,6 +7,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/manualsync"
 )
 
 const (
@@ -178,6 +179,16 @@ type Prober interface {
 type EndpointHealthFlusher interface {
 	Runtime
 	FlushEndpointHealth(context.Context) error
+}
+
+// ManualSyncer is implemented by ecosystems that can warm an artifact on demand.
+type ManualSyncer interface {
+	Runtime
+	ManualSyncCapability() Capability
+	CreateSyncJob(context.Context, manualsync.SyncOptions) (manualsync.SyncJob, error)
+	RunSyncJob(context.Context, string) error
+	MarkSyncJobFailed(string, error)
+	SyncJob(string) (manualsync.SyncJob, bool)
 }
 
 // PrefetchOptions carries scheduler-level prefetch limits.

@@ -1,19 +1,16 @@
 package admin
 
 import (
-	"encoding/base64"
 	"log/slog"
-	"net/http"
-	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/csrf"
 	"github.com/lyonbrown4d/regimux/internal/api"
 	authpkg "github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
@@ -29,6 +26,7 @@ type Service struct {
 	logger    *slog.Logger
 	auth      *authpkg.Service
 	messages  *Messages
+	mapper    *AdminMapper
 	syncer    ManualSyncer
 	prefetch  PrefetchController
 	scheduler SchedulerController
@@ -42,6 +40,10 @@ func NewService(deps Dependencies) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	mapper := deps.Mapper
+	if mapper == nil {
+		mapper = NewAdminMapper()
+	}
 	service := &Service{
 		cfg:       deps.Config,
 		metadata:  deps.Metadata,
@@ -50,6 +52,7 @@ func NewService(deps Dependencies) *Service {
 		logger:    logger.With("component", "admin"),
 		auth:      deps.Auth,
 		messages:  deps.Messages,
+		mapper:    mapper,
 		syncer:    deps.Syncer,
 		prefetch:  deps.Prefetch,
 		scheduler: deps.Scheduler,
@@ -85,63 +88,6 @@ func (s *Service) RegisterFiber(app *fiber.App) {
 	group.Get("/config", s.configPage)
 	group.Get("/partials/upstream-health", s.upstreamHealthPartial)
 	s.logger.Info("admin routes registered", "base_path", basePath)
-}
-
-func (s *Service) requireAdminAuth(c fiber.Ctx) error {
-	if !s.adminAuthEnabled() {
-		if err := c.Next(); err != nil {
-			return oops.In("admin").Wrapf(err, "continue admin request")
-		}
-		return nil
-	}
-	if s.auth == nil {
-		return writeAdminUnauthorized(c)
-	}
-	username, password, ok := basicAuthFromHeader(c.Get(fiber.HeaderAuthorization))
-	if !ok {
-		return writeAdminUnauthorized(c)
-	}
-	if _, err := s.auth.AuthenticateBasic(c.Context(), username, password); err != nil {
-		return writeAdminUnauthorized(c)
-	}
-	if err := c.Next(); err != nil {
-		return oops.In("admin").Wrapf(err, "continue authenticated admin request")
-	}
-	return nil
-}
-
-func (s *Service) adminAuthEnabled() bool {
-	if s == nil {
-		return false
-	}
-	if s.cfg.Auth.Enabled {
-		return true
-	}
-	return s.auth != nil && s.auth.Enabled()
-}
-
-func writeAdminUnauthorized(c fiber.Ctx) error {
-	c.Set(fiber.HeaderWWWAuthenticate, `Basic realm="regimux admin"`)
-	if err := c.SendStatus(http.StatusUnauthorized); err != nil {
-		return oops.In("admin").Wrapf(err, "write admin unauthorized")
-	}
-	return nil
-}
-
-func basicAuthFromHeader(header string) (string, string, bool) {
-	scheme, payload, ok := strings.Cut(strings.TrimSpace(header), " ")
-	if !ok || !strings.EqualFold(scheme, "Basic") {
-		return "", "", false
-	}
-	decoded, err := base64.StdEncoding.DecodeString(strings.TrimSpace(payload))
-	if err != nil {
-		return "", "", false
-	}
-	username, password, ok := strings.Cut(string(decoded), ":")
-	if !ok || username == "" {
-		return "", "", false
-	}
-	return username, password, true
 }
 
 func (s *Service) dashboard(c fiber.Ctx) error {
@@ -232,11 +178,28 @@ func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, erro
 	if err != nil {
 		return PageData{}, err
 	}
-	upstreams := s.upstreamRows(now, rows.upstreams)
-	cache := cacheSummary(rows)
-	pulls := pullRows(rows.pulls)
+	upstreams, err := s.upstreamRows(now, rows.upstreams)
+	if err != nil {
+		return PageData{}, err
+	}
+	cache, err := s.cacheSummary(rows)
+	if err != nil {
+		return PageData{}, err
+	}
+	pulls, err := s.mapper.PullRows(rows.pulls)
+	if err != nil {
+		return PageData{}, err
+	}
 	summary := s.summary(rows, upstreams, now)
 	scheduler, err := s.schedulerSummary(c.Context())
+	if err != nil {
+		return PageData{}, err
+	}
+	activity, err := s.activitySummary(rows)
+	if err != nil {
+		return PageData{}, err
+	}
+	storage, err := s.storageSummary(rows)
 	if err != nil {
 		return PageData{}, err
 	}
@@ -255,8 +218,8 @@ func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, erro
 		Upstreams:          upstreams,
 		Pulls:              pulls,
 		Cache:              cache,
-		Activity:           activitySummary(rows),
-		Storage:            storageSummary(rows),
+		Activity:           activity,
+		Storage:            storage,
 		Audit:              auditSummary(s.cfg),
 		Scheduler:          scheduler,
 		ConfigRows:         configRows(s.cfg),

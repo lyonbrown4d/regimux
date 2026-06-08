@@ -20,36 +20,36 @@ func (s *Service) Sync(ctx context.Context, opts manualsync.SyncOptions) (*manua
 	}
 
 	startedAt := time.Now()
-	s.logger.InfoContext(ctx, "manual sync starting", "alias", opts.Alias, "repository", opts.Repo, "reference", opts.Reference)
+	s.logger.InfoContext(ctx, "manual sync starting", "alias", opts.Alias, "artifact", opts.Artifact, "reference", opts.Reference)
 	candidate := Candidate{
 		Alias:  opts.Alias,
-		Repo:   opts.Repo,
+		Repo:   opts.Artifact,
 		Tag:    opts.Reference,
 		Reason: "manual sync",
 	}
 	manifest, err := s.manifests.Get(ctx, cache.ManifestRequest{
 		UpstreamAlias:  opts.Alias,
-		Repo:           opts.Repo,
+		Repo:           opts.Artifact,
 		Reference:      opts.Reference,
 		Accept:         opts.Accept,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
 	})
 	if err != nil {
-		s.logger.WarnContext(ctx, "manual sync manifest failed", "alias", opts.Alias, "repository", opts.Repo, "reference", opts.Reference, "error", err)
+		s.logger.WarnContext(ctx, "manual sync manifest failed", "alias", opts.Alias, "artifact", opts.Artifact, "reference", opts.Reference, "error", err)
 		return nil, cacheWrap(err, "sync manifest")
 	}
 
 	result, err := s.prefetchManifestArtifacts(ctx, RunOptions{Accept: opts.Accept}, nil, candidate, opts.Reference, manifest, 0)
 	if err != nil {
-		s.logger.WarnContext(ctx, "manual sync artifacts failed", "alias", opts.Alias, "repository", opts.Repo, "reference", opts.Reference, "error", err)
+		s.logger.WarnContext(ctx, "manual sync artifacts failed", "alias", opts.Alias, "artifact", opts.Artifact, "reference", opts.Reference, "error", err)
 		return nil, err
 	}
 	duration := time.Since(startedAt)
 	s.logger.InfoContext(ctx,
 		"manual sync completed",
 		"alias", opts.Alias,
-		"repository", opts.Repo,
+		"artifact", opts.Artifact,
 		"reference", opts.Reference,
 		"manifest_digest", result.manifestDigest,
 		"layers", result.layerCount,
@@ -59,9 +59,9 @@ func (s *Service) Sync(ctx context.Context, opts manualsync.SyncOptions) (*manua
 	)
 	return &manualsync.SyncReport{
 		Alias:              opts.Alias,
-		Repo:               opts.Repo,
+		Artifact:           opts.Artifact,
 		Reference:          opts.Reference,
-		ManifestDigest:     result.manifestDigest,
+		Digest:             result.manifestDigest,
 		MediaType:          cachedManifestMediaType(manifest),
 		LayerCount:         result.layerCount,
 		BlobCount:          result.blobCount,
@@ -83,8 +83,8 @@ func (s *Service) validateSync(ctx context.Context, opts manualsync.SyncOptions)
 	if opts.Alias == "" {
 		return cacheError("sync upstream alias is required")
 	}
-	if opts.Repo == "" {
-		return cacheError("sync repository is required")
+	if opts.Artifact == "" {
+		return cacheError("sync artifact is required")
 	}
 	if opts.Reference == "" {
 		return cacheError("sync reference is required")

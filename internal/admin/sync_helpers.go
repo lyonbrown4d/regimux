@@ -6,27 +6,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
-	"github.com/samber/oops"
 )
-
-func (s *Service) syncRoute(form SyncForm, repo string) (*reference.Route, SyncForm, error) {
-	if form.Ecosystem != ecosystem.Container {
-		return nil, form, nil
-	}
-	routing, err := reference.ParseManifestPath("/v2/" + form.Alias + "/" + repo + "/manifests/" + form.Reference)
-	if err != nil {
-		return nil, form, oops.In("admin").Wrapf(err, "invalid sync target")
-	}
-	upstreamCfg, ok := s.cfg.ContainerUpstream(routing.Alias)
-	if !ok {
-		return nil, form, oops.In("admin").With("alias", routing.Alias).Errorf("unknown upstream alias %q", routing.Alias)
-	}
-	*routing = routing.WithDefaultNamespace(upstreamCfg.DefaultNamespace)
-	form.Repository = routing.Repo
-	form.Reference = routing.Reference
-	return routing, form, nil
-}
 
 func (s *Service) syncUpstream(ecosystemName, alias string) (config.UpstreamConfig, bool) {
 	switch strings.TrimSpace(ecosystemName) {
@@ -45,31 +25,9 @@ func (s *Service) syncUpstream(ecosystemName, alias string) (config.UpstreamConf
 	}
 }
 
-func routeToSyncAlias(alias string, route *reference.Route) string {
-	if route == nil {
-		return alias
-	}
-	return route.Alias
-}
-
-func routeToSyncRepo(route *reference.Route, fallback string) string {
-	if route == nil {
-		return fallback
-	}
-	return route.Repo
-}
-
-func routeToSyncReference(route *reference.Route, fallback string) string {
-	if route == nil {
-		return fallback
-	}
-	return route.Reference
-}
-
 func defaultSyncForm() SyncForm {
 	return SyncForm{
-		UpstreamAlias: "container:hub",
-		Reference:     "latest",
+		Reference: "latest",
 	}
 }
 

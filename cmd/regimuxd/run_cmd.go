@@ -14,17 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
-	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/dockerintegration"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/registrytool"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/npm"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/pypi"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
@@ -58,22 +48,12 @@ func buildApp(configPath string, args ...string) *dix.App {
 	authModule := auth.Module
 	buildModule := build.Module
 	eventsModule := events.Module
-	containerRegistryToolModule := registrytool.Module
 	workerModule := worker.Module
 	probeHealthModule := probehealth.Module
-	containerUpstreamModule := upstream.Module
 	storeModule := storemodule.Module
 	ecosystemModule := ecosystem.Module
-	containerCacheModule := cache.Module
-	containerAuthModule := containerauth.Module
-	containerSuggestionModule := suggestion.Module
+	ecosystemsModule := ecosystems.Module
 	schedulerModule := scheduler.Module
-	containerDockerModule := dockerintegration.Module
-	containerModule := container.Module
-	goModule := golang.Module
-	npmModule := npm.Module
-	pypiModule := pypi.Module
-	mavenModule := maven.Module
 	adminModule := admin.Module
 	endpointModule := api.EndpointsModule
 	apiModule := api.Module
@@ -83,6 +63,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux developer dependency cache gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, containerRegistryToolModule, workerModule, probeHealthModule, containerUpstreamModule, storeModule, ecosystemModule, containerCacheModule, containerAuthModule, containerSuggestionModule, schedulerModule, adminModule, containerModule, goModule, npmModule, pypiModule, mavenModule, endpointModule, apiModule, containerDockerModule),
+		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, endpointModule, apiModule),
 	)
 }

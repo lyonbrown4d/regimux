@@ -1,7 +1,6 @@
 package admin
 
 import (
-	"fmt"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -11,57 +10,94 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta.Upstream]) *collectionlist.List[UpstreamRow] {
+func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta.Upstream]) (*collectionlist.List[UpstreamRow], error) {
 	snapshots := collectUpstreamSnapshots(s.runtimes, now)
 	stats := upstreamMetadataMap(metadata)
 
 	rows := collectionlist.NewList[UpstreamRow]()
-	addUpstreamSnapshotRows(rows, "oci", s.cfg.OrderedContainerUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "go", s.cfg.OrderedGoUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "npm", s.cfg.OrderedNPMUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "pypi", s.cfg.OrderedPyPIUpstreams(), stats, snapshots)
-	addUpstreamSnapshotRows(rows, "maven", s.cfg.OrderedMavenUpstreams(), stats, snapshots)
-	return rows
+	if err := s.addUpstreamSnapshotRows(rows, ecosystem.Container, s.cfg.OrderedContainerUpstreams(), stats, snapshots); err != nil {
+		return nil, err
+	}
+	if err := s.addUpstreamSnapshotRows(rows, "go", s.cfg.OrderedGoUpstreams(), stats, snapshots); err != nil {
+		return nil, err
+	}
+	if err := s.addUpstreamSnapshotRows(rows, "npm", s.cfg.OrderedNPMUpstreams(), stats, snapshots); err != nil {
+		return nil, err
+	}
+	if err := s.addUpstreamSnapshotRows(rows, "pypi", s.cfg.OrderedPyPIUpstreams(), stats, snapshots); err != nil {
+		return nil, err
+	}
+	if err := s.addUpstreamSnapshotRows(rows, "maven", s.cfg.OrderedMavenUpstreams(), stats, snapshots); err != nil {
+		return nil, err
+	}
+	return rows, nil
 }
 
-func addUpstreamSnapshotRows(
+func (s *Service) addUpstreamSnapshotRows(
 	rows *collectionlist.List[UpstreamRow],
 	ecosystemName string,
 	ordered *mapping.OrderedMap[string, config.UpstreamConfig],
 	stats *mapping.Map[string, meta.Upstream],
 	snapshots *mapping.Map[string, ecosystem.UpstreamSnapshot],
-) {
+) error {
 	if rows == nil || ordered == nil {
-		return
+		return nil
 	}
+	var mapErr error
 	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		displayAlias := alias
-		if ecosystemName != "" {
-			displayAlias = fmt.Sprintf("%s/%s", ecosystemName, alias)
-		}
-		row := UpstreamRow{
-			Ecosystem:        ecosystemName,
-			DisplayAlias:     displayAlias,
-			Alias:            alias,
-			Registry:         upstreamCfg.Registry,
-			DefaultNamespace: upstreamCfg.DefaultNamespace,
-			AuthType:         upstreamCfg.Auth.Type,
-			MirrorPolicy:     upstreamCfg.MirrorPolicy,
-			BlobPolicy:       upstreamCfg.Blob.MirrorPolicy,
-			ProbeEnabled:     upstreamCfg.Probe.Enabled,
-			MirrorCount:      len(upstreamCfg.Mirrors),
-		}
-		if runtime, ok := stats.Get(alias); ok {
-			row.RepositoryCount = metadataCount(runtime.RepositoryCount)
-			row.PullCount = runtime.PullCount
-			row.BlobBytes = formatBytes(runtime.BlobBytes)
-			row.LastActivityAt = formatTime(runtime.LastActivityAt)
+		row := upstreamRowFromConfig(ecosystemName, alias, upstreamCfg)
+		if err := s.applyUpstreamRuntimeState(&row, stats, alias); err != nil {
+			mapErr = err
+			return false
 		}
 		runtimeSnapshot, _ := snapshots.Get(upstreamSnapshotKey(ecosystemName, alias))
-		row.Endpoints = endpointRows(runtimeSnapshot)
+		endpoints, err := s.endpointRows(runtimeSnapshot)
+		if err != nil {
+			mapErr = err
+			return false
+		}
+		row.Endpoints = endpoints
 		rows.Add(row)
 		return true
 	})
+	return mapErr
+}
+
+func upstreamRowFromConfig(ecosystemName, alias string, upstreamCfg config.UpstreamConfig) UpstreamRow {
+	return UpstreamRow{
+		Ecosystem:        ecosystemName,
+		DisplayAlias:     upstreamDisplayAlias(ecosystemName, alias),
+		Alias:            alias,
+		Registry:         upstreamCfg.Registry,
+		DefaultNamespace: upstreamCfg.DefaultNamespace,
+		AuthType:         upstreamCfg.Auth.Type,
+		MirrorPolicy:     upstreamCfg.MirrorPolicy,
+		BlobPolicy:       upstreamCfg.Blob.MirrorPolicy,
+		ProbeEnabled:     upstreamCfg.Probe.Enabled,
+		MirrorCount:      len(upstreamCfg.Mirrors),
+	}
+}
+
+func upstreamDisplayAlias(ecosystemName, alias string) string {
+	if ecosystemName == "" {
+		return alias
+	}
+	return ecosystemName + "/" + alias
+}
+
+func (s *Service) applyUpstreamRuntimeState(
+	row *UpstreamRow,
+	stats *mapping.Map[string, meta.Upstream],
+	alias string,
+) error {
+	if stats == nil {
+		return nil
+	}
+	runtime, ok := stats.Get(alias)
+	if !ok {
+		return nil
+	}
+	return s.mapper.ApplyUpstreamMetadata(row, runtime)
 }
 
 func collectUpstreamSnapshots(runtimes *collectionlist.List[ecosystem.Runtime], now time.Time) *mapping.Map[string, ecosystem.UpstreamSnapshot] {
