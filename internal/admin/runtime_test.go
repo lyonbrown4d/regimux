@@ -6,41 +6,12 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
-type fakeUpstreamRuntime struct {
-	name      string
-	upstreams *collectionlist.List[ecosystem.Upstream]
-}
-
-func (r fakeUpstreamRuntime) Name() string {
-	return r.name
-}
-
-func (r fakeUpstreamRuntime) Upstreams() *collectionlist.List[ecosystem.Upstream] {
-	return r.upstreams
-}
-
 func newAdminTestRuntimes(cfg config.Config) *collectionlist.List[ecosystem.Runtime] {
 	return collectionlist.NewList[ecosystem.Runtime](
-		fakeUpstreamRuntime{name: ecosystem.Container, upstreams: upstreamListFromMap(ecosystem.Container, cfg.OrderedContainerUpstreams())},
-		fakeUpstreamRuntime{name: ecosystem.Go, upstreams: upstreamListFromMap(ecosystem.Go, cfg.OrderedGoUpstreams())},
-		fakeUpstreamRuntime{name: ecosystem.NPM, upstreams: upstreamListFromMap(ecosystem.NPM, cfg.OrderedNPMUpstreams())},
-		fakeUpstreamRuntime{name: ecosystem.PyPI, upstreams: upstreamListFromMap(ecosystem.PyPI, cfg.OrderedPyPIUpstreams())},
-		fakeUpstreamRuntime{name: ecosystem.Maven, upstreams: upstreamListFromMap(ecosystem.Maven, cfg.OrderedMavenUpstreams())},
+		ecosystem.NewConfigRuntime(ecosystem.Container, cfg.OrderedContainerUpstreams()),
+		ecosystem.NewConfigRuntime(ecosystem.Go, cfg.OrderedGoUpstreams()),
+		ecosystem.NewConfigRuntime(ecosystem.NPM, cfg.OrderedNPMUpstreams()),
+		ecosystem.NewConfigRuntime(ecosystem.PyPI, cfg.OrderedPyPIUpstreams()),
+		ecosystem.NewConfigRuntime(ecosystem.Maven, cfg.OrderedMavenUpstreams()),
 	)
-}
-
-func upstreamListFromMap(ecosystemName string, upstreams interface {
-	Range(func(string, config.UpstreamConfig) bool)
-	Len() int
-}) *collectionlist.List[ecosystem.Upstream] {
-	out := collectionlist.NewListWithCapacity[ecosystem.Upstream](upstreams.Len())
-	upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		out.Add(ecosystem.Upstream{
-			Ecosystem: ecosystemName,
-			Alias:     alias,
-			Config:    upstreamCfg,
-		})
-		return true
-	})
-	return out
 }
