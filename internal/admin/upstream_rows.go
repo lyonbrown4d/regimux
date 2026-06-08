@@ -33,7 +33,7 @@ func (s *Service) addUpstreamSnapshotRows(
 	var mapErr error
 	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
 		row := upstreamRowFromConfig(upstream.Ecosystem, upstream.Alias, upstream.Config)
-		if err := s.applyUpstreamRuntimeState(&row, stats, upstream.Alias); err != nil {
+		if err := s.applyUpstreamRuntimeState(&row, stats, upstream); err != nil {
 			mapErr = err
 			return false
 		}
@@ -75,16 +75,20 @@ func upstreamDisplayAlias(ecosystemName, alias string) string {
 func (s *Service) applyUpstreamRuntimeState(
 	row *UpstreamRow,
 	stats *mapping.Map[string, meta.Upstream],
-	alias string,
+	upstream ecosystem.Upstream,
 ) error {
 	if stats == nil {
 		return nil
 	}
-	runtime, ok := stats.Get(alias)
+	runtime, ok := stats.Get(metadataAliasForUpstream(upstream))
 	if !ok {
 		return nil
 	}
 	return s.mapper.ApplyUpstreamMetadata(row, runtime)
+}
+
+func metadataAliasForUpstream(upstream ecosystem.Upstream) string {
+	return ecosystem.ScopedAlias(upstream.Ecosystem, upstream.Alias)
 }
 
 func collectUpstreamSnapshots(runtimes *collectionlist.List[ecosystem.Runtime], now time.Time) *mapping.Map[string, ecosystem.UpstreamSnapshot] {
