@@ -9,12 +9,10 @@ import (
 	"testing"
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/gofiber/fiber/v3"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -111,7 +109,7 @@ func newAdminSyncTestApp(t *testing.T, syncer *fakeManualSyncer) (*fiber.App, *f
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
-		Runtimes: collectionlist.NewList[ecosystem.Runtime](),
+		Runtimes: newAdminTestRuntimes(cfg),
 		Version:  build.Version("test-version"),
 		Messages: newAdminMessages(t),
 		Syncer:   syncer,

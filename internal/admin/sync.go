@@ -5,9 +5,7 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/gofiber/fiber/v3"
-	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/samber/oops"
@@ -24,7 +22,7 @@ func (s *Service) syncPage(c fiber.Ctx) error {
 		return err
 	}
 	data.Sync.Form = defaultSyncForm()
-	data.Sync.Form.UpstreamAlias = defaultSyncUpstreamValue(s.cfg)
+	data.Sync.Form.UpstreamAlias = s.defaultSyncUpstreamValue()
 	data.Sync.Upstreams = s.syncUpstreamOptions(data.Sync.Form.UpstreamAlias)
 	return s.render(c, "sync", "layout", data)
 }
@@ -90,7 +88,7 @@ func (s *Service) syncOptionsFromForm(c fiber.Ctx) (manualsync.SyncOptions, Sync
 		Reference:     strings.TrimSpace(c.FormValue("reference")),
 	}
 	if form.UpstreamAlias == "" {
-		form.UpstreamAlias = defaultSyncUpstreamValue(s.cfg)
+		form.UpstreamAlias = s.defaultSyncUpstreamValue()
 	}
 	form.Ecosystem, form.Alias = parseSyncTarget(form.UpstreamAlias)
 	form.UpstreamAlias = syncTargetValue(form.Ecosystem, form.Alias)
@@ -139,33 +137,21 @@ func syncArtifactAndReference(form SyncForm) (string, SyncForm, error) {
 func (s *Service) syncUpstreamOptions(selected string) *collectionlist.List[SyncUpstreamOption] {
 	selected = normalizeSyncTarget(selected)
 	if selected == "" {
-		selected = defaultSyncUpstreamValue(s.cfg)
+		selected = s.defaultSyncUpstreamValue()
 	}
-	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](
-		s.cfg.OrderedContainerUpstreams().Len() +
-			s.cfg.OrderedGoUpstreams().Len() +
-			s.cfg.OrderedNPMUpstreams().Len() +
-			s.cfg.OrderedPyPIUpstreams().Len() +
-			s.cfg.OrderedMavenUpstreams().Len(),
-	)
-	addSyncOptions := func(targetEcosystem string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) {
-		upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-			value := syncTargetValue(targetEcosystem, alias)
-			options.Add(SyncUpstreamOption{
-				Ecosystem: targetEcosystem,
-				Alias:     alias,
-				Value:     value,
-				Registry:  upstreamCfg.Registry,
-				Selected:  value == selected,
-			})
-			return true
+	upstreams := s.configuredUpstreams()
+	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](upstreams.Len())
+	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+		value := syncTargetValue(upstream.Ecosystem, upstream.Alias)
+		options.Add(SyncUpstreamOption{
+			Ecosystem: upstream.Ecosystem,
+			Alias:     upstream.Alias,
+			Value:     value,
+			Registry:  upstream.Config.Registry,
+			Selected:  value == selected,
 		})
-	}
-	addSyncOptions(ecosystem.Container, s.cfg.OrderedContainerUpstreams())
-	addSyncOptions(ecosystem.Go, s.cfg.OrderedGoUpstreams())
-	addSyncOptions(ecosystem.NPM, s.cfg.OrderedNPMUpstreams())
-	addSyncOptions(ecosystem.PyPI, s.cfg.OrderedPyPIUpstreams())
-	addSyncOptions(ecosystem.Maven, s.cfg.OrderedMavenUpstreams())
+		return true
+	})
 	return options
 }
 

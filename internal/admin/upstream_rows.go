@@ -15,19 +15,7 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 	stats := upstreamMetadataMap(metadata)
 
 	rows := collectionlist.NewList[UpstreamRow]()
-	if err := s.addUpstreamSnapshotRows(rows, ecosystem.Container, s.cfg.OrderedContainerUpstreams(), stats, snapshots); err != nil {
-		return nil, err
-	}
-	if err := s.addUpstreamSnapshotRows(rows, "go", s.cfg.OrderedGoUpstreams(), stats, snapshots); err != nil {
-		return nil, err
-	}
-	if err := s.addUpstreamSnapshotRows(rows, "npm", s.cfg.OrderedNPMUpstreams(), stats, snapshots); err != nil {
-		return nil, err
-	}
-	if err := s.addUpstreamSnapshotRows(rows, "pypi", s.cfg.OrderedPyPIUpstreams(), stats, snapshots); err != nil {
-		return nil, err
-	}
-	if err := s.addUpstreamSnapshotRows(rows, "maven", s.cfg.OrderedMavenUpstreams(), stats, snapshots); err != nil {
+	if err := s.addUpstreamSnapshotRows(rows, s.configuredUpstreams(), stats, snapshots); err != nil {
 		return nil, err
 	}
 	return rows, nil
@@ -35,22 +23,21 @@ func (s *Service) upstreamRows(now time.Time, metadata *collectionlist.List[meta
 
 func (s *Service) addUpstreamSnapshotRows(
 	rows *collectionlist.List[UpstreamRow],
-	ecosystemName string,
-	ordered *mapping.OrderedMap[string, config.UpstreamConfig],
+	upstreams *collectionlist.List[ecosystem.Upstream],
 	stats *mapping.Map[string, meta.Upstream],
 	snapshots *mapping.Map[string, ecosystem.UpstreamSnapshot],
 ) error {
-	if rows == nil || ordered == nil {
+	if rows == nil || upstreams == nil {
 		return nil
 	}
 	var mapErr error
-	ordered.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		row := upstreamRowFromConfig(ecosystemName, alias, upstreamCfg)
-		if err := s.applyUpstreamRuntimeState(&row, stats, alias); err != nil {
+	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+		row := upstreamRowFromConfig(upstream.Ecosystem, upstream.Alias, upstream.Config)
+		if err := s.applyUpstreamRuntimeState(&row, stats, upstream.Alias); err != nil {
 			mapErr = err
 			return false
 		}
-		runtimeSnapshot, _ := snapshots.Get(upstreamSnapshotKey(ecosystemName, alias))
+		runtimeSnapshot, _ := snapshots.Get(upstreamSnapshotKey(upstream.Ecosystem, upstream.Alias))
 		endpoints, err := s.endpointRows(runtimeSnapshot)
 		if err != nil {
 			mapErr = err
@@ -111,6 +98,9 @@ func collectUpstreamSnapshots(runtimes *collectionlist.List[ecosystem.Runtime], 
 			return true
 		}
 		clientSnapshot := provider.Snapshot(now)
+		if clientSnapshot.Upstreams == nil {
+			return true
+		}
 		clientSnapshot.Upstreams.Range(func(_ int, upstreamSnapshot ecosystem.UpstreamSnapshot) bool {
 			out.Set(upstreamSnapshotKey(upstreamSnapshot.Ecosystem, upstreamSnapshot.Alias), upstreamSnapshot)
 			return true

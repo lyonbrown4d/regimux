@@ -17,7 +17,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -39,7 +38,7 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
-		Runtimes: collectionlist.NewList[ecosystem.Runtime](),
+		Runtimes: newAdminTestRuntimes(cfg),
 		Version:  build.Version("test-version"),
 		Messages: newAdminMessages(t),
 	})
@@ -133,7 +132,7 @@ func newAdminTestApp(t *testing.T, cfg config.Config, authService *auth.Service)
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
-		Runtimes: collectionlist.NewList[ecosystem.Runtime](),
+		Runtimes: newAdminTestRuntimes(cfg),
 		Version:  build.Version("test-version"),
 		Auth:     authService,
 		Messages: newAdminMessages(t),

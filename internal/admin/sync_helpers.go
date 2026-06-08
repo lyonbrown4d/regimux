@@ -1,28 +1,28 @@
 package admin
 
 import (
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
-func (s *Service) syncUpstream(ecosystemName, alias string) (config.UpstreamConfig, bool) {
-	switch strings.TrimSpace(ecosystemName) {
-	case ecosystem.Container:
-		return s.cfg.ContainerUpstream(alias)
-	case ecosystem.Go:
-		return s.cfg.GoUpstream(alias)
-	case ecosystem.NPM:
-		return s.cfg.NPMUpstream(alias)
-	case ecosystem.PyPI:
-		return s.cfg.PyPIUpstream(alias)
-	case ecosystem.Maven:
-		return s.cfg.MavenUpstream(alias)
-	default:
-		return config.UpstreamConfig{}, false
+func (s *Service) syncUpstream(ecosystemName, alias string) (ecosystem.Upstream, bool) {
+	ecosystemName = strings.TrimSpace(ecosystemName)
+	alias = strings.TrimSpace(alias)
+	if ecosystemName == "" || alias == "" {
+		return ecosystem.Upstream{}, false
 	}
+	var match ecosystem.Upstream
+	var ok bool
+	s.configuredUpstreams().Range(func(_ int, upstream ecosystem.Upstream) bool {
+		if upstream.Ecosystem != ecosystemName || upstream.Alias != alias {
+			return true
+		}
+		match = upstream
+		ok = true
+		return false
+	})
+	return match, ok
 }
 
 func defaultSyncForm() SyncForm {
@@ -31,33 +31,11 @@ func defaultSyncForm() SyncForm {
 	}
 }
 
-func firstConfiguredTarget(_ config.Config, runtime string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) (string, bool) {
-	if upstreams == nil || upstreams.Len() == 0 {
-		return "", false
-	}
+func (s *Service) defaultSyncUpstreamValue() string {
 	var value string
-	upstreams.Range(func(alias string, _ config.UpstreamConfig) bool {
-		value = syncTargetValue(runtime, alias)
+	s.configuredUpstreams().Range(func(_ int, upstream ecosystem.Upstream) bool {
+		value = syncTargetValue(upstream.Ecosystem, upstream.Alias)
 		return false
 	})
-	return value, value != ""
-}
-
-func defaultSyncUpstreamValue(cfg config.Config) string {
-	targets := []struct {
-		name      string
-		upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]
-	}{
-		{name: ecosystem.Container, upstreams: cfg.OrderedContainerUpstreams()},
-		{name: ecosystem.Go, upstreams: cfg.OrderedGoUpstreams()},
-		{name: ecosystem.NPM, upstreams: cfg.OrderedNPMUpstreams()},
-		{name: ecosystem.PyPI, upstreams: cfg.OrderedPyPIUpstreams()},
-		{name: ecosystem.Maven, upstreams: cfg.OrderedMavenUpstreams()},
-	}
-	for _, target := range targets {
-		if value, ok := firstConfiguredTarget(cfg, target.name, target.upstreams); ok {
-			return value
-		}
-	}
-	return ""
+	return value
 }

@@ -4,8 +4,6 @@ import (
 	"context"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
@@ -42,37 +40,27 @@ func (s *Service) schedulerSummary(ctx context.Context) (SchedulerSummary, error
 		PrefetchRetryWindow:          formatDuration(cfg.Prefetch.RetryWindow),
 		PrefetchRuns:                 runs,
 		PrefetchOutcomes:             outcomes,
-		ProbeJobs:                    probeJobRows(s.cfg),
+		ProbeJobs:                    probeJobRows(s.configuredUpstreams()),
 	}, nil
 }
 
-func probeJobRows(cfg config.Config) *collectionlist.List[ProbeJobRow] {
-	rows := collectionlist.NewListWithCapacity[ProbeJobRow](
-		cfg.OrderedContainerUpstreams().Len() +
-			cfg.OrderedGoUpstreams().Len() +
-			cfg.OrderedNPMUpstreams().Len() +
-			cfg.OrderedPyPIUpstreams().Len() +
-			cfg.OrderedMavenUpstreams().Len(),
-	)
-	addProbeRows := func(runtime string, upstreams *collectionmapping.OrderedMap[string, config.UpstreamConfig]) {
-		upstreams.Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-			rows.Add(ProbeJobRow{
-				Ecosystem: runtime,
-				Alias:     alias,
-				Enabled:   upstreamCfg.Probe.Enabled,
-				Interval:  formatDuration(upstreamCfg.Probe.Interval),
-				Timeout:   formatDuration(upstreamCfg.Probe.Timeout),
-				Cooldown:  formatDuration(upstreamCfg.Probe.Cooldown),
-				Jitter:    formatDuration(upstreamCfg.Probe.Jitter),
-			})
-			return true
-		})
+func probeJobRows(upstreams *collectionlist.List[ecosystem.Upstream]) *collectionlist.List[ProbeJobRow] {
+	if upstreams == nil {
+		return collectionlist.NewList[ProbeJobRow]()
 	}
-	addProbeRows(ecosystem.Container, cfg.OrderedContainerUpstreams())
-	addProbeRows(ecosystem.Go, cfg.OrderedGoUpstreams())
-	addProbeRows(ecosystem.NPM, cfg.OrderedNPMUpstreams())
-	addProbeRows(ecosystem.PyPI, cfg.OrderedPyPIUpstreams())
-	addProbeRows(ecosystem.Maven, cfg.OrderedMavenUpstreams())
+	rows := collectionlist.NewListWithCapacity[ProbeJobRow](upstreams.Len())
+	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+		rows.Add(ProbeJobRow{
+			Ecosystem: upstream.Ecosystem,
+			Alias:     upstream.Alias,
+			Enabled:   upstream.Config.Probe.Enabled,
+			Interval:  formatDuration(upstream.Config.Probe.Interval),
+			Timeout:   formatDuration(upstream.Config.Probe.Timeout),
+			Cooldown:  formatDuration(upstream.Config.Probe.Cooldown),
+			Jitter:    formatDuration(upstream.Config.Probe.Jitter),
+		})
+		return true
+	})
 	return rows
 }
 
