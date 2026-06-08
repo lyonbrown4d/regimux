@@ -4,9 +4,11 @@ import (
 	"context"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/observabilityx"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/lo"
 )
 
@@ -49,7 +51,7 @@ func newConfigMetrics(obs observabilityx.Observability) configMetrics {
 		upstreamEndpoint: obs.Gauge(gaugeSpec(
 			"config_upstream_endpoint",
 			"Configured upstream endpoint.",
-			"alias", "registry", "role",
+			"ecosystem", "alias", "registry", "role",
 		)),
 		schedulerComponent: obs.Gauge(gaugeSpec(
 			"config_scheduler_component",
@@ -59,18 +61,28 @@ func newConfigMetrics(obs observabilityx.Observability) configMetrics {
 	}
 }
 
-func ObserveStaticConfig(ctx context.Context, cfg config.Config, version build.Version, metrics *Metrics) error {
-	if metrics == nil {
+func ObserveStaticConfig(ctx context.Context, deps StaticConfigDependencies) error {
+	if deps.Metrics == nil {
 		return nil
 	}
-	metrics.ObserveStaticConfig(ctx, cfg, version)
+	deps.Metrics.ObserveStaticConfigWithRuntimes(ctx, deps.Config, deps.Version, deps.Runtimes)
 	return nil
 }
 
 func (m *Metrics) ObserveStaticConfig(ctx context.Context, cfg config.Config, version build.Version) {
+	m.ObserveStaticConfigWithRuntimes(ctx, cfg, version, nil)
+}
+
+func (m *Metrics) ObserveStaticConfigWithRuntimes(
+	ctx context.Context,
+	cfg config.Config,
+	version build.Version,
+	runtimes *collectionlist.List[ecosystem.Runtime],
+) {
 	if m == nil {
 		return
 	}
+	upstreams := ecosystem.ConfiguredUpstreams(runtimes)
 	m.config.buildInfo.Set(ctx, 1, observabilityx.String("version", string(version)))
 	m.config.cacheBackend.Set(ctx, 1, observabilityx.String("backend", labelOrUnknown(cfg.Cache.Backend)))
 	m.config.storeBackend.Set(ctx, 1, observabilityx.String("kind", "meta"), observabilityx.String("driver", labelOrUnknown(cfg.Store.Meta.Driver)))
@@ -78,18 +90,22 @@ func (m *Metrics) ObserveStaticConfig(ctx context.Context, cfg config.Config, ve
 	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled), dockerConfigLabels("integration", cfg.Docker.Enabled)...)
 	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Observe), dockerConfigLabels("observe", cfg.Docker.Enabled && cfg.Docker.Observe)...)
 	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled), dockerConfigLabels("prewarm", cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled)...)
-	m.config.upstreams.Set(ctx, float64(cfg.OrderedContainerUpstreams().Len()))
-	observeConfiguredUpstreamEndpoints(ctx, m.config.upstreamEndpoint, cfg)
+	m.config.upstreams.Set(ctx, float64(upstreams.Len()))
+	observeConfiguredUpstreamEndpoints(ctx, m.config.upstreamEndpoint, upstreams)
 	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Enabled), schedulerConfigLabels("scheduler", cfg.Scheduler.Enabled)...)
 	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Cleanup.Enabled), schedulerConfigLabels("cleanup", cfg.Scheduler.Cleanup.Enabled)...)
 	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Prefetch.Enabled), schedulerConfigLabels("prefetch", cfg.Scheduler.Prefetch.Enabled)...)
 }
 
-func observeConfiguredUpstreamEndpoints(ctx context.Context, metric observabilityx.Gauge, cfg config.Config) {
-	cfg.OrderedContainerUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		for _, endpoint := range configuredUpstreamEndpoints(upstreamCfg) {
+func observeConfiguredUpstreamEndpoints(ctx context.Context, metric observabilityx.Gauge, upstreams *collectionlist.List[ecosystem.Upstream]) {
+	if upstreams == nil {
+		return
+	}
+	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+		for _, endpoint := range configuredUpstreamEndpoints(upstream.Config) {
 			metric.Set(ctx, 1,
-				observabilityx.String("alias", alias),
+				observabilityx.String("ecosystem", upstream.Ecosystem),
+				observabilityx.String("alias", upstream.Alias),
 				observabilityx.String("registry", endpoint.registry),
 				observabilityx.String("role", endpoint.role),
 			)

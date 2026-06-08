@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"sort"
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	collectionset "github.com/arcgolabs/collectionx/set"
-	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 const (
@@ -26,28 +26,28 @@ type startupEndpoint struct {
 	aliases []string
 }
 
-func logStartup(_ context.Context, cfg config.Config, logger *slog.Logger, version build.Version) error {
-	ordered := cfg.OrderedContainerUpstreams()
-	logger = startupLogger(logger)
-	logger.Info("parsed config", "config", cfg)
-	if configJSON, err := json.MarshalIndent(cfg, "", "  "); err == nil {
+func logStartup(_ context.Context, deps StartupDependencies) error {
+	upstreams := ecosystem.ConfiguredUpstreams(deps.Runtimes)
+	logger := startupLogger(deps.Logger)
+	logger.Info("parsed config", "config", deps.Config)
+	if configJSON, err := json.MarshalIndent(deps.Config, "", "  "); err == nil {
 		logger.Info(fmt.Sprintf("parsed config (pretty)\n%s", configJSON))
 	} else {
 		logger.Error("failed to render parsed config as pretty json", "error", err)
 	}
 	logger.Info("regimuxd starting",
-		"version", string(version),
-		"listen", cfg.Server.Listen,
-		"public_url", serviceBaseURL(cfg.Server),
-		"container_upstream_count", ordered.Len(),
-		"container_upstreams", ordered.Keys(),
+		"version", string(deps.Version),
+		"listen", deps.Config.Server.Listen,
+		"public_url", serviceBaseURL(deps.Config.Server),
+		"upstream_count", upstreams.Len(),
+		"upstreams", startupUpstreamLabels(upstreams).Values(),
 	)
 	return nil
 }
 
-func logRuntimeAccess(_ context.Context, cfg config.Config, logger *slog.Logger) error {
-	logger = startupLogger(logger)
-	startupServiceEndpoints(cfg).Range(func(_ int, endpoint startupEndpoint) bool {
+func logRuntimeAccess(_ context.Context, deps RuntimeAccessDependencies) error {
+	logger := startupLogger(deps.Logger)
+	startupServiceEndpoints(deps.Config, deps.Runtimes).Range(func(_ int, endpoint startupEndpoint) bool {
 		fields := []any{
 			"name", endpoint.name,
 			"url", endpoint.url,
@@ -58,15 +58,17 @@ func logRuntimeAccess(_ context.Context, cfg config.Config, logger *slog.Logger)
 		logger.Info("service endpoint available", fields...)
 		return true
 	})
-	logRegisteredUpstreams(logger, cfg)
+	logRegisteredUpstreams(logger, deps.Runtimes)
 	return nil
 }
 
-func logRegisteredUpstreams(logger *slog.Logger, cfg config.Config) {
-	cfg.OrderedContainerUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
+func logRegisteredUpstreams(logger *slog.Logger, runtimes *collectionlist.List[ecosystem.Runtime]) {
+	ecosystem.ConfiguredUpstreams(runtimes).Range(func(_ int, upstream ecosystem.Upstream) bool {
+		upstreamCfg := upstream.Config
 		endpoints := upstreamEndpointRegistries(upstreamCfg)
-		logger.Info("registry upstream registered",
-			"alias", alias,
+		logger.Info("upstream registered",
+			"ecosystem", upstream.Ecosystem,
+			"alias", upstream.Alias,
 			"registry", cleanRegistry(upstreamCfg.Registry),
 			"mirrors", upstreamCfg.Mirrors,
 			"endpoint_count", endpoints.Len(),
@@ -81,7 +83,7 @@ func logRegisteredUpstreams(logger *slog.Logger, cfg config.Config) {
 	})
 }
 
-func startupServiceEndpoints(cfg config.Config) *collectionlist.List[startupEndpoint] {
+func startupServiceEndpoints(cfg config.Config, runtimes *collectionlist.List[ecosystem.Runtime]) *collectionlist.List[startupEndpoint] {
 	base := serviceBaseURL(cfg.Server)
 	endpoints := collectionlist.NewList(
 		startupEndpoint{name: "registry", url: joinStartupURL(base, "/v2/")},
@@ -101,35 +103,62 @@ func startupServiceEndpoints(cfg config.Config) *collectionlist.List[startupEndp
 	if cfg.Server.Middleware.Pprof.Enabled {
 		endpoints.Add(startupEndpoint{name: "pprof", url: joinStartupURL(base, startupPprofPath(cfg.Server.Middleware.Pprof))})
 	}
-	if aliases := sortedDependencyAliases(cfg.Go); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "go", url: joinStartupURL(base, "/go"), aliases: aliases})
-	}
-	if aliases := sortedDependencyAliases(cfg.NPM); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "npm", url: joinStartupURL(base, "/npm"), aliases: aliases})
-	}
-	if aliases := sortedDependencyAliases(cfg.PyPI); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "pypi", url: joinStartupURL(base, "/pypi"), aliases: aliases})
-	}
-	if aliases := sortedDependencyAliases(cfg.Maven); len(aliases) > 0 {
-		endpoints.Add(startupEndpoint{name: "maven", url: joinStartupURL(base, "/maven"), aliases: aliases})
-	}
+	endpoints.Add(dependencyStartupEndpoints(base, ecosystem.ConfiguredUpstreams(runtimes)).Values()...)
 	return endpoints
 }
 
-func sortedDependencyAliases(cfg config.DependencyEcosystemConfig) []string {
-	if len(cfg) == 0 {
+func dependencyStartupEndpoints(base string, upstreams *collectionlist.List[ecosystem.Upstream]) *collectionlist.List[startupEndpoint] {
+	groups := collectionmapping.NewMap[string, *collectionlist.List[string]]()
+	if upstreams != nil {
+		upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+			if upstream.Ecosystem == "" || upstream.Ecosystem == ecosystem.Container {
+				return true
+			}
+			aliases, ok := groups.Get(upstream.Ecosystem)
+			if !ok {
+				aliases = collectionlist.NewList[string]()
+				groups.Set(upstream.Ecosystem, aliases)
+			}
+			aliases.Add(upstream.Alias)
+			return true
+		})
+	}
+
+	names := collectionlist.NewList(groups.Keys()...).Sort(strings.Compare)
+	endpoints := collectionlist.NewListWithCapacity[startupEndpoint](names.Len())
+	names.Range(func(_ int, name string) bool {
+		aliases, _ := groups.Get(name)
+		endpoints.Add(startupEndpoint{
+			name:    name,
+			url:     joinStartupURL(base, "/"+name),
+			aliases: sortedStartupAliases(aliases),
+		})
+		return true
+	})
+	return endpoints
+}
+
+func sortedStartupAliases(aliases *collectionlist.List[string]) []string {
+	if aliases == nil {
 		return nil
 	}
-	aliases := make([]string, 0, len(cfg))
-	for alias := range cfg {
-		alias = strings.TrimSpace(alias)
-		if alias == "" {
-			continue
-		}
-		aliases = append(aliases, alias)
+	return aliases.Sort(strings.Compare).Values()
+}
+
+func startupUpstreamLabels(upstreams *collectionlist.List[ecosystem.Upstream]) *collectionlist.List[string] {
+	if upstreams == nil {
+		return collectionlist.NewList[string]()
 	}
-	sort.Strings(aliases)
-	return aliases
+	return collectionlist.MapList(upstreams, func(_ int, upstream ecosystem.Upstream) string {
+		return upstreamDisplayName(upstream)
+	})
+}
+
+func upstreamDisplayName(upstream ecosystem.Upstream) string {
+	if upstream.Ecosystem == "" || upstream.Ecosystem == ecosystem.Container {
+		return upstream.Alias
+	}
+	return upstream.Ecosystem + "/" + upstream.Alias
 }
 
 func upstreamEndpointRegistries(cfg config.UpstreamConfig) *collectionlist.List[string] {

@@ -8,27 +8,47 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
 )
+
+type StartupDependencies struct {
+	Config   config.Config
+	Logger   *slog.Logger
+	Version  build.Version
+	Runtimes *collectionlist.List[ecosystem.Runtime]
+}
+
+type RuntimeAccessDependencies struct {
+	Config   config.Config
+	Logger   *slog.Logger
+	Runtimes *collectionlist.List[ecosystem.Runtime]
+}
 
 var Module = dix.NewModule("events",
 	dix.Providers(
 		dix.Provider1[Bus, *slog.Logger](NewBus, dix.Eager()),
 		dix.Provider0[*Subscriptions](NewSubscriptions, dix.Eager()),
+		dix.Provider4[StartupDependencies, config.Config, *slog.Logger, build.Version, *collectionlist.List[ecosystem.Runtime]](
+			newStartupDependencies,
+		),
+		dix.Provider3[RuntimeAccessDependencies, config.Config, *slog.Logger, *collectionlist.List[ecosystem.Runtime]](
+			newRuntimeAccessDependencies,
+		),
 		dix.Provider1[Subscriber, *slog.Logger](
 			NewLifecycleLogSubscriber,
 			dix.Into[Subscriber](dix.Key("events.lifecycle_logger"), dix.Order(-100)),
 		),
 	),
 	dix.Hooks(
-		dix.OnStart3[config.Config, *slog.Logger, build.Version](logStartup, dix.LifecycleName("regimux.log_startup"), dix.LifecyclePriority(-200)),
+		dix.OnStart[StartupDependencies](logStartup, dix.LifecycleName("regimux.log_startup"), dix.LifecyclePriority(-200)),
 		dix.OnStart2[Bus, build.Version](publishStarting, dix.LifecycleName("regimux.application_starting"), dix.LifecyclePriority(-100)),
 		dix.OnStart3[Bus, *Subscriptions, *collectionlist.List[Subscriber]](
 			startSubscribers,
 			dix.LifecycleName("events.subscribers_start"),
 			dix.LifecyclePriority(-150),
 		),
-		dix.OnStart2[config.Config, *slog.Logger](
+		dix.OnStart[RuntimeAccessDependencies](
 			logRuntimeAccess,
 			dix.LifecycleName("regimux.runtime_access"),
 			dix.LifecyclePriority(10),
@@ -48,6 +68,32 @@ var Module = dix.NewModule("events",
 		dix.OnStop[Bus](closeBus, dix.LifecycleName("regimux.events_close"), dix.LifecyclePriority(-200)),
 	),
 )
+
+func newStartupDependencies(
+	cfg config.Config,
+	logger *slog.Logger,
+	version build.Version,
+	runtimes *collectionlist.List[ecosystem.Runtime],
+) StartupDependencies {
+	return StartupDependencies{
+		Config:   cfg,
+		Logger:   logger,
+		Version:  version,
+		Runtimes: runtimes,
+	}
+}
+
+func newRuntimeAccessDependencies(
+	cfg config.Config,
+	logger *slog.Logger,
+	runtimes *collectionlist.List[ecosystem.Runtime],
+) RuntimeAccessDependencies {
+	return RuntimeAccessDependencies{
+		Config:   cfg,
+		Logger:   logger,
+		Runtimes: runtimes,
+	}
+}
 
 func startSubscribers(_ context.Context, bus Bus, subscriptions *Subscriptions, subscribers *collectionlist.List[Subscriber]) error {
 	return subscriptions.Register(bus, subscribers)

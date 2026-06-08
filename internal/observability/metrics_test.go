@@ -8,8 +8,8 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/build"
-	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 )
 
@@ -26,8 +26,11 @@ func TestObserveStaticConfigRecordsConfiguredUpstreamMetrics(t *testing.T) {
 	if err := cfg.NormalizeAndValidate(); err != nil {
 		t.Fatalf("normalize config: %v", err)
 	}
+	runtimes := collectionlist.NewList[ecosystem.Runtime](
+		ecosystem.NewConfigRuntime(ecosystem.Container, cfg.OrderedContainerUpstreams()),
+	)
 
-	metrics.ObserveStaticConfig(context.Background(), cfg, build.Version("test"))
+	metrics.ObserveStaticConfigWithRuntimes(context.Background(), cfg, build.Version("test"), runtimes)
 
 	buildInfo := findMetric(t, recorder.gauges, "service_build_info")
 	assertMetricAttr(t, buildInfo, "version", "test")
@@ -36,6 +39,7 @@ func TestObserveStaticConfigRecordsConfiguredUpstreamMetrics(t *testing.T) {
 		t.Fatalf("upstreams gauge = %f, want 1", upstreams.value)
 	}
 	endpoint := findMetric(t, recorder.gauges, "service_config_upstream_endpoint")
+	assertMetricAttr(t, endpoint, "ecosystem", "container")
 	assertMetricAttr(t, endpoint, "alias", "hub")
 }
 
