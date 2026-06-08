@@ -222,7 +222,7 @@ func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, erro
 		Storage:            storage,
 		Audit:              auditSummary(s.cfg),
 		Scheduler:          scheduler,
-		ConfigRows:         configRows(s.cfg),
+		ConfigRows:         configRows(s.cfg, s.configuredUpstreams()),
 		ConfigSources:      configSourceRows(locale, s.messages),
 	}, nil
 }

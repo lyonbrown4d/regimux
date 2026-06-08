@@ -8,9 +8,10 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
-func configRows(cfg config.Config) *collectionlist.List[ConfigRow] {
+func configRows(cfg config.Config, upstreams *collectionlist.List[ecosystem.Upstream]) *collectionlist.List[ConfigRow] {
 	rows := collectionlist.NewList[ConfigRow]()
 	addServerRows(rows, cfg.Server)
 	addAuthRows(rows, cfg.Auth)
@@ -19,7 +20,7 @@ func configRows(cfg config.Config) *collectionlist.List[ConfigRow] {
 	addStoreRows(rows, cfg.Store)
 	addSchedulerRows(rows, cfg.Scheduler)
 	addWorkerRows(rows, cfg.Worker)
-	addUpstreamRows(rows, cfg)
+	addUpstreamRows(rows, upstreams)
 	return rows
 }
 
@@ -159,25 +160,13 @@ func addWorkerRows(rows *collectionlist.List[ConfigRow], cfg config.WorkerConfig
 	addRow(rows, "worker.prefetch_concurrency", strconv.Itoa(cfg.PrefetchConcurrency))
 }
 
-func addUpstreamRows(rows *collectionlist.List[ConfigRow], cfg config.Config) {
-	cfg.OrderedContainerUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		addConfigUpstreamRows(rows, "container."+alias, upstreamCfg, true)
-		return true
-	})
-	cfg.OrderedGoUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		addConfigUpstreamRows(rows, "go."+alias, upstreamCfg, false)
-		return true
-	})
-	cfg.OrderedNPMUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		addConfigUpstreamRows(rows, "npm."+alias, upstreamCfg, false)
-		return true
-	})
-	cfg.OrderedPyPIUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		addConfigUpstreamRows(rows, "pypi."+alias, upstreamCfg, false)
-		return true
-	})
-	cfg.OrderedMavenUpstreams().Range(func(alias string, upstreamCfg config.UpstreamConfig) bool {
-		addConfigUpstreamRows(rows, "maven."+alias, upstreamCfg, false)
+func addUpstreamRows(rows *collectionlist.List[ConfigRow], upstreams *collectionlist.List[ecosystem.Upstream]) {
+	if upstreams == nil {
+		return
+	}
+	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+		prefix := upstream.Ecosystem + "." + upstream.Alias
+		addConfigUpstreamRows(rows, prefix, upstream.Config, upstream.Ecosystem == ecosystem.Container)
 		return true
 	})
 }
