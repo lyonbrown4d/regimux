@@ -48,6 +48,7 @@ func NewService(deps ServiceDependencies) *Service {
 		publicURL:   strings.TrimRight(deps.Config.Server.PublicURL, "/"),
 		metadataTTL: deps.MetadataTTL,
 		now:         now,
+		events:      deps.Events,
 	}
 }
 
@@ -69,7 +70,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if requestRoute.MetadataTTL <= 0 {
 		requestRoute.MetadataTTL = upstreamCfg.TagTTL
 	}
-	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
+	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeClient)
 	s.recordPull(ctx, req, requestRoute, resp, err)
 	return resp, err
 }
@@ -92,22 +93,22 @@ func (s *Service) getFromUpstream(
 	req Request,
 	requestRoute route,
 	upstreamCfg config.UpstreamConfig,
+	mode requestMode,
 ) (*Response, error) {
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err
 	}
-	if !req.ForceRefresh && cachedOK && !cached.expired {
+	if mode != requestModeRefresh && cachedOK && !cached.expired {
 		return s.responseFromStored(req, requestRoute, cached, cacheHit)
 	}
-	if !req.ForceRefresh && cachedOK && cached.expired {
-		s.refreshAsync(ctx, req, requestRoute, upstreamCfg)
+	if mode != requestModeRefresh && cachedOK && cached.expired {
 		return s.responseFromStored(req, requestRoute, cached, cacheStale)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
-		return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err)
+		return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
 	}
 	if shouldPassThrough(req, fetched.status) || !cacheable(requestRoute) {
 		return s.responseFromUpstream(req, requestRoute, fetched), nil
@@ -119,28 +120,23 @@ func (s *Service) getFromUpstream(
 	return s.storeFetchedResponse(ctx, req, requestRoute, prepared)
 }
 
-func (s *Service) refreshAsync(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig) {
-	if !cacheable(requestRoute) {
-		return
+func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
+	requestRoute, err := parseRoute(req)
+	if err != nil {
+		return nil, err
 	}
-	go func() {
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
-		defer cancel()
-
-		refreshReq := req
-		refreshReq.ForceRefresh = true
-		refreshReq.SkipPullRecord = true
-		refreshReq.Method = http.MethodGet
-
-		key := strings.Join([]string{"npm", requestRoute.Alias, requestRoute.Package, requestRoute.Reference}, ":")
-		_, _, _ = s.refresh.Do(key, func() (any, error) {
-			resp, err := s.getFromUpstream(refreshCtx, refreshReq, requestRoute, upstreamCfg)
-			if resp != nil {
-				closeReadCloser(resp.Body, s.logger, "close npm async refresh response body")
-			}
-			return nil, err
-		})
-	}()
+	upstreamCfg, ok := s.upstream(requestRoute.Alias)
+	if !ok {
+		return nil, oops.In("npm").
+			With("alias", requestRoute.Alias).
+			Errorf("npm upstream is not configured")
+	}
+	requestRoute.MetadataTTL = s.metadataTTL
+	if requestRoute.MetadataTTL <= 0 {
+		requestRoute.MetadataTTL = upstreamCfg.TagTTL
+	}
+	req.SkipPullRecord = true
+	return s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeRefresh)
 }
 
 func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute route, method string) (*upstreamFetch, error) {
@@ -243,8 +239,8 @@ func (s *Service) storeFetchedResponse(ctx context.Context, req Request, request
 	}, cacheMiss)
 }
 
-func (s *Service) responseFromFetchError(req Request, requestRoute route, cached storedResponse, cachedOK bool, err error) (*Response, error) {
-	if req.ForceRefresh {
+func (s *Service) responseFromFetchError(req Request, requestRoute route, cached storedResponse, cachedOK bool, err error, mode requestMode) (*Response, error) {
+	if mode == requestModeRefresh {
 		return nil, err
 	}
 	if cachedOK {

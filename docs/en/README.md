@@ -9,7 +9,7 @@ RegiMux is a read-only developer dependency cache gateway. Container registry, G
 - [Storage](storage.md): metadata drivers and object storage drivers.
 - [Scheduler](scheduler.md): cleanup, capacity control, mirror probing, and predictive prefetch.
 - [Authentication](auth.md): Docker login flow, configured users, and repository scopes.
-- [Admin UI](admin.md): embedded admin pages and manual sync.
+- [Admin UI](admin.md): embedded admin pages and manual refresh.
 
 ## Reference
 

@@ -55,7 +55,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 	ecosystemsModule := ecosystems.Module
 	schedulerModule := scheduler.Module
 	adminModule := admin.Module
-	endpointModule := api.EndpointsModule
 	apiModule := api.Module
 
 	return dix.New("regimuxd",
@@ -63,6 +62,6 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux developer dependency cache gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, endpointModule, apiModule),
+		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, apiModule),
 	)
 }

@@ -2,7 +2,6 @@ package prefetch
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
@@ -27,14 +26,12 @@ func (s *Service) Sync(ctx context.Context, opts manualsync.SyncOptions) (*manua
 		Tag:    opts.Reference,
 		Reason: "manual sync",
 	}
-	manifest, err := s.manifests.Get(ctx, cache.ManifestRequest{
+	manifest, err := s.refreshManifest(ctx, cache.ManifestRequest{
 		UpstreamAlias:  opts.Alias,
 		Repo:           opts.Artifact,
 		Reference:      opts.Reference,
 		Accept:         opts.Accept,
-		Method:         http.MethodGet,
 		SkipPullRecord: true,
-		ForceRefresh:   true,
 	})
 	if err != nil {
 		s.logger.WarnContext(ctx, "manual sync manifest failed", "alias", opts.Alias, "artifact", opts.Artifact, "reference", opts.Reference, "error", err)

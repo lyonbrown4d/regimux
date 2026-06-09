@@ -20,15 +20,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
-type PrefetchServiceDependencies struct {
-	Metadata  meta.Store
-	Tags      cache.TagService
-	Manifests cache.ManifestService
-	Blobs     cache.BlobService
-	Logger    *slog.Logger
-	Pools     *worker.Pools
-}
-
 var Module = dix.NewModule("container",
 	dix.Imports(
 		registrytool.Module,
@@ -39,11 +30,10 @@ var Module = dix.NewModule("container",
 		dockerintegration.Module,
 	),
 	dix.Providers(
-		dix.Provider6[PrefetchServiceDependencies, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
-			newPrefetchServiceDependencies,
+		dix.Provider6[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
+			NewPrefetchService,
 		),
-		dix.Provider1[*prefetch.Service, PrefetchServiceDependencies](NewPrefetchService),
-		dix.Provider4[*Runtime, config.Config, *upstream.Client, *prefetch.Service, *cache.CleanupService](
+		dix.Provider5[*Runtime, config.Config, *upstream.Client, *prefetch.Service, cache.ManifestService, *cache.CleanupService](
 			NewRuntime,
 			dix.Into[ecosystem.Runtime](dix.Key("container"), dix.Order(0)),
 		),
@@ -55,33 +45,22 @@ var Module = dix.NewModule("container",
 	),
 )
 
-func NewPrefetchService(deps PrefetchServiceDependencies) *prefetch.Service {
-	return prefetch.NewService(prefetch.ServiceDependencies{
-		Metadata:  deps.Metadata,
-		Tags:      deps.Tags,
-		Manifests: deps.Manifests,
-		Blobs:     deps.Blobs,
-		Logger:    deps.Logger,
-		Workers:   deps.Pools,
-	})
-}
-
-func newPrefetchServiceDependencies(
+func NewPrefetchService(
 	metadata meta.Store,
 	tags cache.TagService,
 	manifests cache.ManifestService,
 	blobs cache.BlobService,
 	logger *slog.Logger,
 	pools *worker.Pools,
-) PrefetchServiceDependencies {
-	return PrefetchServiceDependencies{
+) *prefetch.Service {
+	return prefetch.NewService(prefetch.ServiceDependencies{
 		Metadata:  metadata,
 		Tags:      tags,
 		Manifests: manifests,
 		Blobs:     blobs,
 		Logger:    logger,
-		Pools:     pools,
-	}
+		Workers:   pools,
+	})
 }
 
 func newRegistryEndpointOptions(

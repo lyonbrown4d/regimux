@@ -273,8 +273,9 @@ func rewriteLinkPart(part, alias, repo string) string {
 }
 
 var (
-	_ ManifestService = manifestProxy{}
-	_ BlobService     = blobProxy{}
-	_ TagService      = tagProxy{}
-	_ ReferrerService = referrerProxy{}
+	_ ManifestService   = manifestProxy{}
+	_ ManifestRefresher = manifestProxy{}
+	_ BlobService       = blobProxy{}
+	_ TagService        = tagProxy{}
+	_ ReferrerService   = referrerProxy{}
 )

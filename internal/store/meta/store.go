@@ -23,6 +23,7 @@ type Store interface {
 	BlobRepository
 	RepoBlobRepository
 	PrefetchRepository
+	RefreshRepository
 	MetadataReadModel
 }
 
@@ -90,6 +91,12 @@ type PrefetchRepository interface {
 	RequestPrefetchControl(ctx context.Context, record PrefetchControlRecord) (*PrefetchControlRecord, error)
 	ConsumePrefetchControl(ctx context.Context, action string, at time.Time) (*PrefetchControlRecord, bool, error)
 	ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) ([]PrefetchControlRecord, error)
+}
+
+type RefreshRepository interface {
+	RefreshIntent(ctx context.Context, key RefreshIntentKey) (*RefreshIntentRecord, bool, error)
+	QueueRefreshIntent(ctx context.Context, record RefreshIntentRecord, at time.Time, window time.Duration) (*RefreshIntentRecord, bool, error)
+	ConsumeDueRefreshIntents(ctx context.Context, at time.Time, limit int) ([]RefreshIntentRecord, error)
 }
 
 type MetadataReadModel interface {

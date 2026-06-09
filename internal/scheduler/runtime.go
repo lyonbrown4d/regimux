@@ -11,6 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
@@ -21,6 +22,7 @@ type Runtime struct {
 	logger   *slog.Logger
 	runtimes *collectionlist.List[ecosystem.Runtime]
 	metrics  *observability.Metrics
+	metadata meta.Store
 
 	scheduler gocron.Scheduler
 	redis     goredis.UniversalClient
@@ -42,6 +44,7 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 		logger:   logger.With("component", "scheduler"),
 		runtimes: runtimes,
 		metrics:  metrics,
+		metadata: deps.Metadata,
 	}
 }
 
@@ -71,6 +74,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 	r.scheduler = scheduler
 
 	if err := r.registerEcosystemJobs(ctx, scheduler); err != nil {
+		return join(err, r.Stop(ctx))
+	}
+	if err := r.registerRefreshJob(ctx, scheduler); err != nil {
 		return join(err, r.Stop(ctx))
 	}
 	scheduler.Start()

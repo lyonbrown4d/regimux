@@ -19,14 +19,6 @@ type fiberOptions struct {
 	views  fiber.Views
 }
 
-var EndpointsModule = dix.NewModule("api-endpoints",
-	dix.Providers(
-		dix.Provider0[*HealthEndpoint](NewHealthEndpoint,
-			dix.Into[httpx.Endpoint](dix.Key("health"), dix.Order(-100)),
-		),
-	),
-)
-
 var Module = dix.NewModule("api",
 	dix.Providers(
 		dix.Provider1[config.ServerConfig, config.Config](func(cfg config.Config) config.ServerConfig {

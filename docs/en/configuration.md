@@ -77,6 +77,9 @@ Important defaults:
 - `store.object.path = "data/objects"`
 - `scheduler.cleanup.enabled = true`
 - `scheduler.prefetch.enabled = false`
+- `scheduler.refresh.enabled = true`
+- `scheduler.refresh.window = "10m"` deduplicates recent-pull refresh intents per artifact before scheduling upstream refresh
+- `scheduler.refresh.distributed = true`
 - `scheduler.manifest_refresh.enabled = false`
 - `scheduler.manifest_refresh.ecosystems` can override manifest refresh per ecosystem (`container`, `go`, `npm`, `pypi`, `maven`)
 - `docker.enabled = false`

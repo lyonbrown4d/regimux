@@ -50,6 +50,7 @@ type SchedulerConfig struct {
 	Cleanup         SchedulerCleanupConfig         `json:"cleanup"          koanf:"cleanup"          mapstructure:"cleanup"`
 	Prefetch        SchedulerPrefetchConfig        `json:"prefetch"         koanf:"prefetch"         mapstructure:"prefetch"`
 	ManifestRefresh SchedulerManifestRefreshConfig `json:"manifest_refresh" koanf:"manifest_refresh" mapstructure:"manifest_refresh"`
+	Refresh         SchedulerRefreshConfig         `json:"refresh"          koanf:"refresh"          mapstructure:"refresh"`
 }
 
 type SchedulerCleanupConfig struct {
@@ -92,6 +93,12 @@ type SchedulerEcosystemRefreshConfig struct {
 	Enabled     *bool         `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
 	Interval    time.Duration `json:"interval"    koanf:"interval"    mapstructure:"interval"    validate:"min=0"`
 	Distributed *bool         `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
+}
+
+type SchedulerRefreshConfig struct {
+	Enabled     bool          `json:"enabled"     koanf:"enabled"     mapstructure:"enabled"`
+	Window      time.Duration `json:"window"      koanf:"window"      mapstructure:"window"      validate:"min=0"`
+	Distributed bool          `json:"distributed" koanf:"distributed" mapstructure:"distributed"`
 }
 
 type WorkerConfig struct {

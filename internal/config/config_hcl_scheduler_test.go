@@ -9,6 +9,12 @@ import (
 
 const testHCLScheduler = `
 scheduler {
+  refresh {
+    enabled = true
+    window = "5m"
+    distributed = false
+  }
+
   manifest_refresh {
     enabled = true
     interval = "30m"
@@ -37,6 +43,9 @@ func assertLoadedHCLScheduler(t *testing.T, scheduler config.SchedulerConfig) {
 	t.Helper()
 
 	manifestRefresh := scheduler.ManifestRefresh
+	if !scheduler.Refresh.Enabled || scheduler.Refresh.Window != 5*time.Minute || scheduler.Refresh.Distributed {
+		t.Fatalf("unexpected refresh config: %#v", scheduler.Refresh)
+	}
 	assertRefreshConfig(t, "global", refreshConfigSnapshot{
 		enabled:     manifestRefresh.Enabled,
 		interval:    manifestRefresh.Interval,

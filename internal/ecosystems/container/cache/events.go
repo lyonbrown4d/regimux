@@ -3,6 +3,8 @@ package cache
 import (
 	"context"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/events"
 )
 
@@ -23,6 +25,21 @@ func (p manifestProxy) publishCacheAccess(ctx context.Context, req ManifestReque
 		Reference:  req.Reference,
 		Digest:     result.Digest,
 		Status:     string(result.Cache),
+	})
+}
+
+func (p manifestProxy) publishArtifactPulled(ctx context.Context, req ManifestRequest, result *CachedManifest) {
+	if result == nil {
+		return
+	}
+	publishCacheEvent(ctx, p.events, events.ArtifactPulled{
+		Ecosystem:  ecosystem.Container,
+		Kind:       "manifest",
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Reference:  req.Reference,
+		Status:     string(result.Cache),
+		Accept:     reference.NormalizeAccept(req.Accept),
 	})
 }
 

@@ -130,6 +130,22 @@ scheduler {
 
 When `ecosystems` is omitted, one manifest refresh job covers every runtime with prefetch support. When `ecosystems` is present, each runtime gets its own effective schedule: unspecified fields inherit from the top-level `manifest_refresh` block, and `enabled = false` disables that ecosystem.
 
+## Recent-Pull Refresh
+
+Client-facing service APIs stay cache-first. When a request hits local cache, including stale metadata, the service publishes `artifact.pulled` instead of forcing upstream refresh inline. The scheduler stores a refresh intent in metadata and deduplicates by `(ecosystem, kind, alias, repository, reference, accept)` for `scheduler.refresh.window`.
+
+```hcl
+scheduler {
+  refresh {
+    enabled = true
+    window = "10m"
+    distributed = true
+  }
+}
+```
+
+The default window is 10 minutes. If the same artifact is pulled 100 times inside that window, only one due refresh intent is consumed. After the window expires and the intent has been consumed, a later pull can create the next refresh intent.
+
 ## Worker Pool
 
 ```hcl

@@ -115,10 +115,11 @@ sequenceDiagram
   A->>R: resolve ecosystem alias and reference
   R->>M: lookup repository metadata
   R->>O: lookup cached object by digest/key
-  alt cache hit
+  alt local cache available
     O-->>R: cached bytes
-    R-->>A: validated cached response
-  else cache miss or TTL refresh
+    R-->>A: cached response
+    R-->>E: publish artifact.pulled for scheduler refresh debounce
+  else local cache missing
     R->>U: fetch from selected upstream
     U-->>R: upstream response
     R->>O: store content-addressed bytes
@@ -159,17 +160,17 @@ The scheduler consumes the runtime set from `dix` and registers background work 
 
 Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
-Manual sync is also standardized in the same abstraction:
+Manual refresh is also standardized in the same abstraction:
 
-- Admin submits `prefetch.SyncOptions` with `(ecosystem, alias, repo, reference)`.
+- Admin submits `manualsync.SyncOptions` with `(ecosystem, alias, repo, reference)`.
 - Scheduler selects the ecosystem runtime by `runtime.Name()` and submits a one-time background job via `SubmitSync`.
-- A runtime that supports manual sync exposes `CreateSyncJob`, `RunSyncJob`, `SyncJob`, and `MarkSyncJobFailed`.
-- Manual sync execution is isolated per ecosystem runtime but observed through shared scheduler metrics and admin job polling.
+- A runtime that supports manual refresh exposes `CreateSyncJob`, `RunSyncJob`, `SyncJob`, and `MarkSyncJobFailed`.
+- Manual refresh execution is isolated per ecosystem runtime but observed through shared scheduler metrics and admin job polling.
 - Job lifecycle is in-memory today (in a concurrent map); results are returned from the scheduler endpoint and UI polling.
 
 Because this is the same runtime boundary, adding a new ecosystem requires only:
 
-1. implementing `ecosystem.Runtime` plus relevant capability interfaces (`Probe`, `Prefetch`, manual-sync, `JobProvider`).
+1. implementing `ecosystem.Runtime` plus relevant capability interfaces (`Probe`, `Prefetch`, manual refresh, `JobProvider`).
 2. registering it in `dix` with a stable key.
 3. no changes to scheduler orchestration code.
 
@@ -185,7 +186,7 @@ flowchart TD
   jobs --> refresh["manifest_refresh"]
   jobs --> flush["endpoint_health_flush"]
 
-  admin["Admin manual sync"] --> syncopts["prefetch.SyncOptions"]
+  admin["Admin manual refresh"] --> syncopts["manualsync.SyncOptions"]
   syncopts --> scheduler
   scheduler --> selected["selected runtime by Name()"]
   selected --> onetime["gocron OneTimeJob"]
@@ -282,9 +283,9 @@ Object keys are content-addressed where possible. Metadata remains the source of
 
 ## Cache Behavior
 
-Client-facing requests use cache-first semantics: if RegiMux can open a local cached object, it returns that object immediately. TTL expiry does not block the client request on upstream validation. TTL only decides whether a background refresh should be triggered. A client request reaches upstream synchronously only when the matching local cache object is absent.
+Client-facing requests use cache-first semantics: if RegiMux can open a local cached object, it returns that object immediately. TTL expiry does not block the client request on upstream validation. TTL marks cached records stale for observability; scheduled refresh is driven by background job cadence and recent pull history. A client request reaches upstream synchronously only when the matching local cache object is absent.
 
-Background refresh paths include scheduled jobs, async refreshes triggered by stale cache hits, and Admin manual refresh. These paths may bypass the local-first rule, contact upstream directly, and update local metadata and object cache when upstream content changed.
+Background refresh paths include scheduled `prefetch` / `manifest_refresh` jobs, recent-pull refresh debounce, and Admin manual refresh. Cache hits and stale hits publish `artifact.pulled`; the scheduler stores refresh intents in metadata, deduplicates them per artifact for `scheduler.refresh.window` (10 minutes by default), then drains due intents through the runtime `Refresher` capability. Background refresh paths use explicit refresh requests, may bypass the local-first rule, contact upstream directly, and update local metadata and object cache when upstream content changed.
 
 Manifests are cached with an `Accept`-aware key because different clients may ask for different manifest media types for the same tag.
 
@@ -307,10 +308,10 @@ Client-side layer concurrency already exists in Docker/containerd, so RegiMux fo
 
 Container prefetch predicts likely next tags based on pull history, then warms manifests and blobs through the normal cache path. Dependency ecosystem prefetch currently rewinds recent pull history and refreshes the exact Go/npm/PyPI/Maven artifact through that ecosystem's proxy cache path. The scheduler invokes both through the runtime `prefetch` capability, so ecosystem-specific version prediction can be added behind the same job shape. Runs and outcomes are stored in metadata and shown in Admin UI.
 
-Manual sync and scheduler prefetch share the same job abstraction:
+Manual refresh and scheduler prefetch share the same job abstraction:
 
 - Prefetch jobs are periodic and periodicity is configured by `scheduler.prefetch`.
-- Manual sync jobs are one-time and triggered via `/admin/sync` (form submit) and submitted as gocron `OneTimeJob`.
+- Manual refresh jobs are one-time and triggered via `/admin/sync` (form submit) and submitted as gocron `OneTimeJob`.
 - Both produce `prefetch.SyncReport`-style outcomes and can be observed by admin endpoints and shared metrics.
 
 Prefetch supports:

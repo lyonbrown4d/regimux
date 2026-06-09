@@ -234,6 +234,14 @@ func newFakeManifestService(manifests map[string]*cache.CachedManifest) *fakeMan
 }
 
 func (f *fakeManifestService) Get(_ context.Context, req cache.ManifestRequest) (*cache.CachedManifest, error) {
+	return f.get(req)
+}
+
+func (f *fakeManifestService) Refresh(_ context.Context, req cache.ManifestRequest) (*cache.CachedManifest, error) {
+	return f.get(req)
+}
+
+func (f *fakeManifestService) get(req cache.ManifestRequest) (*cache.CachedManifest, error) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.entries = append(f.entries, req)

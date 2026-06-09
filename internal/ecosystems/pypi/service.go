@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
@@ -47,6 +48,7 @@ func NewService(deps ServiceDependencies) *Service {
 		logger:    logger.With("component", "pypi"),
 		publicURL: strings.TrimRight(deps.Config.Server.PublicURL, "/"),
 		now:       now,
+		events:    deps.Events,
 	}
 }
 
@@ -63,27 +65,26 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if !ok {
 		return nil, oops.In("pypi").With("alias", requestRoute.Alias).Errorf("pypi upstream is not configured")
 	}
-	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg)
+	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeClient)
 	s.recordPull(ctx, req, requestRoute, resp, err)
 	return resp, err
 }
 
-func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig) (*Response, error) {
+func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig, mode requestMode) (*Response, error) {
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err
 	}
-	if !req.ForceRefresh && cachedOK && !cached.expired {
+	if mode != requestModeRefresh && cachedOK && !cached.expired {
 		return s.responseFromStored(req, requestRoute, cached, cacheHit)
 	}
-	if !req.ForceRefresh && cachedOK && cached.expired {
-		s.refreshAsync(ctx, req, requestRoute, upstreamCfg)
+	if mode != requestModeRefresh && cachedOK && cached.expired {
 		return s.responseFromStored(req, requestRoute, cached, cacheStale)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
-		if req.ForceRefresh {
+		if mode == requestModeRefresh {
 			return nil, err
 		}
 		if cachedOK {
@@ -105,25 +106,18 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
 }
 
-func (s *Service) refreshAsync(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig) {
-	go func() {
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
-		defer cancel()
-
-		refreshReq := req
-		refreshReq.ForceRefresh = true
-		refreshReq.SkipPullRecord = true
-		refreshReq.Method = http.MethodGet
-
-		key := strings.Join([]string{"pypi", requestRoute.Alias, requestRoute.Repository, requestRoute.Reference}, ":")
-		_, _, _ = s.refresh.Do(key, func() (any, error) {
-			resp, err := s.getFromUpstream(refreshCtx, refreshReq, requestRoute, upstreamCfg)
-			if resp != nil {
-				closeReadCloser(resp.Body, s.logger, "close pypi async refresh response body")
-			}
-			return nil, err
-		})
-	}()
+func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
+	requestRoute, err := ParseTail(req.Alias, req.Tail)
+	if err != nil {
+		return nil, err
+	}
+	requestRoute.Query = strings.TrimSpace(req.Query)
+	upstreamCfg, ok := s.upstream(requestRoute.Alias)
+	if !ok {
+		return nil, oops.In("pypi").With("alias", requestRoute.Alias).Errorf("pypi upstream is not configured")
+	}
+	req.SkipPullRecord = true
+	return s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeRefresh)
 }
 
 func (s *Service) prepareFetched(req Request, requestRoute Route, fetched *upstreamFetch) (*upstreamFetch, error) {
@@ -161,6 +155,7 @@ func (s *Service) recordPull(ctx context.Context, req Request, requestRoute Rout
 	}
 	key := pypiPullKey(requestRoute)
 	s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+	s.publishArtifactPulled(ctx, requestRoute, resp)
 }
 
 func (s *Service) shouldRecordPull(req Request, resp *Response, err error) bool {
@@ -192,6 +187,20 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record pypi proxy upstream pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
+}
+
+func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute Route, resp *Response) {
+	if s == nil || s.events == nil || resp == nil || requestRoute.Kind != RouteSimple {
+		return
+	}
+	_ = events.Publish(ctx, s.events, events.ArtifactPulled{
+		Ecosystem:  ecosystem.PyPI,
+		Kind:       string(RouteSimple),
+		Alias:      requestRoute.Alias,
+		Repository: requestRoute.Repository,
+		Reference:  requestRoute.Reference,
+		Status:     resp.Cache,
+	})
 }
 
 func (s *Service) upstream(alias string) (config.UpstreamConfig, bool) {

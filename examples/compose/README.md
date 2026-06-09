@@ -16,7 +16,7 @@ Use this for local testing or a small single-node deployment. Manifest, tag, and
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.memory.yml up -d
-curl -i http://localhost:5000/healthz
+curl -i http://localhost:5000/livez
 docker pull localhost:5000/hub/library/alpine:latest
 ```
 

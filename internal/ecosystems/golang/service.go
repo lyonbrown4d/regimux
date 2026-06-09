@@ -10,10 +10,10 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -30,6 +30,7 @@ type ServiceDependencies struct {
 	Metadata meta.Store
 	Objects  object.Store
 	Logger   *slog.Logger
+	Events   events.Bus
 }
 
 type Service struct {
@@ -38,7 +39,7 @@ type Service struct {
 	objects  object.Store
 	client   *http.Client
 	logger   *slog.Logger
-	refresh  singleflight.Group
+	events   events.Bus
 }
 
 type Request struct {
@@ -46,7 +47,6 @@ type Request struct {
 	Tail           string
 	Method         string
 	SkipPullRecord bool
-	ForceRefresh   bool
 }
 
 type Response struct {
@@ -82,6 +82,13 @@ type storedResponse struct {
 	expired bool
 }
 
+type requestMode int
+
+const (
+	requestModeClient requestMode = iota
+	requestModeRefresh
+)
+
 func NewService(deps ServiceDependencies) *Service {
 	logger := deps.Logger
 	if logger == nil {
@@ -93,6 +100,7 @@ func NewService(deps ServiceDependencies) *Service {
 		objects:  deps.Objects,
 		client:   &http.Client{},
 		logger:   logger.With("component", "go"),
+		events:   deps.Events,
 	}
 }
 
@@ -105,7 +113,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 		if err != nil {
 			return nil, err
 		}
-		return s.getFromUpstreams(ctx, req, parsed, s.goUpstreams(), true)
+		return s.getFromUpstreams(ctx, req, parsed, s.goUpstreams(), true, requestModeClient)
 	}
 
 	parsed, err := parseRoute(req.Alias, req.Tail)
@@ -116,12 +124,32 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if !ok {
 		return nil, oops.In("go").With("alias", parsed.Alias).Errorf("go upstream is not configured")
 	}
-	resp, err := s.getFromUpstreams(ctx, req, parsed, collectionlist.NewList(goUpstream{alias: parsed.Alias, cfg: upstreamCfg}), false)
+	resp, err := s.getFromUpstreams(ctx, req, parsed, collectionlist.NewList(goUpstream{alias: parsed.Alias, cfg: upstreamCfg}), false, requestModeClient)
 	s.recordPull(ctx, req, parsed, resp, err)
 	return resp, err
 }
 
-func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute route, upstreams *collectionlist.List[goUpstream], fallback bool) (*Response, error) {
+func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
+	req.SkipPullRecord = true
+	if strings.TrimSpace(req.Alias) == "" {
+		parsed, err := parseRootRoute(req.Tail)
+		if err != nil {
+			return nil, err
+		}
+		return s.getFromUpstreams(ctx, req, parsed, s.goUpstreams(), true, requestModeRefresh)
+	}
+	parsed, err := parseRoute(req.Alias, req.Tail)
+	if err != nil {
+		return nil, err
+	}
+	upstreamCfg, ok := s.goUpstream(parsed.Alias)
+	if !ok {
+		return nil, oops.In("go").With("alias", parsed.Alias).Errorf("go upstream is not configured")
+	}
+	return s.getFromUpstreams(ctx, req, parsed, collectionlist.NewList(goUpstream{alias: parsed.Alias, cfg: upstreamCfg}), false, requestModeRefresh)
+}
+
+func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute route, upstreams *collectionlist.List[goUpstream], fallback bool, mode requestMode) (*Response, error) {
 	if upstreams == nil || upstreams.Len() == 0 {
 		return nil, oops.In("go").Errorf("go upstream is not configured")
 	}
@@ -134,7 +162,7 @@ func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute r
 			continue
 		}
 		requestRoute := routeForUpstream(baseRoute, upstream.alias)
-		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias)
+		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias, mode)
 		if s.shouldFallbackFromResponse(resp, err, fallback, i, total) {
 			lastErr = err
 			continue
@@ -161,47 +189,24 @@ func (s *Service) shouldFallbackFromResponse(resp *Response, err error, fallback
 	return false
 }
 
-func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig, upstreamAlias string) (*Response, error) {
+func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig, upstreamAlias string, mode requestMode) (*Response, error) {
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err
 	}
-	if !req.ForceRefresh && cacheFresh(cached, cachedOK) {
+	if mode != requestModeRefresh && cacheFresh(cached, cachedOK) {
 		return s.responseFromStored(req, cached, cacheHit)
 	}
-	if !req.ForceRefresh && cachedOK && cached.expired {
-		s.refreshAsync(ctx, req, requestRoute, upstreamCfg, upstreamAlias)
+	if mode != requestModeRefresh && cachedOK && cached.expired {
 		return s.responseFromStored(req, cached, cacheStale)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
 	if err != nil {
-		return s.responseFromFetchError(req, cached, cachedOK, err)
+		return s.responseFromFetchError(req, cached, cachedOK, err, mode)
 	}
 	if shouldPassThrough(req, requestRoute, fetched.status) {
 		return s.responseFromUpstream(req, fetched), nil
 	}
 	return s.storeFetchedResponse(ctx, req, requestRoute, fetched)
-}
-
-func (s *Service) refreshAsync(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig, upstreamAlias string) {
-	if !routeCacheable(requestRoute) {
-		return
-	}
-	go func() {
-		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
-		defer cancel()
-
-		refreshReq := req
-		refreshReq.ForceRefresh = true
-		refreshReq.SkipPullRecord = true
-		refreshReq.Method = http.MethodGet
-
-		key := strings.Join([]string{"go", requestRoute.Alias, requestRoute.Module, requestRoute.Reference}, ":")
-		_, _, _ = s.refresh.Do(key, func() (any, error) {
-			resp, err := s.getFromUpstream(refreshCtx, refreshReq, requestRoute, upstreamCfg, upstreamAlias)
-			closeResponseBody(resp)
-			return nil, err
-		})
-	}()
 }

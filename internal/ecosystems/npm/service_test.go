@@ -153,7 +153,7 @@ func TestServiceCachesTarballWithoutTTL(t *testing.T) {
 	}
 }
 
-func TestServiceServesExpiredMetadataStaleAndRefreshesAsync(t *testing.T) {
+func TestServiceServesExpiredMetadataStaleWithoutRefreshingInline(t *testing.T) {
 	ctx := context.Background()
 	requests := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -174,11 +174,8 @@ func TestServiceServesExpiredMetadataStaleAndRefreshesAsync(t *testing.T) {
 	if second.Cache != cacheStale {
 		t.Fatalf("second cache = %q, want %q", second.Cache, cacheStale)
 	}
-
-	third := waitForCacheHit(t, ctx, service, npm.Request{Alias: "npmjs", Tail: "left-pad"})
-	_ = readJSON(t, third)
-	if requests < 2 {
-		t.Fatalf("upstream requests = %d, want at least 2", requests)
+	if requests != 1 {
+		t.Fatalf("upstream requests after stale hit = %d, want 1", requests)
 	}
 }
 
@@ -274,24 +271,6 @@ func requireNoError(t *testing.T, action string, err error) {
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
 	}
-}
-
-func waitForCacheHit(t *testing.T, ctx context.Context, service *npm.Service, req npm.Request) *npm.Response {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	var last string
-	for time.Now().Before(deadline) {
-		resp, err := service.Get(ctx, req)
-		requireNoError(t, "wait for npm cache hit", err)
-		if resp.Cache == cacheHit {
-			return resp
-		}
-		last = resp.Cache
-		closeTestBody(t, resp.Body)
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("cache = %q, want %q", last, cacheHit)
-	return nil
 }
 
 func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {

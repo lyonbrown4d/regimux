@@ -220,6 +220,7 @@ var (
 	sqlPrefetchOutcomeRows = schemax.MustSchema("meta_prefetch_outcomes", prefetchOutcomeRowSchema{})
 	sqlPrefetchControlRows = schemax.MustSchema("meta_prefetch_controls", prefetchControlRowSchema{})
 	sqlEndpointHealthRows  = schemax.MustSchema("meta_endpoint_health", endpointHealthRowSchema{})
+	sqlRefreshIntentRows   = schemax.MustSchema("meta_refresh_intents", refreshIntentRowSchema{})
 )
 
 func unixNano(t time.Time) int64 {

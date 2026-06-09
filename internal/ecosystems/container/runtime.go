@@ -14,14 +14,22 @@ import (
 )
 
 type Runtime struct {
-	cfg      config.Config
-	upstream *upstream.Client
-	prefetch *prefetch.Service
-	cleanup  *cache.CleanupService
-	manual   *manualsync.Service
+	cfg             config.Config
+	upstream        *upstream.Client
+	prefetch        *prefetch.Service
+	manifestRefresh cache.ManifestRefresher
+	cleanup         *cache.CleanupService
+	manual          *manualsync.Service
 }
 
-func NewRuntime(cfg config.Config, upstreamClient *upstream.Client, prefetchService *prefetch.Service, cleanupService *cache.CleanupService) *Runtime {
+func NewRuntime(
+	cfg config.Config,
+	upstreamClient *upstream.Client,
+	prefetchService *prefetch.Service,
+	manifests cache.ManifestService,
+	cleanupService *cache.CleanupService,
+) *Runtime {
+	manifestRefresher, _ := manifests.(cache.ManifestRefresher)
 	manual := manualsync.NewService(manualsync.ServiceDependencies{
 		Execute: func(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
 			if prefetchService == nil {
@@ -31,11 +39,12 @@ func NewRuntime(cfg config.Config, upstreamClient *upstream.Client, prefetchServ
 		},
 	})
 	return &Runtime{
-		cfg:      cfg,
-		upstream: upstreamClient,
-		prefetch: prefetchService,
-		cleanup:  cleanupService,
-		manual:   manual,
+		cfg:             cfg,
+		upstream:        upstreamClient,
+		prefetch:        prefetchService,
+		manifestRefresh: manifestRefresher,
+		cleanup:         cleanupService,
+		manual:          manual,
 	}
 }
 
@@ -65,6 +74,7 @@ var _ ecosystem.UpstreamProvider = (*Runtime)(nil)
 var _ ecosystem.Prober = (*Runtime)(nil)
 var _ ecosystem.Cleaner = (*Runtime)(nil)
 var _ ecosystem.Prefetcher = (*Runtime)(nil)
+var _ ecosystem.Refresher = (*Runtime)(nil)
 var _ ecosystem.UpstreamSnapshotProvider = (*Runtime)(nil)
 var _ ecosystem.PrefetchController = (*Runtime)(nil)
 var _ ecosystem.EndpointHealthFlusher = (*Runtime)(nil)

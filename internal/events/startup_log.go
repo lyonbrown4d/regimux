@@ -87,7 +87,6 @@ func startupServiceEndpoints(cfg config.Config, runtimes *collectionlist.List[ec
 	base := serviceBaseURL(cfg.Server)
 	endpoints := collectionlist.NewList(
 		startupEndpoint{name: "registry", url: joinStartupURL(base, "/v2/")},
-		startupEndpoint{name: "health", url: joinStartupURL(base, "/healthz")},
 		startupEndpoint{name: "prometheus", url: joinStartupURL(base, "/metrics")},
 		startupEndpoint{name: "admin", url: joinStartupURL(base, "/admin")},
 		startupEndpoint{name: "docs", url: joinStartupURL(base, "/docs")},

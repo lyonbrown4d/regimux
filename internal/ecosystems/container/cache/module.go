@@ -20,11 +20,24 @@ var Module = dix.NewModule("container-cache",
 			return cfg.Cache
 		}),
 		dix.ProviderErr2[backend.Backend, config.CacheConfig, *slog.Logger](newBackend, dix.Eager()),
-		dix.Provider6[ProxyDependencies, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.CacheConfig, events.Bus](newProxyDependencies),
-		dix.Provider1[*Proxy, ProxyDependencies](NewProxy),
+		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.CacheConfig, events.Bus](
+			func(client upstream.RegistryClient, cacheBackend backend.Backend, metadata meta.Store, objects object.Store, cacheCfg config.CacheConfig, bus events.Bus) *Proxy {
+				return NewProxy(ProxyDependencies{
+					Client:      client,
+					Cache:       cacheBackend,
+					Metadata:    metadata,
+					Objects:     objects,
+					CacheConfig: cacheCfg,
+					Events:      bus,
+				})
+			},
+		),
 		dix.Provider2[*CleanupService, meta.Store, object.Store](NewCleanupService),
 		dix.Provider1[ManifestService, *Proxy](func(proxy *Proxy) ManifestService {
 			return proxy.Manifests()
+		}),
+		dix.Provider1[ManifestRefresher, *Proxy](func(proxy *Proxy) ManifestRefresher {
+			return proxy.Manifests().(ManifestRefresher)
 		}),
 		dix.Provider1[BlobService, *Proxy](func(proxy *Proxy) BlobService {
 			return proxy.Blobs()
@@ -96,24 +109,6 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 
 func errInvalidCacheBackend(backendName string) error {
 	return oops.In("cache").With("backend", backendName).Errorf("unsupported cache backend")
-}
-
-func newProxyDependencies(
-	client upstream.RegistryClient,
-	cacheBackend backend.Backend,
-	metadata meta.Store,
-	objects object.Store,
-	cacheCfg config.CacheConfig,
-	bus events.Bus,
-) ProxyDependencies {
-	return ProxyDependencies{
-		Client:      client,
-		Cache:       cacheBackend,
-		Metadata:    metadata,
-		Objects:     objects,
-		CacheConfig: cacheCfg,
-		Events:      bus,
-	}
 }
 
 func closeBackend(_ context.Context, cacheBackend backend.Backend, logger *slog.Logger) error {

@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -14,6 +15,7 @@ func (s *Service) recordPull(ctx context.Context, req Request, requestRoute rout
 	}
 	key := npmPullKey(requestRoute)
 	s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+	s.publishArtifactPulled(ctx, requestRoute, resp)
 }
 
 func (s *Service) shouldRecordPull(req Request, requestRoute route, resp *Response, err error) bool {
@@ -46,4 +48,18 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record npm proxy upstream pull failed", "alias", key.Alias, "package", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
+}
+
+func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute route, resp *Response) {
+	if s == nil || s.events == nil || resp == nil || requestRoute.Kind != routeMetadata {
+		return
+	}
+	_ = events.Publish(ctx, s.events, events.ArtifactPulled{
+		Ecosystem:  ecosystem.NPM,
+		Kind:       routeMetadata,
+		Alias:      requestRoute.Alias,
+		Repository: requestRoute.Package,
+		Reference:  requestRoute.Reference,
+		Status:     resp.Cache,
+	})
 }

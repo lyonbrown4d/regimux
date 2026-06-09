@@ -19,6 +19,10 @@ func NewMetadataMapper() *MetadataMapper {
 			mapperx.Converter(durationFromInt64),
 			mapperx.Converter(int64FromInt),
 			mapperx.Converter(intFromInt64),
+			mapperx.Converter(refreshIntentEcosystemString),
+			mapperx.Converter(refreshIntentEcosystemFromString),
+			mapperx.Converter(refreshIntentKindString),
+			mapperx.Converter(refreshIntentKindFromString),
 			mapperx.ConverterE(encodeHeaders),
 			mapperx.ConverterE(decodeHeaders),
 		),
@@ -54,4 +58,20 @@ func durationNanos(value time.Duration) int64 {
 
 func int64FromInt(value int) int64 {
 	return int64(value)
+}
+
+func refreshIntentEcosystemString(value RefreshIntentEcosystem) string {
+	return string(value)
+}
+
+func refreshIntentEcosystemFromString(value string) RefreshIntentEcosystem {
+	return RefreshIntentEcosystem(value)
+}
+
+func refreshIntentKindString(value RefreshIntentKind) string {
+	return string(value)
+}
+
+func refreshIntentKindFromString(value string) RefreshIntentKind {
+	return RefreshIntentKind(value)
 }

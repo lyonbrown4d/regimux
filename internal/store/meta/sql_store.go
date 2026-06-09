@@ -49,6 +49,7 @@ type SQLStore struct {
 	prefetchRuns     *repository.Base[prefetchRunRow, prefetchRunRowSchema]
 	prefetchOutcomes *repository.Base[prefetchOutcomeRow, prefetchOutcomeRowSchema]
 	prefetchControls *repository.Base[prefetchControlRow, prefetchControlRowSchema]
+	refreshIntents   *repository.Base[refreshIntentRow, refreshIntentRowSchema]
 }
 
 func OpenSQLite(path string, logger *slog.Logger) (*SQLStore, error) {
@@ -132,6 +133,7 @@ func NewSQLStore(db *dbx.DB, mapper *MetadataMapper) *SQLStore {
 		prefetchRuns:     repository.New[prefetchRunRow](db, sqlPrefetchRunRows),
 		prefetchOutcomes: repository.New[prefetchOutcomeRow](db, sqlPrefetchOutcomeRows),
 		prefetchControls: repository.New[prefetchControlRow](db, sqlPrefetchControlRows),
+		refreshIntents:   repository.New[refreshIntentRow](db, sqlRefreshIntentRows),
 	}
 }
 

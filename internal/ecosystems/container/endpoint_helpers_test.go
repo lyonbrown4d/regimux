@@ -32,7 +32,10 @@ func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 
 	addr := freeTCPAddr(t)
 	opts.Listen = addr
-	endpoints := collectionlist.NewList[httpx.Endpoint](api.NewHealthEndpoint())
+	opts.Middleware.Healthcheck.Enabled = true
+	opts.Middleware.Healthcheck.LivenessPath = "/livez"
+	opts.Middleware.Healthcheck.ReadinessPath = "/readyz"
+	endpoints := collectionlist.NewList[httpx.Endpoint]()
 	if opts.Endpoints != nil {
 		opts.Endpoints.Range(func(_ int, endpoint httpx.Endpoint) bool {
 			endpoints.Add(endpoint)
@@ -53,7 +56,7 @@ func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 	})
 
 	baseURL := "http://" + addr
-	waitForHTTP(t, baseURL+"/healthz")
+	waitForHTTP(t, baseURL+"/livez")
 	return baseURL
 }
 

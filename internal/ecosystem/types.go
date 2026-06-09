@@ -191,6 +191,22 @@ type ManualSyncer interface {
 	SyncJob(string) (manualsync.SyncJob, bool)
 }
 
+// RefreshRequest identifies one locally requested artifact that may need upstream refresh.
+type RefreshRequest struct {
+	Ecosystem  string
+	Kind       string
+	Alias      string
+	Repository string
+	Reference  string
+	Accept     string
+}
+
+// Refresher is implemented by ecosystems that can refresh a cached artifact from upstream.
+type Refresher interface {
+	Runtime
+	Refresh(context.Context, RefreshRequest) error
+}
+
 // PrefetchOptions carries scheduler-level prefetch limits.
 type PrefetchOptions struct {
 	MaxRecords           int

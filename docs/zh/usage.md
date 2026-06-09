@@ -77,7 +77,8 @@ Expand-Archive .\regimux_0.0.2_windows_amd64.zip
 ## 健康检查
 
 ```bash
-curl -i http://localhost:5000/healthz
+curl -i http://localhost:5000/livez
+curl -i http://localhost:5000/readyz
 curl -i http://localhost:5000/v2/
 ```
 
@@ -156,9 +157,9 @@ docker compose --env-file examples/compose/.env -f examples/compose/compose.obse
 http://localhost:5000/admin
 ```
 
-Admin UI 已内嵌到二进制中，包含仪表盘、上游健康、拉取记录、活动、缓存、存储、调度器、手动同步、认证审计和有效配置等页面。
+Admin UI 已内嵌到二进制中，包含仪表盘、上游健康、拉取记录、活动、缓存、存储、调度器、手动刷新、认证审计和有效配置等页面。
 
-手动同步支持生态隔离（`container`、`go`、`npm`、`pypi`、`maven`）并异步执行：
+手动刷新支持生态隔离（`container`、`go`、`npm`、`pypi`、`maven`），并作为后台任务执行：
 
 ```text
 container:hub / repository=library/node / reference=20

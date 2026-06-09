@@ -23,6 +23,10 @@ type ManifestService interface {
 	Get(ctx context.Context, req ManifestRequest) (*CachedManifest, error)
 }
 
+type ManifestRefresher interface {
+	Refresh(ctx context.Context, req ManifestRequest) (*CachedManifest, error)
+}
+
 type BlobService interface {
 	Get(ctx context.Context, req BlobRequest) (*BlobReadResult, error)
 }
@@ -42,7 +46,6 @@ type ManifestRequest struct {
 	Accept         string
 	Method         string
 	SkipPullRecord bool
-	ForceRefresh   bool
 }
 
 type CachedManifest struct {

@@ -76,7 +76,7 @@ func TestServiceRewritesSimpleLinksAndCaches(t *testing.T) {
 	}
 }
 
-func TestServiceServesExpiredSimpleIndexStaleAndRefreshesAsync(t *testing.T) {
+func TestServiceServesExpiredSimpleIndexStaleWithoutRefreshingInline(t *testing.T) {
 	ctx := context.Background()
 	requests := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -111,17 +111,8 @@ func TestServiceServesExpiredSimpleIndexStaleAndRefreshesAsync(t *testing.T) {
 	if secondBody != firstBody {
 		t.Fatalf("second body = %q, want stale body %q", secondBody, firstBody)
 	}
-
-	third := waitForCacheHit(t, ctx, service, pypi.Request{
-		Alias: "pypi",
-		Tail:  "simple/demo/",
-	})
-	thirdBody := readResponse(t, third)
-	if thirdBody == firstBody {
-		t.Fatalf("simple index was not refreshed asynchronously: %q", thirdBody)
-	}
-	if requests < 2 {
-		t.Fatalf("upstream requests = %d, want at least 2", requests)
+	if requests != 1 {
+		t.Fatalf("upstream requests after stale hit = %d, want 1", requests)
 	}
 }
 
@@ -250,22 +241,4 @@ func requireNoError(t *testing.T, action string, err error) {
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
 	}
-}
-
-func waitForCacheHit(t *testing.T, ctx context.Context, service *pypi.Service, req pypi.Request) *pypi.Response {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	var last string
-	for time.Now().Before(deadline) {
-		resp, err := service.Get(ctx, req)
-		requireNoError(t, "wait for pypi cache hit", err)
-		if resp.Cache == cacheHit {
-			return resp
-		}
-		last = resp.Cache
-		closeBody(t, resp.Body)
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("cache = %q, want %q", last, cacheHit)
-	return nil
 }

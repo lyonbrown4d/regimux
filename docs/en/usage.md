@@ -77,7 +77,8 @@ Expand-Archive .\regimux_0.0.2_windows_amd64.zip
 ## Health Checks
 
 ```bash
-curl -i http://localhost:5000/healthz
+curl -i http://localhost:5000/livez
+curl -i http://localhost:5000/readyz
 curl -i http://localhost:5000/v2/
 ```
 
@@ -156,9 +157,9 @@ Open:
 http://localhost:5000/admin
 ```
 
-The Admin UI is embedded in the binary. It includes dashboard, upstream health, pulls, activity, cache, storage, scheduler, manual sync, auth audit, and effective config views.
+The Admin UI is embedded in the binary. It includes dashboard, upstream health, pulls, activity, cache, storage, scheduler, manual refresh, auth audit, and effective config views.
 
-Manual sync is ecosystem-aware and prewarms the cache asynchronously:
+Manual refresh is ecosystem-aware and runs as a background job:
 
 ```text
 container:hub / repository=library/node / reference=20

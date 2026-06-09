@@ -9,9 +9,9 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
-	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -34,6 +34,7 @@ type ServiceDependencies struct {
 	Client   *http.Client
 	Logger   *slog.Logger
 	Now      func() time.Time
+	Events   events.Bus
 }
 
 type Service struct {
@@ -43,7 +44,7 @@ type Service struct {
 	client   *http.Client
 	logger   *slog.Logger
 	now      func() time.Time
-	refresh  singleflight.Group
+	events   events.Bus
 }
 
 type Request struct {
@@ -52,7 +53,6 @@ type Request struct {
 	Query          string
 	Method         string
 	SkipPullRecord bool
-	ForceRefresh   bool
 }
 
 type Response struct {
@@ -100,3 +100,10 @@ type storedResponse struct {
 	body    io.ReadCloser
 	expired bool
 }
+
+type requestMode int
+
+const (
+	requestModeClient requestMode = iota
+	requestModeRefresh
+)

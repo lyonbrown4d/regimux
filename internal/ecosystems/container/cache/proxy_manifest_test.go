@@ -212,7 +212,7 @@ func TestManifestProxyManifestCacheIgnoresAcceptMismatch(t *testing.T) {
 	}
 }
 
-func TestManifestProxyServesExpiredTagStaleAndRevalidatesAsync(t *testing.T) {
+func TestManifestProxyServesExpiredTagStaleUntilBackgroundRefresh(t *testing.T) {
 	ctx := context.Background()
 	body := []byte(`{"schemaVersion":2}`)
 	client := &fakeRegistryClient{
@@ -256,12 +256,37 @@ func TestManifestProxyServesExpiredTagStaleAndRevalidatesAsync(t *testing.T) {
 	if second.Cache != cache.CacheStale || !bytes.Equal(second.Body, body) {
 		t.Fatalf("unexpected stale result: cache=%s body=%q", second.Cache, second.Body)
 	}
-	third := waitForManifestCacheHit(t, ctx, proxy.Manifests(), cache.ManifestRequest{
+	if client.manifestGets != 1 || client.manifestHeads != 0 {
+		t.Fatalf("manifest calls after stale hit = gets:%d heads:%d, want gets:1 heads:0", client.manifestGets, client.manifestHeads)
+	}
+
+	refresher, ok := proxy.Manifests().(cache.ManifestRefresher)
+	if !ok {
+		t.Fatal("manifest service does not implement refresher")
+	}
+	refreshed, err := refresher.Refresh(ctx, cache.ManifestRequest{
+		UpstreamAlias:  "hub",
+		Repo:           "library/alpine",
+		Reference:      "latest",
+		Method:         http.MethodGet,
+		SkipPullRecord: true,
+	})
+	if err != nil {
+		t.Fatalf("refresh manifest: %v", err)
+	}
+	if refreshed.Cache != cache.CacheHit || !bytes.Equal(refreshed.Body, body) {
+		t.Fatalf("unexpected refreshed result: cache=%s body=%q", refreshed.Cache, refreshed.Body)
+	}
+
+	third, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Reference:     "latest",
 		Method:        http.MethodGet,
 	})
+	if err != nil {
+		t.Fatalf("third manifest get: %v", err)
+	}
 	if third.Cache != cache.CacheHit || !bytes.Equal(third.Body, body) {
 		t.Fatalf("unexpected post-refresh result: cache=%s body=%q", third.Cache, third.Body)
 	}
@@ -271,28 +296,6 @@ func TestManifestProxyServesExpiredTagStaleAndRevalidatesAsync(t *testing.T) {
 	if first.Digest != third.Digest {
 		t.Fatalf("digest changed: first=%s third=%s", first.Digest, third.Digest)
 	}
-}
-
-func waitForManifestCacheHit(t *testing.T, ctx context.Context, service cache.ManifestService, req cache.ManifestRequest) *cache.CachedManifest {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	var last *cache.CachedManifest
-	for time.Now().Before(deadline) {
-		got, err := service.Get(ctx, req)
-		if err != nil {
-			t.Fatalf("wait for manifest cache hit: %v", err)
-		}
-		last = got
-		if got != nil && got.Cache == cache.CacheHit {
-			return got
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	if last != nil {
-		t.Fatalf("manifest cache status = %s, want %s", last.Cache, cache.CacheHit)
-	}
-	t.Fatalf("manifest cache status was empty, want %s", cache.CacheHit)
-	return nil
 }
 
 func expireManifestMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference, digest string) {

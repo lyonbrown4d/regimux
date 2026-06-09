@@ -218,6 +218,12 @@ scheduler {
     distributed = true
   }
 
+  refresh {
+    enabled = true
+    window = "10m"
+    distributed = true
+  }
+
   manifest_refresh {
     enabled = false
     interval = "30m"

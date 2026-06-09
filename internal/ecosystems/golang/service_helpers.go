@@ -8,6 +8,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -28,8 +29,8 @@ func cacheFresh(cached storedResponse, ok bool) bool {
 	return ok && !cached.expired
 }
 
-func (s *Service) responseFromFetchError(req Request, cached storedResponse, cachedOK bool, err error) (*Response, error) {
-	if req.ForceRefresh {
+func (s *Service) responseFromFetchError(req Request, cached storedResponse, cachedOK bool, err error, mode requestMode) (*Response, error) {
+	if mode == requestModeRefresh {
 		return nil, err
 	}
 	if cachedOK {
@@ -64,6 +65,7 @@ func (s *Service) recordPull(ctx context.Context, req Request, requestRoute rout
 	}
 	key := goPullKey(requestRoute)
 	s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+	s.publishArtifactPulled(ctx, requestRoute, resp)
 }
 
 func (s *Service) shouldRecordPull(req Request, requestRoute route, resp *Response, err error) bool {
@@ -96,6 +98,20 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record go proxy upstream pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
+}
+
+func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute route, resp *Response) {
+	if s == nil || s.events == nil || resp == nil || routeMetadataTTL(requestRoute, defaultMetadataTTL) <= 0 {
+		return
+	}
+	_ = events.Publish(ctx, s.events, events.ArtifactPulled{
+		Ecosystem:  ecosystem.Go,
+		Kind:       "module",
+		Alias:      requestRoute.Alias,
+		Repository: requestRoute.Module,
+		Reference:  requestRoute.Reference,
+		Status:     resp.Cache,
+	})
 }
 
 func (s *Service) goUpstream(alias string) (config.UpstreamConfig, bool) {

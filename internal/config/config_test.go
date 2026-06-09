@@ -38,6 +38,7 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	assertDefaultWorker(t, cfg.Worker)
 	assertDefaultCleanup(t, cfg.Scheduler.Cleanup)
 	assertDefaultPrefetch(t, cfg.Scheduler.Prefetch)
+	assertDefaultRefresh(t, cfg.Scheduler.Refresh)
 	assertDefaultBlobCache(t, cfg.Cache.Blob)
 	assertDefaultManifestRefresh(t, cfg.Scheduler.ManifestRefresh)
 	if hub.HTTP.HTTP2.Enabled {
@@ -141,6 +142,14 @@ func assertDefaultPrefetch(t *testing.T, prefetch config.SchedulerPrefetchConfig
 	}
 	if prefetch.FailureBackoff != time.Hour || prefetch.RetryWindow != 24*time.Hour {
 		t.Fatalf("unexpected prefetch retry defaults: %#v", prefetch)
+	}
+}
+
+func assertDefaultRefresh(t *testing.T, refresh config.SchedulerRefreshConfig) {
+	t.Helper()
+
+	if !refresh.Enabled || refresh.Window != 10*time.Minute || !refresh.Distributed {
+		t.Fatalf("unexpected refresh defaults: %#v", refresh)
 	}
 }
 

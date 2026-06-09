@@ -142,14 +142,12 @@ func (s *Service) prefetchChildManifest(
 	depth int,
 ) (prefetchResult, error) {
 	reference := string(child.Digest)
-	manifest, err := s.manifests.Get(ctx, cache.ManifestRequest{
+	manifest, err := s.refreshManifest(ctx, cache.ManifestRequest{
 		UpstreamAlias:  candidate.Alias,
 		Repo:           candidate.Repo,
 		Reference:      reference,
 		Accept:         opts.Accept,
-		Method:         http.MethodGet,
 		SkipPullRecord: true,
-		ForceRefresh:   true,
 	})
 	if err != nil {
 		return prefetchResult{manifestDigest: reference}, cacheWrap(err, "prefetch child manifest")

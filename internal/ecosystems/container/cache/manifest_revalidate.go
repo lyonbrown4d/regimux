@@ -10,8 +10,8 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func (p manifestProxy) revalidate(ctx context.Context, req ManifestRequest, cacheKey string) (*CachedManifest, bool, error) {
-	tag, record, ok, err := p.revalidationCandidate(ctx, req)
+func (p manifestProxy) revalidate(ctx context.Context, req ManifestRequest, cacheKey string, mode manifestRequestMode) (*CachedManifest, bool, error) {
+	tag, record, ok, err := p.revalidationCandidate(ctx, req, mode)
 	if err != nil || !ok {
 		return nil, false, err
 	}
@@ -38,12 +38,12 @@ func (p manifestProxy) revalidate(ctx context.Context, req ManifestRequest, cach
 	return result, true, nil
 }
 
-func (p manifestProxy) revalidationCandidate(ctx context.Context, req ManifestRequest) (*meta.TagRecord, *meta.ManifestRecord, bool, error) {
+func (p manifestProxy) revalidationCandidate(ctx context.Context, req ManifestRequest, mode manifestRequestMode) (*meta.TagRecord, *meta.ManifestRecord, bool, error) {
 	if reference.IsDigest(req.Reference) || p.metadata == nil || p.objects == nil {
 		return nil, nil, false, nil
 	}
 
-	tag, ok, err := p.tagForRevalidation(ctx, req)
+	tag, ok, err := p.tagForRevalidation(ctx, req, mode)
 	if err != nil || !ok {
 		return nil, nil, false, err
 	}
@@ -59,7 +59,7 @@ func (p manifestProxy) revalidationCandidate(ctx context.Context, req ManifestRe
 	return tag, record, exists, nil
 }
 
-func (p manifestProxy) tagForRevalidation(ctx context.Context, req ManifestRequest) (*meta.TagRecord, bool, error) {
+func (p manifestProxy) tagForRevalidation(ctx context.Context, req ManifestRequest, mode manifestRequestMode) (*meta.TagRecord, bool, error) {
 	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
 		Alias:      req.UpstreamAlias,
 		Repository: req.Repo,
@@ -68,7 +68,7 @@ func (p manifestProxy) tagForRevalidation(ctx context.Context, req ManifestReque
 	if err != nil {
 		return nil, false, wrapError(err, "lookup manifest tag for revalidation")
 	}
-	return tag, ok && (req.ForceRefresh || tagExpired(tag, time.Now())), nil
+	return tag, ok && (mode == manifestRequestModeRefresh || tagExpired(tag, time.Now())), nil
 }
 
 func (p manifestProxy) manifestRecordForRevalidation(ctx context.Context, req ManifestRequest, tag *meta.TagRecord) (*meta.ManifestRecord, bool, error) {

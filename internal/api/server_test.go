@@ -14,12 +14,10 @@ import (
 func TestNewServerRegistersEndpoints(t *testing.T) {
 	server := api.NewServer(api.Options{
 		Endpoints: collectionlist.NewList[httpx.Endpoint](
-			api.NewHealthEndpoint(),
 			container.NewRegistryEndpoint(nil, nil, nil, nil, slog.Default()),
 		),
 	})
 
-	assertRoute(t, server, http.MethodGet, "/healthz")
 	assertRoute(t, server, http.MethodGet, "/v2")
 	assertRoute(t, server, http.MethodHead, "/v2")
 	assertRoute(t, server, http.MethodGet, "/v2/hub/library/alpine/manifests/latest")

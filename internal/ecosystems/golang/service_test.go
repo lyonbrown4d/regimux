@@ -96,7 +96,7 @@ func TestServiceCachesRootGoProxyFile(t *testing.T) {
 	}
 }
 
-func TestServiceServesExpiredLatestStaleAndRefreshesAsync(t *testing.T) {
+func TestServiceServesExpiredLatestStaleWithoutRefreshingInline(t *testing.T) {
 	ctx := context.Background()
 	requests := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -131,14 +131,8 @@ func TestServiceServesExpiredLatestStaleAndRefreshesAsync(t *testing.T) {
 	if secondBody != firstBody {
 		t.Fatalf("second body = %q, want stale body %q", secondBody, firstBody)
 	}
-
-	third := waitForGoCacheHit(t, ctx, service, req)
-	thirdBody := responseBody(t, third)
-	if thirdBody == firstBody {
-		t.Fatalf("latest response was not refreshed asynchronously: %q", thirdBody)
-	}
-	if requests < 2 {
-		t.Fatalf("upstream requests = %d, want at least 2", requests)
+	if requests != 1 {
+		t.Fatalf("upstream requests after stale hit = %d, want 1", requests)
 	}
 }
 
@@ -326,24 +320,6 @@ func requireNoError(t *testing.T, action string, err error) {
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
 	}
-}
-
-func waitForGoCacheHit(t *testing.T, ctx context.Context, service *golang.Service, req golang.Request) *golang.Response {
-	t.Helper()
-	deadline := time.Now().Add(time.Second)
-	var last string
-	for time.Now().Before(deadline) {
-		resp, err := service.Get(ctx, req)
-		requireNoError(t, "wait for go cache hit", err)
-		if resp.Cache == cacheHit {
-			return resp
-		}
-		last = resp.Cache
-		closeBody(t, resp.Body)
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatalf("cache = %q, want %q", last, cacheHit)
-	return nil
 }
 
 func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {

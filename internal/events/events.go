@@ -136,6 +136,18 @@ type CacheStore struct {
 
 func (CacheStore) Name() string { return "cache.store" }
 
+type ArtifactPulled struct {
+	Ecosystem  string
+	Kind       string
+	Alias      string
+	Repository string
+	Reference  string
+	Status     string
+	Accept     string
+}
+
+func (ArtifactPulled) Name() string { return "artifact.pulled" }
+
 type DockerImageEvent struct {
 	Action string
 	Actor  string

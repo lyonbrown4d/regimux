@@ -106,12 +106,11 @@ func (r *runtimeAdapter) Prefetch(ctx context.Context, opts ecosystem.PrefetchOp
 }
 
 func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Candidate) (depprefetch.FetchResult, error) {
-	resp, err := r.service.Get(ctx, Request{
+	resp, err := r.service.refresh(ctx, Request{
 		Alias:          candidate.Alias,
 		Tail:           npmTail(candidate),
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
-		ForceRefresh:   true,
 	})
 	if err != nil {
 		return depprefetch.FetchResult{}, err
@@ -181,12 +180,11 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 	if r == nil || r.service == nil {
 		return nil, oops.In("npm").Errorf("npm proxy manual sync service is not configured")
 	}
-	resp, err := r.service.Get(ctx, Request{
+	resp, err := r.service.refresh(ctx, Request{
 		Alias:          opts.Alias,
 		Tail:           npmTail(depprefetch.Candidate{Alias: opts.Alias, Repository: opts.Artifact, Reference: opts.Reference}),
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
-		ForceRefresh:   true,
 	})
 	if err != nil {
 		return nil, err
@@ -210,6 +208,33 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 	}, nil
 }
 
+func (r *runtimeAdapter) Refresh(ctx context.Context, req ecosystem.RefreshRequest) error {
+	if r == nil || r.service == nil {
+		return oops.In("npm").Errorf("npm proxy refresh service is not configured")
+	}
+	resp, err := r.service.refresh(ctx, Request{
+		Alias:  req.Alias,
+		Tail:   req.Repository,
+		Method: http.MethodGet,
+	})
+	if err != nil {
+		return err
+	}
+	if resp == nil {
+		return oops.In("npm").Errorf("npm proxy refresh response is empty")
+	}
+	defer closeReadCloser(resp.Body, nil, "close npm refresh response body")
+	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
+		return oops.In("npm").With("status", resp.Status).Errorf("npm proxy refresh request failed")
+	}
+	if resp.Body != nil {
+		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
+			return oops.With("status", resp.Status).Wrapf(err, "drain npm refresh response")
+		}
+	}
+	return nil
+}
+
 func npmTail(candidate depprefetch.Candidate) string {
 	if tarball, ok := strings.CutPrefix(candidate.Reference, "tarball:"); ok {
 		return candidate.Repository + "/-/" + tarball
@@ -225,3 +250,4 @@ var _ ecosystem.Prober = (*runtimeAdapter)(nil)
 var _ ecosystem.Prefetcher = (*runtimeAdapter)(nil)
 var _ ecosystem.JobProvider = (*runtimeAdapter)(nil)
 var _ ecosystem.ManualSyncer = (*runtimeAdapter)(nil)
+var _ ecosystem.Refresher = (*runtimeAdapter)(nil)

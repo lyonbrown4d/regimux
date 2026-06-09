@@ -77,6 +77,9 @@ maven {
 - `store.object.path = "data/objects"`
 - `scheduler.cleanup.enabled = true`
 - `scheduler.prefetch.enabled = false`
+- `scheduler.refresh.enabled = true`
+- `scheduler.refresh.window = "10m"`，按制品对近期 pull 触发的刷新意图做去重后再调度上游刷新
+- `scheduler.refresh.distributed = true`
 - `scheduler.manifest_refresh.enabled = false`
 - `scheduler.manifest_refresh.ecosystems` 可按生态覆盖 manifest refresh（`container`、`go`、`npm`、`pypi`、`maven`）
 - `docker.enabled = false`

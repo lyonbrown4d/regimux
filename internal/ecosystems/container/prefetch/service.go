@@ -25,6 +25,7 @@ type Service struct {
 	metadata        meta.Store
 	tags            cache.TagService
 	manifests       cache.ManifestService
+	manifestRefresh cache.ManifestRefresher
 	blobs           cache.BlobService
 	workers         *worker.Pools
 	logger          *slog.Logger
@@ -65,12 +66,13 @@ type RunReport struct {
 }
 
 type ServiceDependencies struct {
-	Metadata  meta.Store
-	Tags      cache.TagService
-	Manifests cache.ManifestService
-	Blobs     cache.BlobService
-	Logger    *slog.Logger
-	Workers   *worker.Pools
+	Metadata          meta.Store
+	Tags              cache.TagService
+	Manifests         cache.ManifestService
+	ManifestRefresher cache.ManifestRefresher
+	Blobs             cache.BlobService
+	Logger            *slog.Logger
+	Workers           *worker.Pools
 }
 
 func NewService(deps ServiceDependencies) *Service {
@@ -78,13 +80,20 @@ func NewService(deps ServiceDependencies) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	manifestRefresh := deps.ManifestRefresher
+	if manifestRefresh == nil {
+		if refresher, ok := deps.Manifests.(cache.ManifestRefresher); ok {
+			manifestRefresh = refresher
+		}
+	}
 	return &Service{
-		metadata:  deps.Metadata,
-		tags:      deps.Tags,
-		manifests: deps.Manifests,
-		blobs:     deps.Blobs,
-		workers:   deps.Workers,
-		logger:    logger.With("component", prefetchLogGroup),
+		metadata:        deps.Metadata,
+		tags:            deps.Tags,
+		manifests:       deps.Manifests,
+		manifestRefresh: manifestRefresh,
+		blobs:           deps.Blobs,
+		workers:         deps.Workers,
+		logger:          logger.With("component", prefetchLogGroup),
 	}
 }
 
@@ -205,7 +214,7 @@ func (s *Service) validateRun(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return cacheWrap(err, "prefetch context")
 	}
-	if s == nil || s.metadata == nil || s.tags == nil || s.manifests == nil {
+	if s == nil || s.metadata == nil || s.tags == nil || s.manifests == nil || s.manifestRefresh == nil {
 		return cacheError("prefetch service is not configured")
 	}
 	return nil

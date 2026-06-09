@@ -144,6 +144,11 @@ func defaultSchedulerConfig() SchedulerConfig {
 			Interval:    30 * time.Minute,
 			Distributed: true,
 		},
+		Refresh: SchedulerRefreshConfig{
+			Enabled:     true,
+			Window:      10 * time.Minute,
+			Distributed: true,
+		},
 	}
 }
 

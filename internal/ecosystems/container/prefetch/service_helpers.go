@@ -1,10 +1,13 @@
 package prefetch
 
 import (
+	"context"
+	"net/http"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
@@ -89,6 +92,15 @@ func groupPullRecords(records *collectionlist.List[meta.PullRecord]) *collection
 	return collectionmapping.GroupByList(records, func(_ int, record meta.PullRecord) repoKey {
 		return repoKey{alias: record.Alias, repo: record.Repository}
 	})
+}
+
+func (s *Service) refreshManifest(ctx context.Context, req cache.ManifestRequest) (*cache.CachedManifest, error) {
+	if s == nil || s.manifestRefresh == nil {
+		return nil, cacheError("manifest refresh service is not configured")
+	}
+	req.Method = http.MethodGet
+	req.SkipPullRecord = true
+	return s.manifestRefresh.Refresh(ctx, req)
 }
 
 func toCandidateRecords(records *collectionlist.List[meta.PullRecord]) *collectionlist.List[PullRecord] {

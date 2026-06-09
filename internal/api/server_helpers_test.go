@@ -11,6 +11,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/api"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/samber/oops"
 )
 
@@ -19,7 +20,8 @@ func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 
 	addr := freeTCPAddr(t)
 	opts.Listen = addr
-	endpoints := collectionlist.NewList[httpx.Endpoint](api.NewHealthEndpoint())
+	ensureHealthcheckMiddleware(&opts.Middleware)
+	endpoints := collectionlist.NewList[httpx.Endpoint]()
 	if opts.Endpoints != nil {
 		opts.Endpoints.Range(func(_ int, endpoint httpx.Endpoint) bool {
 			endpoints.Add(endpoint)
@@ -40,8 +42,21 @@ func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 	})
 
 	baseURL := "http://" + addr
-	waitForHTTP(t, baseURL+"/healthz")
+	waitForHTTP(t, baseURL+"/livez")
 	return baseURL
+}
+
+func ensureHealthcheckMiddleware(cfg *config.ServerMiddlewareConfig) {
+	if cfg == nil {
+		return
+	}
+	cfg.Healthcheck.Enabled = true
+	if cfg.Healthcheck.LivenessPath == "" {
+		cfg.Healthcheck.LivenessPath = "/livez"
+	}
+	if cfg.Healthcheck.ReadinessPath == "" {
+		cfg.Healthcheck.ReadinessPath = "/readyz"
+	}
 }
 
 func freeTCPAddr(t *testing.T) string {

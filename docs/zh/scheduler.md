@@ -130,6 +130,22 @@ scheduler {
 
 如果不配置 `ecosystems`，一个 manifest refresh job 会覆盖所有支持 prefetch 的 runtime。配置 `ecosystems` 后，每个 runtime 会按自己的有效配置注册独立 job；未指定字段继承上层 `manifest_refresh`，`enabled = false` 可关闭某个生态。
 
+## Recent-Pull 刷新
+
+用户请求面对的 service API 保持 cache-first。请求命中本地缓存时，包括 stale 元数据，service 会发布 `artifact.pulled`，而不是在请求链路里强制访问上游。scheduler 会把刷新意图写入元数据存储，并按 `(ecosystem, kind, alias, repository, reference, accept)` 在 `scheduler.refresh.window` 内去重。
+
+```hcl
+scheduler {
+  refresh {
+    enabled = true
+    window = "10m"
+    distributed = true
+  }
+}
+```
+
+默认窗口是 10 分钟。同一个制品在窗口内被拉取 100 次，也只会消费一次到期刷新意图。窗口到期并消费后，如果后续再次被拉取，才会创建下一次刷新意图。
+
 ## Worker 池
 
 ```hcl

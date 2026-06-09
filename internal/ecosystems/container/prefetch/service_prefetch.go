@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"net/http"
 	"strconv"
 	"sync"
 	"sync/atomic"
@@ -179,14 +178,12 @@ func (e *runExecution) failureOutcome(err error, attempt int) (string, string, t
 }
 
 func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, execution *runExecution, candidate Candidate) (prefetchResult, error) {
-	manifest, err := s.manifests.Get(ctx, cache.ManifestRequest{
+	manifest, err := s.refreshManifest(ctx, cache.ManifestRequest{
 		UpstreamAlias:  candidate.Alias,
 		Repo:           candidate.Repo,
 		Reference:      candidate.Tag,
 		Accept:         opts.Accept,
-		Method:         http.MethodGet,
 		SkipPullRecord: true,
-		ForceRefresh:   true,
 	})
 	if err != nil {
 		return prefetchResult{}, cacheWrap(err, "prefetch manifest")
