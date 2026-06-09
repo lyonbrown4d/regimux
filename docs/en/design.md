@@ -44,6 +44,13 @@ flowchart LR
   scheduler --> npm
   scheduler --> pypi
   scheduler --> maven
+  events["Event Bus"] --> scheduler
+  container --> events
+  golang --> events
+  npm --> events
+  pypi --> events
+  maven --> events
+  scheduler --> meta
   admin["Admin UI"] --> scheduler
   admin --> meta
 ```
@@ -110,6 +117,8 @@ sequenceDiagram
   participant M as Metadata Store
   participant O as Object Store
   participant U as Upstream Endpoint
+  participant E as Event Bus
+  participant S as Scheduler
 
   C->>A: GET artifact / manifest / blob
   A->>R: resolve ecosystem alias and reference
@@ -119,6 +128,8 @@ sequenceDiagram
     O-->>R: cached bytes
     R-->>A: cached response
     R-->>E: publish artifact.pulled for scheduler refresh debounce
+    E-->>S: enqueue refresh intent
+    S->>M: upsert meta_refresh_intents with due_at
   else local cache missing
     R->>U: fetch from selected upstream
     U-->>R: upstream response
@@ -158,6 +169,8 @@ The scheduler consumes the runtime set from `dix` and registers background work 
 - `manifest_refresh`: refresh manifest metadata without forcing blob downloads where the ecosystem supports that distinction.
 - `endpoint_health_flush`: persist buffered endpoint health state for runtimes that maintain a hot health layer.
 
+The scheduler also subscribes to `artifact.pulled`. This path is not a periodic job declared by one ecosystem; it is a lightweight response to recent client pull activity. Services only publish refresh intent. The scheduler persists that intent in SQL metadata, and a shared drain job consumes due intents later.
+
 Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
 Manual refresh is also standardized in the same abstraction:
@@ -185,6 +198,11 @@ flowchart TD
   jobs --> prefetch["prefetch"]
   jobs --> refresh["manifest_refresh"]
   jobs --> flush["endpoint_health_flush"]
+
+  routes --> events["artifact.pulled"]
+  events --> intents["meta_refresh_intents"]
+  intents --> scheduler
+  scheduler --> refresher["runtime Refresher"]
 
   admin["Admin manual refresh"] --> syncopts["manualsync.SyncOptions"]
   syncopts --> scheduler
@@ -263,10 +281,15 @@ Metadata is organized around repository-style interfaces:
 - blobs and repository-to-blob links
 - pull records
 - endpoint health
+- recent-pull refresh intent queue
 - prefetch runs, outcomes, and controls
 - aggregate read model for admin and stats
 
 Endpoint health is durable in SQL. When Redis or Valkey is configured as the cache backend, probe updates are also written to a shared hot state layer so replicas can avoid cold-starting endpoint scores and can share low-latency mirror ranking quickly.
+
+`meta_refresh_intents` is the distributed deduplication queue for recent-pull refresh. Its unique key is `(ecosystem, kind, alias, repository, reference, accept)`. The first event writes `due_at = now + scheduler.refresh.window`; duplicate events inside the window only update `last_seen_at` and the skipped counter, and do not push `due_at` later. The drain job reads due intents and claims work by deleting the row; only the instance that successfully deletes the row runs the matching runtime `Refresher`.
+
+Metadata rows and schemas model domain values directly. Low-cardinality fields such as refresh intent `ecosystem` and `kind` use custom Go types, with row tags declaring `dbx:"...,codec=text"` and schema columns using the same custom type plus `type=text`. The `mapper` layer is reserved for record/row structural mapping and a small set of non-DB encoding conversions; SQL scan/encode conversion belongs to dbx codecs.
 
 The SQL implementation is named `SQLStore`. SQLite-specific path, DSN, and pragma logic is isolated under the SQLite driver helper.
 
@@ -285,7 +308,9 @@ Object keys are content-addressed where possible. Metadata remains the source of
 
 Client-facing requests use cache-first semantics: if RegiMux can open a local cached object, it returns that object immediately. TTL expiry does not block the client request on upstream validation. TTL marks cached records stale for observability; scheduled refresh is driven by background job cadence and recent pull history. A client request reaches upstream synchronously only when the matching local cache object is absent.
 
-Background refresh paths include scheduled `prefetch` / `manifest_refresh` jobs, recent-pull refresh debounce, and Admin manual refresh. Cache hits and stale hits publish `artifact.pulled`; the scheduler stores refresh intents in metadata, deduplicates them per artifact for `scheduler.refresh.window` (10 minutes by default), then drains due intents through the runtime `Refresher` capability. Background refresh paths use explicit refresh requests, may bypass the local-first rule, contact upstream directly, and update local metadata and object cache when upstream content changed.
+Background refresh paths include scheduled `prefetch` / `manifest_refresh` jobs, recent-pull refresh debounce, and Admin manual refresh. Cache hits and stale hits publish `artifact.pulled`; the scheduler stores refresh intents in `meta_refresh_intents`, deduplicates them per artifact for `scheduler.refresh.window` (10 minutes by default), then drains due intents through the runtime `Refresher` capability. Background refresh paths use explicit refresh requests, may bypass the local-first rule, contact upstream directly, and update local metadata and object cache when upstream content changed.
+
+Recent-pull debounce is a per-artifact window, not a one-time job per pull. If the same `alpine:latest` is pulled 100 times in 10 minutes, the SQL queue keeps one due refresh intent. After that window expires and the intent is consumed, a later pull can create the next refresh intent.
 
 Manifests are cached with an `Accept`-aware key because different clients may ask for different manifest media types for the same tag.
 

@@ -7,27 +7,27 @@ import (
 )
 
 type refreshIntentRow struct {
-	ID         int64  `dbx:"id"`
-	Key        string `dbx:"key"`
-	Ecosystem  string `dbx:"ecosystem"`
-	Kind       string `dbx:"kind"`
-	Alias      string `dbx:"alias"`
-	Repository string `dbx:"repository"`
-	Reference  string `dbx:"reference"`
-	Accept     string `dbx:"accept"`
-	DueAt      int64  `dbx:"due_at"`
-	LastSeenAt int64  `dbx:"last_seen_at"`
-	Skipped    int    `dbx:"skipped"`
-	CreatedAt  int64  `dbx:"created_at"`
-	UpdatedAt  int64  `dbx:"updated_at"`
+	ID         int64                  `dbx:"id"`
+	Key        string                 `dbx:"key"`
+	Ecosystem  RefreshIntentEcosystem `dbx:"ecosystem,codec=text"`
+	Kind       RefreshIntentKind      `dbx:"kind,codec=text"`
+	Alias      string                 `dbx:"alias"`
+	Repository string                 `dbx:"repository"`
+	Reference  string                 `dbx:"reference"`
+	Accept     string                 `dbx:"accept"`
+	DueAt      int64                  `dbx:"due_at"`
+	LastSeenAt int64                  `dbx:"last_seen_at"`
+	Skipped    int                    `dbx:"skipped"`
+	CreatedAt  int64                  `dbx:"created_at"`
+	UpdatedAt  int64                  `dbx:"updated_at"`
 }
 
 type refreshIntentRowSchema struct {
 	schemax.Schema[refreshIntentRow]
 	ID         columnx.IDColumn[refreshIntentRow, int64, idgen.IDSnowflake] `dbx:"id,pk"`
 	Key        columnx.Column[refreshIntentRow, string]                     `dbx:"key,unique"`
-	Ecosystem  columnx.Column[refreshIntentRow, string]                     `dbx:"ecosystem,index"`
-	Kind       columnx.Column[refreshIntentRow, string]                     `dbx:"kind,index"`
+	Ecosystem  columnx.Column[refreshIntentRow, RefreshIntentEcosystem]     `dbx:"ecosystem,index,type=text"`
+	Kind       columnx.Column[refreshIntentRow, RefreshIntentKind]          `dbx:"kind,index,type=text"`
 	Alias      columnx.Column[refreshIntentRow, string]                     `dbx:"alias,index"`
 	Repository columnx.Column[refreshIntentRow, string]                     `dbx:"repository,index"`
 	Reference  columnx.Column[refreshIntentRow, string]                     `dbx:"reference,index"`
