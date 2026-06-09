@@ -20,7 +20,7 @@ import (
 func TestServiceRendersSyncPage(t *testing.T) {
 	app, _ := newAdminSyncTestApp(t, &fakeManualSyncer{})
 
-	assertAdminResponse(t, app, "/admin/sync", "Manual Sync", "hub - https://registry-1.docker.io", "gitlab/gitlab-ce", "Sync now")
+	assertAdminResponse(t, app, "/admin/sync", "Manual Refresh", "hub - https://registry-1.docker.io", "gitlab/gitlab-ce", "Refresh now")
 }
 
 func TestServiceSyncSubmitValidatesRepository(t *testing.T) {

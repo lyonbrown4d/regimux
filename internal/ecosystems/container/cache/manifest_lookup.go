@@ -84,6 +84,62 @@ func (p manifestProxy) lookupStale(ctx context.Context, req ManifestRequest) (*C
 	return manifest, true, nil
 }
 
+func (p manifestProxy) lookupAnyStored(ctx context.Context, req ManifestRequest) (*CachedManifest, bool, error) {
+	if p.metadata == nil || p.objects == nil {
+		return nil, false, nil
+	}
+
+	record, ok, err := p.lookupAnyStoredRecord(ctx, req)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	manifest, ok, err := p.manifestFromRecord(ctx, req, record, CacheStale)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	manifest.Headers.Set(distribution.HeaderWarning, distribution.WarningResponseIsStale)
+	return manifest, true, nil
+}
+
+func (p manifestProxy) lookupAnyStoredRecord(ctx context.Context, req ManifestRequest) (*meta.ManifestRecord, bool, error) {
+	if reference.IsDigest(req.Reference) {
+		digest, err := digestFromReference(req.Reference, nil)
+		if err != nil {
+			return nil, false, err
+		}
+		return p.lookupAnyManifestRecord(ctx, meta.ManifestKey{
+			Alias:      req.UpstreamAlias,
+			Repository: req.Repo,
+			Digest:     digest,
+		})
+	}
+
+	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Reference:  req.Reference,
+	})
+	if err != nil {
+		return nil, false, wrapError(err, "lookup cached manifest tag")
+	}
+	if !ok {
+		return nil, false, nil
+	}
+	return p.lookupAnyManifestRecord(ctx, meta.ManifestKey{
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Digest:     tag.Digest,
+	})
+}
+
+func (p manifestProxy) lookupAnyManifestRecord(ctx context.Context, key meta.ManifestKey) (*meta.ManifestRecord, bool, error) {
+	record, ok, err := p.metadata.Manifest(ctx, key)
+	if err != nil {
+		return nil, false, wrapError(err, "lookup cached manifest record")
+	}
+	return record, ok, nil
+}
+
 func (p manifestProxy) canServeStale() bool {
 	return p.staleIfError && p.maxStale > 0 && p.metadata != nil && p.objects != nil
 }

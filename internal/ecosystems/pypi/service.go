@@ -73,12 +73,19 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	if err != nil {
 		return nil, err
 	}
-	if cachedOK && !cached.expired {
+	if !req.ForceRefresh && cachedOK && !cached.expired {
 		return s.responseFromStored(req, requestRoute, cached, cacheHit)
+	}
+	if !req.ForceRefresh && cachedOK && cached.expired {
+		s.refreshAsync(ctx, req, requestRoute, upstreamCfg)
+		return s.responseFromStored(req, requestRoute, cached, cacheStale)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
+		if req.ForceRefresh {
+			return nil, err
+		}
 		if cachedOK {
 			return s.responseFromStored(req, requestRoute, cached, cacheStale)
 		}
@@ -96,6 +103,27 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return nil, err
 	}
 	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
+}
+
+func (s *Service) refreshAsync(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig) {
+	go func() {
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+		defer cancel()
+
+		refreshReq := req
+		refreshReq.ForceRefresh = true
+		refreshReq.SkipPullRecord = true
+		refreshReq.Method = http.MethodGet
+
+		key := strings.Join([]string{"pypi", requestRoute.Alias, requestRoute.Repository, requestRoute.Reference}, ":")
+		_, _, _ = s.refresh.Do(key, func() (any, error) {
+			resp, err := s.getFromUpstream(refreshCtx, refreshReq, requestRoute, upstreamCfg)
+			if resp != nil {
+				closeReadCloser(resp.Body, s.logger, "close pypi async refresh response body")
+			}
+			return nil, err
+		})
+	}()
 }
 
 func (s *Service) prepareFetched(req Request, requestRoute Route, fetched *upstreamFetch) (*upstreamFetch, error) {

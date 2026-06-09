@@ -42,6 +42,7 @@ type ManifestRequest struct {
 	Accept         string
 	Method         string
 	SkipPullRecord bool
+	ForceRefresh   bool
 }
 
 type CachedManifest struct {

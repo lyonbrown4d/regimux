@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
@@ -15,8 +17,9 @@ import (
 )
 
 const (
-	cacheHit  = "hit"
-	cacheMiss = "miss"
+	cacheHit   = "hit"
+	cacheMiss  = "miss"
+	cacheStale = "stale"
 )
 
 func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
@@ -90,6 +93,52 @@ func TestServiceCachesRootGoProxyFile(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Fatalf("upstream requests = %d, want 1", requests)
+	}
+}
+
+func TestServiceServesExpiredLatestStaleAndRefreshesAsync(t *testing.T) {
+	ctx := context.Background()
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/github.com/acme/lib/@latest" {
+			t.Fatalf("upstream path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		writeResponse(t, w, `{"Version":"v1.2.`+strconv.Itoa(requests)+`"}`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service, metadata := newTestServiceWithMetadata(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"default": {Registry: upstream.URL},
+	})
+	req := golang.Request{Alias: "default", Tail: "github.com/acme/lib/@latest"}
+
+	first, err := service.Get(ctx, req)
+	requireNoError(t, "first latest get", err)
+	firstBody := responseBody(t, first)
+	if first.Cache != cacheMiss {
+		t.Fatalf("first cache = %q, want %q", first.Cache, cacheMiss)
+	}
+
+	expireArtifactMetadata(ctx, t, metadata, "default", "github.com/acme/lib", "@latest")
+	second, err := service.Get(ctx, req)
+	requireNoError(t, "second latest get", err)
+	secondBody := responseBody(t, second)
+	if second.Cache != cacheStale {
+		t.Fatalf("second cache = %q, want %q", second.Cache, cacheStale)
+	}
+	if secondBody != firstBody {
+		t.Fatalf("second body = %q, want stale body %q", secondBody, firstBody)
+	}
+
+	third := waitForGoCacheHit(t, ctx, service, req)
+	thirdBody := responseBody(t, third)
+	if thirdBody == firstBody {
+		t.Fatalf("latest response was not refreshed asynchronously: %q", thirdBody)
+	}
+	if requests < 2 {
+		t.Fatalf("upstream requests = %d, want at least 2", requests)
 	}
 }
 
@@ -217,6 +266,12 @@ func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *gola
 
 func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) *golang.Service {
 	t.Helper()
+	service, _ := newTestServiceWithMetadata(ctx, t, upstreams)
+	return service
+}
+
+func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store) {
+	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
 	t.Cleanup(func() {
@@ -230,10 +285,18 @@ func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams ma
 		},
 		Metadata: db,
 		Objects:  objects,
-	})
+	}), db
 }
 
 func assertBody(t *testing.T, resp *golang.Response, want string) {
+	t.Helper()
+	body := responseBody(t, resp)
+	if body != want {
+		t.Fatalf("body = %q, want %q", body, want)
+	}
+}
+
+func responseBody(t *testing.T, resp *golang.Response) string {
 	t.Helper()
 	if resp == nil || resp.Body == nil {
 		t.Fatalf("response body is empty")
@@ -241,9 +304,7 @@ func assertBody(t *testing.T, resp *golang.Response, want string) {
 	defer closeBody(t, resp.Body)
 	body, err := io.ReadAll(resp.Body)
 	requireNoError(t, "read body", err)
-	if string(body) != want {
-		t.Fatalf("body = %q, want %q", string(body), want)
-	}
+	return string(body)
 }
 
 func writeResponse(t *testing.T, w http.ResponseWriter, body string) {
@@ -264,5 +325,44 @@ func requireNoError(t *testing.T, action string, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
+	}
+}
+
+func waitForGoCacheHit(t *testing.T, ctx context.Context, service *golang.Service, req golang.Request) *golang.Response {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		resp, err := service.Get(ctx, req)
+		requireNoError(t, "wait for go cache hit", err)
+		if resp.Cache == cacheHit {
+			return resp
+		}
+		last = resp.Cache
+		closeBody(t, resp.Body)
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("cache = %q, want %q", last, cacheHit)
+	return nil
+}
+
+func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {
+	t.Helper()
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
+	if err != nil || !ok {
+		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
+	}
+	tag.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertTag(ctx, *tag); err != nil {
+		t.Fatalf("expire tag: %v", err)
+	}
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: tag.Digest})
+	if err != nil || !ok {
+		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
+	}
+	manifest.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertManifest(ctx, *manifest); err != nil {
+		t.Fatalf("expire manifest: %v", err)
 	}
 }

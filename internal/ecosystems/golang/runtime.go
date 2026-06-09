@@ -111,6 +111,7 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 		Tail:           tail,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		return depprefetch.FetchResult{}, err
@@ -182,6 +183,7 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 		Tail:           opts.Artifact + "/" + opts.Reference,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		return nil, err

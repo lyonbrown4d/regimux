@@ -34,6 +34,7 @@ func (s *Service) Sync(ctx context.Context, opts manualsync.SyncOptions) (*manua
 		Accept:         opts.Accept,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		s.logger.WarnContext(ctx, "manual sync manifest failed", "alias", opts.Alias, "artifact", opts.Artifact, "reference", opts.Reference, "error", err)

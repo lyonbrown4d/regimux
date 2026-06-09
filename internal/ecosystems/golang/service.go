@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -37,6 +38,7 @@ type Service struct {
 	objects  object.Store
 	client   *http.Client
 	logger   *slog.Logger
+	refresh  singleflight.Group
 }
 
 type Request struct {
@@ -44,6 +46,7 @@ type Request struct {
 	Tail           string
 	Method         string
 	SkipPullRecord bool
+	ForceRefresh   bool
 }
 
 type Response struct {
@@ -163,8 +166,12 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	if err != nil {
 		return nil, err
 	}
-	if cacheFresh(cached, cachedOK) {
+	if !req.ForceRefresh && cacheFresh(cached, cachedOK) {
 		return s.responseFromStored(req, cached, cacheHit)
+	}
+	if !req.ForceRefresh && cachedOK && cached.expired {
+		s.refreshAsync(ctx, req, requestRoute, upstreamCfg, upstreamAlias)
+		return s.responseFromStored(req, cached, cacheStale)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
@@ -175,4 +182,26 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return s.responseFromUpstream(req, fetched), nil
 	}
 	return s.storeFetchedResponse(ctx, req, requestRoute, fetched)
+}
+
+func (s *Service) refreshAsync(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig, upstreamAlias string) {
+	if !routeCacheable(requestRoute) {
+		return
+	}
+	go func() {
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+		defer cancel()
+
+		refreshReq := req
+		refreshReq.ForceRefresh = true
+		refreshReq.SkipPullRecord = true
+		refreshReq.Method = http.MethodGet
+
+		key := strings.Join([]string{"go", requestRoute.Alias, requestRoute.Module, requestRoute.Reference}, ":")
+		_, _, _ = s.refresh.Do(key, func() (any, error) {
+			resp, err := s.getFromUpstream(refreshCtx, refreshReq, requestRoute, upstreamCfg, upstreamAlias)
+			closeResponseBody(resp)
+			return nil, err
+		})
+	}()
 }

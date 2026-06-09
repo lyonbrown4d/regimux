@@ -212,7 +212,7 @@ func TestManifestProxyManifestCacheIgnoresAcceptMismatch(t *testing.T) {
 	}
 }
 
-func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
+func TestManifestProxyServesExpiredTagStaleAndRevalidatesAsync(t *testing.T) {
 	ctx := context.Background()
 	body := []byte(`{"schemaVersion":2}`)
 	client := &fakeRegistryClient{
@@ -224,11 +224,11 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 		client,
 		metadata,
 		objects,
-		backend.NewMemory(backend.MemoryOptions{}),
+		nil,
 		config.Config{
 			Cache: config.CacheConfig{
 				Manifest: config.ManifestCacheConfig{
-					TagTTL: time.Nanosecond,
+					TagTTL: 5 * time.Minute,
 				},
 			},
 		},
@@ -243,7 +243,7 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first manifest get: %v", err)
 	}
-	time.Sleep(5 * time.Millisecond)
+	expireManifestMetadata(ctx, t, metadata, "hub", "library/alpine", "latest", first.Digest)
 	second, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
@@ -251,15 +251,67 @@ func TestManifestProxyRevalidatesExpiredTagWithHead(t *testing.T) {
 		Method:        http.MethodGet,
 	})
 	if err != nil {
-		t.Fatalf("revalidated manifest get: %v", err)
+		t.Fatalf("stale manifest get: %v", err)
 	}
-	if second.Cache != cache.CacheHit || !bytes.Equal(second.Body, body) {
-		t.Fatalf("unexpected revalidated result: cache=%s body=%q", second.Cache, second.Body)
+	if second.Cache != cache.CacheStale || !bytes.Equal(second.Body, body) {
+		t.Fatalf("unexpected stale result: cache=%s body=%q", second.Cache, second.Body)
+	}
+	third := waitForManifestCacheHit(t, ctx, proxy.Manifests(), cache.ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Reference:     "latest",
+		Method:        http.MethodGet,
+	})
+	if third.Cache != cache.CacheHit || !bytes.Equal(third.Body, body) {
+		t.Fatalf("unexpected post-refresh result: cache=%s body=%q", third.Cache, third.Body)
 	}
 	if client.manifestGets != 2 || client.manifestHeads != 1 {
 		t.Fatalf("manifest calls = gets:%d heads:%d, want gets:2 heads:1", client.manifestGets, client.manifestHeads)
 	}
-	if first.Digest != second.Digest {
-		t.Fatalf("digest changed: first=%s second=%s", first.Digest, second.Digest)
+	if first.Digest != third.Digest {
+		t.Fatalf("digest changed: first=%s third=%s", first.Digest, third.Digest)
+	}
+}
+
+func waitForManifestCacheHit(t *testing.T, ctx context.Context, service cache.ManifestService, req cache.ManifestRequest) *cache.CachedManifest {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	var last *cache.CachedManifest
+	for time.Now().Before(deadline) {
+		got, err := service.Get(ctx, req)
+		if err != nil {
+			t.Fatalf("wait for manifest cache hit: %v", err)
+		}
+		last = got
+		if got != nil && got.Cache == cache.CacheHit {
+			return got
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if last != nil {
+		t.Fatalf("manifest cache status = %s, want %s", last.Cache, cache.CacheHit)
+	}
+	t.Fatalf("manifest cache status was empty, want %s", cache.CacheHit)
+	return nil
+}
+
+func expireManifestMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference, digest string) {
+	t.Helper()
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
+	if err != nil || !ok {
+		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
+	}
+	tag.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertTag(ctx, *tag); err != nil {
+		t.Fatalf("expire tag: %v", err)
+	}
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: digest})
+	if err != nil || !ok {
+		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
+	}
+	manifest.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertManifest(ctx, *manifest); err != nil {
+		t.Fatalf("expire manifest: %v", err)
 	}
 }

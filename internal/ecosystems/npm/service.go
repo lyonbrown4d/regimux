@@ -97,8 +97,12 @@ func (s *Service) getFromUpstream(
 	if err != nil {
 		return nil, err
 	}
-	if cachedOK && !cached.expired {
+	if !req.ForceRefresh && cachedOK && !cached.expired {
 		return s.responseFromStored(req, requestRoute, cached, cacheHit)
+	}
+	if !req.ForceRefresh && cachedOK && cached.expired {
+		s.refreshAsync(ctx, req, requestRoute, upstreamCfg)
+		return s.responseFromStored(req, requestRoute, cached, cacheStale)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
@@ -113,6 +117,30 @@ func (s *Service) getFromUpstream(
 		return nil, err
 	}
 	return s.storeFetchedResponse(ctx, req, requestRoute, prepared)
+}
+
+func (s *Service) refreshAsync(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig) {
+	if !cacheable(requestRoute) {
+		return
+	}
+	go func() {
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+		defer cancel()
+
+		refreshReq := req
+		refreshReq.ForceRefresh = true
+		refreshReq.SkipPullRecord = true
+		refreshReq.Method = http.MethodGet
+
+		key := strings.Join([]string{"npm", requestRoute.Alias, requestRoute.Package, requestRoute.Reference}, ":")
+		_, _, _ = s.refresh.Do(key, func() (any, error) {
+			resp, err := s.getFromUpstream(refreshCtx, refreshReq, requestRoute, upstreamCfg)
+			if resp != nil {
+				closeReadCloser(resp.Body, s.logger, "close npm async refresh response body")
+			}
+			return nil, err
+		})
+	}()
 }
 
 func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute route, method string) (*upstreamFetch, error) {
@@ -216,6 +244,9 @@ func (s *Service) storeFetchedResponse(ctx context.Context, req Request, request
 }
 
 func (s *Service) responseFromFetchError(req Request, requestRoute route, cached storedResponse, cachedOK bool, err error) (*Response, error) {
+	if req.ForceRefresh {
+		return nil, err
+	}
 	if cachedOK {
 		return s.responseFromStored(req, requestRoute, cached, cacheStale)
 	}

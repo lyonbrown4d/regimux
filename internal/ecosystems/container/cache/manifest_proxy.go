@@ -36,12 +36,22 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 }
 
 func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey string) (*CachedManifest, error) {
-	if cached, ok, err := p.lookup(ctx, req, cacheKey); err != nil {
-		return nil, err
-	} else if ok {
-		p.recordManifestPull(ctx, req)
-		p.publishCacheAccess(ctx, req, cached)
-		return cached, nil
+	if !req.ForceRefresh {
+		if cached, ok, err := p.lookup(ctx, req, cacheKey); err != nil {
+			return nil, err
+		} else if ok {
+			p.recordManifestPull(ctx, req)
+			p.publishCacheAccess(ctx, req, cached)
+			return cached, nil
+		}
+		if stale, ok, err := p.lookupAnyStored(ctx, req); err != nil {
+			return nil, err
+		} else if ok {
+			p.refreshAsync(ctx, req, cacheKey)
+			p.recordManifestPull(ctx, req)
+			p.publishCacheAccess(ctx, req, stale)
+			return stale, nil
+		}
 	}
 
 	if result, ok, err := p.revalidate(ctx, req, cacheKey); err != nil {
@@ -54,6 +64,9 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 
 	result, err := p.fetch(ctx, req)
 	if err != nil {
+		if req.ForceRefresh {
+			return nil, err
+		}
 		return p.lookupStaleOrError(ctx, req, err)
 	}
 	p.recordManifestUpstreamPull(ctx, req)
@@ -61,6 +74,32 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 	p.recordManifestPull(ctx, req)
 	p.publishCacheAccess(ctx, req, result)
 	return result, nil
+}
+
+func (p manifestProxy) refreshAsync(ctx context.Context, req ManifestRequest, cacheKey string) {
+	if reference.IsDigest(req.Reference) {
+		return
+	}
+
+	go func() {
+		refreshCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Minute)
+		defer cancel()
+
+		refreshReq := req
+		refreshReq.ForceRefresh = true
+		refreshReq.SkipPullRecord = true
+		refreshReq.Method = http.MethodGet
+
+		refreshKey := "refresh:" + cacheKey
+		if p.group != nil {
+			_, _, _ = p.group.Do(refreshKey, func() (any, error) {
+				result, err := p.get(refreshCtx, refreshReq, cacheKey)
+				return result, err
+			})
+			return
+		}
+		_, _ = p.get(refreshCtx, refreshReq, cacheKey)
+	}()
 }
 
 func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestRequest, cause error) (*CachedManifest, error) {

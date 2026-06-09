@@ -19,8 +19,9 @@ import (
 )
 
 const (
-	cacheHit  = "hit"
-	cacheMiss = "miss"
+	cacheHit   = "hit"
+	cacheMiss  = "miss"
+	cacheStale = "stale"
 )
 
 func TestServiceRewritesMetadataTarballsAndCaches(t *testing.T) {
@@ -152,7 +153,7 @@ func TestServiceCachesTarballWithoutTTL(t *testing.T) {
 	}
 }
 
-func TestServiceRefreshesExpiredMetadata(t *testing.T) {
+func TestServiceServesExpiredMetadataStaleAndRefreshesAsync(t *testing.T) {
 	ctx := context.Background()
 	requests := 0
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -162,20 +163,32 @@ func TestServiceRefreshesExpiredMetadata(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	service := newTestService(ctx, t, upstream.URL, time.Nanosecond)
+	service, metadata := newTestServiceWithMetadata(ctx, t, upstream.URL, 5*time.Minute)
 	first, err := service.Get(ctx, npm.Request{Alias: "npmjs", Tail: "left-pad"})
 	requireNoError(t, "first metadata get", err)
 	_ = readJSON(t, first)
-	time.Sleep(time.Millisecond)
+	expireArtifactMetadata(ctx, t, metadata, "npmjs", "left-pad", "metadata")
 	second, err := service.Get(ctx, npm.Request{Alias: "npmjs", Tail: "left-pad"})
 	requireNoError(t, "second metadata get", err)
 	_ = readJSON(t, second)
-	if requests != 2 {
-		t.Fatalf("upstream requests = %d, want 2", requests)
+	if second.Cache != cacheStale {
+		t.Fatalf("second cache = %q, want %q", second.Cache, cacheStale)
+	}
+
+	third := waitForCacheHit(t, ctx, service, npm.Request{Alias: "npmjs", Tail: "left-pad"})
+	_ = readJSON(t, third)
+	if requests < 2 {
+		t.Fatalf("upstream requests = %d, want at least 2", requests)
 	}
 }
 
 func newTestService(ctx context.Context, t *testing.T, upstreamURL string, metadataTTL time.Duration) *npm.Service {
+	t.Helper()
+	service, _ := newTestServiceWithMetadata(ctx, t, upstreamURL, metadataTTL)
+	return service
+}
+
+func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreamURL string, metadataTTL time.Duration) (*npm.Service, meta.Store) {
 	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
@@ -195,7 +208,7 @@ func newTestService(ctx context.Context, t *testing.T, upstreamURL string, metad
 		Metadata:    db,
 		Objects:     objects,
 		MetadataTTL: metadataTTL,
-	})
+	}), db
 }
 
 func readJSON(t *testing.T, resp *npm.Response) map[string]any {
@@ -260,5 +273,44 @@ func requireNoError(t *testing.T, action string, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
+	}
+}
+
+func waitForCacheHit(t *testing.T, ctx context.Context, service *npm.Service, req npm.Request) *npm.Response {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		resp, err := service.Get(ctx, req)
+		requireNoError(t, "wait for npm cache hit", err)
+		if resp.Cache == cacheHit {
+			return resp
+		}
+		last = resp.Cache
+		closeTestBody(t, resp.Body)
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("cache = %q, want %q", last, cacheHit)
+	return nil
+}
+
+func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {
+	t.Helper()
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
+	if err != nil || !ok {
+		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
+	}
+	tag.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertTag(ctx, *tag); err != nil {
+		t.Fatalf("expire tag: %v", err)
+	}
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: tag.Digest})
+	if err != nil || !ok {
+		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
+	}
+	manifest.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertManifest(ctx, *manifest); err != nil {
+		t.Fatalf("expire manifest: %v", err)
 	}
 }

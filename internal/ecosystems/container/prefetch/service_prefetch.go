@@ -186,6 +186,7 @@ func (s *Service) prefetchCandidate(ctx context.Context, opts RunOptions, execut
 		Accept:         opts.Accept,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		return prefetchResult{}, cacheWrap(err, "prefetch manifest")

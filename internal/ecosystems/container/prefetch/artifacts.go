@@ -149,6 +149,7 @@ func (s *Service) prefetchChildManifest(
 		Accept:         opts.Accept,
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		return prefetchResult{manifestDigest: reference}, cacheWrap(err, "prefetch child manifest")

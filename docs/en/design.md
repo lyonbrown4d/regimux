@@ -8,6 +8,46 @@ The container ecosystem exposes a Registry-compatible pull API and routes reques
 
 RegiMux is not a push registry. Upload, manifest write, and delete APIs are intentionally out of scope.
 
+## Architecture Overview
+
+```mermaid
+flowchart LR
+  client["Clients<br/>Docker / Go / npm / PyPI / Maven"] --> api["Fiber HTTP Server"]
+  api --> auth["Auth Middleware"]
+  auth --> routes["Ecosystem Routes"]
+  routes --> container["container runtime<br/>Registry V2 / mirrors / prefetch"]
+  routes --> golang["Go runtime<br/>module proxy cache"]
+  routes --> npm["npm runtime<br/>registry cache"]
+  routes --> pypi["PyPI runtime<br/>simple index / file cache"]
+  routes --> maven["Maven runtime<br/>repository layout cache"]
+
+  container --> upstreams["Upstream endpoints / mirrors"]
+  golang --> upstreams
+  npm --> upstreams
+  pypi --> upstreams
+  maven --> upstreams
+
+  container --> meta["Metadata store<br/>SQLite / MySQL / PostgreSQL"]
+  golang --> meta
+  npm --> meta
+  pypi --> meta
+  maven --> meta
+
+  container --> objects["Object store<br/>local / memory / S3 / SFTP"]
+  golang --> objects
+  npm --> objects
+  pypi --> objects
+  maven --> objects
+
+  scheduler["Scheduler + Worker Pool"] --> container
+  scheduler --> golang
+  scheduler --> npm
+  scheduler --> pypi
+  scheduler --> maven
+  admin["Admin UI"] --> scheduler
+  admin --> meta
+```
+
 ## OCI Request Model
 
 Image names use the first repository path segment as the container alias:
@@ -60,6 +100,34 @@ The Go alias is resolved only within the `go` block. It does not share a namespa
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in object storage by content sha256, with metadata mapping module/reference to digest. The current implementation does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 
+## Read-through Cache Flow
+
+```mermaid
+sequenceDiagram
+  participant C as Client
+  participant A as RegiMux API
+  participant R as Ecosystem Runtime
+  participant M as Metadata Store
+  participant O as Object Store
+  participant U as Upstream Endpoint
+
+  C->>A: GET artifact / manifest / blob
+  A->>R: resolve ecosystem alias and reference
+  R->>M: lookup repository metadata
+  R->>O: lookup cached object by digest/key
+  alt cache hit
+    O-->>R: cached bytes
+    R-->>A: validated cached response
+  else cache miss or TTL refresh
+    R->>U: fetch from selected upstream
+    U-->>R: upstream response
+    R->>O: store content-addressed bytes
+    R->>M: upsert repository, tag, blob, pull, health data
+    R-->>A: upstream response
+  end
+  A-->>C: compatible protocol response
+```
+
 ## Other Ecosystem Prefixes
 
 npm, PyPI, and Maven are first-class read-through proxy ecosystems with independent alias namespaces under their own path prefixes:
@@ -105,34 +173,70 @@ Because this is the same runtime boundary, adding a new ecosystem requires only:
 2. registering it in `dix` with a stable key.
 3. no changes to scheduler orchestration code.
 
+```mermaid
+flowchart TD
+  dix["dix runtime registration"] --> runtimes["[]ecosystem.Runtime"]
+  runtimes --> scheduler["Scheduler"]
+  runtimes --> routes["HTTP route adapters"]
+
+  scheduler --> jobs["runtime-declared jobs"]
+  jobs --> probe["probe"]
+  jobs --> prefetch["prefetch"]
+  jobs --> refresh["manifest_refresh"]
+  jobs --> flush["endpoint_health_flush"]
+
+  admin["Admin manual sync"] --> syncopts["prefetch.SyncOptions"]
+  syncopts --> scheduler
+  scheduler --> selected["selected runtime by Name()"]
+  selected --> onetime["gocron OneTimeJob"]
+  onetime --> report["prefetch.SyncReport"]
+  report --> admin
+```
+
 ## Main Components
 
-```text
-Client
-  |
-  v
-Fiber HTTP server
-  |
-  +-- Registry API handlers
-  +-- Go proxy API handlers
-  +-- npm / PyPI / Maven proxy handlers
-  +-- Auth middleware
-  +-- Admin UI
-  |
-  v
-Ecosystem runtimes
-  |
-  +-- container runtime: Registry V2, mirrors, probe, prefetch
-  +-- Go runtime: module proxy cache, endpoint probe
-  +-- npm runtime: registry cache, endpoint probe
-  +-- PyPI runtime: simple index and file cache, endpoint probe
-  +-- Maven runtime: repository layout cache, endpoint probe
-  |
-  v
-Storage
-  |
-  +-- Metadata store: SQLite / MySQL / PostgreSQL
-  +-- Object store: local / memory / S3-compatible / SFTP
+```mermaid
+flowchart TB
+  subgraph entry["Entry Layer"]
+    http["Fiber HTTP server"]
+    registry["Registry API handlers"]
+    proxy["Go / npm / PyPI / Maven proxy handlers"]
+    authmw["Auth middleware"]
+    adminui["Admin UI"]
+  end
+
+  subgraph runtimes["Ecosystem Runtimes"]
+    cr["container: Registry V2, mirrors, probe, prefetch"]
+    gr["Go: module proxy cache, endpoint probe"]
+    nr["npm: registry cache, endpoint probe"]
+    pr["PyPI: simple index and file cache, endpoint probe"]
+    mr["Maven: repository layout cache, endpoint probe"]
+  end
+
+  subgraph storage["Storage Layer"]
+    metadata["Metadata store: SQLite / MySQL / PostgreSQL"]
+    objectstore["Object store: local / memory / S3-compatible / SFTP"]
+  end
+
+  http --> authmw
+  authmw --> registry
+  authmw --> proxy
+  http --> adminui
+  registry --> cr
+  proxy --> gr
+  proxy --> nr
+  proxy --> pr
+  proxy --> mr
+  cr --> metadata
+  gr --> metadata
+  nr --> metadata
+  pr --> metadata
+  mr --> metadata
+  cr --> objectstore
+  gr --> objectstore
+  nr --> objectstore
+  pr --> objectstore
+  mr --> objectstore
 ```
 
 Background services run through the scheduler and worker pool:
@@ -177,6 +281,10 @@ Blob objects are stored separately from metadata. The object store can be:
 Object keys are content-addressed where possible. Metadata remains the source of truth for whether an object is available for a repository.
 
 ## Cache Behavior
+
+Client-facing requests use cache-first semantics: if RegiMux can open a local cached object, it returns that object immediately. TTL expiry does not block the client request on upstream validation. TTL only decides whether a background refresh should be triggered. A client request reaches upstream synchronously only when the matching local cache object is absent.
+
+Background refresh paths include scheduled jobs, async refreshes triggered by stale cache hits, and Admin manual refresh. These paths may bypass the local-first rule, contact upstream directly, and update local metadata and object cache when upstream content changed.
 
 Manifests are cached with an `Accept`-aware key because different clients may ask for different manifest media types for the same tag.
 

@@ -111,6 +111,7 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 		Tail:           npmTail(candidate),
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		return depprefetch.FetchResult{}, err
@@ -185,6 +186,7 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 		Tail:           npmTail(depprefetch.Candidate{Alias: opts.Alias, Repository: opts.Artifact, Reference: opts.Reference}),
 		Method:         http.MethodGet,
 		SkipPullRecord: true,
+		ForceRefresh:   true,
 	})
 	if err != nil {
 		return nil, err

@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"path/filepath"
+	"strconv"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
@@ -15,8 +17,9 @@ import (
 )
 
 const (
-	cacheHit  = "hit"
-	cacheMiss = "miss"
+	cacheHit   = "hit"
+	cacheMiss  = "miss"
+	cacheStale = "stale"
 )
 
 func TestServiceCachesReleaseArtifactByPath(t *testing.T) {
@@ -115,6 +118,52 @@ func TestServiceStoresShortTTLForMetadataAndSnapshots(t *testing.T) {
 		Repository: "com/acme/demo/1.3-SNAPSHOT",
 		Reference:  "demo-1.3-20260603.010203-1.jar",
 	})
+}
+
+func TestServiceServesExpiredMetadataStaleAndRefreshesAsync(t *testing.T) {
+	ctx := context.Background()
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/com/acme/demo/maven-metadata.xml" {
+			t.Fatalf("upstream path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/xml")
+		writeResponse(t, w, "<metadata><version>"+strconv.Itoa(requests)+"</version></metadata>")
+	}))
+	t.Cleanup(upstream.Close)
+
+	service, metadata := newTestService(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"central": {Registry: upstream.URL},
+	})
+	req := maven.Request{Alias: "central", Tail: "com/acme/demo/maven-metadata.xml"}
+
+	first, err := service.Get(ctx, req)
+	requireNoError(t, "first metadata get", err)
+	firstBody := responseBody(t, first)
+	if first.Cache != cacheMiss {
+		t.Fatalf("first cache = %q, want %q", first.Cache, cacheMiss)
+	}
+
+	expireArtifactMetadata(ctx, t, metadata, "central", "com/acme/demo", "maven-metadata.xml")
+	second, err := service.Get(ctx, req)
+	requireNoError(t, "second metadata get", err)
+	secondBody := responseBody(t, second)
+	if second.Cache != cacheStale {
+		t.Fatalf("second cache = %q, want %q", second.Cache, cacheStale)
+	}
+	if secondBody != firstBody {
+		t.Fatalf("second body = %q, want stale body %q", secondBody, firstBody)
+	}
+
+	third := waitForMavenCacheHit(t, ctx, service, req)
+	thirdBody := responseBody(t, third)
+	if thirdBody == firstBody {
+		t.Fatalf("metadata was not refreshed asynchronously: %q", thirdBody)
+	}
+	if requests < 2 {
+		t.Fatalf("upstream requests = %d, want at least 2", requests)
+	}
 }
 
 func TestServiceUsesMirrorsWhenRegistryIsEmpty(t *testing.T) {
@@ -245,15 +294,21 @@ func assertTagExpires(ctx context.Context, t *testing.T, metadata meta.Store, ke
 
 func assertBody(t *testing.T, resp *maven.Response, want string) {
 	t.Helper()
+	body := responseBody(t, resp)
+	if body != want {
+		t.Fatalf("body = %q, want %q", body, want)
+	}
+}
+
+func responseBody(t *testing.T, resp *maven.Response) string {
+	t.Helper()
 	if resp == nil || resp.Body == nil {
 		t.Fatalf("response body is empty")
 	}
 	defer closeBody(t, resp.Body)
 	body, err := io.ReadAll(resp.Body)
 	requireNoError(t, "read body", err)
-	if string(body) != want {
-		t.Fatalf("body = %q, want %q", string(body), want)
-	}
+	return string(body)
 }
 
 func writeResponse(t *testing.T, w http.ResponseWriter, body string) {
@@ -274,5 +329,44 @@ func requireNoError(t *testing.T, action string, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
+	}
+}
+
+func waitForMavenCacheHit(t *testing.T, ctx context.Context, service *maven.Service, req maven.Request) *maven.Response {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	var last string
+	for time.Now().Before(deadline) {
+		resp, err := service.Get(ctx, req)
+		requireNoError(t, "wait for maven cache hit", err)
+		if resp.Cache == cacheHit {
+			return resp
+		}
+		last = resp.Cache
+		closeBody(t, resp.Body)
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("cache = %q, want %q", last, cacheHit)
+	return nil
+}
+
+func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {
+	t.Helper()
+	expiresAt := time.Now().UTC().Add(-time.Minute)
+	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
+	if err != nil || !ok {
+		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
+	}
+	tag.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertTag(ctx, *tag); err != nil {
+		t.Fatalf("expire tag: %v", err)
+	}
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: tag.Digest})
+	if err != nil || !ok {
+		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
+	}
+	manifest.ExpiresAt = expiresAt
+	if _, err := metadata.UpsertManifest(ctx, *manifest); err != nil {
+		t.Fatalf("expire manifest: %v", err)
 	}
 }

@@ -28,13 +28,13 @@ Current views:
 - cache status
 - storage and large blobs
 - scheduler jobs, prefetch runs, and prefetch outcomes
-- manual sync
+- manual refresh
 - auth audit
 - effective configuration
 
-## Manual Sync
+## Manual Refresh
 
-Manual sync is ecosystem-aware. In the upstream selector you can choose
+Manual refresh is ecosystem-aware. It bypasses the normal cache-first read path, checks the selected upstream, and updates the local cache when upstream content changed. In the upstream selector you can choose
 
 - `container:<alias>` for OCI/container images
 - `go:<alias>` for Go module proxy
@@ -60,11 +60,11 @@ pypi:default / repository=urllib3 / reference=2.2.0
 maven:central / repository=com/fasterxml/jackson/core/jackson-databind / reference=2.16.1
 ```
 
-The job is created as async and can be viewed from the sync result panel.
+The job is created asynchronously and can be viewed from the refresh result panel. It is useful when the normal background refresh has not caught up yet and an operator wants to force upstream freshness immediately.
 
 ### Flow
 
-- Submit form: `POST /admin/sync` creates a `prefetch.SyncJob` (status `queued`) and schedules an immediate background job.
+- Submit form: `POST /admin/sync` creates a refresh job (status `queued`) and schedules an immediate background job.
 - Poll status: result panel uses `GET /admin/sync/jobs/{id}` and auto-refreshes every 2 seconds via htmx while status is `queued` or `running`.
 - Completion states:
   - `queued`
@@ -91,11 +91,11 @@ The final result contains:
 
 ### Error handling
 
-The sync page returns different status codes depending on failure source:
+The refresh page returns different status codes depending on failure source:
 
 - `400` validation error (for example missing repository)
-- `503` sync service unavailable
-- `502` when scheduling/sync submission fails
+- `503` refresh service unavailable
+- `502` when scheduling or refresh submission fails
 - `404` when querying an unknown job ID
 
-Manual sync jobs are currently kept in scheduler memory and exposed through the job polling endpoint; they are not persisted as a standalone history table.
+Manual refresh jobs are currently kept in scheduler memory and exposed through the job polling endpoint; they are not persisted as a standalone history table.

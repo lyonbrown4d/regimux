@@ -29,6 +29,9 @@ func cacheFresh(cached storedResponse, ok bool) bool {
 }
 
 func (s *Service) responseFromFetchError(req Request, cached storedResponse, cachedOK bool, err error) (*Response, error) {
+	if req.ForceRefresh {
+		return nil, err
+	}
 	if cachedOK {
 		return s.responseFromStored(req, cached, cacheStale)
 	}

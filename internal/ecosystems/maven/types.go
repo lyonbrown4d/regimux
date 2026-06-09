@@ -11,6 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"golang.org/x/sync/singleflight"
 )
 
 const (
@@ -42,6 +43,7 @@ type Service struct {
 	client   *http.Client
 	logger   *slog.Logger
 	now      func() time.Time
+	refresh  singleflight.Group
 }
 
 type Request struct {
@@ -50,6 +52,7 @@ type Request struct {
 	Query          string
 	Method         string
 	SkipPullRecord bool
+	ForceRefresh   bool
 }
 
 type Response struct {

@@ -28,13 +28,13 @@ UI 会自动跟随浏览器或操作系统的 light/dark 偏好。
 - 缓存状态
 - 存储和大 blob
 - 调度任务、预拉取运行和预拉取结果
-- 手动同步
+- 手动刷新
 - 认证审计
 - 有效配置
 
-## 手动同步
+## 手动刷新
 
-手动同步现已支持生态隔离（Manual Sync 是生态感知）：
+手动刷新支持生态隔离。它会绕过普通请求的 cache-first 读取路径，主动检查所选上游，并在上游内容发生变化时更新本地缓存：
 
 - `container:<别名>`：OCI 镜像
 - `go:<别名>`：Go module proxy
@@ -60,11 +60,11 @@ pypi:default / repository=urllib3 / reference=2.2.0
 maven:central / repository=com/fasterxml/jackson/core/jackson-databind / reference=2.16.1
 ```
 
-请求为异步任务，在结果面板可见运行状态。手动同步会按生态协议预热对应缓存路径，并将结果记录到元数据中。
+请求为异步任务，在结果面板可见运行状态。它适合在后台刷新还没追上时，由管理员主动触发一次上游刷新。
 
 ## 任务流程
 
-- 提交：`POST /admin/sync` 创建一个 `prefetch.SyncJob`，初始状态为 `queued`，并立即调度一个后台一次性任务。
+- 提交：`POST /admin/sync` 创建一个刷新任务，初始状态为 `queued`，并立即调度一个后台一次性任务。
 - 轮询：结果面板会在任务状态为 `queued` 或 `running` 时，使用 htmx 自动轮询 `GET /admin/sync/jobs/{id}`（约每 2 秒一次）。
 - 终态：
   - `queued`
@@ -91,11 +91,11 @@ maven:central / repository=com/fasterxml/jackson/core/jackson-databind / referen
 
 ## 错误返回
 
-错误会返回对应状态码：
+刷新入口会返回对应状态码：
 
 - `400`：参数校验失败（例如 repository 为空）
-- `503`：未配置手动同步能力
+- `503`：未配置手动刷新能力
 - `502`：调度或提交失败
 - `404`：查询不存在的 job id
 
-当前手动同步任务仅保存在内存中并通过轮询接口暴露，不会单独持久化为历史任务表。
+当前手动刷新任务仅保存在内存中并通过轮询接口暴露，不会单独持久化为历史任务表。
