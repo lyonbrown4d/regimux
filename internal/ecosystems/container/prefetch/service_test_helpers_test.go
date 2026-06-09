@@ -3,7 +3,6 @@ package prefetch_test
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -221,41 +220,6 @@ func (f fakeTagService) List(context.Context, cache.TagRequest) (*cache.TagsResu
 		return nil, fmt.Errorf("marshal fake tags: %w", err)
 	}
 	return &cache.TagsResult{Body: body}, nil
-}
-
-type fakeManifestService struct {
-	mu        sync.Mutex
-	manifests map[string]*cache.CachedManifest
-	entries   []cache.ManifestRequest
-}
-
-func newFakeManifestService(manifests map[string]*cache.CachedManifest) *fakeManifestService {
-	return &fakeManifestService{manifests: manifests}
-}
-
-func (f *fakeManifestService) Get(_ context.Context, req cache.ManifestRequest) (*cache.CachedManifest, error) {
-	return f.get(req)
-}
-
-func (f *fakeManifestService) Refresh(_ context.Context, req cache.ManifestRequest) (*cache.CachedManifest, error) {
-	return f.get(req)
-}
-
-func (f *fakeManifestService) get(req cache.ManifestRequest) (*cache.CachedManifest, error) {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	f.entries = append(f.entries, req)
-	manifest, ok := f.manifests[req.Reference]
-	if !ok {
-		return nil, errors.New("manifest not found")
-	}
-	return manifest, nil
-}
-
-func (f *fakeManifestService) requestSnapshot() []cache.ManifestRequest {
-	f.mu.Lock()
-	defer f.mu.Unlock()
-	return append([]cache.ManifestRequest(nil), f.entries...)
 }
 
 type fakeBlobService struct {

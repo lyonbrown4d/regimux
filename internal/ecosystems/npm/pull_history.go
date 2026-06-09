@@ -54,12 +54,14 @@ func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute route,
 	if s == nil || s.events == nil || resp == nil || requestRoute.Kind != routeMetadata {
 		return
 	}
-	_ = events.Publish(ctx, s.events, events.ArtifactPulled{
+	if err := events.Publish(ctx, s.events, events.ArtifactPulled{
 		Ecosystem:  ecosystem.NPM,
 		Kind:       routeMetadata,
 		Alias:      requestRoute.Alias,
 		Repository: requestRoute.Package,
 		Reference:  requestRoute.Reference,
 		Status:     resp.Cache,
-	})
+	}); err != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "publish npm proxy artifact pulled event failed", "alias", requestRoute.Alias, "package", requestRoute.Package, "reference", requestRoute.Reference, "error", err)
+	}
 }

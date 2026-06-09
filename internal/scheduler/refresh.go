@@ -28,20 +28,20 @@ func (r *Runtime) registerRefreshJob(ctx context.Context, scheduler gocron.Sched
 		return nil
 	}
 
-	options := []gocron.JobOption{
-		gocron.WithName("regimux.refresh.drain"),
-		gocron.WithTags("maintenance", "refresh"),
-		gocron.WithContext(ctx),
-		gocron.WithSingletonMode(gocron.LimitModeReschedule),
-		gocron.WithDisabledDistributedJobLocker(!cfg.Distributed),
-	}
 	interval := refreshDrainInterval(cfg.Window)
-	if _, err := scheduler.NewJob(
-		gocron.DurationJob(interval),
-		gocron.NewTask(func(ctx context.Context) error {
+	distributed := cfg.Distributed
+	if _, err := registerDurationJob(
+		scheduler,
+		interval,
+		func(ctx context.Context) error {
 			return r.runRefreshDrain(ctx)
-		}),
-		options...,
+		},
+		schedulerJobOptions{
+			name:        "regimux.refresh.drain",
+			tags:        []string{"maintenance", "refresh"},
+			ctx:         ctx,
+			distributed: &distributed,
+		},
 	); err != nil {
 		return oops.Wrapf(err, "register refresh drain job")
 	}
@@ -55,17 +55,29 @@ func (r *Runtime) registerRefreshJob(ctx context.Context, scheduler gocron.Sched
 }
 
 func (r *Runtime) HandleArtifactPulled(ctx context.Context, event events.ArtifactPulled) error {
-	if r == nil || r.metadata == nil || !refreshablePull(event) {
+	cfg, ok := r.refreshIntentConfig(event)
+	if !ok {
 		return nil
 	}
-	if !r.cfg.Scheduler.Enabled {
-		return nil
+	record := refreshIntentRecord(event)
+	intent, queued, err := r.metadata.QueueRefreshIntent(ctx, record, time.Now().UTC(), cfg.Window)
+	if err != nil {
+		return oops.Wrapf(err, "queue refresh intent")
+	}
+	r.logRefreshIntent(ctx, intent, queued)
+	return nil
+}
+
+func (r *Runtime) refreshIntentConfig(event events.ArtifactPulled) (config.SchedulerRefreshConfig, bool) {
+	if r == nil || r.metadata == nil || !refreshablePull(event) || !r.cfg.Scheduler.Enabled {
+		return config.SchedulerRefreshConfig{}, false
 	}
 	cfg := r.refreshConfig()
-	if !cfg.Enabled || cfg.Window <= 0 {
-		return nil
-	}
-	record := meta.RefreshIntentRecord{
+	return cfg, cfg.Enabled && cfg.Window > 0
+}
+
+func refreshIntentRecord(event events.ArtifactPulled) meta.RefreshIntentRecord {
+	return meta.RefreshIntentRecord{
 		Ecosystem:  meta.RefreshIntentEcosystem(strings.TrimSpace(event.Ecosystem)),
 		Kind:       meta.RefreshIntentKind(strings.TrimSpace(event.Kind)),
 		Alias:      strings.TrimSpace(event.Alias),
@@ -73,37 +85,26 @@ func (r *Runtime) HandleArtifactPulled(ctx context.Context, event events.Artifac
 		Reference:  strings.TrimSpace(event.Reference),
 		Accept:     strings.TrimSpace(event.Accept),
 	}
-	intent, queued, err := r.metadata.QueueRefreshIntent(ctx, record, time.Now().UTC(), cfg.Window)
-	if err != nil {
-		return oops.Wrapf(err, "queue refresh intent")
+}
+
+func (r *Runtime) logRefreshIntent(ctx context.Context, intent *meta.RefreshIntentRecord, queued bool) {
+	if r == nil || r.logger == nil || intent == nil {
+		return
 	}
-	if r.logger == nil {
-		return nil
+	attrs := []any{
+		"ecosystem", intent.Ecosystem,
+		"alias", intent.Alias,
+		"repository", intent.Repository,
+		"reference", intent.Reference,
+		"kind", intent.Kind,
 	}
 	if queued {
-		r.logger.DebugContext(ctx,
-			"refresh intent queued",
-			"ecosystem", intent.Ecosystem,
-			"alias", intent.Alias,
-			"repository", intent.Repository,
-			"reference", intent.Reference,
-			"kind", intent.Kind,
-			"due_at", intent.DueAt,
-		)
-		return nil
+		r.logger.DebugContext(ctx, "refresh intent queued", append(attrs, "due_at", intent.DueAt)...)
+		return
 	}
-	if intent != nil && intent.Skipped > 0 {
-		r.logger.DebugContext(ctx,
-			"refresh intent deduplicated",
-			"ecosystem", intent.Ecosystem,
-			"alias", intent.Alias,
-			"repository", intent.Repository,
-			"reference", intent.Reference,
-			"kind", intent.Kind,
-			"skipped", intent.Skipped,
-		)
+	if intent.Skipped > 0 {
+		r.logger.DebugContext(ctx, "refresh intent deduplicated", append(attrs, "skipped", intent.Skipped)...)
 	}
-	return nil
 }
 
 func (r *Runtime) runRefreshDrain(ctx context.Context) error {
@@ -169,21 +170,11 @@ func (r *Runtime) refresher(ecosystemName string) (ecosystem.Refresher, error) {
 		return nil, oops.In("scheduler").Errorf("refresh service is not configured")
 	}
 	name := strings.TrimSpace(ecosystemName)
-	var match ecosystem.Refresher
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
-		if runtime == nil || runtime.Name() != name {
-			return true
-		}
-		refresher, ok := runtime.(ecosystem.Refresher)
-		if ok {
-			match = refresher
-		}
-		return false
-	})
-	if match == nil {
+	refresher, ok := namedRuntimeCapability[ecosystem.Refresher](r, name, matchRuntimeNameExact, stopAfterRuntimeMatch)
+	if !ok {
 		return nil, oops.In("scheduler").With("ecosystem", name).Errorf("refresh service is not configured")
 	}
-	return match, nil
+	return refresher, nil
 }
 
 func refreshablePull(event events.ArtifactPulled) bool {

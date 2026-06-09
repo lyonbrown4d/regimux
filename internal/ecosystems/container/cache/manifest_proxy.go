@@ -21,16 +21,11 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 		return p.get(ctx, req, cacheKey, manifestRequestModeClient)
 	}
 
-	value, err, _ := p.group.Do(cacheKey, func() (any, error) {
+	result, err, _ := p.group.Do(cacheKey, func() (*CachedManifest, error) {
 		return p.get(ctx, req, cacheKey, manifestRequestModeClient)
 	})
 	if err != nil {
 		return nil, wrapError(err, "coalesce manifest request")
-	}
-
-	result, ok := value.(*CachedManifest)
-	if !ok {
-		return nil, errorf("unexpected manifest cache result type %T", value)
 	}
 	return result, nil
 }
@@ -46,16 +41,11 @@ func (p manifestProxy) Refresh(ctx context.Context, req ManifestRequest) (*Cache
 		return p.get(ctx, req, cacheKey, manifestRequestModeRefresh)
 	}
 
-	value, err, _ := p.group.Do(cacheKey+"\x00refresh", func() (any, error) {
+	result, err, _ := p.group.Do(cacheKey+"\x00refresh", func() (*CachedManifest, error) {
 		return p.get(ctx, req, cacheKey, manifestRequestModeRefresh)
 	})
 	if err != nil {
 		return nil, wrapError(err, "coalesce manifest refresh")
-	}
-
-	result, ok := value.(*CachedManifest)
-	if !ok {
-		return nil, errorf("unexpected manifest refresh result type %T", value)
 	}
 	return result, nil
 }
@@ -68,29 +58,14 @@ const (
 )
 
 func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey string, mode manifestRequestMode) (*CachedManifest, error) {
-	if mode != manifestRequestModeRefresh {
-		if cached, ok, err := p.lookup(ctx, req, cacheKey); err != nil {
-			return nil, err
-		} else if ok {
-			p.recordManifestPull(ctx, req, cached)
-			p.publishCacheAccess(ctx, req, cached)
-			return cached, nil
-		}
-		if stale, ok, err := p.lookupAnyStored(ctx, req); err != nil {
-			return nil, err
-		} else if ok {
-			p.recordManifestPull(ctx, req, stale)
-			p.publishCacheAccess(ctx, req, stale)
-			return stale, nil
-		}
+	if cached, ok, err := p.lookupClientCache(ctx, req, cacheKey, mode); err != nil || ok {
+		return cached, err
 	}
 
 	if result, ok, err := p.revalidate(ctx, req, cacheKey, mode); err != nil {
 		return nil, err
 	} else if ok {
-		p.recordManifestPull(ctx, req, result)
-		p.publishCacheAccess(ctx, req, result)
-		return result, nil
+		return p.finishManifestResult(ctx, req, result), nil
 	}
 
 	result, err := p.fetch(ctx, req)
@@ -102,9 +77,31 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 	}
 	p.recordManifestUpstreamPull(ctx, req)
 	p.store(ctx, req, cacheKey, result)
+	return p.finishManifestResult(ctx, req, result), nil
+}
+
+func (p manifestProxy) lookupClientCache(ctx context.Context, req ManifestRequest, cacheKey string, mode manifestRequestMode) (*CachedManifest, bool, error) {
+	if mode == manifestRequestModeRefresh {
+		return nil, false, nil
+	}
+	cached, ok, err := p.lookup(ctx, req, cacheKey)
+	if err != nil {
+		return nil, false, err
+	}
+	if ok {
+		return p.finishManifestResult(ctx, req, cached), true, nil
+	}
+	stale, ok, err := p.lookupAnyStored(ctx, req)
+	if err != nil || !ok {
+		return nil, false, err
+	}
+	return p.finishManifestResult(ctx, req, stale), true, nil
+}
+
+func (p manifestProxy) finishManifestResult(ctx context.Context, req ManifestRequest, result *CachedManifest) *CachedManifest {
 	p.recordManifestPull(ctx, req, result)
 	p.publishCacheAccess(ctx, req, result)
-	return result, nil
+	return result
 }
 
 func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestRequest, cause error) (*CachedManifest, error) {
@@ -113,9 +110,7 @@ func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestReque
 		return nil, err
 	}
 	if ok {
-		p.recordManifestPull(ctx, req, stale)
-		p.publishCacheAccess(ctx, req, stale)
-		return stale, nil
+		return p.finishManifestResult(ctx, req, stale), nil
 	}
 	return nil, cause
 }

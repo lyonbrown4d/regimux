@@ -64,12 +64,12 @@ func (s *SQLStore) ConsumePrefetchControl(ctx context.Context, action string, at
 	if err != nil {
 		return nil, false, err
 	}
-	_, err = repository.By(s.prefetchControls, sqlPrefetchControlRows.ID).Update(ctx, row.ID,
+	err = patchRowByKey(ctx, s.prefetchControls, sqlPrefetchControlRows.ID, row.ID, "consume prefetch control metadata",
 		sqlPrefetchControlRows.ConsumedAt.Set(row.ConsumedAt),
 		sqlPrefetchControlRows.UpdatedAt.Set(row.UpdatedAt),
 	)
 	if err != nil {
-		return nil, false, wrapError(err, "consume prefetch control metadata")
+		return nil, false, err
 	}
 	return record, true, nil
 }

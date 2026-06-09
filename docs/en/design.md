@@ -173,6 +173,8 @@ The scheduler also subscribes to `artifact.pulled`. This path is not a periodic 
 
 Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
+Go, npm, PyPI, and Maven still own their protocol details in their ecosystem packages, but share lightweight `internal/depruntime` glue for repeated runtime wiring: upstream mapping, runtime-declared jobs, manual refresh job wrappers, and prefetch/refresh response draining. Route parsing, cache keys, upstream requests, content rewriting, and refresh mode selection stay inside each ecosystem service so protocol differences do not leak into the scheduler or shared glue.
+
 Manual refresh is also standardized in the same abstraction:
 
 - Admin submits `manualsync.SyncOptions` with `(ecosystem, alias, repo, reference)`.
@@ -291,6 +293,8 @@ Endpoint health is durable in SQL. When Redis or Valkey is configured as the cac
 
 Metadata rows and schemas model domain values directly. Low-cardinality fields such as refresh intent `ecosystem` and `kind` use custom Go types, with row tags declaring `dbx:"...,codec=text"` and schema columns using the same custom type plus `type=text`. The `mapper` layer is reserved for record/row structural mapping and a small set of non-DB encoding conversions; SQL scan/encode conversion belongs to dbx codecs.
 
+SQL repositories use typed `dbx/repository` patch APIs (`PatchSet`, `KeySet`, `Part`) for simple key updates, with shared helpers for the repeated “update by key + wrap error” pattern. Upsert is not the default for rows keyed by non-primary unique keys because it widens cross-database behavior and can overwrite internal id/timestamp fields that should remain stable.
+
 The SQL implementation is named `SQLStore`. SQLite-specific path, DSN, and pragma logic is isolated under the SQLite driver helper.
 
 ## Object Model
@@ -317,6 +321,8 @@ Manifests are cached with an `Accept`-aware key because different clients may as
 Blob caching is content-addressed by digest. Before returning a cached blob, RegiMux still checks that the requested repository is allowed to reference the digest.
 
 Tags and referrers are cached with TTLs and upstream revalidation.
+
+The container runtime coalesces concurrent work for same-key upstream tokens, manifests, blob store operations, and tag index building with typed `singleflightx`, reducing duplicate upstream work and removing runtime type assertions. The protocol-specific paths still own key composition: manifest keys keep the `Accept` dimension, and blob responses still verify repository-to-blob membership before serving cached content.
 
 ## Mirror Scheduling
 

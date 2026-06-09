@@ -162,7 +162,7 @@ func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64
 }
 
 func (s *SQLStore) updateRepositoryRow(ctx context.Context, row repositoryRow) error {
-	_, err := repository.By(s.repositories, sqlRepositoryRows.Key).Update(ctx, row.Key,
+	return patchRowByKey(ctx, s.repositories, sqlRepositoryRows.Key, row.Key, "update repository metadata",
 		sqlRepositoryRows.UpstreamID.Set(row.UpstreamID),
 		sqlRepositoryRows.Alias.Set(row.Alias),
 		sqlRepositoryRows.Name.Set(row.Name),
@@ -175,14 +175,10 @@ func (s *SQLStore) updateRepositoryRow(ctx context.Context, row repositoryRow) e
 		sqlRepositoryRows.CreatedAt.Set(row.CreatedAt),
 		sqlRepositoryRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "update repository metadata")
-	}
-	return nil
 }
 
 func (s *SQLStore) updateUpstreamRow(ctx context.Context, row upstreamRow) error {
-	_, err := repository.By(s.upstreams, sqlUpstreamRows.Alias).Update(ctx, row.Alias,
+	return patchRowByKey(ctx, s.upstreams, sqlUpstreamRows.Alias, row.Alias, "update upstream metadata",
 		sqlUpstreamRows.RepositoryCount.Set(row.RepositoryCount),
 		sqlUpstreamRows.PullCount.Set(row.PullCount),
 		sqlUpstreamRows.BlobBytes.Set(row.BlobBytes),
@@ -191,8 +187,4 @@ func (s *SQLStore) updateUpstreamRow(ctx context.Context, row upstreamRow) error
 		sqlUpstreamRows.CreatedAt.Set(row.CreatedAt),
 		sqlUpstreamRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "update upstream metadata")
-	}
-	return nil
 }

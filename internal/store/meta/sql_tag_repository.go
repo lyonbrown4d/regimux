@@ -115,7 +115,7 @@ func (s *SQLStore) tagByKey(ctx context.Context, key string) (*TagRecord, bool, 
 }
 
 func (s *SQLStore) updateTagRow(ctx context.Context, row tagRow) error {
-	_, err := repository.By(s.tags, sqlTagRows.Key).Update(ctx, row.Key,
+	return patchRowByKey(ctx, s.tags, sqlTagRows.Key, row.Key, "upsert tag metadata",
 		sqlTagRows.Alias.Set(row.Alias),
 		sqlTagRows.Repository.Set(row.Repository),
 		sqlTagRows.Reference.Set(row.Reference),
@@ -124,8 +124,4 @@ func (s *SQLStore) updateTagRow(ctx context.Context, row tagRow) error {
 		sqlTagRows.CreatedAt.Set(row.CreatedAt),
 		sqlTagRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "upsert tag metadata")
-	}
-	return nil
 }

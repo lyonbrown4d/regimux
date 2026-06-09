@@ -48,10 +48,10 @@ github.com/arcgolabs/configx v0.5.2 h1:p/78yQyPHiUl9FHhO3krhwMcRxophgVlgfOHaKfyR
 github.com/arcgolabs/configx v0.5.2/go.mod h1:LdAGpFY7n/t+UDUN4jb/XZjxikUndoHyDbBA5aCCIwQ=
 github.com/arcgolabs/configx/format/hcl v0.5.2 h1:U9vB6mED7dCDEuaXHllN0KTDqkZ+NTtpwZB++BgPGtE=
 github.com/arcgolabs/configx/format/hcl v0.5.2/go.mod h1:zDPLvb5/8nma3HY7fy6B9DZjdcnknDXgOUQX5fpC9Z8=
-github.com/arcgolabs/dbx v0.1.10 h1:a9zqX2SLrcIjE60rleQkyJH7vM9W2VdJnB9ywPjErhI=
-github.com/arcgolabs/dbx v0.1.10/go.mod h1:hM/zBSMEc9zidSA3cwGT9sI5uOEb5xIJJbPV0vRqPDY=
-github.com/arcgolabs/dbx/migrate v0.1.4 h1:P17AxeZS+kIdzoLgU/O0tV3kTB6eTEQ8HzXlbVS77KU=
-github.com/arcgolabs/dbx/migrate v0.1.4/go.mod h1:mH0FvTAbzJnLwBEl6hBmUriH56oThWgniERJlCvzA0k=
+github.com/arcgolabs/dbx v0.1.11 h1:t1Ng+eSZINUkVMmL+1RWtRNQ4GGQDFroo7kY/3iOLC4=
+github.com/arcgolabs/dbx v0.1.11/go.mod h1:hM/zBSMEc9zidSA3cwGT9sI5uOEb5xIJJbPV0vRqPDY=
+github.com/arcgolabs/dbx/migrate v0.1.5 h1:QZm7BOFXmOIsG4NhZr6d65nf+zkPCzd/YjPy6yTboPw=
+github.com/arcgolabs/dbx/migrate v0.1.5/go.mod h1:G0Id5gkRuB2ufbV3rHfWgKh+CFB+/GXroXywwlJV8gs=
 github.com/arcgolabs/dix v0.11.0 h1:4wNJdOEkkUnY9gum/eJw0rcKAkrRGo4YPz1HkV5kxXs=
 github.com/arcgolabs/dix v0.11.0/go.mod h1:976qdvz/PsMhDT6zzwtnoo5OiMuEzWbcMcM2XOT3HRs=
 github.com/arcgolabs/eventx v0.1.2 h1:ikt4Cw+GW9Q1NsJVmmen74rQkNZBCdpqlwIfryYrGuk=

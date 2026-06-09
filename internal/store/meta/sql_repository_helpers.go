@@ -1,8 +1,12 @@
 package meta
 
 import (
+	"context"
 	"database/sql"
 	"time"
+
+	"github.com/arcgolabs/dbx/querydsl"
+	"github.com/arcgolabs/dbx/repository"
 )
 
 func metadataTimestamp(at time.Time) time.Time {
@@ -31,4 +35,21 @@ func maxTime(values ...time.Time) time.Time {
 		}
 	}
 	return out
+}
+
+func patchRowByKey[E any, S repository.EntitySchema[E], T any](
+	ctx context.Context,
+	base *repository.Base[E, S],
+	column repository.KeyColumn[T],
+	value T,
+	operation string,
+	assignments ...querydsl.Assignment,
+) error {
+	_, err := repository.PatchSet(base, repository.KeySet(repository.Part(column, value))).
+		Set(assignments...).
+		Apply(ctx)
+	if err != nil {
+		return wrapError(err, "%s", operation)
+	}
+	return nil
 }

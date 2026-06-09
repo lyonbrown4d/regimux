@@ -15,6 +15,19 @@ func TestSQLStoreEndpointHealthPersistsAcrossReopen(t *testing.T) {
 	store := openSQLStore(ctx, t, path)
 
 	now := time.Date(2026, 5, 28, 10, 0, 0, 0, time.UTC)
+	record := insertEndpointHealth(ctx, t, store, now)
+	createdAt := record.CreatedAt
+	updateEndpointHealth(ctx, t, store, record, now)
+	closeSQLStore(t, store)
+
+	reopened := openSQLStore(ctx, t, path)
+	t.Cleanup(func() { closeSQLStore(t, reopened) })
+	assertEndpointHealthLookup(ctx, t, reopened, createdAt)
+	assertEndpointHealthList(ctx, t, reopened)
+}
+
+func insertEndpointHealth(ctx context.Context, t *testing.T, store *meta.SQLStore, now time.Time) *meta.EndpointHealthRecord {
+	t.Helper()
 	record, err := store.UpsertEndpointHealth(ctx, meta.EndpointHealthRecord{
 		Alias:                "hub",
 		Registry:             "https://mirror.example/",
@@ -35,21 +48,45 @@ func TestSQLStoreEndpointHealthPersistsAcrossReopen(t *testing.T) {
 	if record.ID == 0 || record.Key == "" || record.Registry != "https://mirror.example" {
 		t.Fatalf("unexpected endpoint health record: %#v", record)
 	}
-	closeSQLStore(t, store)
+	return record
+}
 
-	reopened := openSQLStore(ctx, t, path)
-	t.Cleanup(func() { closeSQLStore(t, reopened) })
-	got, ok, err := reopened.EndpointHealth(ctx, meta.EndpointHealthKey{
+func updateEndpointHealth(ctx context.Context, t *testing.T, store *meta.SQLStore, previous *meta.EndpointHealthRecord, now time.Time) {
+	t.Helper()
+	updated, err := store.UpsertEndpointHealth(ctx, meta.EndpointHealthRecord{
+		Alias:          "hub",
+		Registry:       "https://mirror.example",
+		Repository:     "library/nginx",
+		LatencyEWMA:    90 * time.Millisecond,
+		LatencySamples: 4,
+		SuccessCount:   9,
+		LastProbeAt:    now.Add(3 * time.Second),
+	})
+	requireNoError(t, "update endpoint health", err)
+	if updated.ID != previous.ID || !updated.CreatedAt.Equal(previous.CreatedAt) {
+		t.Fatalf("endpoint health identity changed after update: before=%#v after=%#v", previous, updated)
+	}
+	if updated.SuccessCount != 9 || updated.LatencyEWMA != 90*time.Millisecond {
+		t.Fatalf("endpoint health update did not persist in returned record: %#v", updated)
+	}
+}
+
+func assertEndpointHealthLookup(ctx context.Context, t *testing.T, store *meta.SQLStore, createdAt time.Time) {
+	t.Helper()
+	got, ok, err := store.EndpointHealth(ctx, meta.EndpointHealthKey{
 		Alias:      "hub",
 		Registry:   "https://mirror.example",
 		Repository: "library/nginx",
 	})
 	requireNoError(t, "get endpoint health", err)
-	if !ok || got.SuccessCount != 8 || got.FailureCount != 2 || got.LatencyEWMA != 120*time.Millisecond {
+	if !ok || got.SuccessCount != 9 || got.LatencyEWMA != 90*time.Millisecond || !got.CreatedAt.Equal(createdAt) {
 		t.Fatalf("unexpected endpoint health lookup: ok=%v record=%#v", ok, got)
 	}
+}
 
-	list, err := reopened.ListEndpointHealth(ctx, meta.EndpointHealthListAlias("hub"))
+func assertEndpointHealthList(ctx context.Context, t *testing.T, store *meta.SQLStore) {
+	t.Helper()
+	list, err := store.ListEndpointHealth(ctx, meta.EndpointHealthListAlias("hub"))
 	requireNoError(t, "list endpoint health", err)
 	if len(list) != 1 || list[0].Repository != "library/nginx" {
 		t.Fatalf("unexpected endpoint health list: %#v", list)

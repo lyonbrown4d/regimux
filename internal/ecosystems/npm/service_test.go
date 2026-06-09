@@ -281,15 +281,15 @@ func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Sto
 		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
 	}
 	tag.ExpiresAt = expiresAt
-	if _, err := metadata.UpsertTag(ctx, *tag); err != nil {
-		t.Fatalf("expire tag: %v", err)
+	if _, updateErr := metadata.UpsertTag(ctx, *tag); updateErr != nil {
+		t.Fatalf("expire tag: %v", updateErr)
 	}
 	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: tag.Digest})
 	if err != nil || !ok {
 		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
 	}
 	manifest.ExpiresAt = expiresAt
-	if _, err := metadata.UpsertManifest(ctx, *manifest); err != nil {
-		t.Fatalf("expire manifest: %v", err)
+	if _, updateErr := metadata.UpsertManifest(ctx, *manifest); updateErr != nil {
+		t.Fatalf("expire manifest: %v", updateErr)
 	}
 }

@@ -15,8 +15,8 @@ require (
 	github.com/arcgolabs/collectionx/set v0.9.0
 	github.com/arcgolabs/configx v0.5.2
 	github.com/arcgolabs/configx/format/hcl v0.5.2
-	github.com/arcgolabs/dbx v0.1.10
-	github.com/arcgolabs/dbx/migrate v0.1.4
+	github.com/arcgolabs/dbx v0.1.11
+	github.com/arcgolabs/dbx/migrate v0.1.5
 	github.com/arcgolabs/dix v0.11.0
 	github.com/arcgolabs/eventx v0.1.2
 	github.com/arcgolabs/httpx v0.1.7
@@ -51,6 +51,7 @@ require (
 	github.com/panjf2000/ants/v2 v2.12.1
 	github.com/pkg/sftp v1.13.10
 	github.com/redis/go-redis/v9 v9.20.0
+	github.com/samber/go-singleflightx v0.3.2
 	github.com/samber/lo v1.53.0
 	github.com/samber/mo v1.17.0
 	github.com/samber/oops v1.22.0
@@ -64,7 +65,6 @@ require (
 	github.com/valkey-io/valkey-go v1.0.75
 	go.uber.org/multierr v1.11.0
 	golang.org/x/crypto v0.53.0
-	golang.org/x/sync v0.21.0
 	modernc.org/sqlite v1.52.0
 	oras.land/oras-go/v2 v2.6.1
 	resty.dev/v3 v3.0.0-rc.1
@@ -162,7 +162,6 @@ require (
 	github.com/robfig/cron/v3 v3.0.1 // indirect
 	github.com/rs/zerolog v1.35.1 // indirect
 	github.com/samber/do/v2 v2.0.0 // indirect
-	github.com/samber/go-singleflightx v0.3.2 // indirect
 	github.com/samber/go-type-to-string v1.8.0 // indirect
 	github.com/samber/hot v0.13.0 // indirect
 	github.com/samber/slog-common v0.22.0 // indirect
@@ -185,6 +184,7 @@ require (
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/mod v0.37.0 // indirect
 	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.46.0 // indirect
 	golang.org/x/text v0.38.0 // indirect
 	golang.org/x/time v0.15.0 // indirect

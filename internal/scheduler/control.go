@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
 )
@@ -54,14 +53,14 @@ func (r *Runtime) runAsync(ctx context.Context, jobName string, tags []string, f
 		}()
 		return nil
 	}
-	task := gocron.NewTask(fn)
-	_, err := r.scheduler.NewJob(
-		gocron.OneTimeJob(gocron.OneTimeJobStartImmediately()),
-		task,
-		gocron.WithName(jobName),
-		gocron.WithTags(tags...),
-		gocron.WithContext(ctx),
-		gocron.WithSingletonMode(gocron.LimitModeReschedule),
+	_, err := registerImmediateJob(
+		r.scheduler,
+		fn,
+		schedulerJobOptions{
+			name: jobName,
+			tags: tags,
+			ctx:  ctx,
+		},
 	)
 	if err != nil {
 		return oops.Wrapf(err, "submit manual scheduler task")
@@ -88,7 +87,7 @@ func (r *Runtime) findProbeTarget(ecosystemName, alias string) (ecosystem.Prober
 	if err != nil {
 		return nil, ecosystem.ProbeTarget{}, err
 	}
-	prober, ok := runtime.(ecosystem.Prober)
+	prober, ok := runtimeCapability[ecosystem.Prober](runtime)
 	if !ok {
 		return nil, ecosystem.ProbeTarget{}, oops.In("scheduler").With("ecosystem", normalized.ecosystem).Errorf("ecosystem prober is not configured")
 	}
@@ -104,16 +103,8 @@ func (r *Runtime) findProbeTarget(ecosystemName, alias string) (ecosystem.Prober
 }
 
 func (r *Runtime) runtimeByName(name string) (ecosystem.Runtime, error) {
-	var found ecosystem.Runtime
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
-		if runtime != nil && strings.EqualFold(runtime.Name(), name) {
-			found = runtime
-			return false
-		}
-		return true
-	})
-	if found != nil {
-		return found, nil
+	if runtime, ok := r.findRuntimeByName(name, matchRuntimeNameFold); ok {
+		return runtime, nil
 	}
 	return nil, oops.In("scheduler").With("ecosystem", name).Errorf("ecosystem prober is not configured")
 }

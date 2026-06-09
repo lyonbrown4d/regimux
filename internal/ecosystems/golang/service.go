@@ -9,6 +9,7 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -19,10 +20,10 @@ import (
 const (
 	defaultMetadataTTL = 5 * time.Minute
 
-	headerMirrorCache = "X-Mirror-Cache"
-	cacheHit          = "hit"
-	cacheMiss         = "miss"
-	cacheStale        = "stale"
+	headerMirrorCache = artifactcache.HeaderMirrorCache
+	cacheHit          = artifactcache.CacheHit
+	cacheMiss         = artifactcache.CacheMiss
+	cacheStale        = artifactcache.CacheStale
 )
 
 type ServiceDependencies struct {

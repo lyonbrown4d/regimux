@@ -100,7 +100,11 @@ func (s *Service) refreshManifest(ctx context.Context, req cache.ManifestRequest
 	}
 	req.Method = http.MethodGet
 	req.SkipPullRecord = true
-	return s.manifestRefresh.Refresh(ctx, req)
+	manifest, err := s.manifestRefresh.Refresh(ctx, req)
+	if err != nil {
+		return nil, cacheWrap(err, "refresh manifest")
+	}
+	return manifest, nil
 }
 
 func toCandidateRecords(records *collectionlist.List[meta.PullRecord]) *collectionlist.List[PullRecord] {

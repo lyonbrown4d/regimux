@@ -30,24 +30,23 @@ func (r *Runtime) registerJobSpec(ctx context.Context, scheduler gocron.Schedule
 	if !spec.Enabled || spec.Interval <= 0 || spec.Run == nil {
 		return nil
 	}
-	options := []gocron.JobOption{
-		gocron.WithName(spec.Name),
-		gocron.WithTags(jobSpecTags(spec).Values()...),
-		gocron.WithContext(ctx),
-		gocron.WithSingletonMode(gocron.LimitModeReschedule),
+	options := schedulerJobOptions{
+		name:             spec.Name,
+		tags:             jobSpecTags(spec).Values(),
+		ctx:              ctx,
+		startImmediately: spec.StartImmediately,
 	}
 	if !spec.Distributed {
-		options = append(options, gocron.WithDisabledDistributedJobLocker(true))
+		localJob := false
+		options.distributed = &localJob
 	}
-	if spec.StartImmediately {
-		options = append(options, gocron.WithStartAt(gocron.WithStartImmediately()))
-	}
-	if _, err := scheduler.NewJob(
-		gocron.DurationJob(spec.Interval),
-		gocron.NewTask(func(ctx context.Context) error {
+	if _, err := registerDurationJob(
+		scheduler,
+		spec.Interval,
+		func(ctx context.Context) error {
 			return r.runJobSpec(ctx, spec)
-		}),
-		options...,
+		},
+		options,
 	); err != nil {
 		return oops.With("job", spec.Name).Wrapf(err, "register ecosystem job")
 	}

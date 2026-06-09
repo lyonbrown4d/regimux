@@ -29,7 +29,10 @@ func NewRuntime(
 	manifests cache.ManifestService,
 	cleanupService *cache.CleanupService,
 ) *Runtime {
-	manifestRefresher, _ := manifests.(cache.ManifestRefresher)
+	var manifestRefresher cache.ManifestRefresher
+	if refresher, ok := manifests.(cache.ManifestRefresher); ok {
+		manifestRefresher = refresher
+	}
 	manual := manualsync.NewService(manualsync.ServiceDependencies{
 		Execute: func(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
 			if prefetchService == nil {

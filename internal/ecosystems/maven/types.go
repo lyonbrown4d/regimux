@@ -17,10 +17,10 @@ import (
 const (
 	ecosystemMaven      = "maven"
 	defaultMetadataTTL  = 5 * time.Minute
-	headerMirrorCache   = "X-Mirror-Cache"
-	cacheHit            = "hit"
-	cacheMiss           = "miss"
-	cacheStale          = "stale"
+	headerMirrorCache   = artifactcache.HeaderMirrorCache
+	cacheHit            = artifactcache.CacheHit
+	cacheMiss           = artifactcache.CacheMiss
+	cacheStale          = artifactcache.CacheStale
 	acceptKeyMaven      = "maven"
 	defaultUserAgent    = "regimux/dev"
 	defaultObjectPrefix = "regimux-maven-*"

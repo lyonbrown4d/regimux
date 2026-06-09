@@ -101,7 +101,7 @@ func (s *SQLStore) manifestByKey(ctx context.Context, key string) (*ManifestReco
 }
 
 func (s *SQLStore) updateManifestRow(ctx context.Context, row manifestRow) error {
-	_, err := repository.By(s.manifest, sqlManifestRows.Key).Update(ctx, row.Key,
+	return patchRowByKey(ctx, s.manifest, sqlManifestRows.Key, row.Key, "upsert manifest metadata",
 		sqlManifestRows.Alias.Set(row.Alias),
 		sqlManifestRows.Repository.Set(row.Repository),
 		sqlManifestRows.Reference.Set(row.Reference),
@@ -115,10 +115,6 @@ func (s *SQLStore) updateManifestRow(ctx context.Context, row manifestRow) error
 		sqlManifestRows.CreatedAt.Set(row.CreatedAt),
 		sqlManifestRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "upsert manifest metadata")
-	}
-	return nil
 }
 
 func preserveManifestTimes(record ManifestRecord, existing func() (*ManifestRecord, bool, error)) ManifestRecord {

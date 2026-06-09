@@ -2,12 +2,13 @@ package maven
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net/http"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/depprefetch"
+	"github.com/lyonbrown4d/regimux/internal/depruntime"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -47,13 +48,10 @@ func (r *runtimeAdapter) Upstreams() *collectionlist.List[ecosystem.Upstream] {
 	if r == nil || r.service == nil {
 		return collectionlist.NewList[ecosystem.Upstream]()
 	}
-	upstreams := r.service.Upstreams()
-	return collectionlist.MapList(upstreams, func(_ int, upstream Upstream) ecosystem.Upstream {
-		return ecosystem.Upstream{
-			Ecosystem: r.Name(),
-			Alias:     upstream.Alias,
-			Config:    upstream.Config,
-		}
+	return depruntime.Upstreams(r.Name(), r.service.Upstreams(), func(upstream Upstream) string {
+		return upstream.Alias
+	}, func(upstream Upstream) config.UpstreamConfig {
+		return upstream.Config
 	})
 }
 
@@ -62,13 +60,10 @@ func (r *runtimeAdapter) UpstreamAliases() *collectionlist.List[string] {
 }
 
 func (r *runtimeAdapter) Jobs() *collectionlist.List[ecosystem.JobSpec] {
-	jobs := ecosystem.ProbeJobSpecs(r)
 	if r == nil || r.service == nil {
-		return jobs
+		return ecosystem.ProbeJobSpecs(r)
 	}
-	jobs.Add(ecosystem.PrefetchJobSpec(r, r.service.cfg.Scheduler.Prefetch))
-	jobs.Add(ecosystem.ManifestRefreshJobSpec(r, r.service.cfg.Scheduler.ManifestRefresh, r.service.cfg.Scheduler.Prefetch))
-	return jobs
+	return depruntime.Jobs(r, true, r.service.cfg.Scheduler.Prefetch, r.service.cfg.Scheduler.ManifestRefresh)
 }
 
 func (r *runtimeAdapter) ProbeCapability() ecosystem.Capability {
@@ -80,10 +75,10 @@ func (r *runtimeAdapter) PrefetchCapability() ecosystem.Capability {
 }
 
 func (r *runtimeAdapter) ManualSyncCapability() ecosystem.Capability {
-	if r == nil || r.manualSync == nil {
+	if r == nil {
 		return ecosystem.DisabledCapability("maven proxy manual sync service is not configured", r.Upstreams())
 	}
-	return ecosystem.EnabledCapability("maven proxy manual sync is enabled", ecosystem.CapabilityTargets(r.Upstreams()))
+	return depruntime.ManualSyncCapability(r.Name(), "maven", r.manualSync != nil, r.Upstreams())
 }
 
 func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {
@@ -91,10 +86,10 @@ func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarg
 }
 
 func (r *runtimeAdapter) Prefetch(ctx context.Context, opts ecosystem.PrefetchOptions) (*ecosystem.PrefetchReport, error) {
-	if r == nil || r.prefetcher == nil {
+	if r == nil {
 		return nil, oops.In("maven").Errorf("maven proxy prefetcher is not configured")
 	}
-	report, err := r.prefetcher.Prefetch(ctx, opts)
+	report, err := depruntime.RunPrefetch(ctx, r.Name(), "maven", r.prefetcher, opts)
 	if err != nil {
 		return report, oops.Wrapf(err, "prefetch maven proxy artifacts")
 	}
@@ -115,15 +110,11 @@ func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Can
 		return depprefetch.FetchResult{}, oops.In("maven").Errorf("maven proxy prefetch response is empty")
 	}
 	defer closeReadCloser(resp.Body, nil, "close maven prefetch response body")
-	if resp.Cache != cacheMiss {
-		return depprefetch.FetchResult{}, nil
+	result, err := depruntime.PrefetchResult("maven proxy", resp.Cache, resp.Size, resp.Body)
+	if err != nil {
+		return result, oops.Wrapf(err, "drain maven prefetch response")
 	}
-	if resp.Body != nil {
-		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
-			return depprefetch.FetchResult{}, oops.Wrapf(err, "drain maven prefetch response")
-		}
-	}
-	return depprefetch.FetchResult{BytesWarmed: resp.Size}, nil
+	return result, nil
 }
 
 func mavenTail(candidate depprefetch.Candidate) string {
@@ -144,11 +135,10 @@ func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget
 }
 
 func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
-	if r == nil || r.manualSync == nil {
+	if r == nil {
 		return manualsync.SyncJob{}, oops.In("maven").Errorf("maven proxy manual sync service is not configured")
 	}
-	opts.Ecosystem = r.Name()
-	job, err := r.manualSync.CreateSyncJob(ctx, opts)
+	job, err := depruntime.CreateSyncJob(ctx, r.Name(), "maven", r.manualSync, opts)
 	if err != nil {
 		return manualsync.SyncJob{}, oops.Wrapf(err, "create maven proxy manual sync job")
 	}
@@ -156,27 +146,27 @@ func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts manualsync.Sync
 }
 
 func (r *runtimeAdapter) RunSyncJob(ctx context.Context, id string) error {
-	if r == nil || r.manualSync == nil {
+	if r == nil {
 		return oops.In("maven").Errorf("maven proxy manual sync service is not configured")
 	}
-	if err := r.manualSync.RunSyncJob(ctx, id); err != nil {
-		return oops.With("job_id", id).Wrapf(err, "run maven proxy manual sync job")
+	if err := depruntime.RunSyncJob(ctx, r.Name(), "maven", r.manualSync, id); err != nil {
+		return oops.Wrapf(err, "run maven proxy manual sync job")
 	}
 	return nil
 }
 
 func (r *runtimeAdapter) MarkSyncJobFailed(id string, err error) {
-	if r == nil || r.manualSync == nil {
+	if r == nil {
 		return
 	}
-	r.manualSync.MarkSyncJobFailed(id, err)
+	depruntime.MarkSyncJobFailed(r.manualSync, id, err)
 }
 
 func (r *runtimeAdapter) SyncJob(id string) (manualsync.SyncJob, bool) {
-	if r == nil || r.manualSync == nil {
+	if r == nil {
 		return manualsync.SyncJob{}, false
 	}
-	return r.manualSync.SyncJob(id)
+	return depruntime.SyncJob(r.manualSync, id)
 }
 
 func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
@@ -196,12 +186,9 @@ func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.Syn
 		return nil, oops.In("maven").Errorf("maven proxy manual sync response is empty")
 	}
 	defer closeReadCloser(resp.Body, nil, "close maven manual sync response body")
-	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
-		return nil, oops.In("maven").With("status", resp.Status).Errorf("manual sync request failed")
-	}
-	bytesWarmed, copyErr := io.Copy(io.Discard, resp.Body)
-	if copyErr != nil {
-		return nil, oops.With("status", resp.Status).Wrapf(copyErr, "drain maven manual sync response")
+	bytesWarmed, err := depruntime.DrainSuccessful(r.Name(), "manual sync", "maven manual sync", resp.Status, resp.Body)
+	if err != nil {
+		return nil, oops.Wrapf(err, "drain maven manual sync response")
 	}
 	return &manualsync.SyncReport{
 		Alias:       opts.Alias,
@@ -227,13 +214,9 @@ func (r *runtimeAdapter) Refresh(ctx context.Context, req ecosystem.RefreshReque
 		return oops.In("maven").Errorf("maven proxy refresh response is empty")
 	}
 	defer closeReadCloser(resp.Body, nil, "close maven refresh response body")
-	if resp.Status < http.StatusOK || resp.Status >= http.StatusMultipleChoices {
-		return oops.In("maven").With("status", resp.Status).Errorf("maven proxy refresh request failed")
-	}
-	if resp.Body != nil {
-		if _, err := io.Copy(io.Discard, resp.Body); err != nil {
-			return oops.With("status", resp.Status).Wrapf(err, "drain maven refresh response")
-		}
+	_, err = depruntime.DrainSuccessful(r.Name(), "maven proxy refresh", "maven refresh", resp.Status, resp.Body)
+	if err != nil {
+		return oops.Wrapf(err, "drain maven refresh response")
 	}
 	return nil
 }

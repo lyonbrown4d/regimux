@@ -32,22 +32,8 @@ func (r *Runtime) RetryPrefetch(ctx context.Context) (*ecosystem.PrefetchControl
 }
 
 func (r *Runtime) prefetchController() ecosystem.PrefetchController {
-	if r == nil || r.runtimes == nil {
-		return nil
-	}
-	var match ecosystem.PrefetchController
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
-		if runtime == nil {
-			return true
-		}
-		controller, ok := runtime.(ecosystem.PrefetchController)
-		if !ok {
-			return true
-		}
-		match = controller
-		return false
-	})
-	return match
+	controller, _ := firstRuntimeCapability[ecosystem.PrefetchController](r)
+	return controller
 }
 
 var _ ecosystem.PrefetchController = (*Runtime)(nil)

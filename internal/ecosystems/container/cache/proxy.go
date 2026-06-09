@@ -18,7 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
-	"golang.org/x/sync/singleflight"
+	"github.com/samber/go-singleflightx"
 )
 
 type Proxy struct {
@@ -37,8 +37,8 @@ type Proxy struct {
 	blobVerifyTTL        time.Duration
 	blobSmallCache       smallBlobCacheConfig
 	logger               *slog.Logger
-	manifestGroup        singleflight.Group
-	blobGroup            singleflight.Group
+	manifestGroup        singleflightx.Group[string, *CachedManifest]
+	blobGroup            singleflightx.Group[string, struct{}]
 }
 
 type ProxyDependencies struct {
@@ -164,7 +164,7 @@ type manifestProxy struct {
 	ttl          time.Duration
 	staleIfError bool
 	maxStale     time.Duration
-	group        *singleflight.Group
+	group        *singleflightx.Group[string, *CachedManifest]
 }
 
 type blobProxy struct {
@@ -177,7 +177,7 @@ type blobProxy struct {
 	streamAndCache   bool
 	verifyMembership time.Duration
 	smallCache       smallBlobCacheConfig
-	group            *singleflight.Group
+	group            *singleflightx.Group[string, struct{}]
 }
 
 type tagProxy struct {

@@ -135,7 +135,7 @@ func (s *SQLStore) blobRowsToRecords(rows interface {
 }
 
 func (s *SQLStore) updateBlobRow(ctx context.Context, row blobRow) error {
-	_, err := repository.By(s.blobs, sqlBlobRows.Digest).Update(ctx, row.Digest,
+	return patchRowByKey(ctx, s.blobs, sqlBlobRows.Digest, row.Digest, "upsert blob metadata",
 		sqlBlobRows.Size.Set(row.Size),
 		sqlBlobRows.MediaType.Set(row.MediaType),
 		sqlBlobRows.ObjectKey.Set(row.ObjectKey),
@@ -143,8 +143,4 @@ func (s *SQLStore) updateBlobRow(ctx context.Context, row blobRow) error {
 		sqlBlobRows.UpdatedAt.Set(row.UpdatedAt),
 		sqlBlobRows.LastAccessAt.Set(row.LastAccessAt),
 	)
-	if err != nil {
-		return wrapError(err, "upsert blob metadata")
-	}
-	return nil
 }

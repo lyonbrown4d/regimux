@@ -41,16 +41,12 @@ func (s *SQLStore) QueueRefreshIntent(ctx context.Context, record RefreshIntentR
 		window = 10 * time.Minute
 	}
 
-	if existing, ok, err := s.RefreshIntent(ctx, key); err != nil {
+	existing, ok, err := s.RefreshIntent(ctx, key)
+	if err != nil {
 		return nil, false, err
-	} else if ok {
-		existing.LastSeenAt = now
-		existing.Skipped++
-		existing.UpdatedAt = now
-		if err := s.updateRefreshIntentRow(ctx, *existing); err != nil {
-			return nil, false, err
-		}
-		return existing, false, nil
+	}
+	if ok {
+		return s.updateExistingRefreshIntent(ctx, existing, now)
 	}
 
 	record.DueAt = now.Add(window)
@@ -62,19 +58,31 @@ func (s *SQLStore) QueueRefreshIntent(ctx context.Context, record RefreshIntentR
 		return nil, false, err
 	}
 	if err := s.refreshIntents.Create(ctx, &row); err != nil {
-		if existing, ok, lookupErr := s.RefreshIntent(ctx, key); lookupErr == nil && ok {
-			existing.LastSeenAt = now
-			existing.Skipped++
-			existing.UpdatedAt = now
-			if updateErr := s.updateRefreshIntentRow(ctx, *existing); updateErr != nil {
-				return nil, false, updateErr
-			}
-			return existing, false, nil
-		}
-		return nil, false, wrapError(err, "queue refresh intent metadata")
+		return s.handleRefreshIntentCreateError(ctx, key, now, err)
 	}
 	record.ID = row.ID
 	return &record, true, nil
+}
+
+func (s *SQLStore) updateExistingRefreshIntent(ctx context.Context, record *RefreshIntentRecord, seenAt time.Time) (*RefreshIntentRecord, bool, error) {
+	if record == nil {
+		return nil, false, errors.New("refresh intent record is nil")
+	}
+	record.LastSeenAt = seenAt
+	record.Skipped++
+	record.UpdatedAt = seenAt
+	if err := s.updateRefreshIntentRow(ctx, *record); err != nil {
+		return nil, false, err
+	}
+	return record, false, nil
+}
+
+func (s *SQLStore) handleRefreshIntentCreateError(ctx context.Context, key RefreshIntentKey, seenAt time.Time, createErr error) (*RefreshIntentRecord, bool, error) {
+	existing, ok, lookupErr := s.RefreshIntent(ctx, key)
+	if lookupErr == nil && ok {
+		return s.updateExistingRefreshIntent(ctx, existing, seenAt)
+	}
+	return nil, false, wrapError(createErr, "queue refresh intent metadata")
 }
 
 func (s *SQLStore) ConsumeDueRefreshIntents(ctx context.Context, at time.Time, limit int) ([]RefreshIntentRecord, error) {
@@ -120,7 +128,7 @@ func (s *SQLStore) updateRefreshIntentRow(ctx context.Context, record RefreshInt
 	if err != nil {
 		return err
 	}
-	_, err = repository.By(s.refreshIntents, sqlRefreshIntentRows.Key).Update(ctx, row.Key,
+	return patchRowByKey(ctx, s.refreshIntents, sqlRefreshIntentRows.Key, row.Key, "update refresh intent metadata",
 		sqlRefreshIntentRows.Ecosystem.Set(row.Ecosystem),
 		sqlRefreshIntentRows.Kind.Set(row.Kind),
 		sqlRefreshIntentRows.Alias.Set(row.Alias),
@@ -133,10 +141,6 @@ func (s *SQLStore) updateRefreshIntentRow(ctx context.Context, record RefreshInt
 		sqlRefreshIntentRows.CreatedAt.Set(row.CreatedAt),
 		sqlRefreshIntentRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "update refresh intent metadata")
-	}
-	return nil
 }
 
 func (s *SQLStore) deleteRefreshIntentByKey(ctx context.Context, key string) (bool, error) {
@@ -188,7 +192,7 @@ func normalizeRefreshIntentKey(key RefreshIntentKey) (RefreshIntentKey, error) {
 	if err != nil {
 		return RefreshIntentKey{}, err
 	}
-	repository, err := required("repository", key.Repository)
+	repositoryName, err := required("repository", key.Repository)
 	if err != nil {
 		return RefreshIntentKey{}, err
 	}
@@ -200,7 +204,7 @@ func normalizeRefreshIntentKey(key RefreshIntentKey) (RefreshIntentKey, error) {
 		Ecosystem:  RefreshIntentEcosystem(ecosystemName),
 		Kind:       RefreshIntentKind(strings.TrimSpace(string(key.Kind))),
 		Alias:      alias,
-		Repository: repository,
+		Repository: repositoryName,
 		Reference:  reference,
 		Accept:     strings.TrimSpace(key.Accept),
 	}, nil

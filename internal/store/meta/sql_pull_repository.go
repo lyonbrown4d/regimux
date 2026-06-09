@@ -122,7 +122,7 @@ func (s *SQLStore) pullRowsToRecords(rows interface {
 }
 
 func (s *SQLStore) updatePullRow(ctx context.Context, row pullRow) error {
-	_, err := repository.By(s.pulls, sqlPullRows.Key).Update(ctx, row.Key,
+	return patchRowByKey(ctx, s.pulls, sqlPullRows.Key, row.Key, "record pull metadata",
 		sqlPullRows.Alias.Set(row.Alias),
 		sqlPullRows.Repository.Set(row.Repository),
 		sqlPullRows.Reference.Set(row.Reference),
@@ -132,8 +132,4 @@ func (s *SQLStore) updatePullRow(ctx context.Context, row pullRow) error {
 		sqlPullRows.CreatedAt.Set(row.CreatedAt),
 		sqlPullRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "record pull metadata")
-	}
-	return nil
 }

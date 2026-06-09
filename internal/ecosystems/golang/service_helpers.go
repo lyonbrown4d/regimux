@@ -104,14 +104,16 @@ func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute route,
 	if s == nil || s.events == nil || resp == nil || routeMetadataTTL(requestRoute, defaultMetadataTTL) <= 0 {
 		return
 	}
-	_ = events.Publish(ctx, s.events, events.ArtifactPulled{
+	if err := events.Publish(ctx, s.events, events.ArtifactPulled{
 		Ecosystem:  ecosystem.Go,
 		Kind:       "module",
 		Alias:      requestRoute.Alias,
 		Repository: requestRoute.Module,
 		Reference:  requestRoute.Reference,
 		Status:     resp.Cache,
-	})
+	}); err != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "publish go proxy artifact pulled event failed", "alias", requestRoute.Alias, "module", requestRoute.Module, "reference", requestRoute.Reference, "error", err)
+	}
 }
 
 func (s *Service) goUpstream(alias string) (config.UpstreamConfig, bool) {

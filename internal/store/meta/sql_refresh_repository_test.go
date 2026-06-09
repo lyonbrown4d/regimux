@@ -8,11 +8,12 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
+const testRefreshWindow = 10 * time.Minute
+
 func TestSQLStoreRefreshIntentDeduplicatesUntilDue(t *testing.T) {
 	ctx := context.Background()
 	store := newSQLStore(ctx, t)
 	now := time.Date(2026, 6, 9, 12, 0, 0, 0, time.UTC)
-	window := 10 * time.Minute
 	record := meta.RefreshIntentRecord{
 		Ecosystem:  "npm",
 		Kind:       "metadata",
@@ -21,45 +22,15 @@ func TestSQLStoreRefreshIntentDeduplicatesUntilDue(t *testing.T) {
 		Reference:  "metadata",
 	}
 
-	queued, inserted := queueRefreshIntent(ctx, t, store, record, now, window)
-	if !inserted {
-		t.Fatal("first refresh intent was not queued")
-	}
-	if !queued.DueAt.Equal(now.Add(window)) {
-		t.Fatalf("dueAt = %v, want %v", queued.DueAt, now.Add(window))
-	}
+	queued := assertQueuedRefreshIntent(ctx, t, store, record, now)
+	assertDedupedRefreshIntent(ctx, t, store, record, queued, now.Add(time.Minute))
+	assertDueRefreshIntentCount(ctx, t, store, now.Add(testRefreshWindow-time.Nanosecond), 0)
 
-	deduped, inserted := queueRefreshIntent(ctx, t, store, record, now.Add(time.Minute), window)
-	if inserted {
-		t.Fatal("duplicate refresh intent inside window was queued")
-	}
-	if deduped.ID != queued.ID || deduped.Skipped != 1 {
-		t.Fatalf("unexpected deduped refresh intent: %#v", deduped)
-	}
-	if !deduped.DueAt.Equal(queued.DueAt) {
-		t.Fatalf("deduped dueAt = %v, want %v", deduped.DueAt, queued.DueAt)
-	}
+	due := assertDueRefreshIntentCount(ctx, t, store, now.Add(testRefreshWindow), 1)
+	assertRefreshIntentSkipped(t, due[0], 1)
 
-	if due := consumeDueRefreshIntents(ctx, t, store, now.Add(window-time.Nanosecond)); len(due) != 0 {
-		t.Fatalf("consumed %d entries before due time, want 0", len(due))
-	}
-
-	due := consumeDueRefreshIntents(ctx, t, store, now.Add(window))
-	if len(due) != 1 {
-		t.Fatalf("consumed %d entries at due time, want 1", len(due))
-	}
-	if due[0].Skipped != 1 {
-		t.Fatalf("consumed skipped = %d, want 1", due[0].Skipped)
-	}
-
-	queued, inserted = queueRefreshIntent(ctx, t, store, record, now.Add(window+time.Second), window)
-	if !inserted {
-		t.Fatal("refresh intent after consumed window was not queued")
-	}
-	wantDueAt := now.Add(window + time.Second + window)
-	if !queued.DueAt.Equal(wantDueAt) {
-		t.Fatalf("next dueAt = %v, want %v", queued.DueAt, wantDueAt)
-	}
+	next := assertQueuedRefreshIntent(ctx, t, store, record, now.Add(testRefreshWindow+time.Second))
+	assertRefreshIntentDueAt(t, next, now.Add(testRefreshWindow+time.Second+testRefreshWindow))
 }
 
 func TestSQLStoreRefreshIntentSeparatesAccept(t *testing.T) {
@@ -77,14 +48,66 @@ func TestSQLStoreRefreshIntentSeparatesAccept(t *testing.T) {
 	other := base
 	other.Accept = "application/vnd.docker.distribution.manifest.v2+json"
 
-	if _, inserted := queueRefreshIntent(ctx, t, store, base, now, 10*time.Minute); !inserted {
+	if _, inserted := queueRefreshIntent(ctx, t, store, base, now); !inserted {
 		t.Fatal("first manifest refresh was not queued")
 	}
-	if _, inserted := queueRefreshIntent(ctx, t, store, other, now.Add(time.Second), 10*time.Minute); !inserted {
+	if _, inserted := queueRefreshIntent(ctx, t, store, other, now.Add(time.Second)); !inserted {
 		t.Fatal("manifest refresh with different Accept was deduplicated")
 	}
-	if due := consumeDueRefreshIntents(ctx, t, store, now.Add(10*time.Minute+time.Second)); len(due) != 2 {
-		t.Fatalf("consumed %d entries, want 2", len(due))
+	assertDueRefreshIntentCount(ctx, t, store, now.Add(testRefreshWindow+time.Second), 2)
+}
+
+func assertQueuedRefreshIntent(ctx context.Context, t *testing.T, store *meta.SQLStore, record meta.RefreshIntentRecord, at time.Time) *meta.RefreshIntentRecord {
+	t.Helper()
+	queued, inserted := queueRefreshIntent(ctx, t, store, record, at)
+	if !inserted {
+		t.Fatal("refresh intent was not queued")
+	}
+	if queued.ID == 0 || queued.CreatedAt.IsZero() {
+		t.Fatalf("unexpected queued refresh intent identity: %#v", queued)
+	}
+	assertRefreshIntentDueAt(t, queued, at.Add(testRefreshWindow))
+	return queued
+}
+
+func assertDedupedRefreshIntent(ctx context.Context, t *testing.T, store *meta.SQLStore, record meta.RefreshIntentRecord, queued *meta.RefreshIntentRecord, at time.Time) {
+	t.Helper()
+	deduped, inserted := queueRefreshIntent(ctx, t, store, record, at)
+	if inserted {
+		t.Fatal("duplicate refresh intent inside window was queued")
+	}
+	if deduped.ID != queued.ID || deduped.Skipped != 1 {
+		t.Fatalf("unexpected deduped refresh intent: %#v", deduped)
+	}
+	if !deduped.CreatedAt.Equal(queued.CreatedAt) {
+		t.Fatalf("deduped createdAt = %v, want %v", deduped.CreatedAt, queued.CreatedAt)
+	}
+	if !deduped.LastSeenAt.Equal(at) {
+		t.Fatalf("deduped lastSeenAt = %v, want %v", deduped.LastSeenAt, at)
+	}
+	assertRefreshIntentDueAt(t, deduped, queued.DueAt)
+}
+
+func assertDueRefreshIntentCount(ctx context.Context, t *testing.T, store *meta.SQLStore, at time.Time, want int) []meta.RefreshIntentRecord {
+	t.Helper()
+	due := consumeDueRefreshIntents(ctx, t, store, at)
+	if len(due) != want {
+		t.Fatalf("consumed %d entries, want %d", len(due), want)
+	}
+	return due
+}
+
+func assertRefreshIntentSkipped(t *testing.T, record meta.RefreshIntentRecord, want int) {
+	t.Helper()
+	if record.Skipped != want {
+		t.Fatalf("consumed skipped = %d, want %d", record.Skipped, want)
+	}
+}
+
+func assertRefreshIntentDueAt(t *testing.T, record *meta.RefreshIntentRecord, want time.Time) {
+	t.Helper()
+	if !record.DueAt.Equal(want) {
+		t.Fatalf("dueAt = %v, want %v", record.DueAt, want)
 	}
 }
 
@@ -94,10 +117,9 @@ func queueRefreshIntent(
 	store *meta.SQLStore,
 	record meta.RefreshIntentRecord,
 	at time.Time,
-	window time.Duration,
 ) (*meta.RefreshIntentRecord, bool) {
 	t.Helper()
-	queued, inserted, err := store.QueueRefreshIntent(ctx, record, at, window)
+	queued, inserted, err := store.QueueRefreshIntent(ctx, record, at, testRefreshWindow)
 	requireNoError(t, "queue refresh intent", err)
 	if queued == nil {
 		t.Fatal("queued refresh intent is nil")

@@ -42,7 +42,7 @@ func (s *SQLStore) UpdatePrefetchRun(ctx context.Context, record PrefetchRunReco
 	if err != nil {
 		return nil, err
 	}
-	_, err = repository.By(s.prefetchRuns, sqlPrefetchRunRows.ID).Update(ctx, row.ID,
+	err = patchRowByKey(ctx, s.prefetchRuns, sqlPrefetchRunRows.ID, row.ID, "update prefetch run metadata",
 		sqlPrefetchRunRows.Status.Set(row.Status),
 		sqlPrefetchRunRows.Trigger.Set(row.Trigger),
 		sqlPrefetchRunRows.StartedAt.Set(row.StartedAt),
@@ -65,7 +65,7 @@ func (s *SQLStore) UpdatePrefetchRun(ctx context.Context, record PrefetchRunReco
 		sqlPrefetchRunRows.UpdatedAt.Set(row.UpdatedAt),
 	)
 	if err != nil {
-		return nil, wrapError(err, "update prefetch run metadata")
+		return nil, err
 	}
 	return &record, nil
 }

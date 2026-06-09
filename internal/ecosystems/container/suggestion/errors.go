@@ -2,8 +2,8 @@ package suggestion
 
 import "github.com/samber/oops"
 
-func errorf(format string, args ...any) error {
-	return oops.In("suggestion").Errorf(format, args...)
+func errorf(message string) error {
+	return oops.In("suggestion").Errorf("%s", message)
 }
 
 func wrapError(err error, message string) error {

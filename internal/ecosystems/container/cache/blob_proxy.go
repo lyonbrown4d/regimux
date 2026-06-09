@@ -58,8 +58,8 @@ func (p blobProxy) fetchStored(ctx context.Context, req BlobRequest) (*BlobReadR
 		return p.fetchAndOpenStored(ctx, req)
 	}
 
-	_, err, _ := p.group.Do(key, func() (any, error) {
-		return nil, p.ensureStored(ctx, req)
+	_, err, _ := p.group.Do(key, func() (struct{}, error) {
+		return struct{}{}, p.ensureStored(ctx, req)
 	})
 	if err != nil {
 		return nil, wrapError(err, "coalesce blob request")

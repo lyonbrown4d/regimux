@@ -37,7 +37,11 @@ var Module = dix.NewModule("container-cache",
 			return proxy.Manifests()
 		}),
 		dix.Provider1[ManifestRefresher, *Proxy](func(proxy *Proxy) ManifestRefresher {
-			return proxy.Manifests().(ManifestRefresher)
+			refresher, ok := proxy.Manifests().(ManifestRefresher)
+			if !ok {
+				return nil
+			}
+			return refresher
 		}),
 		dix.Provider1[BlobService, *Proxy](func(proxy *Proxy) BlobService {
 			return proxy.Blobs()

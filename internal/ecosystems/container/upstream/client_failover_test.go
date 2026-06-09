@@ -89,7 +89,7 @@ func TestClientGetManifestFailsOverOnTransportError(t *testing.T) {
 	timeoutMirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		timeoutMirrorRequests.Add(1)
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/manifests/latest", "timeout mirror manifest path")
-		time.Sleep(20 * time.Millisecond)
+		<-r.Context().Done()
 	}))
 	defer timeoutMirror.Close()
 

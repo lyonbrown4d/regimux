@@ -75,23 +75,41 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	if err != nil {
 		return nil, err
 	}
-	if mode != requestModeRefresh && cachedOK && !cached.expired {
-		return s.responseFromStored(req, requestRoute, cached, cacheHit)
-	}
-	if mode != requestModeRefresh && cachedOK && cached.expired {
-		return s.responseFromStored(req, requestRoute, cached, cacheStale)
+	resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
+	if cachedHit || cacheErr != nil {
+		return resp, cacheErr
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
-		if mode == requestModeRefresh {
-			return nil, err
-		}
-		if cachedOK {
-			return s.responseFromStored(req, requestRoute, cached, cacheStale)
-		}
+		return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
+	}
+	return s.responseFromFetched(ctx, req, requestRoute, fetched)
+}
+
+func (s *Service) responseFromCached(req Request, requestRoute Route, cached storedResponse, cachedOK bool, mode requestMode) (*Response, bool, error) {
+	if mode == requestModeRefresh || !cachedOK {
+		return nil, false, nil
+	}
+	if cached.expired {
+		resp, err := s.responseFromStored(req, requestRoute, cached, cacheStale)
+		return resp, true, err
+	}
+	resp, err := s.responseFromStored(req, requestRoute, cached, cacheHit)
+	return resp, true, err
+}
+
+func (s *Service) responseFromFetchError(req Request, requestRoute Route, cached storedResponse, cachedOK bool, err error, mode requestMode) (*Response, error) {
+	if mode == requestModeRefresh {
 		return nil, err
 	}
+	if cachedOK {
+		return s.responseFromStored(req, requestRoute, cached, cacheStale)
+	}
+	return nil, err
+}
+
+func (s *Service) responseFromFetched(ctx context.Context, req Request, requestRoute Route, fetched *upstreamFetch) (*Response, error) {
 	if shouldPassThrough(req, fetched.status) {
 		return s.responseFromUpstream(req, requestRoute, fetched), nil
 	}
@@ -193,14 +211,16 @@ func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute Route,
 	if s == nil || s.events == nil || resp == nil || requestRoute.Kind != RouteSimple {
 		return
 	}
-	_ = events.Publish(ctx, s.events, events.ArtifactPulled{
+	if err := events.Publish(ctx, s.events, events.ArtifactPulled{
 		Ecosystem:  ecosystem.PyPI,
 		Kind:       string(RouteSimple),
 		Alias:      requestRoute.Alias,
 		Repository: requestRoute.Repository,
 		Reference:  requestRoute.Reference,
 		Status:     resp.Cache,
-	})
+	}); err != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "publish pypi proxy artifact pulled event failed", "alias", requestRoute.Alias, "repository", requestRoute.Repository, "reference", requestRoute.Reference, "error", err)
+	}
 }
 
 func (s *Service) upstream(alias string) (config.UpstreamConfig, bool) {

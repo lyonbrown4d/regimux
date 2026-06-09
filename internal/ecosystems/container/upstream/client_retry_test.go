@@ -22,7 +22,7 @@ func TestClientGetManifestRetriesTransientTransportError(t *testing.T) {
 		request := requests.Add(1)
 		requireEqual(t, r.URL.Path, "/v2/library/nginx/manifests/latest", "manifest path")
 		if request == 1 {
-			time.Sleep(50 * time.Millisecond)
+			<-r.Context().Done()
 			return
 		}
 		body := `{"schemaVersion":2}`

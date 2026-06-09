@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/samber/oops"
@@ -32,15 +31,17 @@ func (r *Runtime) SubmitSync(ctx context.Context, opts manualsync.SyncOptions) (
 		return job, err
 	}
 
-	if _, err := r.scheduler.NewJob(
-		gocron.OneTimeJob(gocron.OneTimeJobStartImmediately()),
-		gocron.NewTask(func(ctx context.Context) error {
+	localJob := false
+	if _, err := registerImmediateJob(
+		r.scheduler,
+		func(ctx context.Context) error {
 			return r.runManualSync(ctx, job.ID)
-		}),
-		gocron.WithName("regimux.manual_sync."+job.ID),
-		gocron.WithTags("manual-sync", job.Options.Ecosystem, opts.Alias),
-		gocron.WithSingletonMode(gocron.LimitModeReschedule),
-		gocron.WithDisabledDistributedJobLocker(true),
+		},
+		schedulerJobOptions{
+			name:        "regimux.manual_sync." + job.ID,
+			tags:        []string{"manual-sync", job.Options.Ecosystem, opts.Alias},
+			distributed: &localJob,
+		},
 	); err != nil {
 		syncer.MarkSyncJobFailed(job.ID, err)
 		failed, ok := syncer.SyncJob(job.ID)
@@ -112,19 +113,8 @@ func (r *Runtime) manualSyncer(ecosystemName string) ecosystem.ManualSyncer {
 	if r == nil || ecosystemName == "" {
 		return nil
 	}
-	var match ecosystem.ManualSyncer
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
-		if runtime == nil || runtime.Name() != ecosystemName {
-			return true
-		}
-		syncer, ok := runtime.(ecosystem.ManualSyncer)
-		if ok {
-			match = syncer
-			return false
-		}
-		return true
-	})
-	return match
+	syncer, _ := namedRuntimeCapability[ecosystem.ManualSyncer](r, ecosystemName, matchRuntimeNameExact, continueAfterRuntimeMatch)
+	return syncer
 }
 
 func (r *Runtime) manualSyncerByJob(id string) (ecosystem.ManualSyncer, manualsync.SyncJob, bool) {
@@ -134,13 +124,9 @@ func (r *Runtime) manualSyncerByJob(id string) (ecosystem.ManualSyncer, manualsy
 	var matched ecosystem.ManualSyncer
 	var job manualsync.SyncJob
 	var ok bool
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
+	runtimeCapabilities[ecosystem.ManualSyncer](r).Range(func(_ int, syncer ecosystem.ManualSyncer) bool {
 		if matched != nil {
 			return false
-		}
-		syncer, isSyncer := runtime.(ecosystem.ManualSyncer)
-		if !isSyncer {
-			return true
 		}
 		job, ok = syncer.SyncJob(id)
 		if !ok {

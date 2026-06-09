@@ -86,7 +86,7 @@ func (s *SQLStore) ListEndpointHealth(ctx context.Context, opts ...EndpointHealt
 }
 
 func (s *SQLStore) updateEndpointHealthRow(ctx context.Context, row endpointHealthRow) error {
-	_, err := repository.By(s.endpointHealth, sqlEndpointHealthRows.Key).Update(ctx, row.Key,
+	return patchRowByKey(ctx, s.endpointHealth, sqlEndpointHealthRows.Key, row.Key, "upsert endpoint health metadata",
 		sqlEndpointHealthRows.Alias.Set(row.Alias),
 		sqlEndpointHealthRows.Registry.Set(row.Registry),
 		sqlEndpointHealthRows.Repository.Set(row.Repository),
@@ -104,8 +104,4 @@ func (s *SQLStore) updateEndpointHealthRow(ctx context.Context, row endpointHeal
 		sqlEndpointHealthRows.CreatedAt.Set(row.CreatedAt),
 		sqlEndpointHealthRows.UpdatedAt.Set(row.UpdatedAt),
 	)
-	if err != nil {
-		return wrapError(err, "upsert endpoint health metadata")
-	}
-	return nil
 }

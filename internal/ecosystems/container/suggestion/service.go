@@ -10,7 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
-	"golang.org/x/sync/singleflight"
+	"github.com/samber/go-singleflightx"
 )
 
 // Service maintains lightweight tag indexes used to enrich manifest misses.
@@ -19,7 +19,7 @@ type Service struct {
 	cache  cacheStore
 	logger *slog.Logger
 	opts   Options
-	group  singleflight.Group
+	group  singleflightx.Group[string, *TagIndex]
 }
 
 func NewService(deps Dependencies) *Service {
@@ -174,13 +174,13 @@ func (s *Service) RefreshTags(ctx context.Context, req ManifestRequest) (*TagInd
 		return nil, err
 	}
 
-	value, err, _ := s.group.Do(tagIndexCacheKey(req), func() (any, error) {
+	index, err, _ := s.group.Do(tagIndexCacheKey(req), func() (*TagIndex, error) {
 		return s.refreshTagsOnce(ctx, req)
 	})
 	if err != nil {
 		return nil, wrapError(err, "refresh manifest suggestion tags")
 	}
-	return tagIndexFromSingleflight(value)
+	return index, nil
 }
 
 func (s *Service) validateRefresh(req ManifestRequest) (ManifestRequest, error) {
@@ -222,14 +222,6 @@ func (s *Service) rememberNegativeTag(ctx context.Context, req ManifestRequest, 
 	if negativeErr := s.storeNegativeTag(ctx, req); negativeErr != nil {
 		s.logSuggestionSkip(ctx, req, "store negative tag suggestion cache failed", negativeErr)
 	}
-}
-
-func tagIndexFromSingleflight(value any) (*TagIndex, error) {
-	index, ok := value.(*TagIndex)
-	if !ok {
-		return nil, errorf("unexpected manifest suggestion tag index type %T", value)
-	}
-	return index, nil
 }
 
 func (s *Service) suggestionRequest(req ManifestRequest) (ManifestRequest, bool) {

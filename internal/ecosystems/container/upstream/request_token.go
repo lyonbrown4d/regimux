@@ -18,7 +18,7 @@ func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challe
 		return token, nil
 	}
 
-	value, err, _ := c.tokenGroup.Do(bearerTokenSingleflightKey(tokenReq.CacheKey), func() (any, error) {
+	token, err, _ := c.tokenGroup.Do(bearerTokenSingleflightKey(tokenReq.CacheKey), func() (string, error) {
 		if token, ok := c.tokenCache.get(tokenReq.CacheKey); ok {
 			return token, nil
 		}
@@ -35,10 +35,6 @@ func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challe
 	})
 	if err != nil {
 		return "", wrapError(err, "fetch upstream bearer token")
-	}
-	token, ok := value.(string)
-	if !ok {
-		return "", newError(fmt.Sprintf("unexpected upstream token result type %T", value))
 	}
 	return token, nil
 }

@@ -99,25 +99,16 @@ func (s *Service) getFromUpstream(
 	if err != nil {
 		return nil, err
 	}
-	if mode != requestModeRefresh && cachedOK && !cached.expired {
-		return s.responseFromStored(req, requestRoute, cached, cacheHit)
-	}
-	if mode != requestModeRefresh && cachedOK && cached.expired {
-		return s.responseFromStored(req, requestRoute, cached, cacheStale)
+	resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
+	if cachedHit || cacheErr != nil {
+		return resp, cacheErr
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
 	if err != nil {
 		return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
 	}
-	if shouldPassThrough(req, fetched.status) || !cacheable(requestRoute) {
-		return s.responseFromUpstream(req, requestRoute, fetched), nil
-	}
-	prepared, err := s.prepareFetched(req, requestRoute, fetched)
-	if err != nil {
-		return nil, err
-	}
-	return s.storeFetchedResponse(ctx, req, requestRoute, prepared)
+	return s.responseFromFetched(ctx, req, requestRoute, fetched)
 }
 
 func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
