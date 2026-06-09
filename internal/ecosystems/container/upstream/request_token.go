@@ -48,7 +48,7 @@ func bearerTokenSingleflightKey(key bearerTokenCacheKey) string {
 }
 
 func fetchTokenResponse(ctx context.Context, runtime upstreamRuntime, endpoint string) (upstreamResponse, error) {
-	req := runtime.client.R().SetDoNotParseResponse(true)
+	req := runtime.client.R().SetResponseDoNotParse(true)
 	if runtime.config.Auth.Username != "" || runtime.config.Auth.Password != "" {
 		req.SetBasicAuth(runtime.config.Auth.Username, runtime.config.Auth.Password)
 	}

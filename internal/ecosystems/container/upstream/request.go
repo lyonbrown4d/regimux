@@ -154,7 +154,7 @@ func (c *Client) publishAttempt(ctx context.Context, runtime upstreamRuntime, st
 }
 
 func (c *Client) executeOnce(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
-	req := runtime.client.R().SetDoNotParseResponse(true)
+	req := runtime.client.R().SetResponseDoNotParse(true)
 	prepareRequest(req, runtime.config)
 	for _, opt := range opts {
 		if opt != nil {
