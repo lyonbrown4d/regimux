@@ -15,9 +15,9 @@ require (
 	github.com/arcgolabs/collectionx/set v0.9.0
 	github.com/arcgolabs/configx v0.5.2
 	github.com/arcgolabs/configx/format/hcl v0.5.2
-	github.com/arcgolabs/dbx v0.1.11
-	github.com/arcgolabs/dbx/migrate v0.1.5
-	github.com/arcgolabs/dix v0.11.0
+	github.com/arcgolabs/dbx v0.1.12
+	github.com/arcgolabs/dbx/migrate v0.1.6
+	github.com/arcgolabs/dix v0.11.1
 	github.com/arcgolabs/eventx v0.1.2
 	github.com/arcgolabs/httpx v0.1.7
 	github.com/arcgolabs/httpx/adapter/fiber v0.1.7
