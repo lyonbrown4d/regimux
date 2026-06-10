@@ -62,10 +62,8 @@ func (s *Service) prefetchCandidates(
 	}
 	report.Repositories = s.repositories(candidates)
 	state := &runState{}
-	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](candidates.Len())
-	candidates.Range(func(_ int, candidate Candidate) bool {
-		tasks.Add(s.prefetchTask(opts, runID, candidate, state))
-		return true
+	tasks := collectionlist.MapList(candidates, func(_ int, candidate Candidate) func(context.Context) error {
+		return s.prefetchTask(opts, runID, candidate, state)
 	})
 	err := worker.RunAllSettled(ctx, s.prefetchPool(), tasks)
 	state.apply(report)

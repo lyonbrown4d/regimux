@@ -56,10 +56,8 @@ func (c *Client) ProbeAlias(ctx context.Context, alias string) error {
 
 	var successes atomic.Int32
 	var failures atomic.Int32
-	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](pool.runtimes.Len())
-	pool.runtimes.Range(func(_ int, runtime upstreamRuntime) bool {
-		tasks.Add(c.probeTask(pool, runtime, &successes, &failures))
-		return true
+	tasks := collectionlist.MapList(pool.runtimes, func(_ int, runtime upstreamRuntime) func(context.Context) error {
+		return c.probeTask(pool, runtime, &successes, &failures)
 	})
 	if c.logger != nil {
 		c.logger.DebugContext(ctx, "starting container upstream alias endpoint probes", "ecosystem", ecosystem.Container, "alias", alias, "endpoint_count", tasks.Len())

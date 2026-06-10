@@ -154,5 +154,5 @@ func validateURL(name, value string) error {
 }
 
 func uniqueStrings(values []string) []string {
-	return lo.Uniq(lo.WithoutEmpty(values))
+	return lo.Uniq(lo.Compact(values))
 }

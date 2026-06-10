@@ -150,7 +150,7 @@ func normalizeMirrors(alias string, mirrors []string) ([]string, error) {
 		return mirror, nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, oops.In("config").With("alias", alias).Wrapf(err, "normalize upstream mirrors")
 	}
 	return uniqueStrings(normalized), nil
 }

@@ -73,18 +73,15 @@ func (p *EndpointProber) Probe(ctx context.Context, target ProbeTarget) error {
 
 	var successes atomic.Int32
 	var failures atomic.Int32
-	tasks := collectionlist.NewListWithCapacity[func(context.Context) error](endpoints.Len())
-	endpoints.Range(func(_ int, endpoint string) bool {
-		probeEndpoint := endpoint
-		tasks.Add(func(taskCtx context.Context) error {
+	tasks := collectionlist.MapList(endpoints, func(_ int, probeEndpoint string) func(context.Context) error {
+		return func(taskCtx context.Context) error {
 			if err := p.probeEndpoint(taskCtx, target, probeEndpoint); err != nil {
 				failures.Add(1)
 				return err
 			}
 			successes.Add(1)
 			return nil
-		})
-		return true
+		}
 	})
 
 	probeErr := worker.RunAllSettled(ctx, p.probePool(), tasks)

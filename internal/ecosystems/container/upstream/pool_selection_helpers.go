@@ -95,12 +95,9 @@ func runtimeRegistries(runtimes *collectionlist.List[upstreamRuntime]) *collecti
 	if runtimes == nil {
 		return collectionlist.NewList[string]()
 	}
-	out := collectionlist.NewListWithCapacity[string](runtimes.Len())
-	runtimes.Range(func(_ int, runtime upstreamRuntime) bool {
-		out.Add(runtime.config.Registry)
-		return true
+	return collectionlist.MapList(runtimes, func(_ int, runtime upstreamRuntime) string {
+		return runtime.config.Registry
 	})
-	return out
 }
 
 func (p *upstreamPool) acquireRuntime(ctx context.Context, operation string, runtime upstreamRuntime) (func(), error) {

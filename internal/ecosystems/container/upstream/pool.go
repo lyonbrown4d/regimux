@@ -9,7 +9,7 @@ import (
 	clienthttp "github.com/arcgolabs/clientx/http"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 )
 
 const (
@@ -86,20 +86,11 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes *collectionlist.L
 }
 
 func endpointRegistries(cfg Config) *collectionlist.List[string] {
-	registries := collectionset.NewOrderedSetWithCapacity[string](len(cfg.Mirrors) + 1)
-	collectionlist.NewList(cfg.Mirrors...).Range(func(_ int, registry string) bool {
+	registries := lo.FilterMap(lo.Concat(cfg.Mirrors, []string{cfg.Registry}), func(registry string, _ int) (string, bool) {
 		registry = strings.TrimRight(strings.TrimSpace(registry), "/")
-		if registry == "" {
-			return true
-		}
-		registries.Add(registry)
-		return true
+		return registry, registry != ""
 	})
-	registry := strings.TrimRight(strings.TrimSpace(cfg.Registry), "/")
-	if registry != "" {
-		registries.Add(registry)
-	}
-	return collectionlist.NewList(registries.Values()...)
+	return collectionlist.NewList(lo.Uniq(registries)...)
 }
 
 func normalizeMirrorPolicy(policy string) string {

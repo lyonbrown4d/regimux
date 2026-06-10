@@ -43,8 +43,7 @@ func newEndpointClientsFromConfigs(
 
 func newEndpointRuntimes(cfg Config, logger *slog.Logger, factory *clientfactory.Factory) *collectionlist.List[upstreamRuntime] {
 	registries := endpointRegistries(cfg)
-	runtimes := collectionlist.NewListWithCapacity[upstreamRuntime](registries.Len())
-	registries.Range(func(_ int, registry string) bool {
+	return collectionlist.MapList(registries, func(_ int, registry string) upstreamRuntime {
 		runtimeCfg := cfg
 		runtimeCfg.Registry = registry
 		runtime := upstreamRuntime{config: runtimeCfg}
@@ -57,10 +56,8 @@ func newEndpointRuntimes(cfg Config, logger *slog.Logger, factory *clientfactory
 				"error", runtime.err,
 			)
 		}
-		runtimes.Add(runtime)
-		return true
+		return runtime
 	})
-	return runtimes
 }
 
 func (c *EndpointClients) Len() int {

@@ -10,9 +10,9 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 )
 
 const (
@@ -124,17 +124,14 @@ func dependencyStartupEndpoints(base string, upstreams *collectionlist.List[ecos
 	}
 
 	names := collectionlist.NewList(groups.Keys()...).Sort(strings.Compare)
-	endpoints := collectionlist.NewListWithCapacity[startupEndpoint](names.Len())
-	names.Range(func(_ int, name string) bool {
+	return collectionlist.MapList(names, func(_ int, name string) startupEndpoint {
 		aliases, _ := groups.Get(name)
-		endpoints.Add(startupEndpoint{
+		return startupEndpoint{
 			name:    name,
 			url:     joinStartupURL(base, "/"+name),
 			aliases: sortedStartupAliases(aliases),
-		})
-		return true
+		}
 	})
-	return endpoints
 }
 
 func sortedStartupAliases(aliases *collectionlist.List[string]) []string {
@@ -161,19 +158,11 @@ func upstreamDisplayName(upstream ecosystem.Upstream) string {
 }
 
 func upstreamEndpointRegistries(cfg config.UpstreamConfig) *collectionlist.List[string] {
-	registries := collectionset.NewOrderedSetWithCapacity[string](len(cfg.Mirrors) + 1)
-	collectionlist.NewList(cfg.Mirrors...).Range(func(_ int, registry string) bool {
-		if endpoint := cleanRegistry(registry); endpoint != "" {
-			registries.Add(endpoint)
-		}
-		return true
+	registries := lo.FilterMap(lo.Concat(cfg.Mirrors, []string{cfg.Registry}), func(registry string, _ int) (string, bool) {
+		endpoint := cleanRegistry(registry)
+		return endpoint, endpoint != ""
 	})
-	if registry := cleanRegistry(cfg.Registry); registry != "" {
-		registries.Add(registry)
-	}
-	out := collectionlist.NewListWithCapacity[string](registries.Len())
-	out.Add(registries.Values()...)
-	return out
+	return collectionlist.NewList(lo.Uniq(registries)...)
 }
 
 func serviceBaseURL(cfg config.ServerConfig) string {
