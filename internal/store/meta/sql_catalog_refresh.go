@@ -83,6 +83,9 @@ func (s *SQLStore) ensureUpstreamMetadata(ctx context.Context, alias string, at 
 }
 
 func (s *SQLStore) refreshRepositoryMetadata(ctx context.Context, alias, name string, at time.Time) error {
+	s.catalogMu.Lock()
+	defer s.catalogMu.Unlock()
+
 	repo, err := s.ensureRepositoryMetadata(ctx, alias, name, at)
 	if err != nil {
 		return err

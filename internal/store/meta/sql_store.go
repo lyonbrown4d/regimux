@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"log/slog"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/arcgolabs/dbx"
@@ -38,6 +39,7 @@ type SQLStore struct {
 	driver           string
 	db               *dbx.DB
 	mapper           *MetadataMapper
+	catalogMu        sync.Mutex
 	upstreams        *repository.Base[upstreamRow, upstreamRowSchema]
 	repositories     *repository.Base[repositoryRow, repositoryRowSchema]
 	manifest         *repository.Base[manifestRow, manifestRowSchema]
