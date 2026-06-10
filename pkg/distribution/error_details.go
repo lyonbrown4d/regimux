@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/samber/lo"
 )
 
@@ -86,21 +85,21 @@ func manifestUnknownSuggestionMessage(repo, reference string, tags, repositories
 }
 
 func manifestTagSuggestions(alias, repo string, tags []string) []ManifestSuggestion {
-	return collectionlist.MapList(collectionlist.NewList(tags...), func(_ int, tag string) ManifestSuggestion {
+	return lo.Map(tags, func(tag string, _ int) ManifestSuggestion {
 		return ManifestSuggestion{
 			Reference: tag,
 			Image:     suggestedImage(alias, repo, tag),
 		}
-	}).Values()
+	})
 }
 
 func manifestRepositorySuggestions(alias, reference string, repositories []string) []ManifestSuggestion {
-	return collectionlist.MapList(collectionlist.NewList(repositories...), func(_ int, repo string) ManifestSuggestion {
+	return lo.Map(repositories, func(repo string, _ int) ManifestSuggestion {
 		return ManifestSuggestion{
 			Reference: reference,
 			Image:     suggestedImage(alias, repo, reference),
 		}
-	}).Values()
+	})
 }
 
 func suggestedImage(alias, repo, tag string) string {

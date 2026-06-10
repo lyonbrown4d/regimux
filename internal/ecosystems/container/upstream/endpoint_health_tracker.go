@@ -5,6 +5,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/samber/lo"
 )
 
 func (t *EndpointHealthTracker) RecordProbeSuccess(registry string, latency time.Duration, now time.Time) EndpointHealthSnapshot {
@@ -140,29 +141,29 @@ func (t *EndpointHealthTracker) RankEndpointCandidates(registries *collectionlis
 	if t == nil || registries == nil {
 		return collectionlist.NewList[EndpointHealthCandidate]()
 	}
-	ranked := collectionlist.MapList(registries, func(index int, registry string) endpointHealthCandidateRank {
+	ranked := collectionlist.NewList(lo.Map(registries.Values(), func(registry string, index int) endpointHealthCandidateRank {
 		state := t.Snapshot(registry, now)
 		return endpointHealthCandidateRank{
 			candidate: EndpointHealthCandidate{Registry: state.Registry, State: state},
 			index:     index,
 		}
-	}).Sort(compareEndpointHealthCandidateRank)
-	return collectionlist.MapList(ranked, func(_ int, item endpointHealthCandidateRank) EndpointHealthCandidate {
+	})...).Sort(compareEndpointHealthCandidateRank)
+	return collectionlist.NewList(lo.Map(ranked.Values(), func(item endpointHealthCandidateRank, _ int) EndpointHealthCandidate {
 		return item.candidate
-	})
+	})...)
 }
 
 func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
 	if t == nil || runtimes == nil {
 		return collectionlist.NewList[endpointRuntimeCandidate]()
 	}
-	return collectionlist.MapList(runtimes, func(index int, runtime upstreamRuntime) endpointRuntimeCandidate {
+	return collectionlist.NewList(lo.Map(runtimes.Values(), func(runtime upstreamRuntime, index int) endpointRuntimeCandidate {
 		return endpointRuntimeCandidate{
 			runtime: runtime,
 			state:   t.runtimeSnapshot(runtime.config.Registry, repository, now),
 			index:   index,
 		}
-	}).Sort(compareEndpointRuntimeCandidate)
+	})...).Sort(compareEndpointRuntimeCandidate)
 }
 
 func (t *EndpointHealthTracker) runtimeSnapshot(registry, repository string, now time.Time) EndpointHealthSnapshot {

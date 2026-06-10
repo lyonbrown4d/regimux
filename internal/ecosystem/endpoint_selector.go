@@ -75,9 +75,9 @@ func latestEndpointHealthByEndpoint(ctx context.Context, metadata meta.EndpointH
 
 func endpointHealthCandidates(endpoints []string, recordByEndpoint *collectionmapping.Map[string, meta.EndpointHealthRecord]) *collectionlist.List[endpointHealthCandidate] {
 	now := time.Now()
-	return collectionlist.MapList(collectionlist.NewList(endpoints...), func(i int, endpoint string) endpointHealthCandidate {
+	return collectionlist.NewList(lo.Map(endpoints, func(endpoint string, i int) endpointHealthCandidate {
 		return buildEndpointHealthCandidate(endpoint, i, now, recordByEndpoint)
-	})
+	})...)
 }
 
 func buildEndpointHealthCandidate(
@@ -127,9 +127,9 @@ func mapEndpointCandidates(candidates *collectionlist.List[endpointHealthCandida
 	if candidates == nil {
 		return nil
 	}
-	return collectionlist.MapList(candidates, func(_ int, candidate endpointHealthCandidate) string {
+	return lo.Map(candidates.Values(), func(candidate endpointHealthCandidate, _ int) string {
 		return candidate.endpoint
-	}).Values()
+	})
 }
 
 func compareEndpointHealthCandidate(left, right endpointHealthCandidate) int {

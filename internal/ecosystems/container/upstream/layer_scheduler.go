@@ -7,6 +7,7 @@ import (
 	collectionbitset "github.com/arcgolabs/collectionx/bitset"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/samber/lo"
 )
 
 const defaultLayerSchedulerRecentWindow = 2 * time.Second
@@ -75,7 +76,7 @@ func (s *layerScheduler) scoreCandidatesLocked(
 	if candidates == nil {
 		return collectionlist.NewList[layerSchedulerCandidate]()
 	}
-	return collectionlist.MapList(candidates, func(i int, candidate endpointRuntimeCandidate) layerSchedulerCandidate {
+	return collectionlist.NewList(lo.Map(candidates.Values(), func(candidate endpointRuntimeCandidate, i int) layerSchedulerCandidate {
 		registry := candidate.runtime.config.Registry
 		score := s.scoreLocked(digest, registry, candidate.state, now)
 		return layerSchedulerCandidate{
@@ -84,7 +85,7 @@ func (s *layerScheduler) scoreCandidatesLocked(
 			score:   score,
 			index:   i,
 		}
-	})
+	})...)
 }
 
 func (s *layerScheduler) scoreLocked(digest, registry string, state EndpointHealthSnapshot, now time.Time) time.Duration {
@@ -191,13 +192,19 @@ func layerSchedulerCandidateCompare(left, right layerSchedulerCandidate) int {
 }
 
 func scheduledRuntimes(candidates *collectionlist.List[layerSchedulerCandidate]) *collectionlist.List[upstreamRuntime] {
-	return collectionlist.MapList(candidates, func(_ int, candidate layerSchedulerCandidate) upstreamRuntime {
+	if candidates == nil {
+		return collectionlist.NewList[upstreamRuntime]()
+	}
+	return collectionlist.NewList(lo.Map(candidates.Values(), func(candidate layerSchedulerCandidate, _ int) upstreamRuntime {
 		return candidate.runtime
-	})
+	})...)
 }
 
 func runtimeCandidates(candidates *collectionlist.List[endpointRuntimeCandidate]) *collectionlist.List[upstreamRuntime] {
-	return collectionlist.MapList(candidates, func(_ int, candidate endpointRuntimeCandidate) upstreamRuntime {
+	if candidates == nil {
+		return collectionlist.NewList[upstreamRuntime]()
+	}
+	return collectionlist.NewList(lo.Map(candidates.Values(), func(candidate endpointRuntimeCandidate, _ int) upstreamRuntime {
 		return candidate.runtime
-	})
+	})...)
 }

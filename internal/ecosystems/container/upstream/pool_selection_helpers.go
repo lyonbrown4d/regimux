@@ -6,6 +6,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 )
 
 func (p *upstreamPool) selectHealthyRuntimes(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time, operation string) *collectionlist.List[upstreamRuntime] {
@@ -61,43 +62,43 @@ func (p *upstreamPool) selectHealthyRuntimeCandidates(
 }
 
 func (p *upstreamPool) toUpstreamRuntimeCandidates(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
-	if p == nil {
+	if p == nil || runtimes == nil {
 		return collectionlist.NewList[endpointRuntimeCandidate]()
 	}
-	return collectionlist.MapList(runtimes, func(i int, runtime upstreamRuntime) endpointRuntimeCandidate {
+	return collectionlist.NewList(lo.Map(runtimes.Values(), func(runtime upstreamRuntime, i int) endpointRuntimeCandidate {
 		return endpointRuntimeCandidate{
 			runtime: runtime,
 			state:   p.health.runtimeSnapshot(runtime.config.Registry, repository, now),
 			index:   i,
 		}
-	})
+	})...)
 }
 
 func (p *upstreamPool) filterUnhealthyEndpointCandidates(candidates *collectionlist.List[endpointRuntimeCandidate]) *collectionlist.List[endpointRuntimeCandidate] {
 	if candidates == nil {
 		return collectionlist.NewList[endpointRuntimeCandidate]()
 	}
-	return collectionlist.FilterList(candidates, func(_ int, candidate endpointRuntimeCandidate) bool {
+	return collectionlist.NewList(lo.Filter(candidates.Values(), func(candidate endpointRuntimeCandidate, _ int) bool {
 		return !candidate.state.InCooldown && !candidate.state.InDegraded
-	})
+	})...)
 }
 
 func candidatesToRuntimes(candidates *collectionlist.List[endpointRuntimeCandidate]) *collectionlist.List[upstreamRuntime] {
 	if candidates == nil {
 		return collectionlist.NewList[upstreamRuntime]()
 	}
-	return collectionlist.MapList(candidates, func(_ int, item endpointRuntimeCandidate) upstreamRuntime {
+	return collectionlist.NewList(lo.Map(candidates.Values(), func(item endpointRuntimeCandidate, _ int) upstreamRuntime {
 		return item.runtime
-	})
+	})...)
 }
 
 func runtimeRegistries(runtimes *collectionlist.List[upstreamRuntime]) *collectionlist.List[string] {
 	if runtimes == nil {
 		return collectionlist.NewList[string]()
 	}
-	return collectionlist.MapList(runtimes, func(_ int, runtime upstreamRuntime) string {
+	return collectionlist.NewList(lo.Map(runtimes.Values(), func(runtime upstreamRuntime, _ int) string {
 		return runtime.config.Registry
-	})
+	})...)
 }
 
 func (p *upstreamPool) acquireRuntime(ctx context.Context, operation string, runtime upstreamRuntime) (func(), error) {
