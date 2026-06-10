@@ -186,10 +186,8 @@ func (r *Runtime) Snapshot(now time.Time) ecosystem.ClientSnapshot {
 	}
 
 	raw := r.upstream.Snapshot(now)
-	upstreams := collectionlist.NewList[ecosystem.UpstreamSnapshot]()
-	raw.Upstreams.Range(func(_ int, source upstream.UpstreamSnapshot) bool {
-		upstreams.Add(snapshotFromContainerSource(source))
-		return true
+	upstreams := collectionlist.MapList(raw.Upstreams, func(_ int, source upstream.UpstreamSnapshot) ecosystem.UpstreamSnapshot {
+		return snapshotFromContainerSource(source)
 	})
 	return ecosystem.ClientSnapshot{Upstreams: upstreams}
 }

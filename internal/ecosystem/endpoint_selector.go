@@ -9,6 +9,7 @@ import (
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/samber/lo"
 )
 
 const (
@@ -74,11 +75,9 @@ func latestEndpointHealthByEndpoint(ctx context.Context, metadata meta.EndpointH
 
 func endpointHealthCandidates(endpoints []string, recordByEndpoint *collectionmapping.Map[string, meta.EndpointHealthRecord]) *collectionlist.List[endpointHealthCandidate] {
 	now := time.Now()
-	candidates := collectionlist.NewListWithCapacity[endpointHealthCandidate](len(endpoints))
-	for i, endpoint := range endpoints {
-		candidates.Add(buildEndpointHealthCandidate(endpoint, i, now, recordByEndpoint))
-	}
-	return candidates
+	return collectionlist.MapList(collectionlist.NewList(endpoints...), func(i int, endpoint string) endpointHealthCandidate {
+		return buildEndpointHealthCandidate(endpoint, i, now, recordByEndpoint)
+	})
 }
 
 func buildEndpointHealthCandidate(
@@ -175,15 +174,10 @@ func compareDurations(left, right time.Duration) int {
 }
 
 func normalizedUpstreamEndpoints(cfg config.UpstreamConfig) []string {
-	return collectionlist.FilterMapList(
-		collectionlist.NewList(append([]string{cfg.Registry}, cfg.Mirrors...)...),
-		func(_ int, endpoint string) (string, bool) {
-			if endpoint = normalizeEndpoint(endpoint); endpoint != "" {
-				return endpoint, true
-			}
-			return "", false
-		},
-	).Values()
+	return lo.FilterMap(lo.Concat([]string{cfg.Registry}, cfg.Mirrors), func(endpoint string, _ int) (string, bool) {
+		endpoint = normalizeEndpoint(endpoint)
+		return endpoint, endpoint != ""
+	})
 }
 
 func normalizeEndpoint(endpoint string) string {

@@ -22,9 +22,9 @@ func parseAvailableTags(tags *collectionlist.List[string]) *collectionlist.List[
 	if tags == nil {
 		return collectionlist.NewList[versionTag]()
 	}
-	return collectionlist.FilterMapList(collectionlist.NewList(lo.Uniq(tags.Values())...), func(_ int, tag string) (versionTag, bool) {
+	return collectionlist.NewList(lo.FilterMap(lo.Uniq(tags.Values()), func(tag string, _ int) (versionTag, bool) {
 		return parseVersionTag(tag)
-	})
+	})...)
 }
 
 func parseVersionTag(tag string) (versionTag, bool) {

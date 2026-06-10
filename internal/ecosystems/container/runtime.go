@@ -60,16 +60,14 @@ func (r *Runtime) Upstreams() *collectionlist.List[ecosystem.Upstream] {
 		return collectionlist.NewList[ecosystem.Upstream]()
 	}
 	ordered := r.cfg.OrderedContainerUpstreams()
-	out := collectionlist.NewList[ecosystem.Upstream]()
-	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out.Add(ecosystem.Upstream{
+	return collectionlist.MapList(collectionlist.NewList(ordered.Keys()...), func(_ int, alias string) ecosystem.Upstream {
+		cfg, _ := ordered.Get(alias)
+		return ecosystem.Upstream{
 			Ecosystem: r.Name(),
 			Alias:     alias,
 			Config:    cfg,
-		})
-		return true
+		}
 	})
-	return out
 }
 
 var _ ecosystem.Runtime = (*Runtime)(nil)

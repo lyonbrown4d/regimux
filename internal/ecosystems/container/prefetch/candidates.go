@@ -131,12 +131,10 @@ func sortedCandidates(
 		return collectionlist.NewList[Candidate]()
 	}
 
-	results := collectionlist.NewListWithCapacity[Candidate](candidates.Len())
-	candidates.Range(func(_ candidateKey, accumulator candidateAccumulator) bool {
+	results := collectionlist.MapList(collectionlist.NewList(candidates.Values()...), func(_ int, accumulator candidateAccumulator) Candidate {
 		candidate := accumulator.candidate
 		candidate.Score = accumulator.score
-		results.Add(candidate)
-		return true
+		return candidate
 	})
 	results.Sort(compareCandidatePriority)
 

@@ -6,6 +6,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 )
 
 type SuggestOptions struct {
@@ -58,7 +59,7 @@ func rankRepositories(repository string, repositories []string, limit int) []str
 }
 
 func rankValues(target string, values []string, limit int) []string {
-	scored := collectionlist.FilterMapList(collectionlist.NewList(values...), func(_ int, value string) (scoredValue, bool) {
+	scored := collectionlist.NewList(lo.FilterMap(values, func(value string, _ int) (scoredValue, bool) {
 		value = strings.TrimSpace(value)
 		if value == "" || value == target {
 			return scoredValue{}, false
@@ -68,7 +69,7 @@ func rankValues(target string, values []string, limit int) []string {
 			return scoredValue{}, false
 		}
 		return scoredValue{value: value, score: score, distance: levenshteinDistance(target, value)}, true
-	})
+	})...)
 	if scored.IsEmpty() {
 		return nil
 	}
