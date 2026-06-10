@@ -135,10 +135,9 @@ func (s *Service) goUpstreams() *collectionlist.List[goUpstream] {
 	if ordered.Len() == 0 {
 		return collectionlist.NewList[goUpstream]()
 	}
-	out := collectionlist.NewListWithCapacity[goUpstream](ordered.Len())
-	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out.Add(goUpstream{alias: alias, cfg: cfg})
-		return true
+	out := collectionlist.MapList(collectionlist.NewList(ordered.Keys()...), func(_ int, alias string) goUpstream {
+		cfg, _ := ordered.Get(alias)
+		return goUpstream{alias: alias, cfg: cfg}
 	})
 	return preferGoAlias(out, "default")
 }

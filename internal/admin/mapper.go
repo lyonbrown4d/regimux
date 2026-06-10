@@ -142,18 +142,16 @@ func mapAdminList[T, R any](
 	if limit > 0 {
 		source = records.Take(limit)
 	}
-	var mapErr error
-	source.Range(func(_ int, record T) bool {
+	mapped, err := collectionlist.ReduceErrList(source, out, func(out *collectionlist.List[R], _ int, record T) (*collectionlist.List[R], error) {
 		row, err := mapOne(record)
 		if err != nil {
-			mapErr = err
-			return false
+			return nil, err
 		}
 		out.Add(row)
-		return true
+		return out, nil
 	})
-	if mapErr != nil {
-		return nil, mapErr
+	if err != nil {
+		return nil, oops.In("admin").Wrapf(err, "map admin list")
 	}
-	return out, nil
+	return mapped, nil
 }

@@ -71,12 +71,7 @@ func (c *Client) endpointHealthAliases() *collectionlist.List[string] {
 	if c == nil || c.upstreams == nil {
 		return collectionlist.NewList[string]()
 	}
-	aliases := collectionlist.NewListWithCapacity[string](c.upstreams.Len())
-	c.upstreams.Range(func(alias string, _ *upstreamPool) bool {
-		aliases.Add(alias)
-		return true
-	})
-	return aliases
+	return collectionlist.NewList(c.upstreams.Keys()...)
 }
 
 func (c *Client) restoreEndpointHealthRecords(records *collectionlist.List[meta.EndpointHealthRecord]) int {

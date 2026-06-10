@@ -198,10 +198,8 @@ func (s *Service) Upstreams() *collectionlist.List[Upstream] {
 		return collectionlist.NewList[Upstream]()
 	}
 	ordered := s.cfg.OrderedMavenUpstreams()
-	out := collectionlist.NewListWithCapacity[Upstream](ordered.Len())
-	ordered.Range(func(alias string, cfg config.UpstreamConfig) bool {
-		out.Add(Upstream{Alias: alias, Config: cfg})
-		return true
+	return collectionlist.MapList(collectionlist.NewList(ordered.Keys()...), func(_ int, alias string) Upstream {
+		cfg, _ := ordered.Get(alias)
+		return Upstream{Alias: alias, Config: cfg}
 	})
-	return out
 }

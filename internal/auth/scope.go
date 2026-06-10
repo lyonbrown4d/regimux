@@ -33,10 +33,10 @@ func parseScope(value string) (Scope, error) {
 		Type: strings.TrimSpace(parts[0]),
 		Name: strings.Trim(strings.TrimSpace(parts[1]), "/"),
 	}
-	scope.Actions = collectionlist.FilterMapList(collectionlist.NewList(strings.Split(parts[2], ",")...), func(_ int, action string) (string, bool) {
+	scope.Actions = lo.FilterMap(strings.Split(parts[2], ","), func(action string, _ int) (string, bool) {
 		action = strings.TrimSpace(action)
 		return action, action != ""
-	}).Values()
+	})
 	if scope.Type == "" || scope.Name == "" || len(scope.Actions) == 0 {
 		return Scope{}, newAuthError(authx.ErrorCodeInvalidAuthorizationModel, "registry token scope is incomplete")
 	}

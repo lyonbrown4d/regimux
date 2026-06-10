@@ -4,7 +4,7 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -94,7 +94,7 @@ func (c *Config) normalizeDependencyUpstreams(ecosystem string, upstreams Depend
 }
 
 func sortedConfigAliases[T any](values map[string]T) *collectionlist.List[string] {
-	return collectionlist.NewList(collectionmapping.NewMapFrom(values).Keys()...).
+	return collectionlist.NewList(lo.Keys(values)...).
 		Sort(strings.Compare)
 }
 

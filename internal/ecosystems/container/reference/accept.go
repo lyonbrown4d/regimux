@@ -8,16 +8,16 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/samber/lo"
 )
 
 // NormalizeAccept canonicalizes an Accept header for use in cache keys.
 // It preserves media-range order because order can affect content negotiation.
 func NormalizeAccept(header string) string {
-	return collectionlist.FilterMapList(collectionlist.NewList(splitHeaderList(header)...), func(_ int, part string) (string, bool) {
+	return strings.Join(lo.FilterMap(splitHeaderList(header), func(part string, _ int) (string, bool) {
 		item := normalizeAcceptItem(part)
 		return item, item != ""
-	}).Join(",")
+	}), ",")
 }
 
 // AcceptKey returns a stable sha256 hex key for a normalized Accept header.
@@ -69,21 +69,17 @@ func normalizeMediaType(value string) string {
 }
 
 func normalizeAcceptParams(rawParams []string) *collectionlist.List[string] {
-	return collectionlist.FilterMapList(collectionlist.NewList(rawParams...), func(_ int, raw string) (string, bool) {
+	return collectionlist.NewList(lo.FilterMap(rawParams, func(raw string, _ int) (string, bool) {
 		return normalizeAcceptParam(raw)
-	}).Sort(strings.Compare)
+	})...).Sort(strings.Compare)
 }
 
 func normalizeAcceptParamMap(params map[string]string) *collectionlist.List[string] {
-	values := collectionmapping.NewMapFrom(params)
-	return collectionlist.FilterMapList(collectionlist.NewList(values.Keys()...), func(_ int, name string) (string, bool) {
-		value, ok := values.Get(name)
-		if !ok {
-			return "", false
-		}
+	return collectionlist.NewList(lo.FilterMap(lo.Keys(params), func(name string, _ int) (string, bool) {
+		value := params[name]
 		param, ok := normalizeAcceptParam(name + "=" + value)
 		return param, ok
-	}).Sort(strings.Compare)
+	})...).Sort(strings.Compare)
 }
 
 func normalizeAcceptParam(raw string) (string, bool) {
