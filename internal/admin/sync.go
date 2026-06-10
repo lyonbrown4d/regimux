@@ -140,19 +140,16 @@ func (s *Service) syncUpstreamOptions(selected string) *collectionlist.List[Sync
 		selected = s.defaultSyncUpstreamValue()
 	}
 	upstreams := s.configuredUpstreams()
-	options := collectionlist.NewListWithCapacity[SyncUpstreamOption](upstreams.Len())
-	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
+	return collectionlist.MapList(upstreams, func(_ int, upstream ecosystem.Upstream) SyncUpstreamOption {
 		value := syncTargetValue(upstream.Ecosystem, upstream.Alias)
-		options.Add(SyncUpstreamOption{
+		return SyncUpstreamOption{
 			Ecosystem: upstream.Ecosystem,
 			Alias:     upstream.Alias,
 			Value:     value,
 			Registry:  upstream.Config.Registry,
 			Selected:  value == selected,
-		})
-		return true
+		}
 	})
-	return options
 }
 
 func splitRepositoryReference(value string) (string, string, error) {

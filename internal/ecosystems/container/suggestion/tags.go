@@ -8,10 +8,9 @@ import (
 	"strconv"
 	"strings"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 	"go.uber.org/multierr"
 )
 
@@ -89,15 +88,10 @@ func decodeTagList(data []byte) (tagListBody, error) {
 }
 
 func normalizeTags(tags []string) []string {
-	seen := collectionset.NewOrderedSetWithCapacity[string](len(tags))
-	collectionlist.NewList(tags...).Range(func(_ int, tag string) bool {
+	return lo.Uniq(lo.FilterMap(tags, func(tag string, _ int) (string, bool) {
 		tag = strings.TrimSpace(tag)
-		if tag != "" {
-			seen.Add(tag)
-		}
-		return true
-	})
-	return seen.Values()
+		return tag, tag != ""
+	}))
 }
 
 func nextLastFromLink(header string) string {

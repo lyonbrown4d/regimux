@@ -7,8 +7,7 @@ import (
 	"strings"
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 )
 
 type cacheStore interface {
@@ -239,22 +238,20 @@ func repositoryIndexCacheKey(alias string) string {
 }
 
 func cacheKey(parts ...string) string {
-	clean := collectionlist.FilterMapList(collectionlist.NewList(parts...), func(_ int, part string) (string, bool) {
+	clean := lo.FilterMap(parts, func(part string, _ int) (string, bool) {
 		part = strings.Trim(strings.TrimSpace(part), ":")
 		return part, part != ""
 	})
-	return strings.Join(append([]string{"suggestion", "v1"}, clean.Values()...), ":")
+	return strings.Join(append([]string{"suggestion", "v1"}, clean...), ":")
 }
 
 func normalizeRepositories(repositories []string, limit int) []string {
-	seen := collectionset.NewOrderedSetWithCapacity[string](len(repositories))
-	collectionlist.NewList(repositories...).Range(func(_ int, repository string) bool {
+	clean := lo.Uniq(lo.FilterMap(repositories, func(repository string, _ int) (string, bool) {
 		repository = strings.Trim(strings.TrimSpace(repository), "/")
-		if repository == "" {
-			return true
-		}
-		seen.Add(repository)
-		return limit <= 0 || seen.Len() < limit
-	})
-	return seen.Values()
+		return repository, repository != ""
+	}))
+	if limit > 0 && len(clean) > limit {
+		return clean[:limit]
+	}
+	return clean
 }

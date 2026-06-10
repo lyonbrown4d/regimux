@@ -26,18 +26,15 @@ func auditUserRows(users *collectionmapping.Map[string, config.AuthUserConfig]) 
 	usernames := collectionlist.NewList(users.Keys()...).
 		Sort(strings.Compare)
 
-	rows := collectionlist.NewListWithCapacity[AuditUserRow](usernames.Len())
-	usernames.Range(func(_ int, username string) bool {
+	return collectionlist.MapList(usernames, func(_ int, username string) AuditUserRow {
 		user, _ := users.Get(username)
-		rows.Add(AuditUserRow{
+		return AuditUserRow{
 			Username:         username,
 			RepositoryScopes: listString(user.Repositories),
 			Groups:           listString(user.Groups),
 			Credential:       credentialKind(user),
-		})
-		return true
+		}
 	})
-	return rows
 }
 
 func listString(values []string) string {

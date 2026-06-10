@@ -7,7 +7,7 @@ import (
 
 	"github.com/Masterminds/semver/v3"
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 )
 
 type versionTag struct {
@@ -22,12 +22,7 @@ func parseAvailableTags(tags *collectionlist.List[string]) *collectionlist.List[
 	if tags == nil {
 		return collectionlist.NewList[versionTag]()
 	}
-	seen := collectionset.NewOrderedSetWithCapacity[string](tags.Len())
-	return collectionlist.FilterMapList(tags, func(_ int, tag string) (versionTag, bool) {
-		if seen.Contains(tag) {
-			return versionTag{}, false
-		}
-		seen.Add(tag)
+	return collectionlist.FilterMapList(collectionlist.NewList(lo.Uniq(tags.Values())...), func(_ int, tag string) (versionTag, bool) {
 		return parseVersionTag(tag)
 	})
 }

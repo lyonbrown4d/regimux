@@ -6,7 +6,7 @@ import (
 
 	"github.com/arcgolabs/authx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 )
 
 type Scope struct {
@@ -44,11 +44,10 @@ func parseScope(value string) (Scope, error) {
 }
 
 func normalizeScopes(values []string) []string {
-	clean := collectionlist.FilterMapList(collectionlist.NewList(values...), func(_ int, value string) (string, bool) {
+	return lo.Uniq(lo.FilterMap(values, func(value string, _ int) (string, bool) {
 		value = strings.TrimSpace(value)
 		return value, value != ""
-	})
-	return collectionset.NewOrderedSetWithCapacity[string](clean.Len(), clean.Values()...).Values()
+	}))
 }
 
 func repositoryPatternMatches(pattern, resource string) bool {

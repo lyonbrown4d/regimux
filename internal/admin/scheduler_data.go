@@ -48,9 +48,8 @@ func probeJobRows(upstreams *collectionlist.List[ecosystem.Upstream]) *collectio
 	if upstreams == nil {
 		return collectionlist.NewList[ProbeJobRow]()
 	}
-	rows := collectionlist.NewListWithCapacity[ProbeJobRow](upstreams.Len())
-	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
-		rows.Add(ProbeJobRow{
+	return collectionlist.MapList(upstreams, func(_ int, upstream ecosystem.Upstream) ProbeJobRow {
+		return ProbeJobRow{
 			Ecosystem: upstream.Ecosystem,
 			Alias:     upstream.Alias,
 			Enabled:   upstream.Config.Probe.Enabled,
@@ -58,10 +57,8 @@ func probeJobRows(upstreams *collectionlist.List[ecosystem.Upstream]) *collectio
 			Timeout:   formatDuration(upstream.Config.Probe.Timeout),
 			Cooldown:  formatDuration(upstream.Config.Probe.Cooldown),
 			Jitter:    formatDuration(upstream.Config.Probe.Jitter),
-		})
-		return true
+		}
 	})
-	return rows
 }
 
 func (s *Service) prefetchHistoryRows(ctx context.Context) (*collectionlist.List[PrefetchRunRow], *collectionlist.List[PrefetchOutcomeRow], error) {
@@ -83,9 +80,8 @@ func prefetchRunRows(records *collectionlist.List[meta.PrefetchRunRecord]) *coll
 	if records == nil {
 		return collectionlist.NewList[PrefetchRunRow]()
 	}
-	rows := collectionlist.NewListWithCapacity[PrefetchRunRow](records.Len())
-	records.Range(func(_ int, record meta.PrefetchRunRecord) bool {
-		rows.Add(PrefetchRunRow{
+	return collectionlist.MapList(records, func(_ int, record meta.PrefetchRunRecord) PrefetchRunRow {
+		return PrefetchRunRow{
 			ID:                  record.ID,
 			Status:              record.Status,
 			StartedAt:           formatTime(record.StartedAt),
@@ -100,19 +96,16 @@ func prefetchRunRows(records *collectionlist.List[meta.PrefetchRunRecord]) *coll
 			BytesWarmed:         formatBytes(record.BytesWarmed),
 			RetryRequested:      record.RetryRequested,
 			Error:               record.Error,
-		})
-		return true
+		}
 	})
-	return rows
 }
 
 func prefetchOutcomeRows(records *collectionlist.List[meta.PrefetchOutcomeRecord]) *collectionlist.List[PrefetchOutcomeRow] {
 	if records == nil {
 		return collectionlist.NewList[PrefetchOutcomeRow]()
 	}
-	rows := collectionlist.NewListWithCapacity[PrefetchOutcomeRow](records.Len())
-	records.Range(func(_ int, record meta.PrefetchOutcomeRecord) bool {
-		rows.Add(PrefetchOutcomeRow{
+	return collectionlist.MapList(records, func(_ int, record meta.PrefetchOutcomeRecord) PrefetchOutcomeRow {
+		return PrefetchOutcomeRow{
 			Candidate:      record.CandidateKey,
 			Status:         record.Status,
 			Attempt:        record.Attempt,
@@ -123,8 +116,6 @@ func prefetchOutcomeRows(records *collectionlist.List[meta.PrefetchOutcomeRecord
 			FinishedAt:     formatTime(record.FinishedAt),
 			BytesWarmed:    formatBytes(record.BytesWarmed),
 			ManifestDigest: record.ManifestDigest,
-		})
-		return true
+		}
 	})
-	return rows
 }
