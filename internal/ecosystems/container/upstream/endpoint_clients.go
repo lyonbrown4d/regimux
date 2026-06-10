@@ -5,6 +5,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"go.uber.org/multierr"
 )
 
@@ -21,6 +22,7 @@ type endpointClientGroup struct {
 func newEndpointClientsFromConfigs(
 	configs *collectionmapping.OrderedMap[string, Config],
 	logger *slog.Logger,
+	factory *clientfactory.Factory,
 ) *EndpointClients {
 	groups := collectionmapping.NewOrderedMap[string, endpointClientGroup]()
 	if configs == nil {
@@ -32,21 +34,21 @@ func newEndpointClientsFromConfigs(
 		cfg.Alias = alias
 		groups.Set(alias, endpointClientGroup{
 			config:   cfg,
-			runtimes: newEndpointRuntimes(cfg, logger),
+			runtimes: newEndpointRuntimes(cfg, logger, factory),
 		})
 		return true
 	})
 	return &EndpointClients{groups: groups}
 }
 
-func newEndpointRuntimes(cfg Config, logger *slog.Logger) *collectionlist.List[upstreamRuntime] {
+func newEndpointRuntimes(cfg Config, logger *slog.Logger, factory *clientfactory.Factory) *collectionlist.List[upstreamRuntime] {
 	registries := endpointRegistries(cfg)
 	runtimes := collectionlist.NewListWithCapacity[upstreamRuntime](registries.Len())
 	registries.Range(func(_ int, registry string) bool {
 		runtimeCfg := cfg
 		runtimeCfg.Registry = registry
 		runtime := upstreamRuntime{config: runtimeCfg}
-		runtime.client, runtime.err = newHTTPClient(runtimeCfg, logger)
+		runtime.client, runtime.err = newHTTPClient(runtimeCfg, logger, factory)
 		if runtime.err != nil && logger != nil {
 			logger.Warn(
 				"create upstream http client failed",

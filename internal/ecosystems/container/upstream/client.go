@@ -9,6 +9,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -50,6 +51,7 @@ type ClientDependencies struct {
 	Pools           *worker.Pools
 	Bus             events.Bus
 	Metadata        meta.Store
+	Factory         *clientfactory.Factory
 	EndpointClients *EndpointClients
 	HotHealth       probehealth.Store
 }
@@ -64,9 +66,13 @@ func NewClient(deps ClientDependencies) *Client {
 		logger = slog.Default()
 	}
 	logger = logger.With("component", "upstream")
+	factory := deps.Factory
+	if factory == nil {
+		factory = clientfactory.New(logger)
+	}
 	endpointClients := deps.EndpointClients
 	if endpointClients == nil {
-		endpointClients = newEndpointClientsFromConfigs(configs, logger)
+		endpointClients = newEndpointClientsFromConfigs(configs, logger, factory)
 	}
 	upstreams := collectionmapping.NewOrderedMap[string, *upstreamPool]()
 	if endpointClients.Len() == 0 {

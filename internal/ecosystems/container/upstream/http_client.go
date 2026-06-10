@@ -18,8 +18,11 @@ const (
 	tagsPath               = "tags/list"
 )
 
-func newHTTPClient(cfg Config, logger *slog.Logger) (clienthttp.Client, error) {
+func newHTTPClient(cfg Config, logger *slog.Logger, factories ...*clientfactory.Factory) (clienthttp.Client, error) {
 	factory := clientfactory.New(logger)
+	if len(factories) > 0 && factories[0] != nil {
+		factory = factories[0]
+	}
 	httpClient, err := factory.HTTP(clientfactory.Config{
 		BaseURL:   cfg.Registry,
 		Timeout:   cfg.HTTP.Timeout,

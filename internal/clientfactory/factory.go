@@ -5,11 +5,13 @@ import (
 	"crypto/tls"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"strings"
 	"time"
 
 	"github.com/arcgolabs/clientx"
 	clienthttp "github.com/arcgolabs/clientx/http"
+	appconfig "github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
@@ -73,6 +75,45 @@ func (f *Factory) RawHTTP(cfg Config) (*http.Client, error) {
 		return nil, err
 	}
 	return client.Raw().Client(), nil
+}
+
+func (f *Factory) UpstreamHTTP(cfg appconfig.UpstreamConfig, baseURL, component string) (clienthttp.Client, error) {
+	return f.HTTP(ForUpstream(cfg, baseURL, component))
+}
+
+func (f *Factory) RawUpstreamHTTP(cfg appconfig.UpstreamConfig, baseURL, component string) (*http.Client, error) {
+	return f.RawHTTP(ForUpstream(cfg, baseURL, component))
+}
+
+func ForUpstream(cfg appconfig.UpstreamConfig, baseURL, component string) Config {
+	return Config{
+		BaseURL:    NormalizeBaseURL(baseURL),
+		Timeout:    cfg.HTTP.Timeout,
+		UserAgent:  defaultUserAgent,
+		HTTP2:      cfg.HTTP.HTTP2.Enabled,
+		TLSEnabled: cfg.HTTP.TLS.Enabled,
+		Retry: clientx.RetryConfig{
+			Enabled:    cfg.HTTP.Retry.Enabled,
+			MaxRetries: cfg.HTTP.Retry.MaxRetries,
+			WaitMin:    cfg.HTTP.Retry.WaitMin,
+			WaitMax:    cfg.HTTP.Retry.WaitMax,
+		},
+		InsecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
+		ServerName:         cfg.HTTP.TLS.ServerName,
+		Component:          component,
+	}
+}
+
+func NormalizeBaseURL(rawURL string) string {
+	rawURL = strings.TrimRight(strings.TrimSpace(rawURL), "/")
+	if rawURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err == nil && parsed.Scheme != "" && parsed.Host != "" {
+		return parsed.Scheme + "://" + parsed.Host
+	}
+	return rawURL
 }
 
 func (f *Factory) options(component string) []clienthttp.Option {

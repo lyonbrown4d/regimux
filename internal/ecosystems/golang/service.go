@@ -10,6 +10,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -30,6 +31,7 @@ type ServiceDependencies struct {
 	Config   config.Config
 	Metadata meta.Store
 	Objects  object.Store
+	Factory  *clientfactory.Factory
 	Logger   *slog.Logger
 	Events   events.Bus
 }
@@ -38,7 +40,7 @@ type Service struct {
 	cfg      config.Config
 	metadata meta.Store
 	objects  object.Store
-	client   *http.Client
+	factory  *clientfactory.Factory
 	logger   *slog.Logger
 	events   events.Bus
 }
@@ -95,11 +97,15 @@ func NewService(deps ServiceDependencies) *Service {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	factory := deps.Factory
+	if factory == nil {
+		factory = clientfactory.New(logger)
+	}
 	return &Service{
 		cfg:      deps.Config,
 		metadata: deps.Metadata,
 		objects:  deps.Objects,
-		client:   &http.Client{},
+		factory:  factory,
 		logger:   logger.With("component", "go"),
 		events:   deps.Events,
 	}

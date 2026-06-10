@@ -4,6 +4,7 @@ import (
 	"log/slog"
 
 	"github.com/arcgolabs/dix"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
@@ -11,10 +12,16 @@ import (
 
 var Module = dix.NewModule("ecosystem",
 	dix.Providers(
-		dix.Provider4[*EndpointProber, meta.Store, probehealth.Store, *worker.Pools, *slog.Logger](newEndpointProber),
+		dix.Provider5[*EndpointProber, meta.Store, probehealth.Store, *worker.Pools, *clientfactory.Factory, *slog.Logger](newEndpointProber),
 	),
 )
 
-func newEndpointProber(metadata meta.Store, hotHealth probehealth.Store, pools *worker.Pools, logger *slog.Logger) *EndpointProber {
-	return NewEndpointProber(metadata, pools, logger, hotHealth)
+func newEndpointProber(
+	metadata meta.Store,
+	hotHealth probehealth.Store,
+	pools *worker.Pools,
+	factory *clientfactory.Factory,
+	logger *slog.Logger,
+) *EndpointProber {
+	return NewEndpointProberWithFactory(metadata, pools, logger, factory, hotHealth)
 }

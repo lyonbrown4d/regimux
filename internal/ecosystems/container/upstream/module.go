@@ -6,6 +6,7 @@ import (
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/dix"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
@@ -15,7 +16,7 @@ import (
 
 var Module = dix.NewModule("container-upstream",
 	dix.Providers(
-		dix.Provider2[*EndpointClients, config.Config, *slog.Logger](newEndpointClients),
+		dix.Provider3[*EndpointClients, config.Config, *clientfactory.Factory, *slog.Logger](newEndpointClients),
 		dix.Provider1[*Client, ClientDependencies](NewClient, dix.As[RegistryClient]()),
 		dix.Provider2[clientRuntimeDependencies, *EndpointClients, probehealth.Store](newClientRuntimeDependencies),
 		dix.Provider6[ClientDependencies, config.Config, *slog.Logger, *worker.Pools, events.Bus, meta.Store, clientRuntimeDependencies](
@@ -29,8 +30,8 @@ var Module = dix.NewModule("container-upstream",
 	),
 )
 
-func newEndpointClients(cfg config.Config, logger *slog.Logger) *EndpointClients {
-	return newEndpointClientsFromConfigs(ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), logger)
+func newEndpointClients(cfg config.Config, factory *clientfactory.Factory, logger *slog.Logger) *EndpointClients {
+	return newEndpointClientsFromConfigs(ConfigsFromUpstreamConfigs(cfg.OrderedContainerUpstreams()), logger, factory)
 }
 
 func newClientDependencies(

@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
@@ -42,9 +43,9 @@ func (s *Service) fetchEndpoint(ctx context.Context, cfg config.UpstreamConfig, 
 	req.Header.Set("User-Agent", "regimux/dev")
 	applyAuth(req, cfg.Auth)
 
-	client := s.client
-	if cfg.HTTP.Timeout > 0 {
-		client = &http.Client{Timeout: cfg.HTTP.Timeout}
+	client, err := s.clientFor(cfg, endpoint)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -64,6 +65,18 @@ func (s *Service) fetchEndpoint(ctx context.Context, cfg config.UpstreamConfig, 
 		headers: resp.Header.Clone(),
 		body:    body,
 	}, nil
+}
+
+func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (*http.Client, error) {
+	factory := s.factory
+	if factory == nil {
+		factory = clientfactory.New(s.logger)
+	}
+	client, err := factory.RawUpstreamHTTP(cfg, baseURL, "go.clientx")
+	if err != nil {
+		return nil, wrapError(err, "create go proxy upstream client")
+	}
+	return client, nil
 }
 
 func materializeHTTPBody(body io.ReadCloser) (io.ReadCloser, error) {

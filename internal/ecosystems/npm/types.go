@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -39,6 +40,7 @@ type ServiceDependencies struct {
 	Logger      *slog.Logger
 	MetadataTTL time.Duration
 	Client      *http.Client
+	Factory     *clientfactory.Factory
 	Now         func() time.Time
 	Events      events.Bus
 }
@@ -48,6 +50,7 @@ type Service struct {
 	metadata    meta.Store
 	cache       *artifactcache.Store
 	client      *http.Client
+	factory     *clientfactory.Factory
 	logger      *slog.Logger
 	publicURL   string
 	metadataTTL time.Duration

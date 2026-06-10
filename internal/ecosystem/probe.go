@@ -9,6 +9,7 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -24,13 +25,26 @@ type EndpointProber struct {
 	metadata  meta.EndpointHealthRepository
 	hotHealth probehealth.Store
 	workers   *worker.Pools
-	client    *http.Client
+	factory   *clientfactory.Factory
 	logger    *slog.Logger
 }
 
 func NewEndpointProber(metadata meta.EndpointHealthRepository, pools *worker.Pools, logger *slog.Logger, stores ...probehealth.Store) *EndpointProber {
+	return NewEndpointProberWithFactory(metadata, pools, logger, nil, stores...)
+}
+
+func NewEndpointProberWithFactory(
+	metadata meta.EndpointHealthRepository,
+	pools *worker.Pools,
+	logger *slog.Logger,
+	factory *clientfactory.Factory,
+	stores ...probehealth.Store,
+) *EndpointProber {
 	if logger == nil {
 		logger = slog.Default()
+	}
+	if factory == nil {
+		factory = clientfactory.New(logger)
 	}
 	var hotHealth probehealth.Store
 	if len(stores) > 0 {
@@ -40,7 +54,7 @@ func NewEndpointProber(metadata meta.EndpointHealthRepository, pools *worker.Poo
 		metadata:  metadata,
 		hotHealth: hotHealth,
 		workers:   pools,
-		client:    &http.Client{},
+		factory:   factory,
 		logger:    logger.With("component", "ecosystem-probe"),
 	}
 }
@@ -110,7 +124,13 @@ func (p *EndpointProber) probeEndpoint(ctx context.Context, target ProbeTarget, 
 	req.Header.Set("User-Agent", "regimux/dev")
 	applyProbeAuth(req, target.Config.Auth)
 
-	resp, err := p.clientFor(target.Config).Do(req)
+	client, err := p.clientFor(target.Config, endpoint)
+	if err != nil {
+		p.recordFailure(ctx, target, endpoint, time.Now())
+		p.logEndpoint(ctx, target, endpoint, 0, 0, err)
+		return err
+	}
+	resp, err := client.Do(req)
 	latency := time.Since(startedAt)
 	now := time.Now()
 	if err != nil {
@@ -148,11 +168,16 @@ func (p *EndpointProber) probeContext(ctx context.Context, cfg config.UpstreamCo
 	return context.WithTimeout(ctx, timeout)
 }
 
-func (p *EndpointProber) clientFor(cfg config.UpstreamConfig) *http.Client {
-	if cfg.HTTP.Timeout <= 0 {
-		return p.client
+func (p *EndpointProber) clientFor(cfg config.UpstreamConfig, baseURL string) (*http.Client, error) {
+	factory := p.factory
+	if factory == nil {
+		factory = clientfactory.New(p.logger)
 	}
-	return &http.Client{Timeout: cfg.HTTP.Timeout}
+	client, err := factory.RawUpstreamHTTP(cfg, baseURL, "ecosystem.probe")
+	if err != nil {
+		return nil, oops.Wrapf(err, "create ecosystem probe client")
+	}
+	return client, nil
 }
 
 func (p *EndpointProber) probePool() *ants.Pool {

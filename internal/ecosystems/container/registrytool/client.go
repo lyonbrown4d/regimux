@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
@@ -21,6 +22,11 @@ const defaultUserAgent = "regimux/dev"
 
 type Client struct {
 	userAgent string
+	factory   *clientfactory.Factory
+}
+
+type Dependencies struct {
+	Factory *clientfactory.Factory
 }
 
 type AuthConfig struct {
@@ -59,8 +65,15 @@ type Manifest struct {
 	Content    []byte
 }
 
-func NewClient() *Client {
-	return &Client{userAgent: defaultUserAgent}
+func NewClient(deps ...Dependencies) *Client {
+	var factory *clientfactory.Factory
+	if len(deps) > 0 {
+		factory = deps[0].Factory
+	}
+	if factory == nil {
+		factory = clientfactory.New(nil)
+	}
+	return &Client{userAgent: defaultUserAgent, factory: factory}
 }
 
 func (c *Client) Head(ctx context.Context, ref Reference) (Descriptor, error) {
@@ -121,7 +134,11 @@ func (c *Client) ORASRepository(ref RepositoryRef) (*orasremote.Repository, erro
 	}
 	repo.PlainHTTP = plainHTTP
 	repo.TagListPageSize = ref.PageSize
-	repo.Client = c.orasAuthClient(host, ref.Auth)
+	client, err := c.orasAuthClient(host, plainHTTP, ref.Auth)
+	if err != nil {
+		return nil, err
+	}
+	repo.Client = client
 	return repo, nil
 }
 
@@ -135,9 +152,13 @@ func (ref Reference) repositoryRef() RepositoryRef {
 	}
 }
 
-func (c *Client) orasAuthClient(host string, cfg AuthConfig) *orasauth.Client {
+func (c *Client) orasAuthClient(host string, plainHTTP bool, cfg AuthConfig) (*orasauth.Client, error) {
+	rawClient, err := c.rawHTTPClient(host, plainHTTP)
+	if err != nil {
+		return nil, err
+	}
 	client := &orasauth.Client{
-		Client: http.DefaultClient,
+		Client: rawClient,
 		Cache:  orasauth.NewCache(),
 	}
 	client.SetUserAgent(c.userAgent)
@@ -145,7 +166,28 @@ func (c *Client) orasAuthClient(host string, cfg AuthConfig) *orasauth.Client {
 	if credential != orasauth.EmptyCredential {
 		client.Credential = orasauth.StaticCredential(host, credential)
 	}
-	return client
+	return client, nil
+}
+
+func (c *Client) rawHTTPClient(host string, plainHTTP bool) (*http.Client, error) {
+	factory := c.factory
+	if factory == nil {
+		factory = clientfactory.New(nil)
+	}
+	scheme := "https"
+	if plainHTTP {
+		scheme = "http"
+	}
+	client, err := factory.RawHTTP(clientfactory.Config{
+		BaseURL:   scheme + "://" + host,
+		UserAgent: c.userAgent,
+		HTTP2:     true,
+		Component: "registrytool.clientx",
+	})
+	if err != nil {
+		return nil, oops.In("registrytool").Wrapf(err, "create registrytool http client")
+	}
+	return client, nil
 }
 
 func normalizeRegistry(registry string, plainHTTP bool) (string, bool, error) {

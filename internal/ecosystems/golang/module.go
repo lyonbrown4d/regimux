@@ -6,6 +6,7 @@ import (
 
 	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/httpx"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -16,12 +17,13 @@ import (
 
 var Module = dix.NewModule("go",
 	dix.Providers(
-		dix.Provider5[*Service, config.Config, meta.Store, object.Store, *slog.Logger, events.Bus](
-			func(cfg config.Config, metadata meta.Store, objects object.Store, logger *slog.Logger, bus events.Bus) *Service {
+		dix.Provider6[*Service, config.Config, meta.Store, object.Store, *clientfactory.Factory, *slog.Logger, events.Bus](
+			func(cfg config.Config, metadata meta.Store, objects object.Store, factory *clientfactory.Factory, logger *slog.Logger, bus events.Bus) *Service {
 				return NewService(ServiceDependencies{
 					Config:   cfg,
 					Metadata: metadata,
 					Objects:  objects,
+					Factory:  factory,
 					Logger:   logger,
 					Events:   bus,
 				})

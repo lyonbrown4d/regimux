@@ -6,6 +6,7 @@ import (
 	"github.com/arcgolabs/dix"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -15,12 +16,13 @@ import (
 
 var Module = dix.NewModule("maven",
 	dix.Providers(
-		dix.Provider5[*Service, config.Config, *artifactcache.Store, meta.Store, *slog.Logger, events.Bus](
-			func(cfg config.Config, cache *artifactcache.Store, metadata meta.Store, logger *slog.Logger, bus events.Bus) *Service {
+		dix.Provider6[*Service, config.Config, *artifactcache.Store, meta.Store, *clientfactory.Factory, *slog.Logger, events.Bus](
+			func(cfg config.Config, cache *artifactcache.Store, metadata meta.Store, factory *clientfactory.Factory, logger *slog.Logger, bus events.Bus) *Service {
 				return NewService(ServiceDependencies{
 					Config:   cfg,
 					Cache:    cache,
 					Metadata: metadata,
+					Factory:  factory,
 					Logger:   logger,
 					Events:   bus,
 				})

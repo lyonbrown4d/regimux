@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
@@ -43,9 +44,9 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 	req.Header.Set("User-Agent", defaultUserAgent)
 	applyAuth(req, cfg.Auth)
 
-	client := s.client
-	if cfg.HTTP.Timeout > 0 {
-		client = &http.Client{Timeout: cfg.HTTP.Timeout}
+	client, err := s.clientFor(cfg, requestURL)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
@@ -61,6 +62,21 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 		headers: resp.Header.Clone(),
 		body:    body,
 	}, nil
+}
+
+func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (*http.Client, error) {
+	if s.client != nil {
+		return s.client, nil
+	}
+	factory := s.factory
+	if factory == nil {
+		factory = clientfactory.New(s.logger)
+	}
+	client, err := factory.RawUpstreamHTTP(cfg, baseURL, "maven.clientx")
+	if err != nil {
+		return nil, wrapError(err, "create maven upstream client")
+	}
+	return client, nil
 }
 
 func materializeHTTPBody(body io.ReadCloser) (io.ReadCloser, error) {

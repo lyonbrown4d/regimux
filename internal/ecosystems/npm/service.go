@@ -12,6 +12,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
+	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/oops"
@@ -26,9 +27,9 @@ func NewService(deps ServiceDependencies) *Service {
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
-	client := deps.Client
-	if client == nil {
-		client = &http.Client{}
+	factory := deps.Factory
+	if factory == nil {
+		factory = clientfactory.New(logger)
 	}
 	cache := deps.Cache
 	if cache == nil {
@@ -43,7 +44,8 @@ func NewService(deps ServiceDependencies) *Service {
 		cfg:         deps.Config,
 		metadata:    deps.Metadata,
 		cache:       cache,
-		client:      client,
+		client:      deps.Client,
+		factory:     factory,
 		logger:      logger.With("component", "npm"),
 		publicURL:   strings.TrimRight(deps.Config.Server.PublicURL, "/"),
 		metadataTTL: deps.MetadataTTL,
@@ -156,9 +158,9 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 	req.Header.Set("User-Agent", "regimux/dev")
 	applyAuth(req, cfg.Auth)
 
-	client := s.client
-	if cfg.HTTP.Timeout > 0 {
-		client = &http.Client{Timeout: cfg.HTTP.Timeout}
+	client, err := s.clientFor(cfg, requestURL)
+	if err != nil {
+		return nil, err
 	}
 	resp, err := client.Do(req)
 	if err != nil {
