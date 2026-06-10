@@ -103,14 +103,7 @@ func (r *Runtime) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {
 	if r == nil {
 		return collectionlist.NewList[ecosystem.ProbeTarget]()
 	}
-	upstreams := r.Upstreams()
-	return collectionlist.FilterMapList(upstreams, func(_ int, upstream ecosystem.Upstream) (ecosystem.ProbeTarget, bool) {
-		probeCfg := upstream.Config.Probe
-		if !probeCfg.Enabled || probeCfg.Interval <= 0 {
-			return ecosystem.ProbeTarget{}, false
-		}
-		return ecosystem.ProbeTarget(upstream), true
-	})
+	return ecosystem.ProbeTargets(r.Upstreams())
 }
 
 func (r *Runtime) Probe(ctx context.Context, target ecosystem.ProbeTarget) error {

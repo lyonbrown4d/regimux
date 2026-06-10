@@ -10,6 +10,7 @@ import (
 	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/samber/lo"
 )
 
 type CleanupService struct {
@@ -231,17 +232,10 @@ func (s *CleanupService) protectedBlobDigests(ctx context.Context) (*collections
 		return nil, wrapError(err, "list manifest metadata for cleanup")
 	}
 
-	protected := collectionset.NewSetWithCapacity[string](len(manifests))
-	for i := range manifests {
-		manifest := &manifests[i]
-		if manifest.Digest != "" {
-			protected.Add(manifest.Digest)
-		}
-		if manifest.ObjectKey != "" {
-			protected.Add(manifest.ObjectKey)
-		}
-	}
-	return protected, nil
+	protected := lo.FlatMap(manifests, func(manifest meta.ManifestRecord, _ int) []string {
+		return lo.Compact([]string{manifest.Digest, manifest.ObjectKey})
+	})
+	return collectionset.NewSet[string](protected...), nil
 }
 
 func (s *CleanupService) deleteBlobObject(ctx context.Context, blob *meta.BlobRecord, report *CleanupReport) error {

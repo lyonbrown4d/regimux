@@ -6,17 +6,14 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/lo"
 )
 
 func probeEndpoints(cfg config.UpstreamConfig) *collectionlist.List[string] {
-	endpoints := collectionlist.NewList(append([]string{cfg.Registry}, cfg.Mirrors...)...)
-	return collectionlist.FilterMapList(endpoints, func(_ int, endpoint string) (string, bool) {
+	return collectionlist.NewList(lo.FilterMap(lo.Concat([]string{cfg.Registry}, cfg.Mirrors), func(endpoint string, _ int) (string, bool) {
 		trimmed := strings.TrimRight(strings.TrimSpace(endpoint), "/")
-		if trimmed == "" {
-			return "", false
-		}
-		return trimmed, true
-	})
+		return trimmed, trimmed != ""
+	})...)
 }
 
 func probeURL(endpoint string) string {
