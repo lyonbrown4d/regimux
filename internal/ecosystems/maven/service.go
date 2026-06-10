@@ -14,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -198,8 +199,8 @@ func (s *Service) Upstreams() *collectionlist.List[Upstream] {
 		return collectionlist.NewList[Upstream]()
 	}
 	ordered := s.cfg.OrderedMavenUpstreams()
-	return collectionlist.MapList(collectionlist.NewList(ordered.Keys()...), func(_ int, alias string) Upstream {
+	return collectionlist.NewList(lo.Map(ordered.Keys(), func(alias string, _ int) Upstream {
 		cfg, _ := ordered.Get(alias)
 		return Upstream{Alias: alias, Config: cfg}
-	})
+	})...)
 }

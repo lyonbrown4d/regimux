@@ -10,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/samber/lo"
 )
 
 func routeForUpstream(baseRoute route, alias string) route {
@@ -125,9 +126,9 @@ func (s *Service) Upstreams() *collectionlist.List[Upstream] {
 		return collectionlist.NewList[Upstream]()
 	}
 	upstreams := s.goUpstreams()
-	return collectionlist.MapList(upstreams, func(_ int, upstream goUpstream) Upstream {
+	return collectionlist.NewList(lo.Map(upstreams.Values(), func(upstream goUpstream, _ int) Upstream {
 		return Upstream{Alias: upstream.alias, Config: upstream.cfg}
-	})
+	})...)
 }
 
 func (s *Service) goUpstreams() *collectionlist.List[goUpstream] {
@@ -135,10 +136,10 @@ func (s *Service) goUpstreams() *collectionlist.List[goUpstream] {
 	if ordered.Len() == 0 {
 		return collectionlist.NewList[goUpstream]()
 	}
-	out := collectionlist.MapList(collectionlist.NewList(ordered.Keys()...), func(_ int, alias string) goUpstream {
+	out := collectionlist.NewList(lo.Map(ordered.Keys(), func(alias string, _ int) goUpstream {
 		cfg, _ := ordered.Get(alias)
 		return goUpstream{alias: alias, cfg: cfg}
-	})
+	})...)
 	return preferGoAlias(out, "default")
 }
 

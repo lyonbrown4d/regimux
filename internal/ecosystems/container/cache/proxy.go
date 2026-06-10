@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
@@ -19,6 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/go-singleflightx"
+	"github.com/samber/lo"
 )
 
 type Proxy struct {
@@ -248,9 +248,9 @@ func rewriteTagsHeaders(headers http.Header, req TagRequest) http.Header {
 }
 
 func rewriteLinkHeader(header, alias, repo string) string {
-	return collectionlist.MapList(collectionlist.NewList(strings.Split(header, ",")...), func(_ int, part string) string {
+	return strings.Join(lo.Map(strings.Split(header, ","), func(part string, _ int) string {
 		return rewriteLinkPart(part, alias, repo)
-	}).Join(",")
+	}), ",")
 }
 
 func rewriteLinkPart(part, alias, repo string) string {

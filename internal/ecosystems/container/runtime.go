@@ -10,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -60,14 +61,14 @@ func (r *Runtime) Upstreams() *collectionlist.List[ecosystem.Upstream] {
 		return collectionlist.NewList[ecosystem.Upstream]()
 	}
 	ordered := r.cfg.OrderedContainerUpstreams()
-	return collectionlist.MapList(collectionlist.NewList(ordered.Keys()...), func(_ int, alias string) ecosystem.Upstream {
+	return collectionlist.NewList(lo.Map(ordered.Keys(), func(alias string, _ int) ecosystem.Upstream {
 		cfg, _ := ordered.Get(alias)
 		return ecosystem.Upstream{
 			Ecosystem: r.Name(),
 			Alias:     alias,
 			Config:    cfg,
 		}
-	})
+	})...)
 }
 
 var _ ecosystem.Runtime = (*Runtime)(nil)

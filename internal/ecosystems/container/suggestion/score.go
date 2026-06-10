@@ -28,12 +28,12 @@ func SuggestRepositories(repository string, repositories []string, opts SuggestO
 }
 
 func manifestSuggestions(alias, repo string, tags []string) []distribution.ManifestSuggestion {
-	return collectionlist.MapList(collectionlist.NewList(tags...), func(_ int, tag string) distribution.ManifestSuggestion {
+	return lo.Map(tags, func(tag string, _ int) distribution.ManifestSuggestion {
 		return distribution.ManifestSuggestion{
 			Reference: tag,
 			Image:     suggestedImage(alias, repo, tag),
 		}
-	}).Values()
+	})
 }
 
 func suggestedImage(alias, repo, tag string) string {
@@ -77,9 +77,9 @@ func rankValues(target string, values []string, limit int) []string {
 	if scored.Len() > limit {
 		scored = scored.Take(limit)
 	}
-	return collectionlist.MapList(scored, func(_ int, item scoredValue) string {
+	return lo.Map(scored.Values(), func(item scoredValue, _ int) string {
 		return item.value
-	}).Values()
+	})
 }
 
 func suggestionScore(target, value string) int {
