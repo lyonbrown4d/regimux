@@ -123,32 +123,22 @@ func probeTargetFromUpstreams(alias string, upstreams *collectionlist.List[ecosy
 	if upstreams == nil {
 		return ecosystem.ProbeTarget{}
 	}
-	var matched ecosystem.ProbeTarget
-	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
-		if strings.EqualFold(strings.TrimSpace(upstream.Alias), alias) {
-			matched = ecosystem.ProbeTarget(upstream)
-			return false
-		}
-		return true
-	})
-	return matched
+	upstream, ok := upstreams.FirstWhere(func(_ int, upstream ecosystem.Upstream) bool {
+		return strings.EqualFold(strings.TrimSpace(upstream.Alias), alias)
+	}).Get()
+	if !ok {
+		return ecosystem.ProbeTarget{}
+	}
+	return ecosystem.ProbeTarget(upstream)
 }
 
 func (r *Runtime) findProbeTargetFromProbes(alias string, probes *collectionlist.List[ecosystem.ProbeTarget]) (ecosystem.ProbeTarget, bool) {
 	if probes == nil {
 		return ecosystem.ProbeTarget{}, false
 	}
-	var matched ecosystem.ProbeTarget
-	var found bool
-	probes.Range(func(_ int, target ecosystem.ProbeTarget) bool {
-		if strings.EqualFold(strings.TrimSpace(target.Alias), alias) {
-			matched = target
-			found = true
-			return false
-		}
-		return true
-	})
-	return matched, found
+	return probes.FirstWhere(func(_ int, target ecosystem.ProbeTarget) bool {
+		return strings.EqualFold(strings.TrimSpace(target.Alias), alias)
+	}).Get()
 }
 
 type normalizedProbeLookup struct {

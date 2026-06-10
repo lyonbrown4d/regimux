@@ -121,22 +121,14 @@ func (r *Runtime) manualSyncerByJob(id string) (ecosystem.ManualSyncer, manualsy
 	if r == nil || id == "" {
 		return nil, manualsync.SyncJob{}, false
 	}
-	var matched ecosystem.ManualSyncer
 	var job manualsync.SyncJob
-	var ok bool
-	runtimeCapabilities[ecosystem.ManualSyncer](r).Range(func(_ int, syncer ecosystem.ManualSyncer) bool {
-		if matched != nil {
-			return false
-		}
-		job, ok = syncer.SyncJob(id)
-		if !ok {
-			return true
-		}
-		matched = syncer
-		return false
-	})
-	if matched != nil && ok {
-		return matched, job, true
+	syncer, ok := runtimeCapabilities[ecosystem.ManualSyncer](r).FirstWhere(func(_ int, syncer ecosystem.ManualSyncer) bool {
+		var found bool
+		job, found = syncer.SyncJob(id)
+		return found
+	}).Get()
+	if ok {
+		return syncer, job, true
 	}
 	return nil, manualsync.SyncJob{}, false
 }

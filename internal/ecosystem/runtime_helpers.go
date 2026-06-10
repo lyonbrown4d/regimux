@@ -115,30 +115,24 @@ func UpstreamAliases(upstreams *collectionlist.List[Upstream]) *collectionlist.L
 
 // ConfiguredUpstreams returns all upstreams exposed by runtime providers.
 func ConfiguredUpstreams(runtimes *collectionlist.List[Runtime]) *collectionlist.List[Upstream] {
-	out := collectionlist.NewList[Upstream]()
 	if runtimes == nil {
-		return out
+		return collectionlist.NewList[Upstream]()
 	}
-	runtimes.Range(func(_ int, runtime Runtime) bool {
+	return collectionlist.FlatMapList(runtimes, func(_ int, runtime Runtime) []Upstream {
 		provider, ok := runtime.(UpstreamProvider)
 		if !ok || provider == nil {
-			return true
+			return nil
 		}
 		name := strings.TrimSpace(runtime.Name())
 		upstreams := provider.Upstreams()
 		if upstreams == nil {
-			return true
+			return nil
 		}
-		upstreams.Range(func(_ int, upstream Upstream) bool {
+		return collectionlist.FilterMapList(upstreams, func(_ int, upstream Upstream) (Upstream, bool) {
 			upstream.Ecosystem = upstreamEcosystem(name, upstream.Ecosystem)
-			if upstream.Ecosystem != "" && strings.TrimSpace(upstream.Alias) != "" {
-				out.Add(upstream)
-			}
-			return true
-		})
-		return true
+			return upstream, upstream.Ecosystem != "" && strings.TrimSpace(upstream.Alias) != ""
+		}).Values()
 	})
-	return out
 }
 
 func upstreamEcosystem(runtimeName, upstreamName string) string {

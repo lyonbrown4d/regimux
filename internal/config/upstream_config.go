@@ -106,19 +106,20 @@ func normalizeBlobMirrorPolicy(alias, policy, upstreamPolicy string) (string, er
 }
 
 func normalizeUpstreamProbeConfig(alias string, probeCfg UpstreamProbeConfig) (UpstreamProbeConfig, error) {
-	checks := []struct {
+	type validationCheck struct {
 		invalid bool
 		err     error
-	}{
+	}
+	checks := []validationCheck{
 		{probeCfg.Interval < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.interval cannot be negative", alias)},
 		{probeCfg.Timeout < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.timeout cannot be negative", alias)},
 		{probeCfg.Cooldown < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.cooldown cannot be negative", alias)},
 		{probeCfg.Jitter < 0, oops.In("config").With("alias", alias).Errorf("upstreams.%s.probe.jitter cannot be negative", alias)},
 	}
-	for _, check := range checks {
-		if check.invalid {
-			return UpstreamProbeConfig{}, check.err
-		}
+	if check, ok := lo.Find(checks, func(check validationCheck) bool {
+		return check.invalid
+	}); ok {
+		return UpstreamProbeConfig{}, check.err
 	}
 	probeCfg.Interval = lo.CoalesceOrEmpty(probeCfg.Interval, defaultUpstreamProbeInterval)
 	probeCfg.Timeout = lo.CoalesceOrEmpty(probeCfg.Timeout, defaultUpstreamProbeTimeout)
@@ -141,12 +142,15 @@ func validateUpstreamSource(alias string, upstreamCfg UpstreamConfig) error {
 }
 
 func normalizeMirrors(alias string, mirrors []string) ([]string, error) {
-	for i, mirror := range mirrors {
+	normalized, err := lo.MapErr(mirrors, func(mirror string, i int) (string, error) {
 		mirror = strings.TrimSpace(mirror)
 		if err := validateURL(fmt.Sprintf("upstreams.%s.mirrors[%d]", alias, i), mirror); err != nil {
-			return nil, err
+			return "", err
 		}
-		mirrors[i] = mirror
+		return mirror, nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return uniqueStrings(mirrors), nil
+	return uniqueStrings(normalized), nil
 }

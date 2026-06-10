@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/samber/lo"
 )
 
 type ManifestUnknownDetail struct {
@@ -77,10 +78,10 @@ func manifestUnknownSuggestionMessage(repo, reference string, tags, repositories
 		return ErrManifestUnknown.Message
 	}
 	if len(tags) > 0 {
-		suggestion := strings.Join(tags[:min(len(tags), 2)], " or ")
+		suggestion := strings.Join(lo.Take(tags, 2), " or ")
 		return fmt.Sprintf("manifest unknown: tag %q not found for repository %q; did you mean %s?", reference, repo, suggestion)
 	}
-	suggestion := strings.Join(repositories[:min(len(repositories), 2)], " or ")
+	suggestion := strings.Join(lo.Take(repositories, 2), " or ")
 	return fmt.Sprintf("manifest unknown: repository %q or tag %q was not found; did you mean image %s?", repo, reference, suggestion)
 }
 

@@ -45,36 +45,24 @@ func firstRuntimeCapability[T any](r *Runtime) (T, bool) {
 	if r == nil || r.runtimes == nil {
 		return zero, false
 	}
-	var match T
-	var found bool
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
-		capability, ok := runtimeCapability[T](runtime)
-		if !ok {
-			return true
-		}
-		match = capability
-		found = true
-		return false
+	runtime, found := collectionlist.FindList(r.runtimes, func(_ int, runtime ecosystem.Runtime) bool {
+		_, ok := runtimeCapability[T](runtime)
+		return ok
 	})
 	if !found {
 		return zero, false
 	}
-	return match, true
+	return runtimeCapability[T](runtime)
 }
 
 func runtimeCapabilities[T any](r *Runtime) *collectionlist.List[T] {
-	matches := collectionlist.NewList[T]()
 	if r == nil || r.runtimes == nil {
-		return matches
+		return collectionlist.NewList[T]()
 	}
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
+	return collectionlist.FilterMapList(r.runtimes, func(_ int, runtime ecosystem.Runtime) (T, bool) {
 		capability, ok := runtimeCapability[T](runtime)
-		if ok {
-			matches.Add(capability)
-		}
-		return true
+		return capability, ok
 	})
-	return matches
 }
 
 func namedRuntimeCapability[T any](r *Runtime, name string, matcher runtimeNameMatcher, mode runtimeCapabilitySearchMode) (T, bool) {
@@ -122,13 +110,7 @@ func (r *Runtime) findRuntimeByName(name string, matcher runtimeNameMatcher) (ec
 	if matcher == nil {
 		matcher = matchRuntimeNameExact
 	}
-	var found ecosystem.Runtime
-	r.runtimes.Range(func(_ int, runtime ecosystem.Runtime) bool {
-		if runtime == nil || !matcher(runtime.Name(), name) {
-			return true
-		}
-		found = runtime
-		return false
+	return collectionlist.FindList(r.runtimes, func(_ int, runtime ecosystem.Runtime) bool {
+		return runtime != nil && matcher(runtime.Name(), name)
 	})
-	return found, found != nil
 }

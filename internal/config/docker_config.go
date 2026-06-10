@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -20,10 +21,9 @@ func (c *Config) normalizeDocker() error {
 		c.Docker.Prewarm.Timeout = defaultDockerPrewarmTimeout
 	}
 	c.Docker.Prewarm.Platform = strings.TrimSpace(c.Docker.Prewarm.Platform)
-	for i, image := range c.Docker.Prewarm.Images {
-		c.Docker.Prewarm.Images[i] = strings.TrimSpace(image)
-	}
-	c.Docker.Prewarm.Images = uniqueStrings(c.Docker.Prewarm.Images)
+	c.Docker.Prewarm.Images = uniqueStrings(lo.Map(c.Docker.Prewarm.Images, func(image string, _ int) string {
+		return strings.TrimSpace(image)
+	}))
 
 	registry, err := normalizeDockerRegistry(c.Docker.Prewarm.Registry, c.Server.PublicURL)
 	if err != nil {

@@ -3,9 +3,9 @@ package admin
 import (
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/dustin/go-humanize"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 )
 
 func formatTime(value time.Time) string {
@@ -82,12 +82,7 @@ func endpointStatus(snapshot ecosystem.EndpointHealthSnapshot) string {
 }
 
 func latestTime(values ...time.Time) time.Time {
-	return collectionlist.ReduceList(collectionlist.NewList(values...), time.Time{}, func(out time.Time, _ int, value time.Time) time.Time {
-		if value.After(out) {
-			return value
-		}
-		return out
-	})
+	return lo.Latest(values...)
 }
 
 func dash(value string) string {

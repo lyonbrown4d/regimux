@@ -7,7 +7,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -154,8 +154,5 @@ func validateURL(name, value string) error {
 }
 
 func uniqueStrings(values []string) []string {
-	clean := collectionlist.FilterMapList(collectionlist.NewList(values...), func(_ int, value string) (string, bool) {
-		return value, value != ""
-	})
-	return collectionset.NewOrderedSetWithCapacity[string](clean.Len(), clean.Values()...).Values()
+	return lo.Uniq(lo.WithoutEmpty(values))
 }
