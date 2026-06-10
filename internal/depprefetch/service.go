@@ -128,7 +128,7 @@ func (s *Service) repositories(candidates *collectionlist.List[Candidate]) int {
 	if candidates == nil {
 		return 0
 	}
-	return len(lo.Uniq(collectionlist.MapList(candidates, func(_ int, candidate Candidate) string {
+	return len(lo.Uniq(lo.Map(candidates.Values(), func(candidate Candidate, _ int) string {
 		return groupKey(candidate)
-	}).Values()))
+	})))
 }

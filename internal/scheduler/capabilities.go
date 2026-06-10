@@ -5,6 +5,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 )
 
 type runtimeCapabilitySearchMode uint8
@@ -59,10 +60,10 @@ func runtimeCapabilities[T any](r *Runtime) *collectionlist.List[T] {
 	if r == nil || r.runtimes == nil {
 		return collectionlist.NewList[T]()
 	}
-	return collectionlist.FilterMapList(r.runtimes, func(_ int, runtime ecosystem.Runtime) (T, bool) {
+	return collectionlist.NewList(lo.FilterMap(r.runtimes.Values(), func(runtime ecosystem.Runtime, _ int) (T, bool) {
 		capability, ok := runtimeCapability[T](runtime)
 		return capability, ok
-	})
+	})...)
 }
 
 func namedRuntimeCapability[T any](r *Runtime, name string, matcher runtimeNameMatcher, mode runtimeCapabilitySearchMode) (T, bool) {

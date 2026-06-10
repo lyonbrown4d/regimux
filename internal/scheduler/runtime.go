@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	goredis "github.com/redis/go-redis/v9"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
 )
@@ -91,12 +92,12 @@ func runtimeNames(runtimes *collectionlist.List[ecosystem.Runtime]) *collectionl
 	if runtimes == nil || runtimes.Len() == 0 {
 		return collectionlist.NewList[string]()
 	}
-	return collectionlist.FilterMapList(runtimes, func(_ int, runtime ecosystem.Runtime) (string, bool) {
+	return collectionlist.NewList(lo.FilterMap(runtimes.Values(), func(runtime ecosystem.Runtime, _ int) (string, bool) {
 		if runtime == nil {
 			return "", false
 		}
 		return runtime.Name(), true
-	})
+	})...)
 }
 
 func (r *Runtime) Stop(ctx context.Context) error {

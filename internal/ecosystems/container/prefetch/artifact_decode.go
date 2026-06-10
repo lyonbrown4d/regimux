@@ -7,10 +7,10 @@ import (
 	"mime"
 	"strings"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/samber/lo"
 )
 
 func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]blobDescriptor, int, error) {
@@ -19,17 +19,17 @@ func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]blobDescrip
 		return nil, 0, cacheWrap(err, "decode image manifest for prefetch")
 	}
 
-	descriptors := collectionlist.NewListWithCapacity[blobDescriptor](len(payload.Layers) + 1)
+	descriptors := make([]blobDescriptor, 0, len(payload.Layers)+1)
 	if payload.Config.Digest != "" {
-		descriptors.Add(newBlobDescriptor(payload.Config, "config"))
+		descriptors = append(descriptors, newBlobDescriptor(payload.Config, "config"))
 	}
-	descriptors.Merge(collectionlist.MapList(collectionlist.NewList(payload.Layers...), func(_ int, layer ocispec.Descriptor) blobDescriptor {
+	descriptors = append(descriptors, lo.Map(payload.Layers, func(layer ocispec.Descriptor, _ int) blobDescriptor {
 		if layer.Digest == "" {
 			return blobDescriptor{kind: "layer"}
 		}
 		return newBlobDescriptor(layer, "layer")
-	}))
-	return descriptors.Values(), len(payload.Layers), nil
+	})...)
+	return descriptors, len(payload.Layers), nil
 }
 
 func imageIndexDescriptors(manifest *cache.CachedManifest) ([]ocispec.Descriptor, error) {
