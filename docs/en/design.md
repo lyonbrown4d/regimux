@@ -2,24 +2,26 @@
 
 ## Positioning
 
-RegiMux is a read-only developer dependency cache gateway. Container registry, Go, npm, PyPI, and Maven are first-class ecosystems. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, and `maven` blocks, and each ecosystem owns its endpoint service and runtime implementation under `internal/ecosystems/*`.
+RegiMux is a read-only dependency proxy for development and CI environments. It gives build clients one local dependency endpoint, then routes each request to the configured upstream registry, module proxy, package index, or repository while caching reusable artifacts locally.
+
+Container registry, Go modules, npm, PyPI, and Maven are first-class dependency ecosystems. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, and `maven` blocks, and each ecosystem owns its endpoint service and runtime implementation under `internal/ecosystems/*`.
 
 The container ecosystem exposes a Registry-compatible pull API and routes requests to configured upstream registries by container alias. Go, npm, PyPI, and Maven expose read-through proxy cache APIs under their own path prefixes and route requests to upstreams configured in their matching ecosystem blocks.
 
-RegiMux is not a push registry. Upload, manifest write, and delete APIs are intentionally out of scope.
+RegiMux is intentionally read-only. Upload, publish, manifest write, package deletion, and push registry APIs are out of scope; the product boundary is dependency resolution, caching, metadata accounting, and background maintenance.
 
 ## Architecture Overview
 
 ```mermaid
 flowchart LR
-  client["Clients<br/>Docker / Go / npm / PyPI / Maven"] --> api["Fiber HTTP Server"]
+  client["Dependency clients<br/>Docker / Go / npm / PyPI / Maven"] --> api["Fiber HTTP Server"]
   api --> auth["Auth Middleware"]
   auth --> routes["Ecosystem Routes"]
-  routes --> container["container runtime<br/>Registry V2 / mirrors / prefetch"]
-  routes --> golang["Go runtime<br/>module proxy cache"]
-  routes --> npm["npm runtime<br/>registry cache"]
-  routes --> pypi["PyPI runtime<br/>simple index / file cache"]
-  routes --> maven["Maven runtime<br/>repository layout cache"]
+  routes --> container["container dependency proxy<br/>Registry V2 / mirrors / prefetch"]
+  routes --> golang["Go dependency proxy<br/>module artifact cache"]
+  routes --> npm["npm dependency proxy<br/>package metadata / tarball cache"]
+  routes --> pypi["PyPI dependency proxy<br/>simple index / file cache"]
+  routes --> maven["Maven dependency proxy<br/>repository layout cache"]
 
   container --> upstreams["Upstream endpoints / mirrors"]
   golang --> upstreams
@@ -57,7 +59,7 @@ flowchart LR
 
 ## OCI Request Model
 
-Image names use the first repository path segment as the container alias:
+For containers, RegiMux acts as a Registry-compatible dependency proxy. Image names use the first repository path segment as the container alias:
 
 ```text
 localhost:5000/{containerAlias}/library/alpine:latest
@@ -77,7 +79,7 @@ The container alias is resolved from the `container` block. The rest of the path
 
 ## Go Module Proxy Request Model
 
-Go upstreams are configured under the `go` ecosystem block:
+For Go, RegiMux acts as a Go module dependency proxy. Go upstreams are configured under the `go` ecosystem block:
 
 ```hcl
 go {
@@ -142,7 +144,7 @@ sequenceDiagram
 
 ## Other Ecosystem Prefixes
 
-npm, PyPI, and Maven are first-class read-through proxy ecosystems with independent alias namespaces under their own path prefixes:
+npm, PyPI, and Maven are first-class dependency proxy ecosystems with independent alias namespaces under their own path prefixes:
 
 ```text
 GET /npm/{npmAlias}/...
@@ -228,8 +230,8 @@ flowchart TB
 
   subgraph runtimes["Ecosystem Runtimes"]
     cr["container: Registry V2, mirrors, probe, prefetch"]
-    gr["Go: module proxy cache, endpoint probe"]
-    nr["npm: registry cache, endpoint probe"]
+    gr["Go: dependency proxy cache, endpoint probe"]
+    nr["npm: dependency proxy cache, endpoint probe"]
     pr["PyPI: simple index and file cache, endpoint probe"]
     mr["Maven: repository layout cache, endpoint probe"]
   end

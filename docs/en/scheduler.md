@@ -1,19 +1,19 @@
 # Scheduler
 
-RegiMux uses `gocron` for background jobs and a worker pool for bounded asynchronous work.
+RegiMux uses `gocron` for dependency proxy background jobs and a worker pool for bounded asynchronous work.
 
 ## Jobs
 
 Current jobs:
 
-- cache cleanup and object capacity control
+- dependency cache cleanup and object capacity control
 - runtime-declared `probe` jobs
 - runtime-declared `prefetch` jobs
 - runtime-declared `manifest_refresh` jobs (manifest-only warmup where applicable)
 
 When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas. Probe jobs also publish endpoint health into Redis/Valkey hot state, while SQL metadata remains the durable source of truth.
 
-The scheduler does not own ecosystem-specific fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises `ecosystem.JobSpec` values through `JobProvider`, and the scheduler only translates those specs into `gocron` jobs. Container, Go, npm, PyPI, and Maven can add or remove ecosystem-specific background work without changing scheduler orchestration.
+The scheduler does not own ecosystem-specific dependency fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises `ecosystem.JobSpec` values through `JobProvider`, and the scheduler only translates those specs into `gocron` jobs. Container, Go, npm, PyPI, and Maven can add or remove ecosystem-specific background work without changing scheduler orchestration.
 
 ## Cleanup
 

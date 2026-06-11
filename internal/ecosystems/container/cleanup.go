@@ -30,6 +30,12 @@ func (r *Runtime) Cleanup(ctx context.Context) (*ecosystem.CleanupReport, error)
 	if r == nil || r.cleanup == nil {
 		return nil, oops.In("container").With("ecosystem", ecosystem.Container).Errorf("container cleanup service is not configured")
 	}
+	if _, err := r.cleanup.ReconcileBlobs(ctx, cache.ReconcileOptions{
+		MaxScan: r.cfg.Scheduler.Cleanup.MaxScan,
+		DryRun:  r.cfg.Scheduler.Cleanup.DryRun,
+	}); err != nil {
+		return nil, oops.Wrapf(err, "reconcile container blob metadata")
+	}
 	report, err := r.cleanup.CleanupBlobs(ctx, cache.CleanupOptions{
 		UnusedFor:   r.cfg.Scheduler.Cleanup.UnusedFor,
 		MaxDeletes:  r.cfg.Scheduler.Cleanup.MaxDeletes,

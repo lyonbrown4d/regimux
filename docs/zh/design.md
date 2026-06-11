@@ -2,24 +2,26 @@
 
 ## 定位
 
-RegiMux 是一个只读研发依赖缓存网关。container registry、Go、npm、PyPI 和 Maven 都是一等生态。配置按生态拆分为 `container`、`go`、`npm`、`pypi` 和 `maven` 块，各生态在 `internal/ecosystems/*` 下维护自己的 endpoint service 和 runtime 实现。
+RegiMux 是面向研发和 CI 环境的只读 Dependency Proxy（依赖代理）。构建客户端只需要访问一个本地依赖入口；RegiMux 再按生态把请求路由到配置的上游 registry、module proxy、package index 或 repository，并把可复用制品缓存在本地。
+
+container registry、Go modules、npm、PyPI 和 Maven 都是一等依赖生态。配置按生态拆分为 `container`、`go`、`npm`、`pypi` 和 `maven` 块，各生态在 `internal/ecosystems/*` 下维护自己的 endpoint service 和 runtime 实现。
 
 container 生态对外暴露兼容 Registry 的 pull API，并通过 container alias 将请求路由到不同上游 registry。Go、npm、PyPI 和 Maven 生态分别在自己的路径前缀下暴露 read-through proxy cache API，并将请求路由到对应生态配置块里的上游。
 
-RegiMux 不是 push registry。上传、manifest 写入和删除 API 当前都不在范围内。
+RegiMux 明确保持只读。上传、发布、manifest 写入、包删除和 push registry API 都不在范围内；产品边界是依赖解析、代理缓存、metadata 记账和后台维护。
 
 ## 架构概览
 
 ```mermaid
 flowchart LR
-  client["客户端<br/>Docker / Go / npm / PyPI / Maven"] --> api["Fiber HTTP Server"]
+  client["依赖客户端<br/>Docker / Go / npm / PyPI / Maven"] --> api["Fiber HTTP Server"]
   api --> auth["认证中间件"]
   auth --> routes["生态路由"]
-  routes --> container["container runtime<br/>Registry V2 / mirror / prefetch"]
-  routes --> golang["Go runtime<br/>module proxy cache"]
-  routes --> npm["npm runtime<br/>registry cache"]
-  routes --> pypi["PyPI runtime<br/>simple index / file cache"]
-  routes --> maven["Maven runtime<br/>repository layout cache"]
+  routes --> container["container dependency proxy<br/>Registry V2 / mirror / prefetch"]
+  routes --> golang["Go dependency proxy<br/>module artifact cache"]
+  routes --> npm["npm dependency proxy<br/>package metadata / tarball cache"]
+  routes --> pypi["PyPI dependency proxy<br/>simple index / file cache"]
+  routes --> maven["Maven dependency proxy<br/>repository layout cache"]
 
   container --> upstreams["上游端点 / mirrors"]
   golang --> upstreams
@@ -57,7 +59,7 @@ flowchart LR
 
 ## OCI 请求模型
 
-镜像名使用仓库路径的第一段作为 container alias：
+对 container 来说，RegiMux 是兼容 Registry 的依赖代理。镜像名使用仓库路径的第一段作为 container alias：
 
 ```text
 localhost:5000/{containerAlias}/library/alpine:latest
@@ -77,7 +79,7 @@ container alias 从 `container` 配置块解析，剩余路径会传递给对应
 
 ## Go Module Proxy 请求模型
 
-Go upstream 放在 `go` 生态配置块下：
+对 Go 来说，RegiMux 是 Go module 依赖代理。Go upstream 放在 `go` 生态配置块下：
 
 ```hcl
 go {
@@ -142,7 +144,7 @@ sequenceDiagram
 
 ## 其他生态路径前缀
 
-npm、PyPI 和 Maven 都是一等 read-through proxy 生态，并使用各自独立的 alias 命名空间：
+npm、PyPI 和 Maven 都是一等依赖代理生态，并使用各自独立的 alias 命名空间：
 
 ```text
 GET /npm/{npmAlias}/...
@@ -228,8 +230,8 @@ flowchart TB
 
   subgraph runtimes["生态 Runtime"]
     cr["container: Registry V2, mirrors, probe, prefetch"]
-    gr["Go: module proxy cache, endpoint probe"]
-    nr["npm: registry cache, endpoint probe"]
+    gr["Go: dependency proxy cache, endpoint probe"]
+    nr["npm: dependency proxy cache, endpoint probe"]
     pr["PyPI: simple index and file cache, endpoint probe"]
     mr["Maven: repository layout cache, endpoint probe"]
   end

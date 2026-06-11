@@ -10,6 +10,7 @@ import (
 	"os"
 	pathpkg "path"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	ocidigest "github.com/opencontainers/go-digest"
@@ -181,11 +182,165 @@ func (s *aferoStore) Delete(ctx context.Context, digest string) error {
 	return nil
 }
 
+func (s *LocalStore) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
+	if s == nil || s.aferoStore == nil {
+		return errorf("object store is not configured")
+	}
+	return s.aferoStore.walkObjects(ctx, fn)
+}
+
+func (s *LocalStore) ListObjects(ctx context.Context) ([]Info, error) {
+	if s == nil || s.aferoStore == nil {
+		return nil, errorf("object store is not configured")
+	}
+	return s.aferoStore.listObjects(ctx)
+}
+
+func (s *MemoryStore) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
+	if s == nil || s.aferoStore == nil {
+		return errorf("object store is not configured")
+	}
+	return s.aferoStore.walkObjects(ctx, fn)
+}
+
+func (s *MemoryStore) ListObjects(ctx context.Context) ([]Info, error) {
+	if s == nil || s.aferoStore == nil {
+		return nil, errorf("object store is not configured")
+	}
+	return s.aferoStore.listObjects(ctx)
+}
+
 func (s *aferoStore) Close() error {
 	if s == nil || s.close == nil {
 		return nil
 	}
 	return s.close()
+}
+
+func (s *aferoStore) listObjects(ctx context.Context) ([]Info, error) {
+	objects := make([]Info, 0)
+	if err := s.walkObjects(ctx, func(info Info) error {
+		objects = append(objects, info)
+		return nil
+	}); err != nil {
+		return nil, err
+	}
+	return objects, nil
+}
+
+func (s *aferoStore) walkObjects(ctx context.Context, fn ObjectWalkFunc) error {
+	ctx = normalizeContext(ctx)
+	if err := checkContext(ctx, "walk objects"); err != nil {
+		return err
+	}
+	if fn == nil {
+		return errorf("object walk callback is required")
+	}
+	if s == nil || s.fs == nil || s.root == "" {
+		return errorf("object store is not configured")
+	}
+	return s.walkBlobRoot(ctx, pathpkg.Join(s.root, "blobs"), fn)
+}
+
+func (s *aferoStore) walkBlobRoot(ctx context.Context, root string, fn ObjectWalkFunc) error {
+	algorithms, err := readSortedDirs(s.fs, root)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
+	if err != nil {
+		return wrapError(err, "list object blob algorithms")
+	}
+	for _, algorithm := range algorithms {
+		if err := checkContext(ctx, "walk objects"); err != nil {
+			return err
+		}
+		if _, err := newDigestHash(algorithm); err != nil {
+			continue
+		}
+		if err := s.walkBlobAlgorithm(ctx, root, algorithm, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *aferoStore) walkBlobAlgorithm(ctx context.Context, root, algorithm string, fn ObjectWalkFunc) error {
+	algorithmPath := pathpkg.Join(root, algorithm)
+	prefixes, err := readSortedDirs(s.fs, algorithmPath)
+	if err != nil {
+		return wrapError(err, "list object blob prefixes")
+	}
+	for _, prefix := range prefixes {
+		if err := checkContext(ctx, "walk objects"); err != nil {
+			return err
+		}
+		if len(prefix) != 2 {
+			continue
+		}
+		if err := s.walkBlobPrefix(ctx, algorithmPath, algorithm, prefix, fn); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (s *aferoStore) walkBlobPrefix(ctx context.Context, algorithmPath, algorithm, prefix string, fn ObjectWalkFunc) error {
+	prefixPath := pathpkg.Join(algorithmPath, prefix)
+	files, err := afero.ReadDir(s.fs, prefixPath)
+	if err != nil {
+		return wrapError(err, "list object blob prefix")
+	}
+	sort.Slice(files, func(i, j int) bool {
+		return files[i].Name() < files[j].Name()
+	})
+	for _, file := range files {
+		if err := checkContext(ctx, "walk objects"); err != nil {
+			return err
+		}
+		info, ok := infoFromCASFile(algorithm, prefix, prefixPath, file)
+		if !ok {
+			continue
+		}
+		if err := fn(info); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func readSortedDirs(fs afero.Fs, name string) ([]string, error) {
+	entries, err := afero.ReadDir(fs, name)
+	if err != nil {
+		return nil, err
+	}
+	dirs := make([]string, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() {
+			dirs = append(dirs, entry.Name())
+		}
+	}
+	sort.Strings(dirs)
+	return dirs, nil
+}
+
+func infoFromCASFile(algorithm, prefix, parent string, file os.FileInfo) (Info, bool) {
+	if file == nil || file.IsDir() {
+		return Info{}, false
+	}
+	encoded := file.Name()
+	if strings.HasPrefix(encoded, ".") || !strings.HasPrefix(encoded, prefix) {
+		return Info{}, false
+	}
+	digest, err := normalizeDigest(algorithm + ":" + encoded)
+	if err != nil {
+		return Info{}, false
+	}
+	return Info{
+		Digest: digest,
+		Size:   file.Size(),
+		ETag:   digest,
+		Path:   pathpkg.Join(parent, encoded),
+	}, true
 }
 
 func (s *aferoStore) findExisting(ctx context.Context, digest string, opts PutOptions) (*Info, bool, error) {
@@ -261,4 +416,9 @@ var (
 	_ Store = (*LocalStore)(nil)
 	_ Store = (*MemoryStore)(nil)
 	_ Store = (*aferoStore)(nil)
+
+	_ ObjectWalker = (*LocalStore)(nil)
+	_ ObjectWalker = (*MemoryStore)(nil)
+	_ ObjectLister = (*LocalStore)(nil)
+	_ ObjectLister = (*MemoryStore)(nil)
 )

@@ -188,6 +188,7 @@ func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, r
 	}
 	if method != http.MethodHead {
 		out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
+		e.fillManifestBlobsAsync(ctx, route, result)
 	}
 	return out
 }

@@ -44,6 +44,10 @@ func closePrefetchBlob(result *cache.BlobReadResult) error {
 	if result == nil || result.Reader == nil {
 		return nil
 	}
+	if _, err := io.Copy(io.Discard, result.Reader); err != nil {
+		closeErr := result.Reader.Close()
+		return cacheWrap(errors.Join(err, closeErr), "drain prefetched blob")
+	}
 	if err := result.Reader.Close(); err != nil && !errors.Is(err, io.EOF) {
 		return cacheWrap(err, "close prefetched blob")
 	}

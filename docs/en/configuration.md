@@ -2,6 +2,8 @@
 
 RegiMux uses typed HCL config loaded through `configx`. The release packages and container image include a minimal config at `/etc/regimux/regimux.hcl`.
 
+Configuration is organized around dependency proxy namespaces. Each top-level ecosystem block defines one or more aliases; each alias becomes a client-facing proxy prefix and points at one upstream plus optional mirrors, auth, probe, and HTTP policy.
+
 ## Files
 
 Repository examples:
@@ -95,13 +97,13 @@ Important defaults:
 - `pypi.default.registry = "https://pypi.org"`
 - `maven.central.registry = "https://repo.maven.apache.org/maven2"`
 
-Top-level ecosystem blocks are the source configuration:
+Top-level ecosystem blocks define dependency proxy namespaces:
 
-- `container`: OCI / Docker Registry V2 upstream registries. Each container alias is exposed through `/v2/{containerAlias}/...`.
-- `go`: Go module proxy upstreams. Each Go alias is exposed through `/go/{goAlias}/...`.
-- `npm`: npm registry upstreams, exposed through `/npm/{npmAlias}/...`.
-- `pypi`: PyPI upstreams, exposed through `/pypi/{pypiAlias}/...`.
-- `maven`: Maven repository layout upstreams, exposed through `/maven/{mavenAlias}/...`.
+- `container`: OCI / Docker Registry V2 dependency proxy aliases, exposed through `/v2/{containerAlias}/...`.
+- `go`: Go module dependency proxy aliases, exposed through `/go/{goAlias}/...`.
+- `npm`: npm dependency proxy aliases, exposed through `/npm/{npmAlias}/...`.
+- `pypi`: PyPI dependency proxy aliases, exposed through `/pypi/{pypiAlias}/...`.
+- `maven`: Maven dependency proxy aliases, exposed through `/maven/{mavenAlias}/...`.
 
 These blocks are also the input to the ecosystem runtime layer. RegiMux normalizes them into typed runtime entries with an ecosystem kind, alias, registry, mirrors, probe settings, auth, and HTTP policy. The scheduler then works from runtime capabilities such as `probe` and `prefetch` instead of reading a legacy `upstreams` block.
 
@@ -121,7 +123,9 @@ container {
 }
 ```
 
-`cache.blob.stream_and_cache` is enabled by default. Full blob misses stream back to Docker while the same bytes are written into object storage; the cache and metadata are committed after the stream completes. Range requests pass through upstream until a full blob has been cached.
+`cache.blob.stream_and_cache` is enabled by default. Full blob misses stream back to Docker while the same bytes are written into object storage; the cache and metadata are committed after the stream completes. Range misses fill the full blob into object storage first, then serve the requested range from the local object.
+
+Admin `Committed Blob Bytes (metadata)` is derived from committed blob metadata, not from a live scan of `store.object` or from bytes merely passing through the proxy. `cache.backend` is a KV cache backend and is separate from the object store configured by `store.object`.
 
 Small blob caching can store already-verified tiny blobs, such as OCI image config blobs, in the configured KV cache backend. Use Redis or Valkey for this mode; large layers still belong in `store.object`.
 

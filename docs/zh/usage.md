@@ -2,6 +2,16 @@
 
 RegiMux 默认通过 [GitHub Releases](https://github.com/lyonbrown4d/regimux/releases) 和 GitHub Container Registry 发布。推荐优先使用发布产物，而不是直接从源码运行。
 
+## Dependency Proxy（依赖代理）模型
+
+把 RegiMux 部署在开发者、CI runner 或构建集群附近，然后让依赖客户端访问 RegiMux，而不是直接访问每个公网源：
+
+- Docker/containerd 使用兼容 Registry 的 `/v2/{containerAlias}/...` 路径。
+- Go 使用 `GOPROXY=http://<regimux>/go/{goAlias}`。
+- npm、PyPI 和 Maven 分别使用 `/npm/{npmAlias}`、`/pypi/{pypiAlias}`、`/maven/{mavenAlias}` 下的生态代理路径。
+
+RegiMux 是只读的。它代理依赖读取请求，缓存不可变制品，维护 metadata 用于缓存统计和清理，并可以在后台预热或刷新制品。它不是包发布入口，也不是 push registry。
+
 ## Docker
 
 默认镜像基于 Alpine：
@@ -82,7 +92,7 @@ curl -i http://localhost:5000/readyz
 curl -i http://localhost:5000/v2/
 ```
 
-## 拉取镜像
+## 容器镜像
 
 RegiMux 使用仓库路径的第一段作为 container alias：
 
@@ -92,7 +102,7 @@ localhost:5000/{containerAlias}/org/app:v1.2.3
 localhost:5000/{containerAlias}/coreos/etcd:v3.5.0
 ```
 
-通过 Docker 拉取：
+通过 container 依赖代理拉取镜像：
 
 ```bash
 docker pull localhost:5000/{containerAlias}/library/alpine:latest
@@ -108,7 +118,7 @@ curl -i \
 
 ## Go Module Proxy
 
-`go` 配置块下的每个 alias 都会在 `/go/{goAlias}` 暴露 Go module proxy 入口。Go 客户端可以把 RegiMux 当作 Go module proxy：
+`go` 配置块下的每个 alias 都会在 `/go/{goAlias}` 暴露 Go module proxy 入口。Go 客户端通过 `GOPROXY` 把 RegiMux 作为依赖代理：
 
 ```bash
 export GOPROXY=http://localhost:5000/go/{goAlias},direct
@@ -128,7 +138,7 @@ GET /go/{goAlias}/github.com/pkg/errors/@latest
 
 选中的 Go alias 只在 `go` 配置块内解析。container、npm、PyPI 和 Maven alias 各自使用独立命名空间。
 
-`@latest` 和 `@v/list` 使用短 TTL；版本化的 `.info`、`.mod` 和 `.zip` 按内容 sha256 写入对象存储并长期复用。当前实现是只读 read-through proxy，不代理 `sum.golang.org`，也不做 VCS direct 拉取。
+`@latest` 和 `@v/list` 使用短 TTL；版本化的 `.info`、`.mod` 和 `.zip` 按内容 sha256 写入对象存储并长期复用。当前实现是只读 Go dependency proxy，不代理 `sum.golang.org`，也不做 VCS direct 拉取。
 
 ## Docker Compose
 

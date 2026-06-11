@@ -11,6 +11,7 @@ import (
 var (
 	ErrNotFound       = errors.New("object not found")
 	ErrDigestMismatch = errors.New("object digest mismatch")
+	ErrUnsupported    = errors.New("object store operation unsupported")
 )
 
 type Store interface {
@@ -19,6 +20,16 @@ type Store interface {
 	Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error)
 	Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error)
 	Delete(ctx context.Context, digest string) error
+}
+
+type ObjectWalkFunc func(info Info) error
+
+type ObjectWalker interface {
+	WalkObjects(ctx context.Context, fn ObjectWalkFunc) error
+}
+
+type ObjectLister interface {
+	ListObjects(ctx context.Context) ([]Info, error)
 }
 
 func New(driver, path string) (Store, error) {

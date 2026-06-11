@@ -2,6 +2,8 @@
 
 RegiMux 使用 `configx` 加载强类型 HCL 配置。发布包和容器镜像会提供默认配置 `/etc/regimux/regimux.hcl`。
 
+配置围绕依赖代理 namespace 组织。每个顶层生态块定义一个或多个 alias；每个 alias 会变成客户端可访问的代理前缀，并指向一个上游以及可选的 mirror、认证、探测和 HTTP 策略。
+
 ## 配置文件
 
 仓库内示例：
@@ -95,13 +97,13 @@ maven {
 - `pypi.default.registry = "https://pypi.org"`
 - `maven.central.registry = "https://repo.maven.apache.org/maven2"`
 
-顶层生态块是源配置：
+顶层生态块定义依赖代理 namespace：
 
-- `container`：OCI / Docker Registry V2 上游 registry，每个 container alias 通过 `/v2/{containerAlias}/...` 暴露。
-- `go`：Go module proxy 上游，每个 Go alias 通过 `/go/{goAlias}/...` 暴露。
-- `npm`：npm registry 上游，通过 `/npm/{npmAlias}/...` 暴露。
-- `pypi`：PyPI 上游，通过 `/pypi/{pypiAlias}/...` 暴露。
-- `maven`：Maven repository layout 上游，通过 `/maven/{mavenAlias}/...` 暴露。
+- `container`：OCI / Docker Registry V2 依赖代理 alias，通过 `/v2/{containerAlias}/...` 暴露。
+- `go`：Go module 依赖代理 alias，通过 `/go/{goAlias}/...` 暴露。
+- `npm`：npm 依赖代理 alias，通过 `/npm/{npmAlias}/...` 暴露。
+- `pypi`：PyPI 依赖代理 alias，通过 `/pypi/{pypiAlias}/...` 暴露。
+- `maven`：Maven 依赖代理 alias，通过 `/maven/{mavenAlias}/...` 暴露。
 
 这些块也是生态 runtime 层的输入。RegiMux 会把它们归一化为带生态类型、alias、registry、mirrors、probe 设置、auth 和 HTTP 策略的 runtime 条目。调度器随后从 `probe`、`prefetch` 等 runtime capability 工作，而不是读取 legacy `upstreams` 块。
 
@@ -121,7 +123,9 @@ container {
 }
 ```
 
-`cache.blob.stream_and_cache` 默认开启。完整 blob miss 会边回传给 Docker 边写入对象存储，完成后再提交缓存和元数据；range 请求会直通上游，后续完整 blob 命中后再从对象存储服务 range。
+`cache.blob.stream_and_cache` 默认开启。完整 blob miss 会边回传给 Docker 边写入对象存储，完成后再提交缓存和元数据；range miss 会先补齐完整 blob 到对象存储，再从本地对象返回 range。
+
+Admin 的 `已落盘 Blob 字节（metadata）` 来自已提交的 blob metadata，不是实时扫描 `store.object`，也不是所有经过代理的字节。`cache.backend` 是 KV 缓存后端，和 `store.object` 配置的对象存储不是同一层。
 
 small blob cache 可以把已经完成 digest 校验的小 blob，例如 OCI image config blob，放进当前配置的 KV 缓存后端。这个模式建议搭配 Redis 或 Valkey 使用；大 layer 仍然应该放在 `store.object`。
 

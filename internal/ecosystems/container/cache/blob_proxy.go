@@ -5,7 +5,6 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 )
@@ -75,33 +74,8 @@ func (p blobProxy) fetchStreamAndStore(ctx context.Context, req BlobRequest) (*B
 }
 
 func (p blobProxy) fetchRangeStream(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
-	resp, err := p.client.GetBlob(ctx, upstream.GetBlobRequest{
-		UpstreamAlias: req.UpstreamAlias,
-		Repo:          req.Repo,
-		Digest:        req.Digest,
-		Range:         req.Range,
-		Method:        req.Method,
-	})
-	if err != nil {
-		return nil, wrapError(err, "stream blob from upstream")
-	}
-	p.logBlobCacheHit(ctx, req, "stream_and_cache_range")
-	reader := resp.Body
-	if err := p.touchSharedBlobMetadata(ctx, req, time.Now().UTC()); err != nil {
-		if closeErr := closeHTTPBody(resp.Body, "blob stream response body"); closeErr != nil {
-			return nil, joinError("close blob stream after metadata touch failure", err, closeErr)
-		}
-		return nil, err
-	}
-	return &BlobReadResult{
-		Reader:  reader,
-		Digest:  resp.Digest,
-		Size:    resp.Size,
-		Range:   req.Range,
-		Status:  resp.StatusCode,
-		Headers: resp.Headers,
-		Cache:   CacheBypass,
-	}, nil
+	p.logBlobCacheHit(ctx, req, "stream_and_cache_range_fill")
+	return p.fetchStored(ctx, req)
 }
 
 func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {

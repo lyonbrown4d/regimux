@@ -1,6 +1,6 @@
 # Storage
 
-RegiMux separates metadata from blob objects.
+As a dependency proxy, RegiMux separates metadata from cached artifact objects. Metadata answers questions such as which dependency path maps to which digest, when it was accessed, and how much committed cache is tracked. The object store holds the immutable bytes that package managers and container runtimes eventually reuse.
 
 ## Metadata
 
@@ -115,4 +115,3 @@ For multiple RegiMux replicas, use a shared metadata store and a shared object s
 - scheduler coordination: Redis or Valkey distributed lock
 
 Do not scale multiple replicas on independent SQLite files and local object directories unless each replica is intentionally isolated.
-

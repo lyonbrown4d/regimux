@@ -16,14 +16,17 @@ func (p blobProxy) streamBlobToCache(
 	mediaType string,
 ) io.ReadCloser {
 	reader, writer := io.Pipe()
-	go p.storeStreamedBlob(context.WithoutCancel(ctx), req, streamedBlob{
-		reader:    reader,
-		digest:    resp.Digest,
-		size:      resp.Size,
-		headers:   resp.Headers.Clone(),
-		mediaType: mediaType,
-	})
-	return newBlobTeeReadCloser(resp.Body, writer, func(err error) {
+	done := make(chan error, 1)
+	go func() {
+		done <- p.storeStreamedBlob(context.WithoutCancel(ctx), req, streamedBlob{
+			reader:    reader,
+			digest:    resp.Digest,
+			size:      resp.Size,
+			headers:   resp.Headers.Clone(),
+			mediaType: mediaType,
+		})
+	}()
+	return newBlobTeeReadCloser(resp.Body, writer, done, func(err error) {
 		p.logBlobStreamCacheError(ctx, req, "write streamed blob to cache pipe failed", err)
 	})
 }
@@ -36,7 +39,7 @@ type streamedBlob struct {
 	mediaType string
 }
 
-func (p blobProxy) storeStreamedBlob(ctx context.Context, req BlobRequest, blob streamedBlob) {
+func (p blobProxy) storeStreamedBlob(ctx context.Context, req BlobRequest, blob streamedBlob) error {
 	defer func() {
 		if err := blob.reader.Close(); err != nil {
 			p.logBlobStreamCacheError(ctx, req, "close streamed blob cache reader failed", err)
@@ -51,13 +54,14 @@ func (p blobProxy) storeStreamedBlob(ctx context.Context, req BlobRequest, blob 
 	})
 	if err != nil {
 		p.logBlobStreamCacheError(ctx, req, "store streamed blob cache failed", err)
-		return
+		return err
 	}
 	if err := p.upsertBlobRecords(ctx, req, stored.info, blob.mediaType); err != nil {
 		p.logBlobStreamCacheError(ctx, req, "record streamed blob cache metadata failed", err)
-		return
+		return err
 	}
 	p.publishCacheStore(ctx, req, stored.info.Size, stored.info.Digest)
+	return nil
 }
 
 func (p blobProxy) logBlobStreamCacheError(ctx context.Context, req BlobRequest, message string, err error) {
@@ -76,13 +80,16 @@ func (p blobProxy) logBlobStreamCacheError(ctx context.Context, req BlobRequest,
 type blobTeeReadCloser struct {
 	source      io.ReadCloser
 	cache       *io.PipeWriter
+	cacheDone   <-chan error
 	onCacheFail func(error)
+	completed   bool
 }
 
-func newBlobTeeReadCloser(source io.ReadCloser, cache *io.PipeWriter, onCacheFail func(error)) io.ReadCloser {
+func newBlobTeeReadCloser(source io.ReadCloser, cache *io.PipeWriter, cacheDone <-chan error, onCacheFail func(error)) io.ReadCloser {
 	return &blobTeeReadCloser{
 		source:      source,
 		cache:       cache,
+		cacheDone:   cacheDone,
 		onCacheFail: onCacheFail,
 	}
 }
@@ -93,6 +100,7 @@ func (r *blobTeeReadCloser) Read(buffer []byte) (int, error) {
 		r.writeCache(buffer[:n])
 	}
 	if readErr != nil {
+		r.completed = errors.Is(readErr, io.EOF)
 		r.closeCache(readErr)
 	}
 	return n, blobSourceReadError(readErr)
@@ -100,10 +108,14 @@ func (r *blobTeeReadCloser) Read(buffer []byte) (int, error) {
 
 func (r *blobTeeReadCloser) Close() error {
 	r.closeCache(io.ErrClosedPipe)
-	if err := r.source.Close(); err != nil {
-		return wrapError(err, "close streamed blob source")
+	var err error
+	if closeErr := r.source.Close(); closeErr != nil {
+		err = wrapError(closeErr, "close streamed blob source")
 	}
-	return nil
+	if r.completed {
+		err = errors.Join(err, r.waitCache())
+	}
+	return err
 }
 
 func (r *blobTeeReadCloser) writeCache(data []byte) {
@@ -139,6 +151,16 @@ func (r *blobTeeReadCloser) failCache(err error) {
 	if r.onCacheFail != nil {
 		r.onCacheFail(err)
 	}
+}
+
+func (r *blobTeeReadCloser) waitCache() error {
+	if r.cacheDone == nil {
+		return nil
+	}
+	if err := <-r.cacheDone; err != nil {
+		return wrapError(err, "commit streamed blob cache")
+	}
+	return nil
 }
 
 func blobSourceReadError(err error) error {

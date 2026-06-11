@@ -2,6 +2,16 @@
 
 RegiMux is published through [GitHub Releases](https://github.com/lyonbrown4d/regimux/releases) and GitHub Container Registry. The recommended entry point is a released artifact, not a source checkout.
 
+## Dependency Proxy Model
+
+Run RegiMux close to your developers, CI runners, or build cluster, then point dependency clients at RegiMux instead of every public upstream:
+
+- Docker/containerd uses the Registry-compatible `/v2/{containerAlias}/...` path.
+- Go uses `GOPROXY=http://<regimux>/go/{goAlias}`.
+- npm, PyPI, and Maven use their ecosystem proxy paths under `/npm/{npmAlias}`, `/pypi/{pypiAlias}`, and `/maven/{mavenAlias}`.
+
+RegiMux is read-only. It proxies dependency reads, caches immutable artifacts, keeps metadata for cache accounting and cleanup, and can warm or refresh artifacts in the background. It is not a package publishing endpoint and it is not a push registry.
+
 ## Docker
 
 The default image is Alpine-based:
@@ -82,7 +92,7 @@ curl -i http://localhost:5000/readyz
 curl -i http://localhost:5000/v2/
 ```
 
-## Pull Images
+## Container Images
 
 RegiMux uses the first repository path segment as the container alias:
 
@@ -92,7 +102,7 @@ localhost:5000/{containerAlias}/org/app:v1.2.3
 localhost:5000/{containerAlias}/coreos/etcd:v3.5.0
 ```
 
-Pull through Docker:
+Pull images through the container dependency proxy:
 
 ```bash
 docker pull localhost:5000/{containerAlias}/library/alpine:latest
@@ -108,7 +118,7 @@ curl -i \
 
 ## Go Module Proxy
 
-Each alias under the `go` block exposes a Go module proxy endpoint at `/go/{goAlias}`. Go clients can use RegiMux as a Go module proxy:
+Each alias under the `go` block exposes a Go module proxy endpoint at `/go/{goAlias}`. Go clients use RegiMux as their dependency proxy by setting `GOPROXY`:
 
 ```bash
 export GOPROXY=http://localhost:5000/go/{goAlias},direct
@@ -128,7 +138,7 @@ GET /go/{goAlias}/github.com/pkg/errors/@latest
 
 The selected Go alias is resolved only within the `go` block. Container, npm, PyPI, and Maven aliases use their own namespaces.
 
-`@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in the object store by content sha256 and reused long term. The current implementation is a read-only read-through proxy; it does not proxy `sum.golang.org` and does not perform VCS direct fetching.
+`@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in the object store by content sha256 and reused long term. The current implementation is a read-only Go dependency proxy; it does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 
 ## Docker Compose
 

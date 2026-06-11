@@ -32,6 +32,14 @@ Current views:
 - auth audit
 - effective configuration
 
+## Storage Metrics
+
+Admin storage and cache counters are metadata-backed accounting, not a live scan of the object store path or bucket.
+
+- `Committed Blob Bytes (metadata)` is the sum of committed `meta_blobs.size` rows. A blob only appears here after object storage has accepted the blob and metadata has been committed.
+- Storage total is the current tracked accounting sum: committed blob metadata size plus manifest object bytes recorded as manifest metadata size.
+- The configured KV cache backend (`cache.backend`, such as Redis or Valkey) is separate from `store.object`, where committed blob and manifest objects are stored.
+
 ## Manual Refresh
 
 Manual refresh is ecosystem-aware. It bypasses the normal cache-first read path, checks the selected upstream, and updates the local cache when upstream content changed. In the upstream selector you can choose

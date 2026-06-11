@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -93,6 +94,27 @@ func TestLocalStoreDeleteRemovesObject(t *testing.T) {
 	}
 }
 
+func TestLocalStoreWalkObjectsListsCASObjects(t *testing.T) {
+	ctx := context.Background()
+	store, _ := newLocalStore(t)
+	firstDigest, firstInfo := putTestObject(ctx, t, store, []byte("first registry object body"))
+	secondDigest, secondInfo := putTestObject(ctx, t, store, []byte("second registry object body"))
+
+	got := walkObjectDigests(ctx, t, store)
+	want := []string{firstDigest, secondDigest}
+	slices.Sort(got)
+	slices.Sort(want)
+	if !slices.Equal(got, want) {
+		t.Fatalf("walked digests = %v, want %v", got, want)
+	}
+
+	listed, err := store.ListObjects(ctx)
+	requireNoError(t, "list objects", err)
+	if len(listed) != 2 || totalObjectBytes(listed) != firstInfo.Size+secondInfo.Size {
+		t.Fatalf("unexpected listed objects: %#v", listed)
+	}
+}
+
 func TestLocalStoreRejectsDigestMismatch(t *testing.T) {
 	ctx := context.Background()
 	store, _ := newLocalStore(t)
@@ -132,6 +154,18 @@ func TestMemoryStorePutGetDelete(t *testing.T) {
 	}
 }
 
+func TestMemoryStoreWalkObjectsListsCASObjects(t *testing.T) {
+	ctx := context.Background()
+	store, err := object.NewMemory("memory-objects")
+	requireNoError(t, "new memory store", err)
+	digest, _ := putTestObject(ctx, t, store, []byte("registry memory object body"))
+
+	got := walkObjectDigests(ctx, t, store)
+	if len(got) != 1 || got[0] != digest {
+		t.Fatalf("walked digests = %v, want [%s]", got, digest)
+	}
+}
+
 func newLocalStore(t *testing.T) (*object.LocalStore, string) {
 	t.Helper()
 	root := t.TempDir()
@@ -163,6 +197,25 @@ func readAllAndClose(t *testing.T, reader io.ReadCloser) []byte {
 	requireNoError(t, "close reader", closeErr)
 	requireNoError(t, "read", err)
 	return data
+}
+
+func walkObjectDigests(ctx context.Context, t *testing.T, store object.ObjectWalker) []string {
+	t.Helper()
+	got := make([]string, 0)
+	err := store.WalkObjects(ctx, func(info object.Info) error {
+		got = append(got, info.Digest)
+		return nil
+	})
+	requireNoError(t, "walk objects", err)
+	return got
+}
+
+func totalObjectBytes(objects []object.Info) int64 {
+	var total int64
+	for _, info := range objects {
+		total += info.Size
+	}
+	return total
 }
 
 func expectedCASPath(root, digest string) string {

@@ -1,7 +1,6 @@
 package cache_test
 
 import (
-	"bytes"
 	"context"
 	"net/http"
 	"testing"
@@ -12,7 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
-func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
+func TestBlobProxyFillsRangeMissWhenStreamAndCacheEnabled(t *testing.T) {
 	ctx := context.Background()
 	body := []byte("0123456789")
 	digest := testDigestFor(body)
@@ -43,27 +42,16 @@ func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
 	if err != nil {
 		t.Fatalf("first blob get: %v", err)
 	}
-	assertRangeBlobBypass(t, first)
+	assertRangeBlobMiss(t, first)
 	assertBlobRequestCounters(t, client, 1, 0)
-	assertObjectPresence(ctx, t, objects, digest, false)
+	assertObjectPresence(ctx, t, objects, digest, true)
+	blob := requireBlobRecord(ctx, t, metadata, digest)
+	if blob.Size != int64(len(body)) {
+		t.Fatalf("blob metadata size = %d, want %d", blob.Size, len(body))
+	}
+	requireRepoBlobRecord(ctx, t, metadata, digest)
 
 	second, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
-		UpstreamAlias: "hub",
-		Repo:          "library/alpine",
-		Digest:        digest,
-		Method:        http.MethodGet,
-	})
-	if err != nil {
-		t.Fatalf("second blob get: %v", err)
-	}
-	bodyBuf := readAndClose(t, second.Reader)
-	if second.Cache != cache.CacheMiss || !bytes.Equal(bodyBuf, body) {
-		t.Fatalf("unexpected second blob result: cache=%s body=%q", second.Cache, bodyBuf)
-	}
-	assertBlobRequestCounters(t, client, 2, 0)
-	waitObjectStored(ctx, t, objects, digest)
-
-	third, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        digest,
@@ -71,10 +59,47 @@ func TestBlobProxyStreamsRangeWhenEnabled(t *testing.T) {
 		Method:        http.MethodGet,
 	})
 	if err != nil {
-		t.Fatalf("third blob get: %v", err)
+		t.Fatalf("second blob get: %v", err)
 	}
-	assertRangeBlobHit(t, third)
-	assertBlobRequestCounters(t, client, 2, 0)
+	assertRangeBlobHit(t, second)
+	assertBlobRequestCounters(t, client, 1, 0)
+}
+
+func TestBlobProxyHeadMissBypassesStoreWhenStreamAndCacheEnabled(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	proxy := newTestProxy(
+		client,
+		metadata,
+		objects,
+		nil,
+		config.Config{
+			Cache: config.CacheConfig{
+				Blob: config.BlobCacheConfig{
+					StreamAndCache: true,
+				},
+			},
+		},
+	)
+
+	head, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodHead,
+	})
+	if err != nil {
+		t.Fatalf("head blob get: %v", err)
+	}
+	bodyBuf := readAndClose(t, head.Reader)
+	if head.Cache != cache.CacheBypass || head.Status != http.StatusOK || len(bodyBuf) != 0 {
+		t.Fatalf("unexpected head result: cache=%s status=%d body=%q", head.Cache, head.Status, bodyBuf)
+	}
+	assertBlobRequestCounters(t, client, 0, 1)
+	assertObjectPresence(ctx, t, objects, digest, false)
 }
 
 func TestBlobProxySkipsVerifyForRecentSharedBlobWithinTTL(t *testing.T) {

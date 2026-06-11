@@ -44,7 +44,9 @@ func TestBlobProxyStreamsFullMissAndServesRangeHit(t *testing.T) {
 		t.Fatalf("first blob get: %v", err)
 	}
 	assertFullBlobMiss(t, first, body)
-	waitObjectStored(ctx, t, objects, digest)
+	assertObjectPresence(ctx, t, objects, digest, true)
+	requireBlobRecord(ctx, t, metadata, digest)
+	requireRepoBlobRecord(ctx, t, metadata, digest)
 
 	second, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
 		UpstreamAlias: "hub",

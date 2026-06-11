@@ -32,6 +32,14 @@ UI 会自动跟随浏览器或操作系统的 light/dark 偏好。
 - 认证审计
 - 有效配置
 
+## 存储统计口径
+
+Admin 的存储和缓存数字来自 metadata 记账，不是实时扫描对象存储目录或 bucket。
+
+- `已落盘 Blob 字节（metadata）` 是已提交 `meta_blobs.size` 记录的汇总。只有 blob 已写入对象存储并提交 metadata 后，才会进入这个数字。
+- 存储总量是当前已统计口径：已提交 Blob metadata size 汇总，加 manifest 对象字节（记录为 manifest metadata size）。
+- `cache.backend` 配置的是 KV 缓存后端（如 Redis 或 Valkey），它和存放已提交 blob/manifest 对象的 `store.object` 不是同一层存储。
+
 ## 手动刷新
 
 手动刷新支持生态隔离。它会绕过普通请求的 cache-first 读取路径，主动检查所选上游，并在上游内容发生变化时更新本地缓存：
