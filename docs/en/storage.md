@@ -106,6 +106,12 @@ store {
 
 SFTP requires host key verification through `known_hosts_path` or `host_key`.
 
+## Object Listing
+
+Object stores expose CAS object walking where the driver supports listing. Admin storage uses this as a dry-run style reconcile signal: metadata-backed counters remain the source of truth for cache accounting, while the live object listing shows how many CAS blobs and bytes are currently visible in `store.object`.
+
+The listing can be expensive on large or remote stores, so it is only surfaced on the storage view and may be unavailable when a driver cannot list objects or the backing service rejects the scan.
+
 ## Multi-replica Notes
 
 For multiple RegiMux replicas, use a shared metadata store and a shared object store:

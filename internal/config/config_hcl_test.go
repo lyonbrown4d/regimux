@@ -31,7 +31,8 @@ func testHCLConfig() string {
 		testHCLScheduler +
 		testHCLContainer +
 		testHCLDependencyEcosystems +
-		testHCLWorker
+		testHCLWorker +
+		testHCLPolicy
 }
 
 const testHCLServer = `
@@ -142,6 +143,26 @@ worker {
 }
 `
 
+const testHCLPolicy = `
+policy {
+  dependency {
+    allow {
+      ecosystem = "go"
+      alias = "default"
+      artifact = "github.com/acme/*"
+      reference = " v1.2.3 "
+    }
+
+    block {
+      ecosystem = "NPM"
+      alias = "npm"
+      artifact = "private/*"
+      reference = " * "
+    }
+  }
+}
+`
+
 func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 	t.Helper()
 
@@ -157,6 +178,7 @@ func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 	}
 	assertLoadedHCLUpstream(t, local)
 	assertLoadedHCLEcosystemConfig(t, cfg)
+	assertLoadedHCLPolicy(t, cfg.Policy)
 	assertLoadedHCLWorker(t, cfg.Worker)
 }
 
@@ -255,6 +277,41 @@ func assertLoadedHCLMavenConfig(t *testing.T, cfg config.Config) {
 	mavenUpstream, ok := cfg.MavenUpstream("central")
 	if !ok || mavenUpstream.Type != "maven" || cfg.Maven["central"].Registry != "https://repo.maven.apache.org/maven2" {
 		t.Fatalf("unexpected maven ecosystem config: %#v / %#v", cfg.Maven, mavenUpstream)
+	}
+}
+
+func assertLoadedHCLPolicy(t *testing.T, policyCfg config.PolicyConfig) {
+	t.Helper()
+
+	if len(policyCfg.Dependency.Allow) != 1 || len(policyCfg.Dependency.Block) != 1 {
+		t.Fatalf("unexpected dependency policy rule counts: %#v", policyCfg.Dependency)
+	}
+	allow := policyCfg.Dependency.Allow[0]
+	block := policyCfg.Dependency.Block[0]
+	if want, got := "go", allow.Ecosystem; got != want {
+		t.Fatalf("policy allow ecosystem = %q, want %q", got, want)
+	}
+	if want, got := "default", allow.Alias; got != want {
+		t.Fatalf("policy allow alias = %q, want %q", got, want)
+	}
+	if want, got := "github.com/acme/*", allow.Artifact; got != want {
+		t.Fatalf("policy allow artifact = %q, want %q", got, want)
+	}
+	if want, got := "v1.2.3", allow.Reference; got != want {
+		t.Fatalf("policy allow reference = %q, want %q", got, want)
+	}
+
+	if want, got := "npm", block.Ecosystem; got != want {
+		t.Fatalf("policy block ecosystem = %q, want %q", got, want)
+	}
+	if want, got := "npm", block.Alias; got != want {
+		t.Fatalf("policy block alias = %q, want %q", got, want)
+	}
+	if want, got := "private/*", block.Artifact; got != want {
+		t.Fatalf("policy block artifact = %q, want %q", got, want)
+	}
+	if want, got := "*", block.Reference; got != want {
+		t.Fatalf("policy block reference = %q, want %q", got, want)
 	}
 }
 

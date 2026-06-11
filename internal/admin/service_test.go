@@ -1,7 +1,10 @@
 package admin_test
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -19,7 +22,9 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	containerauth "github.com/lyonbrown4d/regimux/internal/ecosystems/container/auth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	ocidigest "github.com/opencontainers/go-digest"
 )
 
 func TestServiceRendersDashboardAndPartials(t *testing.T) {
@@ -34,10 +39,12 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 	}
 	metadata := newMetadataStore(t)
 	seedAdminMetadata(ctx, t, metadata)
+	objects := newAdminObjectStore(ctx, t)
 
 	service := admin.NewService(admin.Dependencies{
 		Config:   cfg,
 		Metadata: metadata,
+		Objects:  objects,
 		Runtimes: newAdminTestRuntimes(cfg),
 		Version:  build.Version("test-version"),
 		Messages: newAdminMessages(t),
@@ -56,8 +63,8 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 	assertAdminResponse(t, app, "/admin/upstreams", "Upstream Configuration", "registry-1.docker.io")
 	assertAdminResponse(t, app, "/admin/activity", "Request Activity", "meta.pull_records", "library/node")
 	assertAdminResponse(t, app, "/admin/cache", "Cache", "Committed Blob Bytes (metadata)", "recorded from committed blob metadata")
-	assertAdminResponse(t, app, "/admin/storage", "Storage", "Repository Blob Links", "1.2 KiB", "Tracked Storage Bytes", "blob metadata size sum plus manifest object bytes recorded as metadata size")
-	assertAdminResponse(t, app, "/admin/storage?lang=zh", "已落盘 Blob 字节（metadata）", "Blob metadata 大小汇总加 manifest 对象字节")
+	assertAdminResponse(t, app, "/admin/storage", "Storage", "Repository Blob Links", "1.2 KiB", "Tracked Storage Bytes", "Object Store Bytes (listed)", "22 B", "1 Objects", "blob metadata size sum plus manifest object bytes recorded as metadata size")
+	assertAdminResponse(t, app, "/admin/storage?lang=zh", "已落盘 Blob 字节（metadata）", "对象存储字节（list）", "1 对象", "Blob metadata 大小汇总加 manifest 对象字节")
 	assertAdminResponse(t, app, "/admin/scheduler", "Prefetch Runs", "Cancel", "Retry failed")
 	assertAdminResponse(t, app, "/admin/audit", "Auth Users", "alice", "hub/library/*")
 	assertAdminResponse(t, app, "/admin/config", "Configuration Sources", "source metadata unavailable", "go.default.registry")
@@ -223,6 +230,26 @@ func newMetadataStore(t *testing.T) *meta.SQLStore {
 		}
 	})
 	return store
+}
+
+func newAdminObjectStore(ctx context.Context, t *testing.T) object.Store {
+	t.Helper()
+	store, err := object.NewMemory("admin-test-objects")
+	if err != nil {
+		t.Fatalf("new object store: %v", err)
+	}
+	body := []byte("admin object list body")
+	if _, err := store.Put(ctx, digestForBody(body), bytes.NewReader(body), object.PutOptions{
+		ContentType: distribution.MediaTypeOctetStream,
+	}); err != nil {
+		t.Fatalf("put object: %v", err)
+	}
+	return store
+}
+
+func digestForBody(body []byte) string {
+	sum := sha256.Sum256(body)
+	return ocidigest.SHA256.String() + ":" + hex.EncodeToString(sum[:])
 }
 
 func seedAdminMetadata(ctx context.Context, t *testing.T, store meta.Store) {

@@ -140,10 +140,18 @@ type StorageSummary struct {
 	BlobCount     int
 	ManifestCount int
 	RepoBlobCount int
+	ObjectStore   ObjectStoreSummary
 	RecentBlobs   *collectionlist.List[BlobRow]
 	LargeBlobs    *collectionlist.List[BlobRow]
 	Repositories  *collectionlist.List[RepositoryRow]
 	RepoBlobLinks *collectionlist.List[RepoBlobRow]
+}
+
+type ObjectStoreSummary struct {
+	Available bool
+	Count     int
+	Bytes     string
+	Error     string
 }
 
 type RepositoryRow struct {

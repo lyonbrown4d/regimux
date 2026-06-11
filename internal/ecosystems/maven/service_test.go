@@ -2,6 +2,7 @@ package maven_test
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
+	"github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -69,6 +71,38 @@ func TestServiceCachesReleaseArtifactByPath(t *testing.T) {
 	if !tag.ExpiresAt.IsZero() {
 		t.Fatalf("release artifact expires_at = %s, want zero", tag.ExpiresAt)
 	}
+}
+
+func TestServicePersistsArtifactAfterFullDownload(t *testing.T) {
+	ctx := context.Background()
+	const body = "jar bytes"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/com/acme/demo/1.2.3/demo-1.2.3.jar" {
+			t.Fatalf("upstream path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/java-archive")
+		writeResponse(t, w, body)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service, metadata, objects := newTestServiceWithStores(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"central": {Registry: upstream.URL},
+	})
+	resp, err := service.Get(ctx, maven.Request{
+		Alias: "central",
+		Tail:  "com/acme/demo/1.2.3/demo-1.2.3.jar",
+	})
+	requireNoError(t, "artifact get", err)
+	assertBody(t, resp, body)
+	if resp.Cache != cacheMiss {
+		t.Fatalf("cache = %q, want %q", resp.Cache, cacheMiss)
+	}
+
+	assertStoredArtifact(ctx, t, metadata, objects, meta.TagKey{
+		Alias:      "central",
+		Repository: "com/acme/demo/1.2.3",
+		Reference:  "demo-1.2.3.jar",
+	}, body, "application/java-archive")
 }
 
 func TestServiceStoresShortTTLForMetadataAndSnapshots(t *testing.T) {
@@ -231,6 +265,48 @@ func TestServiceDoesNotStoreHeadMiss(t *testing.T) {
 	}
 	if requests != 2 {
 		t.Fatalf("upstream requests = %d, want 2", requests)
+	}
+}
+
+func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
+	ctx := context.Background()
+	requests := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		requests++
+		t.Fatal("upstream should not be called when policy blocks maven request")
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := maven.NewService(maven.ServiceDependencies{
+		Config: config.Config{
+			Maven: config.DependencyEcosystemConfig{
+				"central": {Registry: upstream.URL},
+			},
+			Policy: config.PolicyConfig{
+				Dependency: config.DependencyPolicyConfig{
+					Block: []config.DependencyRuleConfig{
+						{
+							Ecosystem: "maven",
+							Alias:     "central",
+							Artifact:  "com/acme/demo/1.2.3",
+						},
+					},
+				},
+			},
+		},
+	})
+	_, err := service.Get(ctx, maven.Request{
+		Alias: "central",
+		Tail:  "com/acme/demo/1.2.3/demo-1.2.3.jar",
+	})
+	if err == nil {
+		t.Fatal("expected policy block error")
+	}
+	if !errors.Is(err, policy.ErrDependencyBlocked) {
+		t.Fatalf("unexpected error = %v", err)
+	}
+	if requests != 0 {
+		t.Fatalf("upstream requests = %d, want 0", requests)
 	}
 }
 

@@ -1,5 +1,5 @@
 <section class="space-y-5">
-  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs text-zinc-500">{{t . "label.total_bytes"}}</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Storage.TotalBytes}}</div>
@@ -20,6 +20,12 @@
       <div class="text-xs text-zinc-500">{{t . "label.repo_blob_links"}}</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Storage.RepoBlobCount}}</div>
       <div class="mt-1 text-xs text-zinc-500">{{t . "hint.repo_blob_links"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.object_store_bytes"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{if .Storage.ObjectStore.Available}}{{.Storage.ObjectStore.Bytes}}{{else}}{{t . "value.unavailable"}}{{end}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{if .Storage.ObjectStore.Available}}{{.Storage.ObjectStore.Count}} {{t . "label.objects"}}{{else}}{{.Storage.ObjectStore.Error}}{{end}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{t . "hint.object_store_list"}}</div>
     </div>
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs text-zinc-500">{{t . "label.repositories"}}</div>

@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"errors"
 	"context"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
+	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -170,6 +172,9 @@ func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute r
 		}
 		requestRoute := routeForUpstream(baseRoute, upstream.alias)
 		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias, mode)
+		if errors.Is(err, accesspolicy.ErrDependencyBlocked) {
+			return nil, err
+		}
 		if s.shouldFallbackFromResponse(resp, err, fallback, i, total) {
 			lastErr = err
 			continue
@@ -197,6 +202,9 @@ func (s *Service) shouldFallbackFromResponse(resp *Response, err error, fallback
 }
 
 func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute route, upstreamCfg config.UpstreamConfig, upstreamAlias string, mode requestMode) (*Response, error) {
+	if err := s.checkDependencyPolicy(requestRoute); err != nil {
+		return nil, err
+	}
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err

@@ -1,6 +1,7 @@
 package golang_test
 
 import (
+	"errors"
 	"context"
 	"net/http"
 	"net/http/httptest"
@@ -9,6 +10,8 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
+	"github.com/lyonbrown4d/regimux/internal/policy"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
 const (
@@ -91,6 +94,38 @@ func TestServiceCachesRootGoProxyFile(t *testing.T) {
 	}
 }
 
+func TestServicePersistsModuleZipAfterFullDownload(t *testing.T) {
+	ctx := context.Background()
+	const body = "zip-bytes"
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/github.com/acme/lib/@v/v1.2.3.zip" {
+			t.Fatalf("upstream path = %s", r.URL.Path)
+		}
+		w.Header().Set("Content-Type", "application/zip")
+		writeResponse(t, w, body)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service, metadata, objects := newTestServiceWithStores(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"default": {Registry: upstream.URL},
+	})
+	resp, err := service.Get(ctx, golang.Request{
+		Alias: "default",
+		Tail:  "github.com/acme/lib/@v/v1.2.3.zip",
+	})
+	requireNoError(t, "module zip get", err)
+	assertBody(t, resp, body)
+	if resp.Cache != cacheMiss {
+		t.Fatalf("cache = %q, want %q", resp.Cache, cacheMiss)
+	}
+
+	assertStoredArtifact(ctx, t, metadata, objects, meta.TagKey{
+		Alias:      "default",
+		Repository: "github.com/acme/lib",
+		Reference:  "@v/v1.2.3.zip",
+	}, body, "application/zip")
+}
+
 func TestServiceServesExpiredLatestStaleWithoutRefreshingInline(t *testing.T) {
 	ctx := context.Background()
 	requests := 0
@@ -171,6 +206,58 @@ func TestServiceRootGoProxyFallsBackAcrossGoUpstreams(t *testing.T) {
 	}
 	if backupRequests != 1 {
 		t.Fatalf("backup requests = %d, want 1", backupRequests)
+	}
+}
+
+func TestServiceRootGoProxyDoesNotFallbackOnPolicyDenied(t *testing.T) {
+	ctx := context.Background()
+	primaryRequests := 0
+	primary := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		primaryRequests++
+		t.Fatal("primary upstream should not be called when policy denies request")
+	}))
+	t.Cleanup(primary.Close)
+
+	backupRequests := 0
+	backup := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		backupRequests++
+		t.Fatal("backup upstream should not be called when policy denies request")
+	}))
+	t.Cleanup(backup.Close)
+
+	service := golang.NewService(golang.ServiceDependencies{
+		Config: config.Config{
+			Go: map[string]config.DependencyUpstreamConfig{
+				"backup":  {Registry: backup.URL},
+				"default": {Registry: primary.URL},
+			},
+			Policy: config.PolicyConfig{
+				Dependency: config.DependencyPolicyConfig{
+					Block: []config.DependencyRuleConfig{
+						{
+							Ecosystem: "go",
+							Alias:     "default",
+							Artifact:  "github.com/acme/lib",
+						},
+					},
+				},
+			},
+		},
+	})
+	_, err := service.Get(ctx, golang.Request{
+		Tail: "github.com/acme/lib/@v/v1.2.3.mod",
+	})
+	if err == nil {
+		t.Fatal("expected policy block error")
+	}
+	if !errors.Is(err, policy.ErrDependencyBlocked) {
+		t.Fatalf("unexpected error = %v", err)
+	}
+	if primaryRequests != 0 {
+		t.Fatalf("primary requests = %d, want 0", primaryRequests)
+	}
+	if backupRequests != 0 {
+		t.Fatalf("backup requests = %d, want 0", backupRequests)
 	}
 }
 

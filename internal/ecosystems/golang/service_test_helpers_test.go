@@ -29,6 +29,12 @@ func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams ma
 
 func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store) {
 	t.Helper()
+	service, metadata, _ := newTestServiceWithStores(ctx, t, upstreams)
+	return service, metadata
+}
+
+func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store, object.Store) {
+	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
 	t.Cleanup(func() {
@@ -40,7 +46,7 @@ func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map
 		Config:   config.Config{Go: upstreams},
 		Metadata: db,
 		Objects:  objects,
-	}), db
+	}), db, objects
 }
 
 func assertBody(t *testing.T, resp *golang.Response, want string) {
@@ -101,5 +107,67 @@ func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Sto
 	manifest.ExpiresAt = expiresAt
 	if _, updateErr := metadata.UpsertManifest(ctx, *manifest); updateErr != nil {
 		t.Fatalf("expire manifest: %v", updateErr)
+	}
+}
+
+func assertStoredArtifact(ctx context.Context, t *testing.T, metadata meta.Store, objects object.Store, key meta.TagKey, wantBody, wantMediaType string) {
+	t.Helper()
+	tag, ok, err := metadata.Tag(ctx, key)
+	requireNoError(t, "lookup stored tag", err)
+	if !ok {
+		t.Fatalf("tag %s was not stored", key.String())
+	}
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{
+		Alias:      key.Alias,
+		Repository: key.Repository,
+		Digest:     tag.Digest,
+	})
+	requireNoError(t, "lookup stored manifest", err)
+	if !ok {
+		t.Fatalf("manifest %s/%s@%s was not stored", key.Alias, key.Repository, tag.Digest)
+	}
+	if manifest.Reference != key.Reference {
+		t.Fatalf("manifest reference = %q, want %q", manifest.Reference, key.Reference)
+	}
+	if manifest.MediaType != wantMediaType {
+		t.Fatalf("manifest media type = %q, want %q", manifest.MediaType, wantMediaType)
+	}
+	if manifest.Size != int64(len(wantBody)) {
+		t.Fatalf("manifest size = %d, want %d", manifest.Size, len(wantBody))
+	}
+	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: tag.Digest})
+	requireNoError(t, "lookup stored blob", err)
+	if !ok {
+		t.Fatalf("blob %s was not stored", tag.Digest)
+	}
+	if blob.ObjectKey != tag.Digest {
+		t.Fatalf("blob object key = %q, want %q", blob.ObjectKey, tag.Digest)
+	}
+	repoBlob, ok, err := metadata.RepoBlob(ctx, meta.RepoBlobKey{
+		Alias:      key.Alias,
+		Repository: key.Repository,
+		Digest:     tag.Digest,
+	})
+	requireNoError(t, "lookup stored repo blob", err)
+	if !ok {
+		t.Fatalf("repo blob %s/%s@%s was not stored", key.Alias, key.Repository, tag.Digest)
+	}
+	if repoBlob.SourceManifest != tag.Digest {
+		t.Fatalf("repo blob source manifest = %q, want %q", repoBlob.SourceManifest, tag.Digest)
+	}
+	objectKey := manifest.ObjectKey
+	if objectKey == "" {
+		objectKey = manifest.Digest
+	}
+	reader, info, err := objects.Get(ctx, objectKey, object.GetOptions{})
+	requireNoError(t, "open stored object", err)
+	defer closeBody(t, reader)
+	body, err := io.ReadAll(reader)
+	requireNoError(t, "read stored object", err)
+	if string(body) != wantBody {
+		t.Fatalf("stored object body = %q, want %q", string(body), wantBody)
+	}
+	if info == nil || info.Size != int64(len(wantBody)) {
+		t.Fatalf("stored object size = %v, want %d", info, len(wantBody))
 	}
 }

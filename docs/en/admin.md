@@ -38,6 +38,7 @@ Admin storage and cache counters are metadata-backed accounting, not a live scan
 
 - `Committed Blob Bytes (metadata)` is the sum of committed `meta_blobs.size` rows. A blob only appears here after object storage has accepted the blob and metadata has been committed.
 - Storage total is the current tracked accounting sum: committed blob metadata size plus manifest object bytes recorded as manifest metadata size.
+- `Object Store Bytes (listed)` is a live CAS object listing from `store.object` when the active driver exposes object walking. It is useful for reconcile and dry-run checks against metadata-backed accounting, and it may be unavailable if the driver cannot list objects or the list operation fails.
 - The configured KV cache backend (`cache.backend`, such as Redis or Valkey) is separate from `store.object`, where committed blob and manifest objects are stored.
 
 ## Manual Refresh

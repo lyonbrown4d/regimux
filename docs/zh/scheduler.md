@@ -104,6 +104,12 @@ scheduler {
 
 运行记录和结果会存入元数据，并可在 Admin UI 中查看。依赖生态 prefetch 记录使用 `go/default`、`npm/default` 这类 scoped alias；npm/PyPI/Maven/Go 的版本预测会作为后续生态专属层继续迭代。
 
+## Lockfile 预热规划
+
+`internal/dependencyproxy/prefetch` 提供第一层 lockfile 和 manifest 预热规划能力。它把依赖输入解析成现有 manual sync 坐标，而不是引入第二套 fetch 路径，因此每次预热仍会经过对应生态 service，并沿用客户端请求相同的对象存储和 metadata 契约。
+
+当前解析器支持 container image refs、OCI descriptor JSON、`go.sum`、`package-lock.json`、`requirements.txt` 和 `pom.xml`。这个包是未来 Admin/API/CLI 入口的内部执行边界，目前还没有暴露独立 HTTP endpoint。
+
 ## Manifest 刷新
 
 `manifest_refresh` 使用同一套预热管道，但只执行 manifest 刷新：会拉取 manifest 和索引 manifest 子 manifest，不会下载 blob。适合在低带宽场景下定期保持镜像元数据新鲜。

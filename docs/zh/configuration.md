@@ -127,6 +127,56 @@ container {
 
 Admin 的 `已落盘 Blob 字节（metadata）` 来自已提交的 blob metadata，不是实时扫描 `store.object`，也不是所有经过代理的字节。`cache.backend` 是 KV 缓存后端，和 `store.object` 配置的对象存储不是同一层。
 
+## 依赖策略
+
+`policy.dependency` 用于在发起上游前对依赖请求做前置控制，避免不必要的流量打到上游。
+
+- `dependency.block` 优先于 `dependency.allow`，先执行。
+- `dependency.allow` 不为空时，请求必须命中至少一条 allow 规则；否则拒绝。
+- `dependency.allow` 为空时默认放行，但命中 block 的请求仍会拒绝。
+- 规则字段会去掉首尾空白，生态名会做大小写归一化。
+- 生态名、alias、artifact、reference 可精确匹配；字段值以 `*` 结尾时做前缀通配。
+- 字段为空表示“任意（通配）”。
+
+不同生态对应字段如下：
+
+- `ecosystem`：`container`、`go`、`npm`、`pypi`、`maven`
+- `alias`：请求路径中的上游 alias
+- `artifact`：
+  - container：仓库名，例如 `library/alpine`
+  - go：模块路径，例如 `github.com/example/mod`
+  - npm：包名
+  - pypi：`pypi/simple/<project>`
+  - maven：artifact 目录路径
+- `reference`：
+  - container：按路由类型可能是 tag、digest 或 `tags`
+  - go：请求 ref，例如 `@v/v1.2.3.zip`
+  - npm：`metadata`、`tarball:...`、`path:...`
+  - pypi：`index.html` 或标准化后的 package path
+  - maven：文件名
+
+被拒绝的请求返回 `403 Forbidden`，且不会访问上游。
+
+```hcl
+policy {
+  dependency {
+    allow {
+      ecosystem = "go"
+      alias = "default"
+      artifact = "github.com/example/*"
+      reference = "v1.2.3"
+    }
+
+    block {
+      ecosystem = "container"
+      alias = "hub"
+      artifact = "private/*"
+      reference = "*"
+    }
+  }
+}
+```
+
 small blob cache 可以把已经完成 digest 校验的小 blob，例如 OCI image config blob，放进当前配置的 KV 缓存后端。这个模式建议搭配 Redis 或 Valkey 使用；大 layer 仍然应该放在 `store.object`。
 
 ```hcl

@@ -21,6 +21,8 @@ type SFTPStore struct {
 }
 
 var _ Store = (*SFTPStore)(nil)
+var _ ObjectWalker = (*SFTPStore)(nil)
+var _ ObjectLister = (*SFTPStore)(nil)
 
 func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*SFTPStore, error) {
 	ctx = normalizeContext(ctx)
@@ -46,6 +48,20 @@ func NewSFTP(ctx context.Context, root string, opts SFTPOptions) (*SFTPStore, er
 		return closeSFTPClients(client, sshClient)
 	}
 	return &SFTPStore{aferoStore: store}, nil
+}
+
+func (s *SFTPStore) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
+	if s == nil || s.aferoStore == nil {
+		return errorf("object store is not configured")
+	}
+	return s.aferoStore.walkObjects(ctx, fn)
+}
+
+func (s *SFTPStore) ListObjects(ctx context.Context) ([]Info, error) {
+	if s == nil || s.aferoStore == nil {
+		return nil, errorf("object store is not configured")
+	}
+	return s.aferoStore.listObjects(ctx)
 }
 
 func normalizeSFTPOptions(opts SFTPOptions) SFTPOptions {

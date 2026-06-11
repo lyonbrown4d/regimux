@@ -5,6 +5,7 @@ import "time"
 type Config struct {
 	Server    ServerConfig              `json:"server"    koanf:"server"    mapstructure:"server"    validate:"required"`
 	Auth      RegistryAuthConfig        `json:"auth"      koanf:"auth"      mapstructure:"auth"`
+	Policy    PolicyConfig              `json:"policy"    koanf:"policy"    mapstructure:"policy"`
 	Log       LogConfig                 `json:"log"       koanf:"log"       mapstructure:"log"`
 	Cache     CacheConfig               `json:"cache"     koanf:"cache"     mapstructure:"cache"     validate:"required"`
 	Store     StoreConfig               `json:"store"     koanf:"store"     mapstructure:"store"     validate:"required"`

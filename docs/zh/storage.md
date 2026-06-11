@@ -106,6 +106,12 @@ store {
 
 SFTP 必须通过 `known_hosts_path` 或 `host_key` 做主机密钥校验。
 
+## 对象枚举
+
+对象存储在驱动支持 list 的情况下会暴露 CAS object walking。Admin 存储页把它作为类似 dry-run 的 reconcile 信号：metadata 记账仍是缓存统计的来源，而实时对象枚举显示当前 `store.object` 中可见的 CAS blob 数量和字节数。
+
+对于大型或远端对象存储，枚举可能比较昂贵，因此只在存储页展示；当驱动无法枚举或后端拒绝扫描时，该统计会显示为不可用。
+
 ## 多副本说明
 
 多副本部署时需要使用共享元数据和共享对象存储：

@@ -14,11 +14,13 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/scheduler"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
 type Dependencies struct {
 	Config    config.Config
 	Metadata  meta.Store
+	Objects   object.Store
 	Runtimes  *collectionlist.List[ecosystem.Runtime]
 	Version   build.Version
 	Logger    *slog.Logger
@@ -33,6 +35,7 @@ type Dependencies struct {
 type baseDependencies struct {
 	Config   config.Config
 	Metadata meta.Store
+	Objects  object.Store
 	Version  build.Version
 	Logger   *slog.Logger
 	Auth     *auth.Service
@@ -40,7 +43,7 @@ type baseDependencies struct {
 
 var Module = dix.NewModule("admin",
 	dix.Providers(
-		dix.Provider5[baseDependencies, config.Config, meta.Store, build.Version, *slog.Logger, *auth.Service](newBaseDependencies),
+		dix.Provider6[baseDependencies, config.Config, meta.Store, object.Store, build.Version, *slog.Logger, *auth.Service](newBaseDependencies),
 		dix.Provider0[*AdminMapper](NewAdminMapper),
 		dix.ProviderErr0[*Messages](NewMessages),
 		dix.Provider5[Dependencies, baseDependencies, *scheduler.Runtime, *collectionlist.List[ecosystem.Runtime], *Messages, *AdminMapper](newDependencies),
@@ -52,6 +55,7 @@ var Module = dix.NewModule("admin",
 func newBaseDependencies(
 	cfg config.Config,
 	metadata meta.Store,
+	objects object.Store,
 	version build.Version,
 	logger *slog.Logger,
 	authService *auth.Service,
@@ -59,6 +63,7 @@ func newBaseDependencies(
 	return baseDependencies{
 		Config:   cfg,
 		Metadata: metadata,
+		Objects:  objects,
 		Version:  version,
 		Logger:   logger,
 		Auth:     authService,
@@ -75,6 +80,7 @@ func newDependencies(
 	return Dependencies{
 		Config:    base.Config,
 		Metadata:  base.Metadata,
+		Objects:   base.Objects,
 		Runtimes:  runtimes,
 		Version:   base.Version,
 		Logger:    base.Logger,

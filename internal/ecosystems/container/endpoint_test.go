@@ -60,6 +60,43 @@ func TestRegistryEndpointInvalidDigestReturnsDigestInvalid(t *testing.T) {
 	}
 }
 
+func TestRegistryEndpointManifestDeniedByPolicy(t *testing.T) {
+	manifests := &recordingManifestService{}
+	endpoint := container.NewRegistryEndpointFromOptions(manifests, nil, nil, nil, nil, container.RegistryEndpointOptions{
+		Config: config.Config{
+			Policy: config.PolicyConfig{
+				Dependency: config.DependencyPolicyConfig{
+					Block: []config.DependencyRuleConfig{
+						{
+							Ecosystem: "container",
+							Alias:     "hub",
+							Artifact:  "library/*",
+						},
+					},
+				},
+			},
+		},
+	})
+	baseURL := startAPIServer(t, endpoint)
+
+	resp := httpGet(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
+	body := readHTTPResponse(t, resp)
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("status = %d body=%q, want 403", resp.StatusCode, body)
+	}
+
+	var bodyJSON distribution.ErrorResponse
+	if err := json.Unmarshal(body, &bodyJSON); err != nil {
+		t.Fatalf("unmarshal error response: %v body=%q", err, body)
+	}
+	if len(bodyJSON.Errors) != 1 || bodyJSON.Errors[0].Code != distribution.CodeDenied {
+		t.Fatalf("unexpected error response: %#v", bodyJSON)
+	}
+	if got := manifests.Repo(); got != "" {
+		t.Fatalf("manifest request should be blocked by policy, got repo = %q", got)
+	}
+}
+
 func TestRegistryEndpointSuggestsSimilarTagsForMissingManifest(t *testing.T) {
 	manifests := &recordingManifestService{
 		err: distribution.ErrManifestUnknown.WithDetail("missing manifest"),

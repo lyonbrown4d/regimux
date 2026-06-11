@@ -80,7 +80,7 @@ func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*out
 		Method: method,
 	})
 	if err != nil {
-		return plainError(http.StatusBadGateway, err.Error()), nil
+		return plainError(statusFromError(err), err.Error()), nil
 	}
 	return outputFromResponse(method, resp), nil
 }
@@ -97,7 +97,7 @@ func (e *Endpoint) dispatchRoot(ctx context.Context, in *rootInput, method strin
 		Method: method,
 	})
 	if err != nil {
-		return plainError(http.StatusBadGateway, err.Error()), nil
+		return plainError(statusFromError(err), err.Error()), nil
 	}
 	return outputFromResponse(method, resp), nil
 }

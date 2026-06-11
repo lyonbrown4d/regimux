@@ -12,10 +12,12 @@ import (
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/arcgolabs/httpx"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/observability"
+	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
@@ -32,6 +34,7 @@ type RegistryEndpoint struct {
 	suggestions suggestion.ManifestService
 
 	defaultNamespaces *collectionmapping.Map[string, string]
+	dependencyPolicy  accesspolicy.DependencyPolicy
 }
 
 func NewRegistryEndpoint(
@@ -84,6 +87,7 @@ func NewRegistryEndpointFromOptions(
 	endpoint := NewRegistryEndpointFromConfig(manifests, blobs, tags, referrers, logger, options.Config)
 	endpoint.metrics = options.Metrics
 	endpoint.suggestions = options.Suggestions
+	endpoint.dependencyPolicy = accesspolicy.FromConfig(options.Config.Policy.Dependency)
 	return endpoint
 }
 
@@ -139,6 +143,11 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	}
 	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
 	routeName = registryRouteName(route.Kind)
+	if err := e.checkDependencyPolicy(route); err != nil {
+		out := errorOutput(distribution.ErrDenied.WithDetail(err.Error()))
+		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), err)
+		return out, nil
+	}
 
 	var out *registryOutput
 	switch route.Kind {
@@ -157,6 +166,29 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	}
 	e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), err)
 	return out, err
+}
+
+func (e *RegistryEndpoint) checkDependencyPolicy(route reference.Route) error {
+	if route.Kind == reference.RoutePing {
+		return nil
+	}
+	return e.dependencyPolicy.Check(accesspolicy.DependencyTarget{
+		Ecosystem: ecosystem.Container,
+		Alias:     route.Alias,
+		Artifact:  route.Repo,
+		Reference: containerPolicyReference(route),
+	})
+}
+
+func containerPolicyReference(route reference.Route) string {
+	switch route.Kind {
+	case reference.RouteBlob, reference.RouteReferrers:
+		return route.Digest
+	case reference.RouteTags:
+		return "tags"
+	default:
+		return route.Reference
+	}
 }
 
 func (e *RegistryEndpoint) defaultNamespace(alias string) mo.Option[string] {

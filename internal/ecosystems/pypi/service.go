@@ -74,6 +74,9 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 }
 
 func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig, mode requestMode) (*Response, error) {
+	if err := s.checkDependencyPolicy(requestRoute); err != nil {
+		return nil, err
+	}
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err

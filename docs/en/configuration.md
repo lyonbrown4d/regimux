@@ -127,6 +127,55 @@ container {
 
 Admin `Committed Blob Bytes (metadata)` is derived from committed blob metadata, not from a live scan of `store.object` or from bytes merely passing through the proxy. `cache.backend` is a KV cache backend and is separate from the object store configured by `store.object`.
 
+## Dependency Policy
+
+Use `policy.dependency` to block or allow specific artifact requests before RegiMux calls any upstream.
+
+- `dependency.block` has highest priority and is evaluated before `dependency.allow`.
+- If `dependency.allow` is non-empty, requests must match at least one allow rule; otherwise they are denied.
+- If `dependency.allow` is empty, all requests are allowed by default unless a block rule matches.
+- Empty rule fields are wildcards (`*` style). Field values are trimmed, and ecosystem names are normalized case-insensitively.
+- Field matching supports exact match or prefix wildcard (`*`) in `ecosystem`, `alias`, `artifact`, and `reference` values.
+
+Container and Go/npm/PyPI/Maven fields are taken from the request route:
+
+- `ecosystem`: `container`, `go`, `npm`, `pypi`, `maven`
+- `alias`: upstream alias from the request path
+- `artifact`:
+  - container: repository (for example `library/alpine`)
+  - go: module path (for example `github.com/example/mod`)
+  - npm: package name
+  - pypi: normalized repository path (for example `pypi/simple/requests`)
+  - maven: artifact directory path
+- `reference`:
+  - container: tag / digest / `tags` marker depending on route type
+  - go: artifact ref tail (for example `@v/v1.2.3.zip`)
+  - npm: `metadata`, `tarball:...`, or `path:...`
+  - pypi: `index.html` or normalized package path
+  - maven: file name
+
+Denied requests return `403 Forbidden` and do not fetch from upstream.
+
+```hcl
+policy {
+  dependency {
+    allow {
+      ecosystem = "go"
+      alias = "default"
+      artifact = "github.com/example/*"
+      reference = "v1.2.3"
+    }
+
+    block {
+      ecosystem = "container"
+      alias = "hub"
+      artifact = "private/*"
+      reference = "*"
+    }
+  }
+}
+```
+
 Small blob caching can store already-verified tiny blobs, such as OCI image config blobs, in the configured KV cache backend. Use Redis or Valkey for this mode; large layers still belong in `store.object`.
 
 ```hcl

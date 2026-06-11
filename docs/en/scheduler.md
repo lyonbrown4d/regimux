@@ -104,6 +104,12 @@ scheduler {
 
 Runs and outcomes are stored in metadata and can be viewed from Admin UI. Dependency ecosystem prefetch records use scoped aliases such as `go/default` or `npm/default`; version prediction for npm/PyPI/Maven/Go is intentionally left as a later ecosystem-specific layer.
 
+## Lockfile Warm Planning
+
+`internal/dependencyproxy/prefetch` provides the first lockfile and manifest warm-planning layer. It parses dependency inputs into existing manual-sync coordinates instead of introducing a second fetch path, so each warm still goes through the same ecosystem service and object-store metadata contract as a client request.
+
+The parser currently recognizes container image refs and OCI descriptor JSON, `go.sum`, `package-lock.json`, `requirements.txt`, and `pom.xml`. This package is an internal execution boundary for future Admin/API/CLI entry points; it does not expose a standalone HTTP endpoint yet.
+
 ## Manifest Refresh
 
 Manifest refresh runs the same prefetch scheduling pipeline, but in manifest-only mode. It only fetches manifest metadata (including index child manifests) and does not download blob content. This is useful for keeping repository manifest metadata fresh across aliases and mirrors without bandwidth cost of full blob prefetch.

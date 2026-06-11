@@ -1,0 +1,15 @@
+package golang
+
+import (
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
+)
+
+func (s *Service) checkDependencyPolicy(requestRoute route) error {
+	return accesspolicy.FromConfig(s.cfg.Policy.Dependency).Check(accesspolicy.DependencyTarget{
+		Ecosystem: ecosystem.Go,
+		Alias:     requestRoute.Alias,
+		Artifact:  requestRoute.Module,
+		Reference: requestRoute.Reference,
+	})
+}

@@ -16,6 +16,8 @@ type S3Store struct {
 }
 
 var _ Store = (*S3Store)(nil)
+var _ ObjectWalker = (*S3Store)(nil)
+var _ ObjectLister = (*S3Store)(nil)
 
 func NewS3(ctx context.Context, opts S3Options) (*S3Store, error) {
 	ctx = normalizeContext(ctx)
@@ -44,6 +46,20 @@ func NewS3(ctx context.Context, opts S3Options) (*S3Store, error) {
 		return nil, err
 	}
 	return &S3Store{aferoStore: store}, nil
+}
+
+func (s *S3Store) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
+	if s == nil || s.aferoStore == nil {
+		return errorf("object store is not configured")
+	}
+	return s.aferoStore.walkObjects(ctx, fn)
+}
+
+func (s *S3Store) ListObjects(ctx context.Context) ([]Info, error) {
+	if s == nil || s.aferoStore == nil {
+		return nil, errorf("object store is not configured")
+	}
+	return s.aferoStore.listObjects(ctx)
 }
 
 func normalizeS3Options(opts S3Options) S3Options {

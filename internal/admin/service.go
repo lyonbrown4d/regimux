@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
 )
 
@@ -21,6 +22,7 @@ const basePath = "/admin"
 type Service struct {
 	cfg       config.Config
 	metadata  meta.Store
+	objects   object.Store
 	runtimes  *collectionlist.List[ecosystem.Runtime]
 	version   build.Version
 	logger    *slog.Logger
@@ -47,6 +49,7 @@ func NewService(deps Dependencies) *Service {
 	service := &Service{
 		cfg:       deps.Config,
 		metadata:  deps.Metadata,
+		objects:   deps.Objects,
 		runtimes:  deps.Runtimes,
 		version:   deps.Version,
 		logger:    logger.With("component", "admin"),
@@ -199,7 +202,7 @@ func (s *Service) pageData(c fiber.Ctx, titleKey, active string) (PageData, erro
 	if err != nil {
 		return PageData{}, err
 	}
-	storage, err := s.storageSummary(rows)
+	storage, err := s.storageSummary(c.Context(), rows, active == "storage")
 	if err != nil {
 		return PageData{}, err
 	}
