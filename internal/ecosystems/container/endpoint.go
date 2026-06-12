@@ -16,6 +16,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -34,6 +35,7 @@ type RegistryEndpoint struct {
 	metrics     *observability.Metrics
 	suggestions suggestion.ManifestService
 	metadata    meta.Store
+	events      events.Bus
 
 	defaultNamespaces *collectionmapping.Map[string, string]
 	dependencyPolicy  accesspolicy.DependencyPolicy
@@ -77,6 +79,7 @@ type RegistryEndpointOptions struct {
 	Metrics     *observability.Metrics
 	Suggestions suggestion.ManifestService
 	Metadata    meta.Store
+	Events      events.Bus
 }
 
 func NewRegistryEndpointFromOptions(
@@ -91,6 +94,7 @@ func NewRegistryEndpointFromOptions(
 	endpoint.metrics = options.Metrics
 	endpoint.suggestions = options.Suggestions
 	endpoint.metadata = options.Metadata
+	endpoint.events = options.Events
 	endpoint.dependencyPolicy = accesspolicy.FromConfig(options.Config.Policy.Dependency)
 	return endpoint
 }
@@ -198,7 +202,6 @@ func containerPolicyReference(route reference.Route) string {
 
 func (e *RegistryEndpoint) recordPolicyDeniedPull(ctx context.Context, route reference.Route, err error) {
 	if e == nil ||
-		e.metadata == nil ||
 		route.Kind == reference.RoutePing ||
 		!errors.Is(err, accesspolicy.ErrDependencyBlocked) {
 		return
@@ -211,8 +214,31 @@ func (e *RegistryEndpoint) recordPolicyDeniedPull(ctx context.Context, route ref
 	if key.Reference == "" {
 		key.Reference = route.Reference
 	}
-	if _, recordErr := e.metadata.RecordPolicyDeniedPull(ctx, key, time.Now().UTC()); recordErr != nil && e.logger != nil {
-		e.logger.DebugContext(ctx, "record container proxy policy denied pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	if e.metadata != nil {
+		if _, recordErr := e.metadata.RecordPolicyDeniedPull(ctx, key, time.Now().UTC()); recordErr != nil && e.logger != nil {
+			e.logger.DebugContext(ctx, "record container proxy policy denied pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+		}
+	}
+	e.publishDependencyPullDenied(ctx, route, key, err)
+}
+
+func (e *RegistryEndpoint) publishDependencyPullDenied(ctx context.Context, route reference.Route, key meta.PullKey, denyErr error) {
+	if e == nil || e.events == nil {
+		return
+	}
+	reason := ""
+	if denyErr != nil {
+		reason = denyErr.Error()
+	}
+	if err := events.Publish(ctx, e.events, events.DependencyPullDenied{
+		Ecosystem:  ecosystem.Container,
+		Kind:       string(route.Kind),
+		Alias:      key.Alias,
+		Repository: key.Repository,
+		Reference:  key.Reference,
+		Reason:     reason,
+	}); err != nil && e.logger != nil {
+		e.logger.DebugContext(ctx, "publish container proxy policy denied pull event failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", err)
 	}
 }
 

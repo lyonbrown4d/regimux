@@ -49,6 +49,19 @@ func TestAdditionalMetricsRecordBytesAndReports(t *testing.T) {
 
 	metrics.ObserveAPIRequest(context.Background(), "registry.manifest", http.MethodGet, http.StatusOK, time.Millisecond, 128, nil)
 	metrics.ObserveCacheStore(context.Background(), "blob", "hub", "library/alpine", 256)
+	metrics.ObserveDependencyPull(context.Background(), observability.DependencyPullMetric{
+		Ecosystem:  "container",
+		Kind:       "manifest",
+		Alias:      "hub",
+		Repository: "library/alpine",
+		Status:     "hit",
+	})
+	metrics.ObserveDependencyPolicyDeniedPull(context.Background(), observability.DependencyPolicyDeniedPullMetric{
+		Ecosystem:  "npm",
+		Kind:       "metadata",
+		Alias:      "npmjs",
+		Repository: "left-pad",
+	})
 	metrics.ObserveCleanupReport(context.Background(), observability.CleanupReportMetrics{ScannedBlobs: 3, BytesDeleted: 512})
 	metrics.ObservePrefetchReport(context.Background(), observability.PrefetchReportMetrics{Candidates: 4, BytesWarmed: 1024})
 
@@ -60,6 +73,12 @@ func TestAdditionalMetricsRecordBytesAndReports(t *testing.T) {
 	if storeObjects.value != 1 {
 		t.Fatalf("cache store objects = %f, want 1", storeObjects.value)
 	}
+	dependencyPulls := findMetric(t, recorder.counters, "service_dependency_proxy_pulls_total")
+	assertMetricAttr(t, dependencyPulls, "ecosystem", "container")
+	assertMetricAttr(t, dependencyPulls, "status", "hit")
+	deniedPulls := findMetric(t, recorder.counters, "service_dependency_proxy_policy_denied_pulls_total")
+	assertMetricAttr(t, deniedPulls, "ecosystem", "npm")
+	assertMetricAttr(t, deniedPulls, "repository", "left-pad")
 	findMetric(t, recorder.gauges, "service_scheduler_cleanup_last_run_bytes")
 	findMetric(t, recorder.gauges, "service_scheduler_prefetch_last_run_bytes")
 }

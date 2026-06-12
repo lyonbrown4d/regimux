@@ -155,7 +155,7 @@ Admin 的 `已落盘 Blob 字节（metadata）` 来自已提交的 blob metadata
   - pypi：`index.html` 或标准化后的 package path
   - maven：文件名
 
-被拒绝的请求返回 `403 Forbidden`，且不会访问上游。它们仍会写入 pull metadata 的策略拒绝计数和最近拒绝时间，admin 可以看到被拦截的依赖代理流量，但这不会计入成功拉取。
+被拒绝的请求返回 `403 Forbidden`，且不会访问上游。它们仍会写入 pull metadata 的策略拒绝计数和最近拒绝时间，admin 可以看到被拦截的依赖代理流量，但这不会计入成功拉取。Prometheus 会通过 `regimux_service_dependency_proxy_pulls_total{ecosystem,kind,alias,repository,status}` 暴露依赖代理 pull 结果，并通过 `regimux_service_dependency_proxy_policy_denied_pulls_total{ecosystem,kind,alias,repository}` 暴露策略拒绝的 pull。
 
 ```hcl
 policy {

@@ -47,6 +47,14 @@ var Module = dix.NewModule("observability",
 			NewCacheStoreMetricsSubscriber,
 			dix.Key("metrics.cache_store"), dix.Order(13),
 		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewDependencyPulledMetricsSubscriber,
+			dix.Key("metrics.dependency_pulled"), dix.Order(14),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewDependencyPullDeniedMetricsSubscriber,
+			dix.Key("metrics.dependency_pull_denied"), dix.Order(15),
+		),
 	),
 	dix.Hooks(
 		dix.OnStart[StaticConfigDependencies](

@@ -15,6 +15,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/registrytool"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
@@ -37,7 +38,7 @@ var Module = dix.NewModule("container",
 			NewRuntime,
 			dix.Into[ecosystem.Runtime](dix.Key("container"), dix.Order(0)),
 		),
-		dix.Provider4[RegistryEndpointOptions, config.Config, *observability.Metrics, suggestion.ManifestService, meta.Store](newRegistryEndpointOptions),
+		dix.Provider5[RegistryEndpointOptions, config.Config, *observability.Metrics, suggestion.ManifestService, meta.Store, events.Bus](newRegistryEndpointOptions),
 		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, RegistryEndpointOptions](
 			NewRegistryEndpointFromOptions,
 			dix.Into[httpx.Endpoint](dix.Key("registry"), dix.Order(10)),
@@ -68,11 +69,13 @@ func newRegistryEndpointOptions(
 	metrics *observability.Metrics,
 	suggestions suggestion.ManifestService,
 	metadata meta.Store,
+	bus events.Bus,
 ) RegistryEndpointOptions {
 	return RegistryEndpointOptions{
 		Config:      cfg,
 		Metrics:     metrics,
 		Suggestions: suggestions,
 		Metadata:    metadata,
+		Events:      bus,
 	}
 }

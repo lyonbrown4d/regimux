@@ -61,6 +61,23 @@ The observability example starts RegiMux, Prometheus, and Grafana. RegiMux expos
 docker compose --env-file examples/compose/.env -f examples/compose/compose.observability.yml up -d
 ```
 
+The dashboard includes dependency proxy pull panels backed by:
+
+- `regimux_service_dependency_proxy_pulls_total{ecosystem,kind,alias,repository,status}` for dependency proxy pull outcomes.
+- `regimux_service_dependency_proxy_policy_denied_pulls_total{ecosystem,kind,alias,repository}` for requests rejected by `policy.dependency` before any upstream fetch.
+
+Useful PromQL checks:
+
+```promql
+sum by (ecosystem, kind, alias, status) (
+  rate(regimux_service_dependency_proxy_pulls_total[$__rate_interval])
+)
+
+topk(20, sum by (ecosystem, kind, alias, repository) (
+  increase(regimux_service_dependency_proxy_policy_denied_pulls_total[$__range])
+))
+```
+
 Prometheus is available at `http://localhost:9090`.
 Grafana is available at `http://localhost:3000`; anonymous read-only access is enabled for local use. The default admin password is `regimux` unless `GRAFANA_ADMIN_PASSWORD` is set in `.env`.
 

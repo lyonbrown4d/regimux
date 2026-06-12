@@ -38,6 +38,8 @@ Prometheus 抓取：
 docker compose --env-file examples/compose/.env -f examples/compose/compose.observability.yml up -d
 ```
 
+内置 Grafana dashboard 会展示 `regimux_service_dependency_proxy_pulls_total` 依赖代理 pull 指标，以及 `regimux_service_dependency_proxy_policy_denied_pulls_total` 策略拒绝 pull 指标。可以按 ecosystem、kind、alias、repository、status 对比拉取流量，并在请求访问上游之前发现被 dependency policy 拦截的流量。
+
 ## 固定版本
 
 在 `examples/compose/.env` 中设置：
@@ -65,4 +67,3 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 ```
 
 更细的示例说明见 [examples/compose/README.md](../../examples/compose/README.md)。
-

@@ -148,6 +148,28 @@ type ArtifactPulled struct {
 
 func (ArtifactPulled) Name() string { return "artifact.pulled" }
 
+type DependencyPulled struct {
+	Ecosystem  string
+	Kind       string
+	Alias      string
+	Repository string
+	Reference  string
+	Status     string
+}
+
+func (DependencyPulled) Name() string { return "dependency.pulled" }
+
+type DependencyPullDenied struct {
+	Ecosystem  string
+	Kind       string
+	Alias      string
+	Repository string
+	Reference  string
+	Reason     string
+}
+
+func (DependencyPullDenied) Name() string { return "dependency.pull_denied" }
+
 type DockerImageEvent struct {
 	Action string
 	Actor  string

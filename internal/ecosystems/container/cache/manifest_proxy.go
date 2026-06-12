@@ -116,9 +116,12 @@ func (p manifestProxy) lookupStaleOrError(ctx context.Context, req ManifestReque
 }
 
 func (p manifestProxy) recordManifestPull(ctx context.Context, req ManifestRequest, result *CachedManifest) {
-	if key, ok := manifestPullKey(req); ok && p.metadata != nil {
-		if _, err := p.metadata.RecordPull(ctx, key, time.Now().UTC()); err != nil {
-			return
+	if key, ok := manifestPullKey(req); ok {
+		p.publishDependencyPulled(ctx, req, result)
+		if p.metadata != nil {
+			if _, err := p.metadata.RecordPull(ctx, key, time.Now().UTC()); err != nil {
+				return
+			}
 		}
 		p.publishArtifactPulled(ctx, req, result)
 	}

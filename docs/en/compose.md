@@ -38,6 +38,8 @@ Prometheus scraping:
 docker compose --env-file examples/compose/.env -f examples/compose/compose.observability.yml up -d
 ```
 
+The bundled Grafana dashboard includes dependency proxy pull panels for `regimux_service_dependency_proxy_pulls_total` and policy-denied pull panels for `regimux_service_dependency_proxy_policy_denied_pulls_total`. Use them to compare pull traffic by ecosystem, kind, alias, repository, and status, and to spot dependency policy blocks before they reach an upstream.
+
 ## Pin a Release
 
 Set this in `examples/compose/.env`:
@@ -65,4 +67,3 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 ```
 
 For more detail, see the source-level example notes in [examples/compose/README.md](../../examples/compose/README.md).
-

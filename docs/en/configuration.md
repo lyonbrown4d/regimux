@@ -154,7 +154,7 @@ Container and Go/npm/PyPI/Maven fields are taken from the request route:
   - pypi: `index.html` or normalized package path
   - maven: file name
 
-Denied requests return `403 Forbidden` and do not fetch from upstream. They are still recorded in pull metadata with a separate policy-denied counter and last-denied timestamp, so admin activity can show blocked dependency proxy traffic without counting it as a successful pull.
+Denied requests return `403 Forbidden` and do not fetch from upstream. They are still recorded in pull metadata with a separate policy-denied counter and last-denied timestamp, so admin activity can show blocked dependency proxy traffic without counting it as a successful pull. Prometheus exposes dependency proxy pull outcomes through `regimux_service_dependency_proxy_pulls_total{ecosystem,kind,alias,repository,status}` and policy denials through `regimux_service_dependency_proxy_policy_denied_pulls_total{ecosystem,kind,alias,repository}`.
 
 ```hcl
 policy {

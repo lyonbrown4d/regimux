@@ -67,13 +67,15 @@ func (s *Service) recordPull(ctx context.Context, req Request, requestRoute rout
 		return
 	}
 	key := goPullKey(requestRoute)
-	s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+	if s.metadata != nil {
+		s.recordPullKey(ctx, key, resp.Cache == cacheMiss)
+	}
+	s.publishDependencyPulled(ctx, requestRoute, resp)
 	s.publishArtifactPulled(ctx, requestRoute, resp)
 }
 
 func (s *Service) shouldRecordPull(req Request, requestRoute route, resp *Response, err error) bool {
 	return s != nil &&
-		s.metadata != nil &&
 		!req.SkipPullRecord &&
 		err == nil &&
 		resp != nil &&
@@ -91,6 +93,9 @@ func goPullKey(requestRoute route) meta.PullKey {
 }
 
 func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream bool) {
+	if s == nil || s.metadata == nil {
+		return
+	}
 	now := time.Now().UTC()
 	if _, recordErr := s.metadata.RecordPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record go proxy pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
@@ -103,17 +108,55 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	}
 }
 
+func (s *Service) publishDependencyPulled(ctx context.Context, requestRoute route, resp *Response) {
+	if s == nil || s.events == nil || resp == nil {
+		return
+	}
+	if err := events.Publish(ctx, s.events, events.DependencyPulled{
+		Ecosystem:  ecosystem.Go,
+		Kind:       "module",
+		Alias:      requestRoute.Alias,
+		Repository: requestRoute.Module,
+		Reference:  requestRoute.Reference,
+		Status:     resp.Cache,
+	}); err != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "publish go proxy dependency pulled event failed", "alias", requestRoute.Alias, "module", requestRoute.Module, "reference", requestRoute.Reference, "error", err)
+	}
+}
+
 func (s *Service) recordPolicyDeniedPull(ctx context.Context, req Request, requestRoute route, err error) {
 	if s == nil ||
-		s.metadata == nil ||
 		req.SkipPullRecord ||
 		!errors.Is(err, accesspolicy.ErrDependencyBlocked) ||
 		!routeCacheable(requestRoute) {
 		return
 	}
 	key := goPullKey(requestRoute)
-	if _, recordErr := s.metadata.RecordPolicyDeniedPull(ctx, key, time.Now().UTC()); recordErr != nil && s.logger != nil {
-		s.logger.DebugContext(ctx, "record go proxy policy denied pull failed", "alias", key.Alias, "module", key.Repository, "reference", key.Reference, "error", recordErr)
+	if s.metadata != nil {
+		if _, recordErr := s.metadata.RecordPolicyDeniedPull(ctx, key, time.Now().UTC()); recordErr != nil && s.logger != nil {
+			s.logger.DebugContext(ctx, "record go proxy policy denied pull failed", "alias", key.Alias, "module", key.Repository, "reference", key.Reference, "error", recordErr)
+		}
+	}
+	s.publishDependencyPullDenied(ctx, requestRoute, err)
+}
+
+func (s *Service) publishDependencyPullDenied(ctx context.Context, requestRoute route, denyErr error) {
+	if s == nil || s.events == nil {
+		return
+	}
+	reason := ""
+	if denyErr != nil {
+		reason = denyErr.Error()
+	}
+	if err := events.Publish(ctx, s.events, events.DependencyPullDenied{
+		Ecosystem:  ecosystem.Go,
+		Kind:       "module",
+		Alias:      requestRoute.Alias,
+		Repository: requestRoute.Module,
+		Reference:  requestRoute.Reference,
+		Reason:     reason,
+	}); err != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "publish go proxy policy denied pull event failed", "alias", requestRoute.Alias, "module", requestRoute.Module, "reference", requestRoute.Reference, "error", err)
 	}
 }
 

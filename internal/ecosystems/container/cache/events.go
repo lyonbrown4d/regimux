@@ -43,6 +43,20 @@ func (p manifestProxy) publishArtifactPulled(ctx context.Context, req ManifestRe
 	})
 }
 
+func (p manifestProxy) publishDependencyPulled(ctx context.Context, req ManifestRequest, result *CachedManifest) {
+	if result == nil {
+		return
+	}
+	publishCacheEvent(ctx, p.events, events.DependencyPulled{
+		Ecosystem:  ecosystem.Container,
+		Kind:       "manifest",
+		Alias:      req.UpstreamAlias,
+		Repository: req.Repo,
+		Reference:  req.Reference,
+		Status:     string(result.Cache),
+	})
+}
+
 func (p manifestProxy) publishCacheStore(ctx context.Context, req ManifestRequest, manifest *CachedManifest) {
 	if manifest == nil {
 		return

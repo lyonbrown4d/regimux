@@ -16,13 +16,14 @@ const (
 type Metrics struct {
 	handler http.Handler
 
-	api       apiMetrics
-	cache     cacheMetrics
-	config    configMetrics
-	db        dbMetrics
-	docker    dockerMetrics
-	scheduler schedulerMetrics
-	upstream  upstreamMetrics
+	api        apiMetrics
+	cache      cacheMetrics
+	config     configMetrics
+	db         dbMetrics
+	dependency dependencyMetrics
+	docker     dockerMetrics
+	scheduler  schedulerMetrics
+	upstream   upstreamMetrics
 }
 
 func NewMetrics(logger *slog.Logger) *Metrics {
@@ -36,14 +37,15 @@ func NewMetrics(logger *slog.Logger) *Metrics {
 func NewMetricsFromObservability(obs observabilityx.Observability, handler http.Handler) *Metrics {
 	obs = observabilityx.Normalize(obs, slog.Default())
 	return &Metrics{
-		handler:   handler,
-		api:       newAPIMetrics(obs),
-		cache:     newCacheMetrics(obs),
-		config:    newConfigMetrics(obs),
-		db:        newDBMetrics(obs),
-		docker:    newDockerMetrics(obs),
-		scheduler: newSchedulerMetrics(obs),
-		upstream:  newUpstreamMetrics(obs),
+		handler:    handler,
+		api:        newAPIMetrics(obs),
+		cache:      newCacheMetrics(obs),
+		config:     newConfigMetrics(obs),
+		db:         newDBMetrics(obs),
+		dependency: newDependencyMetrics(obs),
+		docker:     newDockerMetrics(obs),
+		scheduler:  newSchedulerMetrics(obs),
+		upstream:   newUpstreamMetrics(obs),
 	}
 }
 

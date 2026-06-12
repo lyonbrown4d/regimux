@@ -57,6 +57,37 @@ func NewCacheStoreMetricsSubscriber(metrics *Metrics) events.Subscriber {
 	})
 }
 
+func NewDependencyPulledMetricsSubscriber(metrics *Metrics) events.Subscriber {
+	if metrics == nil {
+		return nil
+	}
+	return events.NewSubscriber(func(ctx context.Context, event events.DependencyPulled) error {
+		metrics.ObserveDependencyPull(ctx, DependencyPullMetric{
+			Ecosystem:  event.Ecosystem,
+			Kind:       event.Kind,
+			Alias:      event.Alias,
+			Repository: event.Repository,
+			Status:     event.Status,
+		})
+		return nil
+	})
+}
+
+func NewDependencyPullDeniedMetricsSubscriber(metrics *Metrics) events.Subscriber {
+	if metrics == nil {
+		return nil
+	}
+	return events.NewSubscriber(func(ctx context.Context, event events.DependencyPullDenied) error {
+		metrics.ObserveDependencyPolicyDeniedPull(ctx, DependencyPolicyDeniedPullMetric{
+			Ecosystem:  event.Ecosystem,
+			Kind:       event.Kind,
+			Alias:      event.Alias,
+			Repository: event.Repository,
+		})
+		return nil
+	})
+}
+
 func errorFromMessage(message string) error {
 	message = strings.TrimSpace(message)
 	if message == "" {
