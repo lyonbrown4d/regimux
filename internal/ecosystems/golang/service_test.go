@@ -1,8 +1,8 @@
 package golang_test
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -225,6 +225,7 @@ func TestServiceRootGoProxyDoesNotFallbackOnPolicyDenied(t *testing.T) {
 	}))
 	t.Cleanup(backup.Close)
 
+	metadata := newTestMetadata(ctx, t)
 	service := golang.NewService(golang.ServiceDependencies{
 		Config: config.Config{
 			Go: map[string]config.DependencyUpstreamConfig{
@@ -243,6 +244,7 @@ func TestServiceRootGoProxyDoesNotFallbackOnPolicyDenied(t *testing.T) {
 				},
 			},
 		},
+		Metadata: metadata,
 	})
 	_, err := service.Get(ctx, golang.Request{
 		Tail: "github.com/acme/lib/@v/v1.2.3.mod",
@@ -259,6 +261,11 @@ func TestServiceRootGoProxyDoesNotFallbackOnPolicyDenied(t *testing.T) {
 	if backupRequests != 0 {
 		t.Fatalf("backup requests = %d, want 0", backupRequests)
 	}
+	assertPolicyDeniedPull(ctx, t, metadata, meta.PullKey{
+		Alias:      "go/default",
+		Repository: "github.com/acme/lib",
+		Reference:  "@v/v1.2.3.mod",
+	})
 }
 
 func TestServicePassesThroughNotFound(t *testing.T) {

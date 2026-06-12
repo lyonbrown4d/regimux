@@ -2,6 +2,7 @@ package golang
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/lo"
 )
@@ -98,6 +100,20 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	}
 	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record go proxy upstream pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
+}
+
+func (s *Service) recordPolicyDeniedPull(ctx context.Context, req Request, requestRoute route, err error) {
+	if s == nil ||
+		s.metadata == nil ||
+		req.SkipPullRecord ||
+		!errors.Is(err, accesspolicy.ErrDependencyBlocked) ||
+		!routeCacheable(requestRoute) {
+		return
+	}
+	key := goPullKey(requestRoute)
+	if _, recordErr := s.metadata.RecordPolicyDeniedPull(ctx, key, time.Now().UTC()); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record go proxy policy denied pull failed", "alias", key.Alias, "module", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
 }
 

@@ -97,6 +97,7 @@ func (s *Service) getFromUpstream(
 	mode requestMode,
 ) (*Response, error) {
 	if err := s.checkDependencyPolicy(requestRoute); err != nil {
+		s.recordPolicyDeniedPull(ctx, req, requestRoute, err)
 		return nil, err
 	}
 	cached, cachedOK, err := s.cached(ctx, requestRoute)

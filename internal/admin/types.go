@@ -28,44 +28,48 @@ type PageData struct {
 }
 
 type Summary struct {
-	Version            string
-	Uptime             string
-	Listen             string
-	PublicURL          string
-	AuthEnabled        bool
-	CacheBackend       string
-	SchedulerEnabled   bool
-	DistributedLock    bool
-	UpstreamCount      int
-	MirrorCount        int
-	ManifestCount      int
-	TagCount           int
-	BlobCount          int
-	RepoBlobCount      int
-	RepositoryCount    int
-	RepositoryBytes    string
-	BlobBytes          string
-	PullCount          int
-	LastPullAt         string
-	LastUpstreamPullAt string
+	Version                string
+	Uptime                 string
+	Listen                 string
+	PublicURL              string
+	AuthEnabled            bool
+	CacheBackend           string
+	SchedulerEnabled       bool
+	DistributedLock        bool
+	UpstreamCount          int
+	MirrorCount            int
+	ManifestCount          int
+	TagCount               int
+	BlobCount              int
+	RepoBlobCount          int
+	RepositoryCount        int
+	RepositoryBytes        string
+	BlobBytes              string
+	PullCount              int
+	PolicyDeniedPullCount  int
+	LastPullAt             string
+	LastUpstreamPullAt     string
+	LastPolicyDeniedPullAt string
 }
 
 type UpstreamRow struct {
-	Ecosystem        string
-	DisplayAlias     string
-	Alias            string
-	Registry         string
-	DefaultNamespace string
-	AuthType         string
-	MirrorPolicy     string
-	BlobPolicy       string
-	ProbeEnabled     bool
-	MirrorCount      int
-	RepositoryCount  int
-	PullCount        int64
-	BlobBytes        string
-	LastActivityAt   string
-	Endpoints        *collectionlist.List[EndpointRow]
+	Ecosystem             string
+	DisplayAlias          string
+	Alias                 string
+	Registry              string
+	DefaultNamespace      string
+	AuthType              string
+	MirrorPolicy          string
+	BlobPolicy            string
+	ProbeEnabled          bool
+	MirrorCount           int
+	RepositoryCount       int
+	PullCount             int64
+	PolicyDeniedPullCount int64
+	BlobBytes             string
+	LastPolicyDeniedAt    string
+	LastActivityAt        string
+	Endpoints             *collectionlist.List[EndpointRow]
 }
 
 type EndpointRow struct {
@@ -90,8 +94,10 @@ type PullRow struct {
 	Repository         string
 	Reference          string
 	Count              int64
+	PolicyDeniedCount  int64
 	LastPullAt         string
 	LastUpstreamPullAt string
+	LastPolicyDeniedAt string
 }
 
 type ActivitySummary struct {
@@ -100,18 +106,20 @@ type ActivitySummary struct {
 }
 
 type ActivityRow struct {
-	OccurredAt string
-	Event      string
-	Actor      string
-	Method     string
-	Path       string
-	Alias      string
-	Repository string
-	Reference  string
-	Count      int64
-	UpstreamAt string
-	Source     string
-	RequestID  string
+	OccurredAt        string
+	Event             string
+	Actor             string
+	Method            string
+	Path              string
+	Alias             string
+	Repository        string
+	Reference         string
+	Count             int64
+	PolicyDeniedCount int64
+	UpstreamAt        string
+	PolicyDeniedAt    string
+	Source            string
+	RequestID         string
 }
 
 type CacheSummary struct {
@@ -155,14 +163,16 @@ type ObjectStoreSummary struct {
 }
 
 type RepositoryRow struct {
-	Alias            string
-	Repository       string
-	PullCount        int64
-	BlobBytes        string
-	BlobLinkCount    int64
-	LastPullAt       string
-	LastBlobAccessAt string
-	LastActivityAt   string
+	Alias                 string
+	Repository            string
+	PullCount             int64
+	PolicyDeniedPullCount int64
+	BlobBytes             string
+	BlobLinkCount         int64
+	LastPullAt            string
+	LastPolicyDeniedAt    string
+	LastBlobAccessAt      string
+	LastActivityAt        string
 }
 
 type RepoBlobRow struct {

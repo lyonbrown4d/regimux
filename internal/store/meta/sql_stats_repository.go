@@ -17,6 +17,7 @@ type sumInt64Row struct {
 type pullTimesStatsRow struct {
 	LastPullAt         sql.NullInt64 `dbx:"last_pull_at"`
 	LastUpstreamPullAt sql.NullInt64 `dbx:"last_upstream_pull_at"`
+	LastPolicyDeniedAt sql.NullInt64 `dbx:"last_policy_denied_at"`
 }
 
 func (s *SQLStore) MetadataStats(ctx context.Context, now time.Time) (MetadataStats, error) {
@@ -93,17 +94,23 @@ func (s *SQLStore) loadRepositoryBlobStats(ctx context.Context, _ time.Time, sta
 }
 
 func (s *SQLStore) loadPullStats(ctx context.Context, _ time.Time, stats *MetadataStats) error {
-	count, err := s.pulls.CountSpec(ctx)
+	count, err := s.pulls.CountSpec(ctx, repository.Where(sqlPullRows.Count.Gt(0)))
 	if err != nil {
 		return wrapError(err, "count pull metadata")
 	}
-	lastPullAt, lastUpstreamPullAt, err := s.latestPullTimes(ctx)
+	policyDeniedCount, err := s.sumInt64(ctx, sqlPullRows, sqlPullRows.PolicyDeniedCount, "policy denied pull metadata")
+	if err != nil {
+		return err
+	}
+	lastPullAt, lastUpstreamPullAt, lastPolicyDeniedAt, err := s.latestPullTimes(ctx)
 	if err != nil {
 		return err
 	}
 	stats.PullCount = count
+	stats.PolicyDeniedPullCount = policyDeniedCount
 	stats.LastPullAt = lastPullAt
 	stats.LastUpstreamPullAt = lastUpstreamPullAt
+	stats.LastPolicyDeniedPullAt = lastPolicyDeniedAt
 	return nil
 }
 
@@ -163,15 +170,16 @@ func (s *SQLStore) sumInt64(
 	return row.Value.Int64, nil
 }
 
-func (s *SQLStore) latestPullTimes(ctx context.Context) (time.Time, time.Time, error) {
+func (s *SQLStore) latestPullTimes(ctx context.Context) (time.Time, time.Time, time.Time, error) {
 	row, err := dbx.GetTyped[pullTimesStatsRow](ctx, s.db, querydsl.SelectInto[pullTimesStatsRow](
 		querydsl.Max(sqlPullRows.LastPullAt).As("last_pull_at"),
 		querydsl.Max(sqlPullRows.LastUpstreamPullAt).As("last_upstream_pull_at"),
+		querydsl.Max(sqlPullRows.LastPolicyDeniedAt).As("last_policy_denied_at"),
 	).From(sqlPullRows))
 	if err != nil {
-		return time.Time{}, time.Time{}, wrapError(err, "get latest pull metadata times")
+		return time.Time{}, time.Time{}, time.Time{}, wrapError(err, "get latest pull metadata times")
 	}
-	return nullUnixNanoTime(row.LastPullAt), nullUnixNanoTime(row.LastUpstreamPullAt), nil
+	return nullUnixNanoTime(row.LastPullAt), nullUnixNanoTime(row.LastUpstreamPullAt), nullUnixNanoTime(row.LastPolicyDeniedAt), nil
 }
 
 func nullUnixNanoTime(value sql.NullInt64) time.Time {

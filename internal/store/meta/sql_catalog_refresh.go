@@ -95,9 +95,11 @@ func (s *SQLStore) refreshRepositoryMetadata(ctx context.Context, alias, name st
 		return err
 	}
 	repo.PullCount = stats.PullCount
+	repo.PolicyDeniedPullCount = stats.PolicyDeniedPullCount
 	repo.BlobBytes = stats.BlobBytes
 	repo.BlobLinkCount = stats.BlobLinkCount
 	repo.LastPullAt = stats.LastPullAt
+	repo.LastPolicyDeniedAt = stats.LastPolicyDeniedAt
 	repo.LastBlobAccessAt = stats.LastBlobAccessAt
 	repo.LastActivityAt = stats.LastActivityAt
 	repo.UpdatedAt = metadataTimestamp(at)
@@ -153,8 +155,10 @@ func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64
 	}
 	record.RepositoryCount = nullInt64(stats.RepositoryCount)
 	record.PullCount = nullInt64(stats.PullCount)
+	record.PolicyDeniedPullCount = nullInt64(stats.PolicyDeniedPullCount)
 	record.BlobBytes = nullInt64(stats.BlobBytes)
 	record.BlobLinkCount = nullInt64(stats.BlobLinkCount)
+	record.LastPolicyDeniedAt = nullUnixNanoTime(stats.LastPolicyDeniedAt)
 	record.LastActivityAt = nullUnixNanoTime(stats.LastActivityAt)
 	record.UpdatedAt = metadataTimestamp(at)
 	updateRow, err := s.mapper.UpstreamRecordToRow(*record)
@@ -170,9 +174,11 @@ func (s *SQLStore) updateRepositoryRow(ctx context.Context, row repositoryRow) e
 		sqlRepositoryRows.Alias.Set(row.Alias),
 		sqlRepositoryRows.Name.Set(row.Name),
 		sqlRepositoryRows.PullCount.Set(row.PullCount),
+		sqlRepositoryRows.PolicyDeniedPullCount.Set(row.PolicyDeniedPullCount),
 		sqlRepositoryRows.BlobBytes.Set(row.BlobBytes),
 		sqlRepositoryRows.BlobLinkCount.Set(row.BlobLinkCount),
 		sqlRepositoryRows.LastPullAt.Set(row.LastPullAt),
+		sqlRepositoryRows.LastPolicyDeniedAt.Set(row.LastPolicyDeniedAt),
 		sqlRepositoryRows.LastBlobAccessAt.Set(row.LastBlobAccessAt),
 		sqlRepositoryRows.LastActivityAt.Set(row.LastActivityAt),
 		sqlRepositoryRows.CreatedAt.Set(row.CreatedAt),
@@ -184,8 +190,10 @@ func (s *SQLStore) updateUpstreamRow(ctx context.Context, row upstreamRow) error
 	return patchRowByKey(ctx, s.upstreams, sqlUpstreamRows.Alias, row.Alias, "update upstream metadata",
 		sqlUpstreamRows.RepositoryCount.Set(row.RepositoryCount),
 		sqlUpstreamRows.PullCount.Set(row.PullCount),
+		sqlUpstreamRows.PolicyDeniedPullCount.Set(row.PolicyDeniedPullCount),
 		sqlUpstreamRows.BlobBytes.Set(row.BlobBytes),
 		sqlUpstreamRows.BlobLinkCount.Set(row.BlobLinkCount),
+		sqlUpstreamRows.LastPolicyDeniedAt.Set(row.LastPolicyDeniedAt),
 		sqlUpstreamRows.LastActivityAt.Set(row.LastActivityAt),
 		sqlUpstreamRows.CreatedAt.Set(row.CreatedAt),
 		sqlUpstreamRows.UpdatedAt.Set(row.UpdatedAt),

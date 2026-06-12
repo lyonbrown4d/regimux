@@ -23,7 +23,7 @@
     </div>
   </div>
 
-  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
     <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
       <div class="text-xs text-zinc-500">{{t . "nav.upstreams"}}</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.UpstreamCount}}</div>
@@ -43,6 +43,10 @@
     <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
       <div class="text-xs text-zinc-500">{{t . "nav.pulls"}}</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.PullCount}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/60 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.policy_denied_pulls"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.PolicyDeniedPullCount}}</div>
     </div>
   </div>
 
@@ -92,6 +96,7 @@
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.blob_bytes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Summary.BlobBytes}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.last_pull"}}</dt><dd class="text-right text-zinc-100">{{.Summary.LastPullAt}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.last_upstream_pull"}}</dt><dd class="text-right text-zinc-100">{{.Summary.LastUpstreamPullAt}}</dd></div>
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "label.last_policy_denied_pull"}}</dt><dd class="text-right text-zinc-100">{{.Summary.LastPolicyDeniedPullAt}}</dd></div>
       </dl>
     </section>
   </div>
@@ -109,8 +114,10 @@
             <th class="px-4 py-2 font-medium">{{t . "field.reference"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.alias"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.count"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.policy_denied"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.last_pull"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.last_upstream_pull"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_policy_denied"}}</th>
           </tr>
         </thead>
         <tbody class="divide-y divide-zinc-800">
@@ -120,11 +127,13 @@
             <td class="px-4 py-2 text-zinc-300">{{.Reference}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.Alias}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Count}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.PolicyDeniedCount}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.LastPullAt}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.LastUpstreamPullAt}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.LastPolicyDeniedAt}}</td>
           </tr>
           {{else}}
-          <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.pulls"}}</td></tr>
+          <tr><td colspan="8" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.pulls"}}</td></tr>
           {{end}}
         </tbody>
       </table>

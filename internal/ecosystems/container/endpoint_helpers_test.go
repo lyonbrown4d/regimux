@@ -5,6 +5,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"path/filepath"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/api"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
@@ -138,6 +140,37 @@ func readHTTPResponse(t *testing.T, resp *http.Response) []byte {
 		t.Fatalf("close response body: %v", closeErr)
 	}
 	return body
+}
+
+func newTestMetadata(t *testing.T) meta.Store {
+	t.Helper()
+	db, err := meta.OpenSQLiteWithOptions(context.Background(), meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
+	if err != nil {
+		t.Fatalf("open metadata: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := db.Close(); err != nil {
+			t.Fatalf("close metadata: %v", err)
+		}
+	})
+	return db
+}
+
+func assertPolicyDeniedPull(t *testing.T, metadata meta.Store, key meta.PullKey) {
+	t.Helper()
+	pull, ok, err := metadata.Pull(context.Background(), key)
+	if err != nil {
+		t.Fatalf("lookup policy denied pull: %v", err)
+	}
+	if !ok {
+		t.Fatalf("policy denied pull %s was not recorded", key.String())
+	}
+	if pull.PolicyDeniedCount != 1 || pull.LastPolicyDeniedAt.IsZero() {
+		t.Fatalf("unexpected policy denied pull: %#v", pull)
+	}
+	if pull.Count != 0 || !pull.LastPullAt.IsZero() || !pull.LastUpstreamPullAt.IsZero() {
+		t.Fatalf("policy denied pull should not count as success: %#v", pull)
+	}
 }
 
 type recordingManifestService struct {

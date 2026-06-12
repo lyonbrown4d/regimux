@@ -34,8 +34,10 @@ func (s *SQLStore) upstreamAggregate(ctx context.Context, upstreamID int64) (ups
 	row, err := dbx.GetTyped[upstreamAggregateRow](ctx, s.db, querydsl.SelectInto[upstreamAggregateRow](
 		querydsl.Count(sqlRepositoryRows.ID).As("repository_count"),
 		querydsl.Sum(sqlRepositoryRows.PullCount).As("pull_count"),
+		querydsl.Sum(sqlRepositoryRows.PolicyDeniedPullCount).As("policy_denied_pull_count"),
 		querydsl.Sum(sqlRepositoryRows.BlobBytes).As("blob_bytes"),
 		querydsl.Sum(sqlRepositoryRows.BlobLinkCount).As("blob_link_count"),
+		querydsl.Max(sqlRepositoryRows.LastPolicyDeniedAt).As("last_policy_denied_at"),
 		querydsl.Max(sqlRepositoryRows.LastActivityAt).As("last_activity_at"),
 	).From(sqlRepositoryRows).Where(sqlRepositoryRows.UpstreamID.Eq(upstreamID)))
 	if err != nil {

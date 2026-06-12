@@ -2,6 +2,7 @@ package maven
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -13,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
@@ -72,6 +74,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 
 func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig, mode requestMode) (*Response, error) {
 	if err := s.checkDependencyPolicy(requestRoute); err != nil {
+		s.recordPolicyDeniedPull(ctx, req, requestRoute, err)
 		return nil, err
 	}
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
@@ -174,6 +177,19 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	}
 	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record maven proxy upstream pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
+}
+
+func (s *Service) recordPolicyDeniedPull(ctx context.Context, req Request, requestRoute Route, err error) {
+	if s == nil ||
+		s.metadata == nil ||
+		req.SkipPullRecord ||
+		!errors.Is(err, accesspolicy.ErrDependencyBlocked) {
+		return
+	}
+	key := mavenPullKey(requestRoute)
+	if _, recordErr := s.metadata.RecordPolicyDeniedPull(ctx, key, s.now()); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record maven proxy policy denied pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
 }
 

@@ -2,10 +2,12 @@ package npm
 
 import (
 	"context"
+	"errors"
 	"net/http"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
+	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -47,6 +49,20 @@ func (s *Service) recordPullKey(ctx context.Context, key meta.PullKey, upstream 
 	}
 	if _, recordErr := s.metadata.RecordUpstreamPull(ctx, key, now); recordErr != nil && s.logger != nil {
 		s.logger.DebugContext(ctx, "record npm proxy upstream pull failed", "alias", key.Alias, "package", key.Repository, "reference", key.Reference, "error", recordErr)
+	}
+}
+
+func (s *Service) recordPolicyDeniedPull(ctx context.Context, req Request, requestRoute route, err error) {
+	if s == nil ||
+		s.metadata == nil ||
+		req.SkipPullRecord ||
+		!errors.Is(err, accesspolicy.ErrDependencyBlocked) ||
+		!cacheable(requestRoute) {
+		return
+	}
+	key := npmPullKey(requestRoute)
+	if _, recordErr := s.metadata.RecordPolicyDeniedPull(ctx, key, s.now()); recordErr != nil && s.logger != nil {
+		s.logger.DebugContext(ctx, "record npm proxy policy denied pull failed", "alias", key.Alias, "package", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
 }
 

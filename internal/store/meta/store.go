@@ -62,6 +62,7 @@ type PullRepository interface {
 	Pull(ctx context.Context, key PullKey) (*PullRecord, bool, error)
 	RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
+	RecordPolicyDeniedPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error)
 }
 
@@ -104,46 +105,52 @@ type MetadataReadModel interface {
 }
 
 type MetadataStats struct {
-	ManifestCount        int64
-	ExpiredManifestCount int64
-	ManifestBytes        int64
-	TagCount             int64
-	ExpiredTagCount      int64
-	BlobCount            int64
-	BlobBytes            int64
-	RepoBlobCount        int64
-	PullCount            int64
-	RepositoryCount      int64
-	RepositoryBytes      int64
-	LastPullAt           time.Time
-	LastUpstreamPullAt   time.Time
+	ManifestCount          int64
+	ExpiredManifestCount   int64
+	ManifestBytes          int64
+	TagCount               int64
+	ExpiredTagCount        int64
+	BlobCount              int64
+	BlobBytes              int64
+	RepoBlobCount          int64
+	PullCount              int64
+	PolicyDeniedPullCount  int64
+	RepositoryCount        int64
+	RepositoryBytes        int64
+	LastPullAt             time.Time
+	LastUpstreamPullAt     time.Time
+	LastPolicyDeniedPullAt time.Time
 }
 
 type Upstream struct {
-	ID              int64     `json:"id,omitempty"`
-	Alias           string    `json:"alias"`
-	RepositoryCount int64     `json:"repository_count"`
-	PullCount       int64     `json:"pull_count"`
-	BlobBytes       int64     `json:"blob_bytes"`
-	BlobLinkCount   int64     `json:"blob_link_count"`
-	LastActivityAt  time.Time `json:"last_activity_at,omitzero"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
+	ID                    int64     `json:"id,omitempty"`
+	Alias                 string    `json:"alias"`
+	RepositoryCount       int64     `json:"repository_count"`
+	PullCount             int64     `json:"pull_count"`
+	PolicyDeniedPullCount int64     `json:"policy_denied_pull_count"`
+	BlobBytes             int64     `json:"blob_bytes"`
+	BlobLinkCount         int64     `json:"blob_link_count"`
+	LastPolicyDeniedAt    time.Time `json:"last_policy_denied_at,omitzero"`
+	LastActivityAt        time.Time `json:"last_activity_at,omitzero"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type Repository struct {
-	ID               int64     `json:"id,omitempty"`
-	UpstreamID       int64     `json:"upstream_id"`
-	Alias            string    `json:"alias"`
-	Name             string    `json:"name"`
-	PullCount        int64     `json:"pull_count"`
-	BlobBytes        int64     `json:"blob_bytes"`
-	BlobLinkCount    int64     `json:"blob_link_count"`
-	LastPullAt       time.Time `json:"last_pull_at,omitzero"`
-	LastBlobAccessAt time.Time `json:"last_blob_access_at,omitzero"`
-	LastActivityAt   time.Time `json:"last_activity_at,omitzero"`
-	CreatedAt        time.Time `json:"created_at"`
-	UpdatedAt        time.Time `json:"updated_at"`
+	ID                    int64     `json:"id,omitempty"`
+	UpstreamID            int64     `json:"upstream_id"`
+	Alias                 string    `json:"alias"`
+	Name                  string    `json:"name"`
+	PullCount             int64     `json:"pull_count"`
+	PolicyDeniedPullCount int64     `json:"policy_denied_pull_count"`
+	BlobBytes             int64     `json:"blob_bytes"`
+	BlobLinkCount         int64     `json:"blob_link_count"`
+	LastPullAt            time.Time `json:"last_pull_at,omitzero"`
+	LastPolicyDeniedAt    time.Time `json:"last_policy_denied_at,omitzero"`
+	LastBlobAccessAt      time.Time `json:"last_blob_access_at,omitzero"`
+	LastActivityAt        time.Time `json:"last_activity_at,omitzero"`
+	CreatedAt             time.Time `json:"created_at"`
+	UpdatedAt             time.Time `json:"updated_at"`
 }
 
 type ManifestKey struct {
@@ -204,8 +211,10 @@ type PullRecord struct {
 	Repository         string    `json:"repository"`
 	Reference          string    `json:"reference"`
 	Count              int64     `json:"count"`
+	PolicyDeniedCount  int64     `json:"policy_denied_count"`
 	LastPullAt         time.Time `json:"last_pull_at,omitzero"`
 	LastUpstreamPullAt time.Time `json:"last_upstream_pull_at,omitzero"`
+	LastPolicyDeniedAt time.Time `json:"last_policy_denied_at,omitzero"`
 	CreatedAt          time.Time `json:"created_at"`
 	UpdatedAt          time.Time `json:"updated_at"`
 }

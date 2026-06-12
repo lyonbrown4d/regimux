@@ -105,9 +105,11 @@
           <tr>
             <th class="px-4 py-2 font-medium">{{t . "field.repository"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.pulls"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.policy_denied"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.blob_bytes"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.blob_links"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.last_pull"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_policy_denied"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.last_activity"}}</th>
           </tr>
         </thead>
@@ -116,13 +118,15 @@
           <tr class="hover:bg-zinc-900">
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}/{{.Repository}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.PullCount}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.PolicyDeniedPullCount}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.BlobBytes}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.BlobLinkCount}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.LastPullAt}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.LastPolicyDeniedAt}}</td>
             <td class="px-4 py-2 text-zinc-400">{{.LastActivityAt}}</td>
           </tr>
           {{else}}
-          <tr><td colspan="6" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.repositories"}}</td></tr>
+          <tr><td colspan="8" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.repositories"}}</td></tr>
           {{end}}
         </tbody>
       </table>

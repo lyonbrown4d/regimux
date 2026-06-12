@@ -19,6 +19,9 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	requireNoError(t, "record pull", err)
 	_, err = store.RecordPull(ctx, repoKey, second)
 	requireNoError(t, "record second pull", err)
+	deniedAt := second.Add(30 * time.Minute)
+	_, err = store.RecordPolicyDeniedPull(ctx, repoKey, deniedAt)
+	requireNoError(t, "record policy denied pull", err)
 	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 100})
 	requireNoError(t, "upsert blob", err)
 	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: secondTestDigest, Size: 300})
@@ -42,7 +45,7 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	requireNoError(t, "get upstream metadata", err)
 	repository, err := store.RepositoryByName(ctx, upstream.ID, "library/node")
 	requireNoError(t, "get repository metadata", err)
-	assertRepositoryAggregate(t, repository, 2, 400, 2, second, second.Add(time.Minute))
+	assertRepositoryAggregate(t, repository, 2, 1, 400, 2, second, deniedAt, second.Add(time.Minute))
 
 	repositories, err := store.ListRepositories(ctx, meta.RepositoryListRecentFirst())
 	requireNoError(t, "list repository metadata", err)
@@ -51,7 +54,7 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	}
 	upstreams, err := store.ListUpstreams(ctx, meta.UpstreamListRecentFirst())
 	requireNoError(t, "list upstream metadata", err)
-	if len(upstreams) != 1 || upstreams[0].RepositoryCount != 1 || upstreams[0].PullCount != 2 || upstreams[0].BlobBytes != 400 {
+	if len(upstreams) != 1 || upstreams[0].RepositoryCount != 1 || upstreams[0].PullCount != 2 || upstreams[0].PolicyDeniedPullCount != 1 || upstreams[0].BlobBytes != 400 {
 		t.Fatalf("unexpected upstream aggregates: %#v", upstreams)
 	}
 
@@ -69,5 +72,5 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	requireNoError(t, "delete repo blob", err)
 	repository, err = store.RepositoryByName(ctx, upstream.ID, "library/node")
 	requireNoError(t, "get repository metadata after delete", err)
-	assertRepositoryAggregate(t, repository, 2, 100, 1, second, second)
+	assertRepositoryAggregate(t, repository, 2, 1, 100, 1, second, deniedAt, second)
 }

@@ -134,10 +134,15 @@ func TestSQLStorePullRecords(t *testing.T) {
 	pull, err = store.RecordUpstreamPull(ctx, key, second)
 	requireNoError(t, "record upstream pull", err)
 	assertPullRecord(t, pull, 2, second, second)
+	deniedAt := second.Add(time.Minute)
+	pull, err = store.RecordPolicyDeniedPull(ctx, key, deniedAt)
+	requireNoError(t, "record policy denied pull", err)
+	assertPolicyDeniedPullRecord(t, pull, 1, deniedAt)
 
 	got, ok, err := store.Pull(ctx, key)
 	requireNoError(t, "get pull", err)
 	assertPullLookup(t, got, ok, second)
+	assertPolicyDeniedPullRecord(t, got, 1, deniedAt)
 }
 
 func TestSQLStoreListsRecords(t *testing.T) {

@@ -59,11 +59,13 @@ func TestServiceRendersDashboardAndPartials(t *testing.T) {
 
 	assertAdminResponse(t, app, "/admin", "regimux admin", "test-version", "library/node")
 	assertAdminResponse(t, app, "/admin", "Committed Blob Bytes (metadata)", "KV cache backend is separate from object store")
+	assertAdminResponse(t, app, "/admin", "Policy denied pulls", "Last policy denial")
 	assertAdminResponse(t, app, "/admin?lang=zh", "仪表盘", "运维控制台", "English")
 	assertAdminResponse(t, app, "/admin/upstreams", "Upstream Configuration", "registry-1.docker.io")
-	assertAdminResponse(t, app, "/admin/activity", "Request Activity", "meta.pull_records", "library/node")
+	assertAdminResponse(t, app, "/admin/pulls", "Policy Denied", "Last Policy Denial")
+	assertAdminResponse(t, app, "/admin/activity", "Request Activity", "meta.pull_records", "library/node", "Policy Denied")
 	assertAdminResponse(t, app, "/admin/cache", "Cache", "Committed Blob Bytes (metadata)", "recorded from committed blob metadata")
-	assertAdminResponse(t, app, "/admin/storage", "Storage", "Repository Blob Links", "1.2 KiB", "Tracked Storage Bytes", "Object Store Bytes (listed)", "22 B", "1 Objects", "blob metadata size sum plus manifest object bytes recorded as metadata size")
+	assertAdminResponse(t, app, "/admin/storage", "Storage", "Repository Blob Links", "1.2 KiB", "Tracked Storage Bytes", "Object Store Bytes (listed)", "22 B", "1 Objects", "blob metadata size sum plus manifest object bytes recorded as metadata size", "Policy Denied")
 	assertAdminResponse(t, app, "/admin/storage?lang=zh", "已落盘 Blob 字节（metadata）", "对象存储字节（list）", "1 对象", "Blob metadata 大小汇总加 manifest 对象字节")
 	assertAdminResponse(t, app, "/admin/scheduler", "Prefetch Runs", "Cancel", "Retry failed")
 	assertAdminResponse(t, app, "/admin/audit", "Auth Users", "alice", "hub/library/*")
@@ -261,6 +263,9 @@ func seedAdminMetadata(ctx context.Context, t *testing.T, store meta.Store) {
 	}
 	if _, err := store.RecordUpstreamPull(ctx, key, now.Add(-30*time.Second)); err != nil {
 		t.Fatalf("record upstream pull: %v", err)
+	}
+	if _, err := store.RecordPolicyDeniedPull(ctx, key, now.Add(-15*time.Second)); err != nil {
+		t.Fatalf("record policy denied pull: %v", err)
 	}
 	if _, err := store.UpsertBlob(ctx, meta.BlobRecord{
 		Digest:       "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",

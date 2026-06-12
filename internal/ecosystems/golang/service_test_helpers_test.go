@@ -35,11 +35,7 @@ func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map
 
 func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store, object.Store) {
 	t.Helper()
-	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
-	requireNoError(t, "open metadata", err)
-	t.Cleanup(func() {
-		requireNoError(t, "close metadata", db.Close())
-	})
+	db := newTestMetadata(ctx, t)
 	objects, err := object.NewMemory("go-test")
 	requireNoError(t, "open objects", err)
 	return golang.NewService(golang.ServiceDependencies{
@@ -47,6 +43,16 @@ func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[s
 		Metadata: db,
 		Objects:  objects,
 	}), db, objects
+}
+
+func newTestMetadata(ctx context.Context, t *testing.T) meta.Store {
+	t.Helper()
+	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
+	requireNoError(t, "open metadata", err)
+	t.Cleanup(func() {
+		requireNoError(t, "close metadata", db.Close())
+	})
+	return db
 }
 
 func assertBody(t *testing.T, resp *golang.Response, want string) {
@@ -86,6 +92,21 @@ func requireNoError(t *testing.T, action string, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
+	}
+}
+
+func assertPolicyDeniedPull(ctx context.Context, t *testing.T, metadata meta.Store, key meta.PullKey) {
+	t.Helper()
+	pull, ok, err := metadata.Pull(ctx, key)
+	requireNoError(t, "lookup policy denied pull", err)
+	if !ok {
+		t.Fatalf("policy denied pull %s was not recorded", key.String())
+	}
+	if pull.PolicyDeniedCount != 1 || pull.LastPolicyDeniedAt.IsZero() {
+		t.Fatalf("unexpected policy denied pull: %#v", pull)
+	}
+	if pull.Count != 0 || !pull.LastPullAt.IsZero() || !pull.LastUpstreamPullAt.IsZero() {
+		t.Fatalf("policy denied pull should not count as success: %#v", pull)
 	}
 }
 

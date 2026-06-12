@@ -18,6 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
@@ -32,6 +33,7 @@ type RegistryEndpoint struct {
 	logger      *slog.Logger
 	metrics     *observability.Metrics
 	suggestions suggestion.ManifestService
+	metadata    meta.Store
 
 	defaultNamespaces *collectionmapping.Map[string, string]
 	dependencyPolicy  accesspolicy.DependencyPolicy
@@ -74,6 +76,7 @@ type RegistryEndpointOptions struct {
 	Config      config.Config
 	Metrics     *observability.Metrics
 	Suggestions suggestion.ManifestService
+	Metadata    meta.Store
 }
 
 func NewRegistryEndpointFromOptions(
@@ -87,6 +90,7 @@ func NewRegistryEndpointFromOptions(
 	endpoint := NewRegistryEndpointFromConfig(manifests, blobs, tags, referrers, logger, options.Config)
 	endpoint.metrics = options.Metrics
 	endpoint.suggestions = options.Suggestions
+	endpoint.metadata = options.Metadata
 	endpoint.dependencyPolicy = accesspolicy.FromConfig(options.Config.Policy.Dependency)
 	return endpoint
 }
@@ -144,6 +148,7 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
 	routeName = registryRouteName(route.Kind)
 	if err := e.checkDependencyPolicy(route); err != nil {
+		e.recordPolicyDeniedPull(ctx, route, err)
 		out := errorOutput(distribution.ErrDenied.WithDetail(err.Error()))
 		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), err)
 		return out, nil
@@ -188,6 +193,26 @@ func containerPolicyReference(route reference.Route) string {
 		return "tags"
 	default:
 		return route.Reference
+	}
+}
+
+func (e *RegistryEndpoint) recordPolicyDeniedPull(ctx context.Context, route reference.Route, err error) {
+	if e == nil ||
+		e.metadata == nil ||
+		route.Kind == reference.RoutePing ||
+		!errors.Is(err, accesspolicy.ErrDependencyBlocked) {
+		return
+	}
+	key := meta.PullKey{
+		Alias:      route.Alias,
+		Repository: route.Repo,
+		Reference:  containerPolicyReference(route),
+	}
+	if key.Reference == "" {
+		key.Reference = route.Reference
+	}
+	if _, recordErr := e.metadata.RecordPolicyDeniedPull(ctx, key, time.Now().UTC()); recordErr != nil && e.logger != nil {
+		e.logger.DebugContext(ctx, "record container proxy policy denied pull failed", "alias", key.Alias, "repository", key.Repository, "reference", key.Reference, "error", recordErr)
 	}
 }
 

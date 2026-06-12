@@ -123,7 +123,7 @@ container {
 }
 ```
 
-`cache.blob.stream_and_cache` 默认开启。完整 blob miss 会边回传给 Docker 边写入对象存储，完成后再提交缓存和元数据；range miss 会先补齐完整 blob 到对象存储，再从本地对象返回 range。
+`cache.blob.stream_and_cache` 默认开启。完整 blob miss 会边回传给 Docker 边写入对象存储；只有客户端完整读完 blob 流后，才会提交缓存和元数据。HEAD 请求不会存储 blob 字节；range miss 会先补齐完整 blob 到对象存储，再从本地对象返回 range。
 
 Admin 的 `已落盘 Blob 字节（metadata）` 来自已提交的 blob metadata，不是实时扫描 `store.object`，也不是所有经过代理的字节。`cache.backend` 是 KV 缓存后端，和 `store.object` 配置的对象存储不是同一层。
 
@@ -155,7 +155,7 @@ Admin 的 `已落盘 Blob 字节（metadata）` 来自已提交的 blob metadata
   - pypi：`index.html` 或标准化后的 package path
   - maven：文件名
 
-被拒绝的请求返回 `403 Forbidden`，且不会访问上游。
+被拒绝的请求返回 `403 Forbidden`，且不会访问上游。它们仍会写入 pull metadata 的策略拒绝计数和最近拒绝时间，admin 可以看到被拦截的依赖代理流量，但这不会计入成功拉取。
 
 ```hcl
 policy {

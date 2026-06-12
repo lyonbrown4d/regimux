@@ -28,13 +28,14 @@ func NewAdminMapper() *AdminMapper {
 				row.Repository = record.Name
 			}),
 			mapperx.AfterMap(func(record meta.PullRecord, row *ActivityRow) {
-				occurredAt := latestTime(record.LastPullAt, record.LastUpstreamPullAt, record.UpdatedAt, record.CreatedAt)
+				occurredAt := latestTime(record.LastPullAt, record.LastUpstreamPullAt, record.LastPolicyDeniedAt, record.UpdatedAt, record.CreatedAt)
 				row.OccurredAt = formatTime(occurredAt)
 				row.Event = "pull"
 				row.Actor = "-"
 				row.Method = "-"
 				row.Path = "-"
 				row.UpstreamAt = formatTime(record.LastUpstreamPullAt)
+				row.PolicyDeniedAt = formatTime(record.LastPolicyDeniedAt)
 				row.Source = "meta.pull_records"
 				row.RequestID = "-"
 			}),

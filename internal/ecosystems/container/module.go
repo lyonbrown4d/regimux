@@ -37,7 +37,7 @@ var Module = dix.NewModule("container",
 			NewRuntime,
 			dix.Into[ecosystem.Runtime](dix.Key("container"), dix.Order(0)),
 		),
-		dix.Provider3[RegistryEndpointOptions, config.Config, *observability.Metrics, suggestion.ManifestService](newRegistryEndpointOptions),
+		dix.Provider4[RegistryEndpointOptions, config.Config, *observability.Metrics, suggestion.ManifestService, meta.Store](newRegistryEndpointOptions),
 		dix.Provider6[*RegistryEndpoint, cache.ManifestService, cache.BlobService, cache.TagService, cache.ReferrerService, *slog.Logger, RegistryEndpointOptions](
 			NewRegistryEndpointFromOptions,
 			dix.Into[httpx.Endpoint](dix.Key("registry"), dix.Order(10)),
@@ -67,10 +67,12 @@ func newRegistryEndpointOptions(
 	cfg config.Config,
 	metrics *observability.Metrics,
 	suggestions suggestion.ManifestService,
+	metadata meta.Store,
 ) RegistryEndpointOptions {
 	return RegistryEndpointOptions{
 		Config:      cfg,
 		Metrics:     metrics,
 		Suggestions: suggestions,
+		Metadata:    metadata,
 	}
 }

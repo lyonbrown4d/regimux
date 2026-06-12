@@ -1,5 +1,5 @@
 <section class="space-y-5">
-  <div class="grid gap-3 sm:grid-cols-3">
+  <div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs text-zinc-500">{{t . "label.activity_records"}}</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{len (values .Activity.Rows)}}</div>
@@ -14,6 +14,11 @@
       <div class="text-xs text-zinc-500">{{t . "label.last_pull"}}</div>
       <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.LastPullAt}}</div>
       <div class="mt-1 text-xs text-zinc-500">{{t . "hint.future_request_fields"}}</div>
+    </div>
+    <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
+      <div class="text-xs text-zinc-500">{{t . "label.policy_denied_pulls"}}</div>
+      <div class="mt-1 text-2xl font-semibold tabular-nums text-zinc-50">{{.Summary.PolicyDeniedPullCount}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{.Summary.LastPolicyDeniedPullAt}}</div>
     </div>
   </div>
 
@@ -34,6 +39,8 @@
             <th class="px-4 py-2 font-medium">{{t . "field.repository"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.reference"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.count"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.policy_denied"}}</th>
+            <th class="px-4 py-2 font-medium">{{t . "field.last_policy_denied"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.source"}}</th>
             <th class="px-4 py-2 font-medium">{{t . "field.request_id"}}</th>
           </tr>
@@ -49,11 +56,13 @@
             <td class="px-4 py-2 font-medium text-zinc-100">{{.Alias}}/{{.Repository}}</td>
             <td class="px-4 py-2 text-zinc-300">{{.Reference}}</td>
             <td class="px-4 py-2 tabular-nums text-zinc-300">{{.Count}}</td>
+            <td class="px-4 py-2 tabular-nums text-zinc-300">{{.PolicyDeniedCount}}</td>
+            <td class="px-4 py-2 text-zinc-400">{{.PolicyDeniedAt}}</td>
             <td class="px-4 py-2 font-mono text-xs text-cyan-200">{{.Source}}</td>
             <td class="px-4 py-2 font-mono text-xs text-zinc-400">{{.RequestID}}</td>
           </tr>
           {{else}}
-          <tr><td colspan="10" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.activity"}}</td></tr>
+          <tr><td colspan="12" class="px-4 py-8 text-center text-sm text-zinc-500">{{t . "none.activity"}}</td></tr>
           {{end}}
         </tbody>
       </table>

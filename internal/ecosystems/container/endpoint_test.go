@@ -10,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/suggestion"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -62,6 +63,7 @@ func TestRegistryEndpointInvalidDigestReturnsDigestInvalid(t *testing.T) {
 
 func TestRegistryEndpointManifestDeniedByPolicy(t *testing.T) {
 	manifests := &recordingManifestService{}
+	metadata := newTestMetadata(t)
 	endpoint := container.NewRegistryEndpointFromOptions(manifests, nil, nil, nil, nil, container.RegistryEndpointOptions{
 		Config: config.Config{
 			Policy: config.PolicyConfig{
@@ -76,6 +78,7 @@ func TestRegistryEndpointManifestDeniedByPolicy(t *testing.T) {
 				},
 			},
 		},
+		Metadata: metadata,
 	})
 	baseURL := startAPIServer(t, endpoint)
 
@@ -95,6 +98,11 @@ func TestRegistryEndpointManifestDeniedByPolicy(t *testing.T) {
 	if got := manifests.Repo(); got != "" {
 		t.Fatalf("manifest request should be blocked by policy, got repo = %q", got)
 	}
+	assertPolicyDeniedPull(t, metadata, meta.PullKey{
+		Alias:      "hub",
+		Repository: "library/alpine",
+		Reference:  "latest",
+	})
 }
 
 func TestRegistryEndpointSuggestsSimilarTagsForMissingManifest(t *testing.T) {

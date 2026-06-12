@@ -29,14 +29,26 @@ func (s *SQLStore) Pull(ctx context.Context, key PullKey) (*PullRecord, bool, er
 }
 
 func (s *SQLStore) RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
-	return s.recordPull(ctx, key, at, false)
+	return s.recordPull(ctx, key, at, pullRecordClient)
 }
 
 func (s *SQLStore) RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
-	return s.recordPull(ctx, key, at, true)
+	return s.recordPull(ctx, key, at, pullRecordUpstream)
 }
 
-func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, upstream bool) (*PullRecord, error) {
+func (s *SQLStore) RecordPolicyDeniedPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error) {
+	return s.recordPull(ctx, key, at, pullRecordPolicyDenied)
+}
+
+type pullRecordKind int
+
+const (
+	pullRecordClient pullRecordKind = iota
+	pullRecordUpstream
+	pullRecordPolicyDenied
+)
+
+func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, kind pullRecordKind) (*PullRecord, error) {
 	key, err := normalizePullKey(key)
 	if err != nil {
 		return nil, err
@@ -61,9 +73,13 @@ func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, up
 		record = *existing
 		record.UpdatedAt = now
 	}
-	if upstream {
+	switch kind {
+	case pullRecordUpstream:
 		record.LastUpstreamPullAt = now
-	} else {
+	case pullRecordPolicyDenied:
+		record.PolicyDeniedCount++
+		record.LastPolicyDeniedAt = now
+	default:
 		record.Count++
 		record.LastPullAt = now
 	}
@@ -97,6 +113,7 @@ func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]Pul
 	if options.RecentFirst {
 		query = query.OrderBy(
 			sqlPullRows.LastPullAt.Desc(),
+			sqlPullRows.LastPolicyDeniedAt.Desc(),
 			sqlPullRows.UpdatedAt.Desc(),
 			sqlPullRows.ID.Desc(),
 		)
@@ -127,8 +144,10 @@ func (s *SQLStore) updatePullRow(ctx context.Context, row pullRow) error {
 		sqlPullRows.Repository.Set(row.Repository),
 		sqlPullRows.Reference.Set(row.Reference),
 		sqlPullRows.Count.Set(row.Count),
+		sqlPullRows.PolicyDeniedCount.Set(row.PolicyDeniedCount),
 		sqlPullRows.LastPullAt.Set(row.LastPullAt),
 		sqlPullRows.LastUpstreamPullAt.Set(row.LastUpstreamPullAt),
+		sqlPullRows.LastPolicyDeniedAt.Set(row.LastPolicyDeniedAt),
 		sqlPullRows.CreatedAt.Set(row.CreatedAt),
 		sqlPullRows.UpdatedAt.Set(row.UpdatedAt),
 	)

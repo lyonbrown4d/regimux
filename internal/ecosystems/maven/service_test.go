@@ -277,6 +277,7 @@ func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
+	metadata := newTestMetadata(ctx, t)
 	service := maven.NewService(maven.ServiceDependencies{
 		Config: config.Config{
 			Maven: config.DependencyEcosystemConfig{
@@ -294,6 +295,7 @@ func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
 				},
 			},
 		},
+		Metadata: metadata,
 	})
 	_, err := service.Get(ctx, maven.Request{
 		Alias: "central",
@@ -308,6 +310,11 @@ func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
 	if requests != 0 {
 		t.Fatalf("upstream requests = %d, want 0", requests)
 	}
+	assertPolicyDeniedPull(ctx, t, metadata, meta.PullKey{
+		Alias:      "maven/central",
+		Repository: "com/acme/demo/1.2.3",
+		Reference:  "demo-1.2.3.jar",
+	})
 }
 
 func TestServiceRejectsNonMavenUpstream(t *testing.T) {

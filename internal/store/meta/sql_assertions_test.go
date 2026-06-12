@@ -31,21 +31,31 @@ func assertPullLookup(t *testing.T, got *meta.PullRecord, ok bool, lastUpstreamP
 	}
 }
 
+func assertPolicyDeniedPullRecord(t *testing.T, pull *meta.PullRecord, count int64, lastAt time.Time) {
+	t.Helper()
+
+	if pull.PolicyDeniedCount != count || !pull.LastPolicyDeniedAt.Equal(lastAt) {
+		t.Fatalf("unexpected policy denied pull record: %#v", pull)
+	}
+}
+
 func assertRepositoryAggregate(
 	t *testing.T,
 	repository *meta.Repository,
 	pullCount int64,
+	policyDeniedPullCount int64,
 	blobBytes int64,
 	blobLinkCount int64,
 	lastPullAt time.Time,
+	lastPolicyDeniedAt time.Time,
 	lastBlobAccessAt time.Time,
 ) {
 	t.Helper()
 
-	if repository.PullCount != pullCount || repository.BlobBytes != blobBytes || repository.BlobLinkCount != blobLinkCount {
+	if repository.PullCount != pullCount || repository.PolicyDeniedPullCount != policyDeniedPullCount || repository.BlobBytes != blobBytes || repository.BlobLinkCount != blobLinkCount {
 		t.Fatalf("unexpected repository aggregate counters: %#v", repository)
 	}
-	if !repository.LastPullAt.Equal(lastPullAt) || !repository.LastBlobAccessAt.Equal(lastBlobAccessAt) {
+	if !repository.LastPullAt.Equal(lastPullAt) || !repository.LastPolicyDeniedAt.Equal(lastPolicyDeniedAt) || !repository.LastBlobAccessAt.Equal(lastBlobAccessAt) {
 		t.Fatalf("unexpected repository aggregate times: %#v", repository)
 	}
 	if repository.LastActivityAt.IsZero() {
@@ -137,6 +147,7 @@ func seedStatsRecords(ctx context.Context, t *testing.T, store *meta.SQLStore, n
 	recordStatsPull(ctx, t, store, "18", now.Add(-3*time.Hour))
 	recordStatsPull(ctx, t, store, "20", now.Add(-time.Hour))
 	recordStatsPull(ctx, t, store, "19", now.Add(-2*time.Hour))
+	recordStatsPolicyDeniedPull(ctx, t, store, "blocked", now.Add(-15*time.Minute))
 	_, err := store.RecordUpstreamPull(ctx, meta.PullKey{
 		Alias:      "hub",
 		Repository: "library/node",
@@ -226,6 +237,17 @@ func recordStatsPull(ctx context.Context, t *testing.T, store *meta.SQLStore, re
 	requireNoError(t, "record stats pull", err)
 }
 
+func recordStatsPolicyDeniedPull(ctx context.Context, t *testing.T, store *meta.SQLStore, reference string, at time.Time) {
+	t.Helper()
+
+	_, err := store.RecordPolicyDeniedPull(ctx, meta.PullKey{
+		Alias:      "hub",
+		Repository: "library/node",
+		Reference:  reference,
+	}, at)
+	requireNoError(t, "record stats policy denied pull", err)
+}
+
 func assertMetadataStats(t *testing.T, stats meta.MetadataStats, now time.Time) {
 	t.Helper()
 	assertManifestStats(t, stats)
@@ -262,5 +284,8 @@ func assertPullStats(t *testing.T, stats meta.MetadataStats, now time.Time) {
 	}
 	if !stats.LastUpstreamPullAt.Equal(now.Add(-30 * time.Minute)) {
 		t.Fatalf("unexpected upstream pull stats: %#v", stats)
+	}
+	if stats.PolicyDeniedPullCount != 1 || !stats.LastPolicyDeniedPullAt.Equal(now.Add(-15*time.Minute)) {
+		t.Fatalf("unexpected policy denied pull stats: %#v", stats)
 	}
 }

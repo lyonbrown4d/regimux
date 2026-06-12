@@ -10,9 +10,11 @@ import (
 )
 
 type repositoryPullAggregateRow struct {
-	PullCount          sql.NullInt64 `dbx:"pull_count"`
-	LastPullAt         sql.NullInt64 `dbx:"last_pull_at"`
-	LastUpstreamPullAt sql.NullInt64 `dbx:"last_upstream_pull_at"`
+	PullCount             sql.NullInt64 `dbx:"pull_count"`
+	PolicyDeniedPullCount sql.NullInt64 `dbx:"policy_denied_pull_count"`
+	LastPullAt            sql.NullInt64 `dbx:"last_pull_at"`
+	LastUpstreamPullAt    sql.NullInt64 `dbx:"last_upstream_pull_at"`
+	LastPolicyDeniedAt    sql.NullInt64 `dbx:"last_policy_denied_at"`
 }
 
 type repositoryBlobAggregateRow struct {
@@ -24,20 +26,24 @@ type repositoryBlobAggregateRow struct {
 }
 
 type upstreamAggregateRow struct {
-	RepositoryCount sql.NullInt64 `dbx:"repository_count"`
-	PullCount       sql.NullInt64 `dbx:"pull_count"`
-	BlobBytes       sql.NullInt64 `dbx:"blob_bytes"`
-	BlobLinkCount   sql.NullInt64 `dbx:"blob_link_count"`
-	LastActivityAt  sql.NullInt64 `dbx:"last_activity_at"`
+	RepositoryCount       sql.NullInt64 `dbx:"repository_count"`
+	PullCount             sql.NullInt64 `dbx:"pull_count"`
+	PolicyDeniedPullCount sql.NullInt64 `dbx:"policy_denied_pull_count"`
+	BlobBytes             sql.NullInt64 `dbx:"blob_bytes"`
+	BlobLinkCount         sql.NullInt64 `dbx:"blob_link_count"`
+	LastPolicyDeniedAt    sql.NullInt64 `dbx:"last_policy_denied_at"`
+	LastActivityAt        sql.NullInt64 `dbx:"last_activity_at"`
 }
 
 type repositoryAggregate struct {
-	PullCount        int64
-	BlobBytes        int64
-	BlobLinkCount    int64
-	LastPullAt       time.Time
-	LastBlobAccessAt time.Time
-	LastActivityAt   time.Time
+	PullCount             int64
+	PolicyDeniedPullCount int64
+	BlobBytes             int64
+	BlobLinkCount         int64
+	LastPullAt            time.Time
+	LastPolicyDeniedAt    time.Time
+	LastBlobAccessAt      time.Time
+	LastActivityAt        time.Time
 }
 
 func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) (repositoryAggregate, error) {
@@ -58,16 +64,20 @@ func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) 
 		return repositoryAggregate{}, err
 	}
 	lastPullAt := nullUnixNanoTime(pulls.LastPullAt)
+	lastPolicyDeniedAt := nullUnixNanoTime(pulls.LastPolicyDeniedAt)
 	lastBlobAccessAt := nullUnixNanoTime(blobs.LastAccessAt)
 	return repositoryAggregate{
-		PullCount:        nullInt64(pulls.PullCount),
-		BlobBytes:        nullInt64(blobs.BlobBytes),
-		BlobLinkCount:    nullInt64(blobs.BlobLinkCount),
-		LastPullAt:       lastPullAt,
-		LastBlobAccessAt: lastBlobAccessAt,
+		PullCount:             nullInt64(pulls.PullCount),
+		PolicyDeniedPullCount: nullInt64(pulls.PolicyDeniedPullCount),
+		BlobBytes:             nullInt64(blobs.BlobBytes),
+		BlobLinkCount:         nullInt64(blobs.BlobLinkCount),
+		LastPullAt:            lastPullAt,
+		LastPolicyDeniedAt:    lastPolicyDeniedAt,
+		LastBlobAccessAt:      lastBlobAccessAt,
 		LastActivityAt: maxTime(
 			lastPullAt,
 			nullUnixNanoTime(pulls.LastUpstreamPullAt),
+			lastPolicyDeniedAt,
 			lastBlobAccessAt,
 			nullUnixNanoTime(blobs.LastVerifiedAt),
 			nullUnixNanoTime(blobs.LastRepoBlobAt),
@@ -80,8 +90,10 @@ func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) 
 func (s *SQLStore) repositoryPullAggregate(ctx context.Context, alias, name string) (repositoryPullAggregateRow, error) {
 	row, err := dbx.GetTyped[repositoryPullAggregateRow](ctx, s.db, querydsl.SelectInto[repositoryPullAggregateRow](
 		querydsl.Sum(sqlPullRows.Count).As("pull_count"),
+		querydsl.Sum(sqlPullRows.PolicyDeniedCount).As("policy_denied_pull_count"),
 		querydsl.Max(sqlPullRows.LastPullAt).As("last_pull_at"),
 		querydsl.Max(sqlPullRows.LastUpstreamPullAt).As("last_upstream_pull_at"),
+		querydsl.Max(sqlPullRows.LastPolicyDeniedAt).As("last_policy_denied_at"),
 	).From(sqlPullRows).Where(querydsl.And(
 		sqlPullRows.Alias.Eq(alias),
 		sqlPullRows.Repository.Eq(name),

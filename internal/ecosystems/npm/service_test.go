@@ -164,6 +164,12 @@ func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
+	metadata, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
+	requireNoError(t, "open metadata", err)
+	t.Cleanup(func() {
+		requireNoError(t, "close metadata", metadata.Close())
+	})
+
 	service := npm.NewService(npm.ServiceDependencies{
 		Config: config.Config{
 			NPM: config.DependencyEcosystemConfig{
@@ -181,8 +187,9 @@ func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
 				},
 			},
 		},
+		Metadata: metadata,
 	})
-	_, err := service.Get(ctx, npm.Request{
+	_, err = service.Get(ctx, npm.Request{
 		Alias: "npmjs",
 		Tail:  "left-pad",
 	})
@@ -195,6 +202,11 @@ func TestServiceBlockedByPolicyDoesNotFetchUpstream(t *testing.T) {
 	if requests != 0 {
 		t.Fatalf("upstream requests = %d, want 0", requests)
 	}
+	assertPolicyDeniedPull(ctx, t, metadata, meta.PullKey{
+		Alias:      "npm/npmjs",
+		Repository: "left-pad",
+		Reference:  "metadata",
+	})
 }
 
 func TestServicePersistsTarballAfterFullDownload(t *testing.T) {
@@ -352,6 +364,21 @@ func requireNoError(t *testing.T, action string, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("%s: %v", action, err)
+	}
+}
+
+func assertPolicyDeniedPull(ctx context.Context, t *testing.T, metadata meta.Store, key meta.PullKey) {
+	t.Helper()
+	pull, ok, err := metadata.Pull(ctx, key)
+	requireNoError(t, "lookup policy denied pull", err)
+	if !ok {
+		t.Fatalf("policy denied pull %s was not recorded", key.String())
+	}
+	if pull.PolicyDeniedCount != 1 || pull.LastPolicyDeniedAt.IsZero() {
+		t.Fatalf("unexpected policy denied pull: %#v", pull)
+	}
+	if pull.Count != 0 || !pull.LastPullAt.IsZero() || !pull.LastUpstreamPullAt.IsZero() {
+		t.Fatalf("policy denied pull should not count as success: %#v", pull)
 	}
 }
 
