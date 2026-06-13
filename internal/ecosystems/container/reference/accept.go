@@ -2,7 +2,9 @@
 package reference
 
 import (
+	"maps"
 	"mime"
+	"slices"
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -73,7 +75,7 @@ func normalizeAcceptParams(rawParams []string) *collectionlist.List[string] {
 }
 
 func normalizeAcceptParamMap(params map[string]string) *collectionlist.List[string] {
-	return collectionlist.NewList(lo.FilterMap(lo.Keys(params), func(name string, _ int) (string, bool) {
+	return collectionlist.NewList(lo.FilterMap(slices.Sorted(maps.Keys(params)), func(name string, _ int) (string, bool) {
 		value := params[name]
 		param, ok := normalizeAcceptParam(name + "=" + value)
 		return param, ok

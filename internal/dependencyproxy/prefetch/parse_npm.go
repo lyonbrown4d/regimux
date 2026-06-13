@@ -2,6 +2,7 @@ package prefetch
 
 import (
 	"encoding/json"
+	"maps"
 	"net/url"
 	"slices"
 	"strings"
@@ -148,10 +149,5 @@ func tarballName(resolved string) (string, bool) {
 }
 
 func sortedKeys[T any](values map[string]T) []string {
-	keys := make([]string, 0, len(values))
-	for key := range values {
-		keys = append(keys, key)
-	}
-	slices.Sort(keys)
-	return keys
+	return slices.Sorted(maps.Keys(values))
 }

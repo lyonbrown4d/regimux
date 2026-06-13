@@ -1,10 +1,10 @@
 package config
 
 import (
-	"strings"
+	"maps"
+	"slices"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -94,8 +94,7 @@ func (c *Config) normalizeDependencyUpstreams(ecosystem string, upstreams Depend
 }
 
 func sortedConfigAliases[T any](values map[string]T) *collectionlist.List[string] {
-	return collectionlist.NewList(lo.Keys(values)...).
-		Sort(strings.Compare)
+	return collectionlist.NewList(slices.Sorted(maps.Keys(values))...)
 }
 
 func (c *Config) ensureGoConfig() DependencyEcosystemConfig {
