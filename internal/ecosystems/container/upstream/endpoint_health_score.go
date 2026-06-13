@@ -1,6 +1,9 @@
 package upstream
 
-import "time"
+import (
+	"cmp"
+	"time"
+)
 
 func (t *EndpointHealthTracker) recordSuccessLocked(state *endpointHealthState, now time.Time) {
 	state.successCount++
@@ -109,14 +112,14 @@ func compareEndpointHealthCandidateRank(left, right endpointHealthCandidateRank)
 	if state := compareEndpointState(left.candidate.State, right.candidate.State); state != 0 {
 		return state
 	}
-	return left.index - right.index
+	return cmp.Compare(left.index, right.index)
 }
 
 func compareEndpointRuntimeCandidate(left, right endpointRuntimeCandidate) int {
 	if state := compareEndpointState(left.state, right.state); state != 0 {
 		return state
 	}
-	return left.index - right.index
+	return cmp.Compare(left.index, right.index)
 }
 
 func compareEndpointState(left, right EndpointHealthSnapshot) int {
@@ -132,11 +135,5 @@ func compareEndpointState(left, right EndpointHealthSnapshot) int {
 		}
 		return -1
 	}
-	if left.Score != right.Score {
-		if left.Score < right.Score {
-			return -1
-		}
-		return 1
-	}
-	return 0
+	return cmp.Compare(left.Score, right.Score)
 }

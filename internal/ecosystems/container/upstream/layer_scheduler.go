@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"cmp"
 	"sync"
 	"time"
 
@@ -176,19 +177,10 @@ func layerSchedulerCandidateCompare(left, right layerSchedulerCandidate) int {
 		}
 		return -1
 	}
-	if left.score != right.score {
-		if left.score < right.score {
-			return -1
-		}
-		return 1
+	if score := cmp.Compare(left.score, right.score); score != 0 {
+		return score
 	}
-	if left.index == right.index {
-		return 0
-	}
-	if left.index < right.index {
-		return -1
-	}
-	return 1
+	return cmp.Compare(left.index, right.index)
 }
 
 func scheduledRuntimes(candidates *collectionlist.List[layerSchedulerCandidate]) *collectionlist.List[upstreamRuntime] {

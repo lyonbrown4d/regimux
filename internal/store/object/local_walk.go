@@ -1,12 +1,13 @@
 package object
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"hash"
 	"os"
 	pathpkg "path"
-	"sort"
+	"slices"
 	"strings"
 
 	ocidigest "github.com/opencontainers/go-digest"
@@ -114,8 +115,8 @@ func (s *aferoStore) walkBlobPrefix(ctx context.Context, algorithmPath, algorith
 	if err != nil {
 		return wrapError(err, "list object blob prefix")
 	}
-	sort.Slice(files, func(i, j int) bool {
-		return files[i].Name() < files[j].Name()
+	slices.SortFunc(files, func(left, right os.FileInfo) int {
+		return cmp.Compare(left.Name(), right.Name())
 	})
 	for _, file := range files {
 		if err := checkContext(ctx, "walk objects"); err != nil {
@@ -143,7 +144,7 @@ func readSortedDirs(fs afero.Fs, name string) ([]string, error) {
 			dirs = append(dirs, entry.Name())
 		}
 	}
-	sort.Strings(dirs)
+	slices.Sort(dirs)
 	return dirs, nil
 }
 
