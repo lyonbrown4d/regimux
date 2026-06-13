@@ -78,6 +78,17 @@ func TestParsePOMProducesMavenJarArtifacts(t *testing.T) {
 	})
 }
 
+func TestParseGradleWrapperProducesDistArtifact(t *testing.T) {
+	artifacts, err := prefetch.Parse(prefetch.Source{
+		Name: "gradle-wrapper.properties",
+		Body: []byte("distributionBase=GRADLE_USER_HOME\ndistributionUrl=https\\://services.gradle.org/distributions/gradle-8.7-bin.zip\n"),
+	}, prefetch.ParseOptions{DefaultAliases: map[string]string{ecosystem.Dist: "gradle"}})
+	requireNoError(t, err)
+	assertArtifacts(t, artifacts, []prefetch.Artifact{
+		{Ecosystem: ecosystem.Dist, Alias: "gradle", Artifact: "dist", Reference: "gradle-8.7-bin.zip", Source: "gradle-wrapper.properties", Line: 2},
+	})
+}
+
 func TestParseContainerRefsUsesDefaultAliasAndExplicitAlias(t *testing.T) {
 	artifacts, err := prefetch.Parse(prefetch.Source{
 		Name:   "images.txt",

@@ -9,6 +9,7 @@ RegiMux 默认通过 [GitHub Releases](https://github.com/lyonbrown4d/regimux/re
 - Docker/containerd 使用兼容 Registry 的 `/v2/{containerAlias}/...` 路径。
 - Go 使用 `GOPROXY=http://<regimux>/go/{goAlias}`。
 - npm、PyPI 和 Maven 分别使用 `/npm/{npmAlias}`、`/pypi/{pypiAlias}`、`/maven/{mavenAlias}` 下的生态代理路径。
+- Gradle wrapper zip、CLI installer 等二进制分发物使用 `/dist/{distAlias}/{path}`。
 
 RegiMux 是只读的。它代理依赖读取请求，缓存不可变制品，维护 metadata 用于缓存统计和清理，并可以在后台预热或刷新制品。它不是包发布入口，也不是 push registry。
 
@@ -140,6 +141,38 @@ GET /go/{goAlias}/github.com/pkg/errors/@latest
 
 `@latest` 和 `@v/list` 使用短 TTL；版本化的 `.info`、`.mod` 和 `.zip` 按内容 sha256 写入对象存储并长期复用。当前实现是只读 Go dependency proxy，不代理 `sum.golang.org`，也不做 VCS direct 拉取。
 
+## Dist Mirror
+
+`dist` 配置块下的每个 alias 都会在 `/dist/{distAlias}/{path}` 暴露二进制分发物 mirror。默认 `gradle` alias 指向 `https://services.gradle.org/distributions`，并允许 Gradle wrapper 压缩包：
+
+```text
+GET /dist/gradle/gradle-8.7-bin.zip
+GET /dist/gradle/gradle-8.7-all.zip
+```
+
+有内网缓存或区域分发源时，可以为 dist alias 配置额外 mirror：
+
+```hcl
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    mirrors = ["https://dist-cache.example.com/gradle"]
+    mirror_policy = "ordered"
+    allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]
+  }
+}
+```
+
+在 `gradle/wrapper/gradle-wrapper.properties` 中可以这样使用：
+
+```properties
+distributionUrl=http\://localhost\:5000/dist/gradle/gradle-8.7-bin.zip
+```
+
+完整 `GET` 响应会按内容 sha256 写入对象存储，并写入 metadata 用于缓存统计和清理。`HEAD` 请求不会存储字节。已缓存完整对象时，`Range` 请求会从本地对象切片返回；未命中的 `Range` 请求只透传上游，不会把 partial 内容作为对象落盘。
+
+当 dist endpoint 出现传输错误，或返回 `404`、`410`、`408`、`429`、`5xx` 时，如果还有后续 mirror，RegiMux 会继续尝试下一个 endpoint。`403` 等不可重试响应会直接返回给客户端。
+
 ## Docker Compose
 
 Compose 示例默认使用已经发布到 GHCR 的镜像：
@@ -169,11 +202,12 @@ http://localhost:5000/admin
 
 Admin UI 已内嵌到二进制中，包含仪表盘、上游健康、拉取记录、活动、缓存、存储、调度器、手动刷新、认证审计和有效配置等页面。
 
-手动刷新支持生态隔离（`container`、`go`、`npm`、`pypi`、`maven`），并作为后台任务执行：
+手动刷新支持生态隔离（`container`、`go`、`npm`、`pypi`、`maven`、`dist`），并作为后台任务执行：
 
 ```text
 container:hub / repository=library/node / reference=20
 go:default / repository=github.com/pkg/errors / reference=v0.9.1
+dist:gradle / repository=dist / reference=gradle-8.7-bin.zip
 ```
 
 当 `auth.enabled = true` 时，`/admin` 会使用同一套配置用户做 HTTP Basic 认证。

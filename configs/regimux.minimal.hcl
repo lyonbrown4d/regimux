@@ -31,3 +31,10 @@ maven {
     registry = "https://repo.maven.apache.org/maven2"
   }
 }
+
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]
+  }
+}

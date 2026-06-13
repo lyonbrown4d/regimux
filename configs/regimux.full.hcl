@@ -481,3 +481,28 @@ maven {
     }
   }
 }
+
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    mirrors = []
+    mirror_policy = "ordered"
+    tag_ttl = "24h"
+    allow = [
+      "gradle-*-bin.zip",
+      "gradle-*-all.zip",
+    ]
+
+    probe {
+      enabled = false
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+
+    auth {
+      type = "anonymous"
+    }
+  }
+}

@@ -9,6 +9,7 @@ Run RegiMux close to your developers, CI runners, or build cluster, then point d
 - Docker/containerd uses the Registry-compatible `/v2/{containerAlias}/...` path.
 - Go uses `GOPROXY=http://<regimux>/go/{goAlias}`.
 - npm, PyPI, and Maven use their ecosystem proxy paths under `/npm/{npmAlias}`, `/pypi/{pypiAlias}`, and `/maven/{mavenAlias}`.
+- Binary distributions, such as Gradle wrapper zips or CLI installers, use `/dist/{distAlias}/{path}`.
 
 RegiMux is read-only. It proxies dependency reads, caches immutable artifacts, keeps metadata for cache accounting and cleanup, and can warm or refresh artifacts in the background. It is not a package publishing endpoint and it is not a push registry.
 
@@ -140,6 +141,38 @@ The selected Go alias is resolved only within the `go` block. Container, npm, Py
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in the object store by content sha256 and reused long term. The current implementation is a read-only Go dependency proxy; it does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 
+## Dist Mirror
+
+Each alias under the `dist` block exposes a binary distribution mirror at `/dist/{distAlias}/{path}`. The default `gradle` alias points at `https://services.gradle.org/distributions` and allows Gradle wrapper archives:
+
+```text
+GET /dist/gradle/gradle-8.7-bin.zip
+GET /dist/gradle/gradle-8.7-all.zip
+```
+
+Configure additional mirrors when you have an internal cache or regional distribution endpoint:
+
+```hcl
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    mirrors = ["https://dist-cache.example.com/gradle"]
+    mirror_policy = "ordered"
+    allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]
+  }
+}
+```
+
+Use it from `gradle/wrapper/gradle-wrapper.properties`:
+
+```properties
+distributionUrl=http\://localhost\:5000/dist/gradle/gradle-8.7-bin.zip
+```
+
+Full `GET` responses are stored in the object store by content sha256 and linked to metadata for cache accounting and cleanup. `HEAD` requests do not store bytes. `Range` requests are served from the local object when the full artifact is already cached; range misses are passed through to upstream and are not stored as partial objects.
+
+When a dist endpoint fails with a transport error or returns `404`, `410`, `408`, `429`, or `5xx`, RegiMux tries the next configured mirror when available. Non-retryable responses such as `403` are returned directly.
+
 ## Docker Compose
 
 Compose examples use the released GHCR image by default:
@@ -174,6 +207,7 @@ Manual refresh is ecosystem-aware and runs as a background job:
 ```text
 container:hub / repository=library/node / reference=20
 go:default / repository=github.com/pkg/errors / reference=v0.9.1
+dist:gradle / repository=dist / reference=gradle-8.7-bin.zip
 ```
 
 When `auth.enabled = true`, `/admin` is protected with HTTP Basic using the same configured users as Registry auth.

@@ -434,3 +434,40 @@ maven {
     }
   }
 }
+
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    # Optional internal or regional mirrors for Gradle distributions.
+    # mirrors = ["https://dist-cache.example.com/gradle"]
+    mirror_policy = "ordered"
+    tag_ttl = "24h"
+    allow = [
+      "gradle-*-bin.zip",
+      "gradle-*-all.zip",
+    ]
+
+    probe {
+      enabled = false
+      interval = "1m"
+      timeout = "3s"
+      cooldown = "2m"
+      jitter = "10s"
+    }
+
+    auth {
+      type = "anonymous"
+    }
+
+    http {
+      timeout = "0s"
+
+      retry {
+        enabled = true
+        max_retries = 2
+        wait_min = "100ms"
+        wait_max = "1s"
+      }
+    }
+  }
+}

@@ -16,6 +16,7 @@ const (
 	Maven     = "maven"
 	NPM       = "npm"
 	PyPI      = "pypi"
+	Dist      = "dist"
 )
 
 // Runtime identifies one supported dependency ecosystem.

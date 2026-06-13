@@ -48,6 +48,15 @@ maven {
     registry = "https://repo.maven.apache.org/maven2"
   }
 }
+
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    mirrors = ["https://dist-cache.example.com/gradle"]
+    mirror_policy = "ordered"
+    allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]
+  }
+}
 ```
 
 ## Defaults
@@ -96,6 +105,8 @@ Important defaults:
 - `npm.default.registry = "https://registry.npmjs.org"`
 - `pypi.default.registry = "https://pypi.org"`
 - `maven.central.registry = "https://repo.maven.apache.org/maven2"`
+- `dist.gradle.registry = "https://services.gradle.org/distributions"`
+- `dist.gradle.allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]`
 
 Top-level ecosystem blocks define dependency proxy namespaces:
 
@@ -104,10 +115,13 @@ Top-level ecosystem blocks define dependency proxy namespaces:
 - `npm`: npm dependency proxy aliases, exposed through `/npm/{npmAlias}/...`.
 - `pypi`: PyPI dependency proxy aliases, exposed through `/pypi/{pypiAlias}/...`.
 - `maven`: Maven dependency proxy aliases, exposed through `/maven/{mavenAlias}/...`.
+- `dist`: binary distribution mirror aliases, exposed through `/dist/{distAlias}/...`.
 
 These blocks are also the input to the ecosystem runtime layer. RegiMux normalizes them into typed runtime entries with an ecosystem kind, alias, registry, mirrors, probe settings, auth, and HTTP policy. The scheduler then works from runtime capabilities such as `probe` and `prefetch` instead of reading a legacy `upstreams` block.
 
-Container runtimes expose scheduled `probe` and predictive `prefetch` capabilities. Go, npm, PyPI, and Maven expose the shared endpoint `probe` capability when an alias has `probe.enabled = true`, and they also participate in scheduled `prefetch` by rewarming recently requested artifacts.
+`dist` aliases support the same `registry`, `mirrors`, `mirror_policy`, `probe`, `auth`, and `http` fields as other dependency proxy ecosystems, plus an `allow` list for path patterns. Requests are tried against the selected registry/mirror endpoints in order after health-based sorting. Transport errors and upstream `404`, `410`, `408`, `429`, or `5xx` responses fall through to the next endpoint when one is available; `403` and other non-retryable responses are returned directly.
+
+Container runtimes expose scheduled `probe` and predictive `prefetch` capabilities. Go, npm, PyPI, Maven, and dist expose the shared endpoint `probe` capability when an alias has `probe.enabled = true`, and they also participate in scheduled `prefetch` by rewarming recently requested artifacts.
 
 RegiMux disables HTTP/2 for upstream registry clients by default. This keeps mirror and CDN compatibility predictable and avoids process-level HTTP/2 runtime panics. Enable it per upstream only for trusted registries:
 
@@ -236,6 +250,7 @@ REGIMUX_GO__DEFAULT__REGISTRY=https://proxy.golang.org
 REGIMUX_NPM__DEFAULT__REGISTRY=https://registry.npmjs.org
 REGIMUX_PYPI__DEFAULT__REGISTRY=https://pypi.org
 REGIMUX_MAVEN__CENTRAL__REGISTRY=https://repo.maven.apache.org/maven2
+REGIMUX_DIST__GRADLE__REGISTRY=https://services.gradle.org/distributions
 ```
 
 The loader also reads `.env` when present. Environment variables override `.env` and file values.

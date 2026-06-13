@@ -34,6 +34,15 @@ func defaultNPMConfig() DependencyEcosystemConfig {
 	}
 }
 
+func defaultDistConfig() DistEcosystemConfig {
+	return DistEcosystemConfig{
+		"gradle": distUpstreamFromUpstreamConfig(defaultGradleDistUpstreamConfig(), []string{
+			"gradle-*-bin.zip",
+			"gradle-*-all.zip",
+		}),
+	}
+}
+
 func defaultHubUpstreamConfig() UpstreamConfig {
 	return UpstreamConfig{
 		Type:             "oci",
@@ -96,6 +105,10 @@ func defaultNPMUpstreamConfig() UpstreamConfig {
 	return dependencyDefaultUpstream("npm", "https://registry.npmjs.org")
 }
 
+func defaultGradleDistUpstreamConfig() UpstreamConfig {
+	return dependencyDefaultUpstream("dist", "https://services.gradle.org/distributions")
+}
+
 func dependencyDefaultUpstream(ecosystem, registry string) UpstreamConfig {
 	return UpstreamConfig{
 		Type:     ecosystem,
@@ -110,4 +123,10 @@ func dependencyDefaultUpstream(ecosystem, registry string) UpstreamConfig {
 			},
 		},
 	}
+}
+
+func distUpstreamFromUpstreamConfig(upstreamCfg UpstreamConfig, allow []string) DistUpstreamConfig {
+	cfg := mustMapUpstreamConfig(newUpstreamConfigMapper().UpstreamToDistUpstream(upstreamCfg))
+	cfg.Allow = allow
+	return cfg
 }

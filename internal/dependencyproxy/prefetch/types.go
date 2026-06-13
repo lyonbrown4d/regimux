@@ -16,6 +16,7 @@ const (
 	FormatPackageLock   = "package-lock.json"
 	FormatRequirements  = "requirements.txt"
 	FormatPOM           = "pom.xml"
+	FormatGradleWrapper = "gradle-wrapper.properties"
 )
 
 // Syncer is the scheduler/manual-sync boundary used to trigger artifact warms.

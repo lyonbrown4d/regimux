@@ -17,6 +17,7 @@ func defaultConfig() Config {
 		NPM:       defaultNPMConfig(),
 		PyPI:      defaultPyPIConfig(),
 		Maven:     defaultMavenConfig(),
+		Dist:      defaultDistConfig(),
 	}
 }
 

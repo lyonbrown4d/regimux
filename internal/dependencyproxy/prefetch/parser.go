@@ -21,6 +21,8 @@ func Parse(source Source, opts ParseOptions) ([]Artifact, error) {
 		return parseRequirements(source, opts)
 	case FormatPOM:
 		return parsePOM(source, opts)
+	case FormatGradleWrapper:
+		return parseGradleWrapper(source, opts)
 	case FormatOCIManifest:
 		return parseOCIManifest(source, opts)
 	case FormatContainerRefs:
@@ -51,6 +53,8 @@ func sourceNameFormat(name string) string {
 		return FormatRequirements
 	case "pom.xml":
 		return FormatPOM
+	case "gradle-wrapper.properties":
+		return FormatGradleWrapper
 	default:
 		return ""
 	}
@@ -75,6 +79,9 @@ func sourceBodyFormat(raw []byte) string {
 	}
 	if looksRequirements(body) {
 		return FormatRequirements
+	}
+	if looksGradleWrapper(body) {
+		return FormatGradleWrapper
 	}
 	return FormatContainerRefs
 }
@@ -143,6 +150,15 @@ func looksRequirements(body string) bool {
 			continue
 		}
 		if strings.Contains(line, "==") || strings.Contains(line, "#egg=") {
+			return true
+		}
+	}
+	return false
+}
+
+func looksGradleWrapper(body string) bool {
+	for line := range strings.SplitSeq(body, "\n") {
+		if strings.HasPrefix(strings.TrimSpace(line), "distributionUrl=") {
 			return true
 		}
 	}

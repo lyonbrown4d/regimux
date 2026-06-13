@@ -119,6 +119,36 @@ func (c Config) MavenUpstream(alias string) (UpstreamConfig, bool) {
 	return dependencyUpstream(c.Maven, ecosystemMaven, alias)
 }
 
+func (c Config) OrderedDistUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {
+	aliases := sortedConfigAliases(c.Dist)
+	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](aliases.Len())
+	aliases.Range(func(_ int, alias string) bool {
+		if upstreamCfg, ok := c.DistUpstream(alias); ok {
+			out.Set(alias, upstreamCfg)
+		}
+		return true
+	})
+	return out
+}
+
+func (c Config) DistUpstream(alias string) (UpstreamConfig, bool) {
+	distCfg, ok := c.Dist[strings.TrimSpace(alias)]
+	if !ok {
+		return UpstreamConfig{}, false
+	}
+	upstreamCfg := mustMapUpstreamConfig(newUpstreamConfigMapper().DistUpstreamToUpstream(distCfg))
+	upstreamCfg.Alias = alias
+	return upstreamCfg, true
+}
+
+func (c Config) DistAllow(alias string) []string {
+	distCfg, ok := c.Dist[strings.TrimSpace(alias)]
+	if !ok {
+		return nil
+	}
+	return distCfg.Allow
+}
+
 func orderedDependencyUpstreams(values DependencyEcosystemConfig, ecosystem string) *collectionmapping.OrderedMap[string, UpstreamConfig] {
 	aliases := sortedConfigAliases(values)
 	out := collectionmapping.NewOrderedMapWithCapacity[string, UpstreamConfig](aliases.Len())

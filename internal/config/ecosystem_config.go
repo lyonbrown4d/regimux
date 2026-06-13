@@ -14,6 +14,7 @@ const (
 	ecosystemMaven     = "maven"
 	ecosystemNPM       = "npm"
 	ecosystemPyPI      = "pypi"
+	ecosystemDist      = "dist"
 )
 
 func (c *Config) normalizeUpstreams() error {
@@ -35,7 +36,10 @@ func (c *Config) normalizeUpstreams() error {
 	if err := c.normalizeDependencyUpstreams(ecosystemPyPI, c.ensurePyPIConfig()); err != nil {
 		return err
 	}
-	if len(c.Upstreams)+len(c.Go)+len(c.Maven)+len(c.NPM)+len(c.PyPI) == 0 {
+	if err := c.normalizeDistUpstreams(); err != nil {
+		return err
+	}
+	if len(c.Upstreams)+len(c.Go)+len(c.Maven)+len(c.NPM)+len(c.PyPI)+len(c.Dist) == 0 {
 		return oops.In("config").Errorf("at least one ecosystem upstream is required")
 	}
 	return nil
@@ -91,6 +95,36 @@ func (c *Config) normalizeDependencyUpstreams(ecosystem string, upstreams Depend
 		return true
 	})
 	return normalizeErr
+}
+
+func (c *Config) normalizeDistUpstreams() error {
+	mapper := newUpstreamConfigMapper()
+	var normalizeErr error
+	sortedConfigAliases(c.Dist).Range(func(_ int, alias string) bool {
+		upstreamCfg, err := mapper.DistUpstreamToUpstream(c.Dist[alias])
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		upstreamCfg, err = normalizeUpstreamConfig(alias, upstreamCfg)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		distCfg, err := mapper.UpstreamToDistUpstream(upstreamCfg)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
+		distCfg.Allow = normalizeDistAllow(c.Dist[alias].Allow)
+		c.Dist[alias] = distCfg
+		return true
+	})
+	return normalizeErr
+}
+
+func normalizeDistAllow(values []string) []string {
+	return uniqueStrings(values)
 }
 
 func sortedConfigAliases[T any](values map[string]T) *collectionlist.List[string] {

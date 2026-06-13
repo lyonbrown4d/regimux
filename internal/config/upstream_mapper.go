@@ -41,6 +41,19 @@ func (m *upstreamConfigMapper) UpstreamToDependencyUpstream(upstreamCfg Upstream
 	return mapUpstreamConfig[DependencyUpstreamConfig](m, upstreamCfg)
 }
 
+func (m *upstreamConfigMapper) DistUpstreamToUpstream(cfg DistUpstreamConfig) (UpstreamConfig, error) {
+	upstreamCfg, err := mapUpstreamConfig[UpstreamConfig](m, cfg)
+	if err != nil {
+		return UpstreamConfig{}, err
+	}
+	upstreamCfg.Type = ecosystemDist
+	return upstreamCfg, nil
+}
+
+func (m *upstreamConfigMapper) UpstreamToDistUpstream(upstreamCfg UpstreamConfig) (DistUpstreamConfig, error) {
+	return mapUpstreamConfig[DistUpstreamConfig](m, upstreamCfg)
+}
+
 func mapUpstreamConfig[D any](m *upstreamConfigMapper, src any) (D, error) {
 	var dst D
 	if m == nil || m.mapper == nil {

@@ -50,6 +50,7 @@ Manual refresh is ecosystem-aware. It bypasses the normal cache-first read path,
 - `npm:<alias>` for npm
 - `pypi:<alias>` for PyPI
 - `maven:<alias>` for Maven
+- `dist:<alias>` for binary distributions
 
 For each ecosystem, fill the same `Repository` / `Reference` fields:
 
@@ -58,6 +59,7 @@ For each ecosystem, fill the same `Repository` / `Reference` fields:
 - `npm`: repository is the package name, reference is the version/tag, e.g. `react`, `18.2.0`.
 - `pypi`: repository is package name, reference is version/tag.
 - `maven`: repository is group/artifact path, reference is version/version segment.
+- `dist`: repository is the directory path or `dist`, reference is the file name, e.g. `gradle-8.7-bin.zip`.
 
 Examples:
 
@@ -67,6 +69,7 @@ go:default / repository=github.com/pkg/errors / reference=v0.9.1
 npm:default / repository=react / reference=18.2.0
 pypi:default / repository=urllib3 / reference=2.2.0
 maven:central / repository=com/fasterxml/jackson/core/jackson-databind / reference=2.16.1
+dist:gradle / repository=dist / reference=gradle-8.7-bin.zip
 ```
 
 The job is created asynchronously and can be viewed from the refresh result panel. It is useful when the normal background refresh has not caught up yet and an operator wants to force upstream freshness immediately.

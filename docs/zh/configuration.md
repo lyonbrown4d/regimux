@@ -48,6 +48,15 @@ maven {
     registry = "https://repo.maven.apache.org/maven2"
   }
 }
+
+dist {
+  gradle {
+    registry = "https://services.gradle.org/distributions"
+    mirrors = ["https://dist-cache.example.com/gradle"]
+    mirror_policy = "ordered"
+    allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]
+  }
+}
 ```
 
 ## 默认值
@@ -96,6 +105,8 @@ maven {
 - `npm.default.registry = "https://registry.npmjs.org"`
 - `pypi.default.registry = "https://pypi.org"`
 - `maven.central.registry = "https://repo.maven.apache.org/maven2"`
+- `dist.gradle.registry = "https://services.gradle.org/distributions"`
+- `dist.gradle.allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]`
 
 顶层生态块定义依赖代理 namespace：
 
@@ -104,10 +115,13 @@ maven {
 - `npm`：npm 依赖代理 alias，通过 `/npm/{npmAlias}/...` 暴露。
 - `pypi`：PyPI 依赖代理 alias，通过 `/pypi/{pypiAlias}/...` 暴露。
 - `maven`：Maven 依赖代理 alias，通过 `/maven/{mavenAlias}/...` 暴露。
+- `dist`：二进制分发物 mirror alias，通过 `/dist/{distAlias}/...` 暴露。
 
 这些块也是生态 runtime 层的输入。RegiMux 会把它们归一化为带生态类型、alias、registry、mirrors、probe 设置、auth 和 HTTP 策略的 runtime 条目。调度器随后从 `probe`、`prefetch` 等 runtime capability 工作，而不是读取 legacy `upstreams` 块。
 
-container runtime 暴露定时 `probe` 和预测性 `prefetch` capability。Go、npm、PyPI 和 Maven 在 alias 配置 `probe.enabled = true` 后会暴露通用 endpoint `probe` capability，同时也会参与定时 `prefetch`，用于刷新近期请求过的制品。
+`dist` alias 支持和其他依赖代理生态一致的 `registry`、`mirrors`、`mirror_policy`、`probe`、`auth`、`http` 字段，并额外使用 `allow` 路径模式限制可代理的二进制分发物。请求会按健康排序后的 registry/mirror endpoint 依次尝试；传输错误以及上游 `404`、`410`、`408`、`429` 或 `5xx` 响应会在还有后续 endpoint 时继续切换，`403` 和其他不可重试响应会直接返回给客户端。
+
+container runtime 暴露定时 `probe` 和预测性 `prefetch` capability。Go、npm、PyPI、Maven 和 dist 在 alias 配置 `probe.enabled = true` 后会暴露通用 endpoint `probe` capability，同时也会参与定时 `prefetch`，用于刷新近期请求过的制品。
 
 RegiMux 默认会关闭上游 registry 客户端的 HTTP/2。这样可以让 mirror 和 CDN 链路更可控，并避免 HTTP/2 运行时 panic 直接打崩进程。只建议对可信上游按 alias 显式开启：
 
@@ -237,6 +251,7 @@ REGIMUX_GO__DEFAULT__REGISTRY=https://proxy.golang.org
 REGIMUX_NPM__DEFAULT__REGISTRY=https://registry.npmjs.org
 REGIMUX_PYPI__DEFAULT__REGISTRY=https://pypi.org
 REGIMUX_MAVEN__CENTRAL__REGISTRY=https://repo.maven.apache.org/maven2
+REGIMUX_DIST__GRADLE__REGISTRY=https://services.gradle.org/distributions
 ```
 
 加载器会在存在 `.env` 时读取它。环境变量优先级高于 `.env` 和配置文件。

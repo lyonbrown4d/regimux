@@ -17,6 +17,7 @@ type Config struct {
 	NPM       DependencyEcosystemConfig `json:"npm"       koanf:"npm"       mapstructure:"npm"`
 	PyPI      DependencyEcosystemConfig `json:"pypi"      koanf:"pypi"      mapstructure:"pypi"`
 	Maven     DependencyEcosystemConfig `json:"maven"     koanf:"maven"     mapstructure:"maven"`
+	Dist      DistEcosystemConfig       `json:"dist"      koanf:"dist"      mapstructure:"dist"`
 	Upstreams map[string]UpstreamConfig `json:"-"         koanf:"-"         mapstructure:"-"`
 }
 
