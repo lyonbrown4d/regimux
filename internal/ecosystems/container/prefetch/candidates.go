@@ -2,6 +2,7 @@
 package prefetch
 
 import (
+	"cmp"
 	"fmt"
 	"time"
 
@@ -158,25 +159,11 @@ func compareCandidatePriority(left, right Candidate) int {
 }
 
 func compareIntDesc(left, right int) int {
-	switch {
-	case left > right:
-		return -1
-	case left < right:
-		return 1
-	default:
-		return 0
-	}
+	return cmp.Compare(right, left)
 }
 
 func compareStringAsc(left, right string) int {
-	switch {
-	case left < right:
-		return -1
-	case left > right:
-		return 1
-	default:
-		return 0
-	}
+	return cmp.Compare(left, right)
 }
 
 type candidateKey struct {

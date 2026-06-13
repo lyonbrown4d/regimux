@@ -1,6 +1,7 @@
 package suggestion
 
 import (
+	"cmp"
 	"strings"
 	"unicode"
 
@@ -164,23 +165,11 @@ func commonSuffixLength(left, right string) int {
 }
 
 func compareScoredValue(left, right scoredValue) int {
-	if left.score > right.score {
-		return -1
+	if score := cmp.Compare(right.score, left.score); score != 0 {
+		return score
 	}
-	if left.score < right.score {
-		return 1
+	if distance := cmp.Compare(left.distance, right.distance); distance != 0 {
+		return distance
 	}
-	if left.distance < right.distance {
-		return -1
-	}
-	if left.distance > right.distance {
-		return 1
-	}
-	if left.value < right.value {
-		return -1
-	}
-	if left.value > right.value {
-		return 1
-	}
-	return 0
+	return cmp.Compare(left.value, right.value)
 }

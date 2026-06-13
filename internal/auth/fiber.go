@@ -5,6 +5,7 @@ import (
 	"encoding/base64"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 
 	"github.com/arcgolabs/authx"
@@ -117,11 +118,11 @@ func writeDistributionFailure(c fiber.Ctx, status int, list *distribution.ErrorL
 
 func (s *Service) challenge(c fiber.Ctx) string {
 	parts := collectionlist.NewList(
-		`Bearer realm="`+escapeChallengeValue(s.realm(c))+`"`,
-		`service="`+escapeChallengeValue(s.serviceName())+`"`,
+		"Bearer realm="+strconv.Quote(s.realm(c)),
+		"service="+strconv.Quote(s.serviceName()),
 	)
 	if scope := s.ScopeForPath(c.Path()); scope != "" {
-		parts.Add(`scope="` + escapeChallengeValue(scope) + `"`)
+		parts.Add("scope=" + strconv.Quote(scope))
 	}
 	return parts.Join(",")
 }
@@ -142,11 +143,6 @@ func (s *Service) realm(c fiber.Ctx) string {
 		base = "http://localhost:5000"
 	}
 	return base + "/auth/token"
-}
-
-func escapeChallengeValue(value string) string {
-	value = strings.ReplaceAll(value, `\`, `\\`)
-	return strings.ReplaceAll(value, `"`, `\"`)
 }
 
 func basicAuthFromHeader(header string) (string, string, bool) {

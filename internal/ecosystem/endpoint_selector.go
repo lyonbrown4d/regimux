@@ -1,6 +1,7 @@
 package ecosystem
 
 import (
+	"cmp"
 	"context"
 	"strings"
 	"time"
@@ -133,11 +134,11 @@ func mapEndpointCandidates(candidates *collectionlist.List[endpointHealthCandida
 }
 
 func compareEndpointHealthCandidate(left, right endpointHealthCandidate) int {
-	if cmp := compareInts(endpointHealthPenalty(left), endpointHealthPenalty(right)); cmp != 0 {
-		return cmp
+	if penaltyOrder := compareInts(endpointHealthPenalty(left), endpointHealthPenalty(right)); penaltyOrder != 0 {
+		return penaltyOrder
 	}
-	if cmp := compareDurations(left.score, right.score); cmp != 0 {
-		return cmp
+	if scoreOrder := compareDurations(left.score, right.score); scoreOrder != 0 {
+		return scoreOrder
 	}
 	return compareInts(left.originalIdx, right.originalIdx)
 }
@@ -154,23 +155,11 @@ func endpointHealthPenalty(candidate endpointHealthCandidate) int {
 }
 
 func compareInts(left, right int) int {
-	if left < right {
-		return -1
-	}
-	if left > right {
-		return 1
-	}
-	return 0
+	return cmp.Compare(left, right)
 }
 
 func compareDurations(left, right time.Duration) int {
-	if left < right {
-		return -1
-	}
-	if left > right {
-		return 1
-	}
-	return 0
+	return cmp.Compare(left, right)
 }
 
 func normalizedUpstreamEndpoints(cfg config.UpstreamConfig) []string {
