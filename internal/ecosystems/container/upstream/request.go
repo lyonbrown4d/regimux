@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -199,8 +200,18 @@ func upstreamRetryBackoff(cfg HTTPRetryConfig) retry.Backoff {
 	if cfg.WaitMax > 0 {
 		backoff = retry.WithCappedDuration(cfg.WaitMax, backoff)
 	}
-	maxRetries := max(0, cfg.MaxRetries)
-	return retry.WithMaxRetries(uint64(maxRetries), backoff)
+	return retry.WithMaxRetries(safeRetryCount(cfg.MaxRetries), backoff)
+}
+
+func safeRetryCount(maxRetries int) uint64 {
+	if maxRetries <= 0 {
+		return 0
+	}
+	retries, err := strconv.ParseUint(strconv.Itoa(maxRetries), 10, 64)
+	if err != nil {
+		return 0
+	}
+	return retries
 }
 
 func waitRetry(ctx context.Context, wait time.Duration) error {

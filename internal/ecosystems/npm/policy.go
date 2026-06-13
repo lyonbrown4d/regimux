@@ -6,10 +6,13 @@ import (
 )
 
 func (s *Service) checkDependencyPolicy(requestRoute route) error {
-	return accesspolicy.FromConfig(s.cfg.Policy.Dependency).Check(accesspolicy.DependencyTarget{
+	if err := accesspolicy.FromConfig(s.cfg.Policy.Dependency).Check(accesspolicy.DependencyTarget{
 		Ecosystem: ecosystem.NPM,
 		Alias:     requestRoute.Alias,
 		Artifact:  requestRoute.Package,
 		Reference: requestRoute.Reference,
-	})
+	}); err != nil {
+		return wrapError(err, "check npm dependency policy")
+	}
+	return nil
 }

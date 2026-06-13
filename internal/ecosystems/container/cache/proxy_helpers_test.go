@@ -50,20 +50,6 @@ func readAndClose(t *testing.T, reader io.ReadCloser) []byte {
 	return body
 }
 
-func assertRangeBlobBypass(t *testing.T, result *cache.BlobReadResult) {
-	t.Helper()
-	body := readAndClose(t, result.Reader)
-	if result.Cache != cache.CacheBypass || result.Status != http.StatusPartialContent || string(body) != "2345" {
-		t.Fatalf("unexpected range result: cache=%s status=%d body=%q", result.Cache, result.Status, body)
-	}
-	if got := result.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-5/10" {
-		t.Fatalf("unexpected content range %q", got)
-	}
-	if got := result.Headers.Get(distribution.HeaderContentLength); got != "4" {
-		t.Fatalf("unexpected content length %q", got)
-	}
-}
-
 func assertRangeBlobMiss(t *testing.T, result *cache.BlobReadResult) {
 	t.Helper()
 	body := readAndClose(t, result.Reader)

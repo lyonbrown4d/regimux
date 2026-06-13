@@ -166,28 +166,59 @@ func (s *Service) getFromUpstreams(ctx context.Context, req Request, baseRoute r
 	total := upstreams.Len()
 	var lastErr error
 	for i := range total {
-		upstream, ok := upstreams.Get(i)
+		result, ok := s.tryGoUpstream(ctx, req, baseRoute, upstreams, upstreamAttempt{
+			index:    i,
+			total:    total,
+			fallback: fallback,
+			mode:     mode,
+		})
 		if !ok {
 			continue
 		}
-		requestRoute := routeForUpstream(baseRoute, upstream.alias)
-		resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias, mode)
-		if errors.Is(err, accesspolicy.ErrDependencyBlocked) {
-			return nil, err
+		if result.stop {
+			return result.resp, result.err
 		}
-		if s.shouldFallbackFromResponse(resp, err, fallback, i, total) {
-			lastErr = err
-			continue
-		}
-		if err != nil {
-			return nil, err
-		}
-		return resp, nil
+		lastErr = result.err
 	}
 	if lastErr != nil {
 		return nil, lastErr
 	}
 	return nil, oops.In("go").Errorf("go upstream did not return module content")
+}
+
+type upstreamAttempt struct {
+	index    int
+	total    int
+	fallback bool
+	mode     requestMode
+}
+
+type upstreamAttemptResult struct {
+	resp *Response
+	err  error
+	stop bool
+}
+
+func (s *Service) tryGoUpstream(
+	ctx context.Context,
+	req Request,
+	baseRoute route,
+	upstreams *collectionlist.List[goUpstream],
+	attempt upstreamAttempt,
+) (upstreamAttemptResult, bool) {
+	upstream, ok := upstreams.Get(attempt.index)
+	if !ok {
+		return upstreamAttemptResult{}, false
+	}
+	requestRoute := routeForUpstream(baseRoute, upstream.alias)
+	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream.cfg, upstream.alias, attempt.mode)
+	if errors.Is(err, accesspolicy.ErrDependencyBlocked) {
+		return upstreamAttemptResult{err: err, stop: true}, true
+	}
+	if s.shouldFallbackFromResponse(resp, err, attempt.fallback, attempt.index, attempt.total) {
+		return upstreamAttemptResult{err: err}, true
+	}
+	return upstreamAttemptResult{resp: resp, err: err, stop: true}, true
 }
 
 func (s *Service) shouldFallbackFromResponse(resp *Response, err error, fallback bool, index, total int) bool {

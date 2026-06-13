@@ -48,39 +48,83 @@ func parseOCIManifest(source Source, opts ParseOptions) ([]Artifact, error) {
 func collectOCIArtifacts(source Source, opts ParseOptions, value any, inherited containerTarget, artifacts *[]Artifact) error {
 	switch typed := value.(type) {
 	case []any:
-		for i := range typed {
-			if err := collectOCIArtifacts(source, opts, typed[i], inherited, artifacts); err != nil {
-				return err
-			}
-		}
+		return collectOCIArtifactList(source, opts, typed, inherited, artifacts)
 	case map[string]any:
-		target := inheritedContainerTarget(opts, inherited, typed)
-		if imageRef := firstString(typed, "image", "imageRef", "container", "containerRef"); imageRef != "" {
-			parsed, err := parseContainerRefString(imageRef, opts)
-			if err != nil {
-				return err
-			}
-			*artifacts = append(*artifacts, containerArtifact(source, opts, parsed, 0))
+		return collectOCIArtifactMap(source, opts, typed, inherited, artifacts)
+	}
+	return nil
+}
+
+func collectOCIArtifactList(source Source, opts ParseOptions, values []any, inherited containerTarget, artifacts *[]Artifact) error {
+	for i := range values {
+		if err := collectOCIArtifacts(source, opts, values[i], inherited, artifacts); err != nil {
+			return err
 		}
-		if target.Repository != "" {
-			if digest := firstString(typed, "digest"); digest != "" {
-				target.Reference = digest
-			}
-			if target.Reference != "" {
-				if target.Alias == "" {
-					return oops.In("dependency-prefetch").With("repository", target.Repository).Errorf("container descriptor upstream alias is required")
-				}
-				*artifacts = append(*artifacts, containerArtifact(source, opts, target, 0))
-			}
+	}
+	return nil
+}
+
+func collectOCIArtifactMap(
+	source Source,
+	opts ParseOptions,
+	values map[string]any,
+	inherited containerTarget,
+	artifacts *[]Artifact,
+) error {
+	target := inheritedContainerTarget(opts, inherited, values)
+	if err := collectOCIImageRef(source, opts, values, artifacts); err != nil {
+		return err
+	}
+	if err := collectOCIDescriptor(source, opts, values, target, artifacts); err != nil {
+		return err
+	}
+	return collectOCIChildren(source, opts, values, target, artifacts)
+}
+
+func collectOCIImageRef(source Source, opts ParseOptions, values map[string]any, artifacts *[]Artifact) error {
+	imageRef := firstString(values, "image", "imageRef", "container", "containerRef")
+	if imageRef == "" {
+		return nil
+	}
+	parsed, err := parseContainerRefString(imageRef, opts)
+	if err != nil {
+		return err
+	}
+	*artifacts = append(*artifacts, containerArtifact(source, opts, parsed, 0))
+	return nil
+}
+
+func collectOCIDescriptor(
+	source Source,
+	opts ParseOptions,
+	values map[string]any,
+	target containerTarget,
+	artifacts *[]Artifact,
+) error {
+	if target.Repository == "" {
+		return nil
+	}
+	if digest := firstString(values, "digest"); digest != "" {
+		target.Reference = digest
+	}
+	if target.Reference == "" {
+		return nil
+	}
+	if target.Alias == "" {
+		return oops.In("dependency-prefetch").With("repository", target.Repository).Errorf("container descriptor upstream alias is required")
+	}
+	*artifacts = append(*artifacts, containerArtifact(source, opts, target, 0))
+	return nil
+}
+
+func collectOCIChildren(source Source, opts ParseOptions, values map[string]any, target containerTarget, artifacts *[]Artifact) error {
+	for _, key := range []string{"manifests", "descriptors", "children"} {
+		child, ok := values[key]
+		if !ok {
+			continue
 		}
-		for _, key := range []string{"manifests", "descriptors", "children"} {
-			child, ok := typed[key]
-			if !ok {
-				continue
-			}
-			if err := collectOCIArtifacts(source, opts, child, target, artifacts); err != nil {
-				return err
-			}
+		if err := collectOCIArtifacts(source, opts, child, target, artifacts); err != nil {
+			return err
 		}
 	}
 	return nil
@@ -113,37 +157,52 @@ func parseContainerRefString(value string, opts ParseOptions) (containerTarget, 
 	if value == "" {
 		return containerTarget{}, oops.In("dependency-prefetch").Errorf("container image reference is required")
 	}
-	if strings.HasPrefix(value, "/v2/") || strings.HasPrefix(value, "v2/") {
-		path := value
-		if !strings.HasPrefix(path, "/") {
-			path = "/" + path
-		}
-		route, err := containerreference.ParseManifestPath(path)
-		if err != nil {
-			return containerTarget{}, oops.In("dependency-prefetch").Wrapf(err, "parse container manifest path")
-		}
-		return containerTarget{Alias: route.Alias, Repository: route.Repo, Reference: route.Reference}, nil
+	if isContainerManifestPath(value) {
+		return parseContainerManifestPath(value)
 	}
 
+	alias, refValue, err := containerRefAlias(value, opts)
+	if err != nil {
+		return containerTarget{}, err
+	}
+	repo, ref, err := splitContainerRepositoryReference(refValue)
+	if err != nil {
+		return containerTarget{}, err
+	}
+	return containerTarget{Alias: alias, Repository: repo, Reference: ref}, nil
+}
+
+func isContainerManifestPath(value string) bool {
+	return strings.HasPrefix(value, "/v2/") || strings.HasPrefix(value, "v2/")
+}
+
+func parseContainerManifestPath(value string) (containerTarget, error) {
+	path := value
+	if !strings.HasPrefix(path, "/") {
+		path = "/" + path
+	}
+	route, err := containerreference.ParseManifestPath(path)
+	if err != nil {
+		return containerTarget{}, oops.In("dependency-prefetch").Wrapf(err, "parse container manifest path")
+	}
+	return containerTarget{Alias: route.Alias, Repository: route.Repo, Reference: route.Reference}, nil
+}
+
+func containerRefAlias(value string, opts ParseOptions) (string, string, error) {
 	explicitAlias := false
 	if rest, ok := strings.CutPrefix(value, "container:"); ok {
 		value = rest
 		explicitAlias = true
 	}
 	alias := strings.TrimSpace(opts.DefaultAliases[ecosystem.Container])
-	if explicitAlias || alias == "" {
-		first, rest, ok := strings.Cut(value, "/")
-		if !ok || first == "" || rest == "" {
-			return containerTarget{}, oops.In("dependency-prefetch").With("reference", value).Errorf("container reference must include upstream alias")
-		}
-		alias = first
-		value = rest
+	if !explicitAlias && alias != "" {
+		return alias, value, nil
 	}
-	repo, ref, err := splitContainerRepositoryReference(value)
-	if err != nil {
-		return containerTarget{}, err
+	first, rest, ok := strings.Cut(value, "/")
+	if !ok || first == "" || rest == "" {
+		return "", "", oops.In("dependency-prefetch").With("reference", value).Errorf("container reference must include upstream alias")
 	}
-	return containerTarget{Alias: alias, Repository: repo, Reference: ref}, nil
+	return first, rest, nil
 }
 
 func splitContainerRepositoryReference(value string) (string, string, error) {

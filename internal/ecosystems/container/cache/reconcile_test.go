@@ -30,27 +30,48 @@ func TestCleanupServiceReconcileBlobsRepairsMissingMetadata(t *testing.T) {
 		t.Fatalf("expected empty blob metadata before reconcile: %#v", before)
 	}
 
+	report := reconcileBlobs(ctx, t, metadata, objects, now)
+	assertReconcileReport(t, report, info.Size)
+
+	after := metadataStats(ctx, t, metadata, now)
+	if after.BlobCount != 1 || after.BlobBytes != int64(len(body)) {
+		t.Fatalf("unexpected blob metadata stats after reconcile: %#v", after)
+	}
+	blob := reconciledBlob(ctx, t, metadata, digest)
+	if blob.Size != int64(len(body)) || blob.MediaType != distribution.MediaTypeOctetStream || blob.ObjectKey != digest {
+		t.Fatalf("unexpected reconciled blob metadata: %#v", blob)
+	}
+}
+
+func reconcileBlobs(ctx context.Context, t *testing.T, metadata meta.Store, objects object.Store, now time.Time) *cache.ReconcileReport {
+	t.Helper()
 	report, err := cache.NewCleanupService(metadata, objects).ReconcileBlobs(ctx, cache.ReconcileOptions{
 		Now: now,
 	})
 	if err != nil {
 		t.Fatalf("reconcile blobs: %v", err)
 	}
-	if report.ScannedObjects != 1 || report.MissingMetadata != 1 || report.RepairedMetadata != 1 || report.BytesRepaired != info.Size {
+	return report
+}
+
+func assertReconcileReport(t *testing.T, report *cache.ReconcileReport, size int64) {
+	t.Helper()
+	if report == nil ||
+		report.ScannedObjects != 1 ||
+		report.MissingMetadata != 1 ||
+		report.RepairedMetadata != 1 ||
+		report.BytesRepaired != size {
 		t.Fatalf("unexpected reconcile report: %#v", report)
 	}
+}
 
-	after := metadataStats(ctx, t, metadata, now)
-	if after.BlobCount != 1 || after.BlobBytes != int64(len(body)) {
-		t.Fatalf("unexpected blob metadata stats after reconcile: %#v", after)
-	}
+func reconciledBlob(ctx context.Context, t *testing.T, metadata meta.Store, digest string) *meta.BlobRecord {
+	t.Helper()
 	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
 	if err != nil || !ok {
 		t.Fatalf("blob metadata lookup after reconcile: ok=%v err=%v", ok, err)
 	}
-	if blob.Size != int64(len(body)) || blob.MediaType != distribution.MediaTypeOctetStream || blob.ObjectKey != digest {
-		t.Fatalf("unexpected reconciled blob metadata: %#v", blob)
-	}
+	return blob
 }
 
 func metadataStats(ctx context.Context, t *testing.T, metadata meta.Store, now time.Time) meta.MetadataStats {

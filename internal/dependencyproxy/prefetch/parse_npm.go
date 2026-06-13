@@ -88,23 +88,35 @@ func packageNameFromLockPath(path string) (string, bool) {
 		return "", false
 	}
 	segments := strings.Split(path, "/")
-	for i := len(segments) - 1; i >= 0; i-- {
-		if segments[i] != "node_modules" {
-			continue
+	index := lastNodeModulesIndex(segments)
+	if index < 0 || index+1 >= len(segments) {
+		return "", false
+	}
+	return packageNameFromSegments(segments[index+1:])
+}
+
+func lastNodeModulesIndex(segments []string) int {
+	index := -1
+	for i, segment := range segments {
+		if segment == "node_modules" {
+			index = i
 		}
-		if i+1 >= len(segments) {
-			return "", false
-		}
-		name := segments[i+1]
-		if strings.HasPrefix(name, "@") {
-			if i+2 >= len(segments) || segments[i+2] == "" {
-				return "", false
-			}
-			name += "/" + segments[i+2]
-		}
+	}
+	return index
+}
+
+func packageNameFromSegments(segments []string) (string, bool) {
+	name := segments[0]
+	if name == "" {
+		return "", false
+	}
+	if !strings.HasPrefix(name, "@") {
 		return name, true
 	}
-	return "", false
+	if len(segments) < 2 || segments[1] == "" {
+		return "", false
+	}
+	return name + "/" + segments[1], true
 }
 
 func tarballName(resolved string) (string, bool) {

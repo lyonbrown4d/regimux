@@ -33,7 +33,14 @@ func sourceFormat(source Source) string {
 	if source.Format != FormatAuto {
 		return strings.TrimSpace(source.Format)
 	}
-	name := strings.ToLower(filepath.Base(strings.TrimSpace(source.Name)))
+	if format := sourceNameFormat(source.Name); format != "" {
+		return format
+	}
+	return sourceBodyFormat(source.Body)
+}
+
+func sourceNameFormat(name string) string {
+	name = strings.ToLower(filepath.Base(strings.TrimSpace(name)))
 	switch name {
 	case "go.sum":
 		return FormatGoSum
@@ -43,13 +50,18 @@ func sourceFormat(source Source) string {
 		return FormatRequirements
 	case "pom.xml":
 		return FormatPOM
+	default:
+		return ""
 	}
-	body := strings.TrimSpace(string(source.Body))
+}
+
+func sourceBodyFormat(raw []byte) string {
+	body := strings.TrimSpace(string(raw))
 	if body == "" {
 		return FormatContainerRefs
 	}
 	if looksJSON(body) {
-		if looksPackageLock(source.Body) {
+		if looksPackageLock(raw) {
 			return FormatPackageLock
 		}
 		return FormatOCIManifest

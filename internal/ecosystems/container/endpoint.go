@@ -3,10 +3,8 @@ package container
 import (
 	"context"
 	"errors"
-	"io"
 	"log/slog"
 	"net/http"
-	"strconv"
 	"time"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
@@ -20,9 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
-	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
-	"github.com/samber/lo"
 	"github.com/samber/mo"
 )
 
@@ -151,10 +147,10 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	}
 	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
 	routeName = registryRouteName(route.Kind)
-	if err := e.checkDependencyPolicy(route); err != nil {
-		e.recordPolicyDeniedPull(ctx, route, err)
-		out := errorOutput(distribution.ErrDenied.WithDetail(err.Error()))
-		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), err)
+	if policyErr := e.checkDependencyPolicy(route); policyErr != nil {
+		e.recordPolicyDeniedPull(ctx, route, policyErr)
+		out := errorOutput(distribution.ErrDenied.WithDetail(policyErr.Error()))
+		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), policyErr)
 		return out, nil
 	}
 
@@ -181,16 +177,23 @@ func (e *RegistryEndpoint) checkDependencyPolicy(route reference.Route) error {
 	if route.Kind == reference.RoutePing {
 		return nil
 	}
-	return e.dependencyPolicy.Check(accesspolicy.DependencyTarget{
+	if err := e.dependencyPolicy.Check(accesspolicy.DependencyTarget{
 		Ecosystem: ecosystem.Container,
 		Alias:     route.Alias,
 		Artifact:  route.Repo,
 		Reference: containerPolicyReference(route),
-	})
+	}); err != nil {
+		return wrapError(err, "check container dependency policy")
+	}
+	return nil
 }
 
 func containerPolicyReference(route reference.Route) string {
 	switch route.Kind {
+	case reference.RoutePing:
+		return ""
+	case reference.RouteManifest:
+		return route.Reference
 	case reference.RouteBlob, reference.RouteReferrers:
 		return route.Digest
 	case reference.RouteTags:
@@ -247,124 +250,6 @@ func (e *RegistryEndpoint) defaultNamespace(alias string) mo.Option[string] {
 		return mo.None[string]()
 	}
 	return e.defaultNamespaces.GetOption(alias)
-}
-
-func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
-	result, err := e.manifests.Get(ctx, cache.ManifestRequest{
-		UpstreamAlias: route.Alias,
-		Repo:          route.Repo,
-		Reference:     route.Reference,
-		Accept:        input.Accept,
-		Method:        method,
-	})
-	if err != nil {
-		return e.manifestError(ctx, route, err)
-	}
-	e.observeManifest(ctx, route)
-
-	out := newRegistryOutput(http.StatusOK, result.Headers)
-	out.ContentType = result.MediaType
-	out.DockerContentDigest = result.Digest
-	out.XMirrorCache = string(result.Cache)
-	if result.Size >= 0 {
-		out.ContentLength = strconv.FormatInt(result.Size, 10)
-	}
-	if method != http.MethodHead {
-		out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
-		e.fillManifestBlobsAsync(ctx, route, result)
-	}
-	return out
-}
-
-func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
-	httpRange, err := object.ParseRange(input.Range)
-	if err != nil {
-		return errorOutput(distribution.ErrRangeInvalid.WithDetail(err.Error()))
-	}
-	result, err := e.blobs.Get(ctx, cache.BlobRequest{
-		UpstreamAlias: route.Alias,
-		Repo:          route.Repo,
-		Digest:        route.Digest,
-		Range:         httpRange,
-		Method:        method,
-	})
-	if err != nil {
-		return errorOutput(distribution.FromError(err))
-	}
-
-	out := newRegistryOutput(lo.CoalesceOrEmpty(result.Status, http.StatusOK), result.Headers)
-	out.ContentType = distribution.MediaTypeOctetStream
-	out.DockerContentDigest = result.Digest
-	out.AcceptRanges = distribution.RangeUnitBytes
-	out.XMirrorCache = string(result.Cache)
-	if method == http.MethodHead {
-		if err := result.Reader.Close(); err != nil {
-			return errorOutput(distribution.ErrUnknown.WithDetail(err.Error()))
-		}
-		return out
-	}
-	out.Body = streamWithStatus(out.Status, httpx.StreamWriter(func(writer io.Writer) {
-		e.writeBlobBody(writer, result.Reader)
-	}))
-	return out
-}
-
-func (e *RegistryEndpoint) writeBlobBody(writer io.Writer, reader io.ReadCloser) {
-	if _, err := io.Copy(writer, reader); err != nil {
-		e.logger.Error("write blob response failed", "error", err)
-	}
-	if err := reader.Close(); err != nil {
-		e.logger.Error("close blob response reader failed", "error", err)
-	}
-}
-
-func (e *RegistryEndpoint) tagList(ctx context.Context, input *registryInput, route reference.Route) *registryOutput {
-	result, err := e.tags.List(ctx, cache.TagRequest{
-		UpstreamAlias: route.Alias,
-		Repo:          route.Repo,
-		N:             input.N,
-		Last:          input.Last,
-	})
-	if err != nil {
-		return errorOutput(distribution.FromError(err))
-	}
-
-	out := newRegistryOutput(http.StatusOK, result.Headers)
-	out.ContentType = distribution.MediaTypeJSON
-	out.XMirrorCache = string(result.Cache)
-	out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
-	return out
-}
-
-func (e *RegistryEndpoint) tagsRoute(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
-	if method != http.MethodGet {
-		return errorOutput(unsupported(method, input.path()))
-	}
-	return e.tagList(ctx, input, route)
-}
-
-func (e *RegistryEndpoint) referrersList(ctx context.Context, route reference.Route) *registryOutput {
-	result, err := e.referrers.Get(ctx, cache.ReferrerRequest{
-		UpstreamAlias: route.Alias,
-		Repo:          route.Repo,
-		Digest:        route.Digest,
-	})
-	if err != nil {
-		return errorOutput(distribution.FromError(err))
-	}
-
-	out := newRegistryOutput(http.StatusOK, result.Headers)
-	out.ContentType = result.MediaType
-	out.XMirrorCache = string(result.Cache)
-	out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
-	return out
-}
-
-func (e *RegistryEndpoint) referrersRoute(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
-	if method != http.MethodGet {
-		return errorOutput(unsupported(method, input.path()))
-	}
-	return e.referrersList(ctx, route)
 }
 
 type registryInput struct {

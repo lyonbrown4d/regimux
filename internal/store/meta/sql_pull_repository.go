@@ -73,24 +73,35 @@ func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, ki
 		record = *existing
 		record.UpdatedAt = now
 	}
+	kindErr := applyPullRecordKind(&record, kind, now)
+	if kindErr != nil {
+		return nil, kindErr
+	}
+	row, err := s.mapper.PullRecordToRow(record)
+	if err != nil {
+		return nil, err
+	}
+	writeErr := s.writePullRecord(ctx, key, &record, row, now)
+	if writeErr != nil {
+		return nil, writeErr
+	}
+	return &record, nil
+}
+
+func applyPullRecordKind(record *PullRecord, kind pullRecordKind, now time.Time) error {
 	switch kind {
+	case pullRecordClient:
+		record.Count++
+		record.LastPullAt = now
 	case pullRecordUpstream:
 		record.LastUpstreamPullAt = now
 	case pullRecordPolicyDenied:
 		record.PolicyDeniedCount++
 		record.LastPolicyDeniedAt = now
 	default:
-		record.Count++
-		record.LastPullAt = now
+		return errorf("unknown pull record kind: %d", kind)
 	}
-	row, err := s.mapper.PullRecordToRow(record)
-	if err != nil {
-		return nil, err
-	}
-	if err := s.writePullRecord(ctx, key, &record, row, now); err != nil {
-		return nil, err
-	}
-	return &record, nil
+	return nil
 }
 
 func (s *SQLStore) writePullRecord(ctx context.Context, key PullKey, record *PullRecord, row pullRow, at time.Time) error {

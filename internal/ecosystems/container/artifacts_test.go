@@ -1,8 +1,9 @@
-package container
+package container_test
 
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,8 +14,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/container"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -32,23 +33,13 @@ func TestRegistryEndpointManifestGetFillsImageManifestBlobsAsync(t *testing.T) {
 		),
 	}
 	blobs := newEndpointBlobService()
-	endpoint := NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
-	route := endpointManifestRoute()
+	endpoint := container.NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	baseURL := startAPIServer(t, endpoint)
 
-	done := make(chan *registryOutput, 1)
-	go func() {
-		done <- endpoint.manifest(context.Background(), &registryInput{}, route, http.MethodGet)
-	}()
-
-	var out *registryOutput
-	select {
-	case out = <-done:
-	case <-time.After(200 * time.Millisecond):
-		blobs.release()
-		t.Fatal("manifest response blocked on blob fill")
-	}
-	if out.Status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", out.Status)
+	resp := httpGet(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
+	body := readHTTPResponse(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%q, want 200", resp.StatusCode, body)
 	}
 
 	blobs.release()
@@ -67,11 +58,13 @@ func TestRegistryEndpointHeadManifestDoesNotFillBlobs(t *testing.T) {
 		),
 	}
 	blobs := newEndpointBlobService()
-	endpoint := NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	endpoint := container.NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	baseURL := startAPIServer(t, endpoint)
 
-	out := endpoint.manifest(context.Background(), &registryInput{}, endpointManifestRoute(), http.MethodHead)
-	if out.Status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", out.Status)
+	resp := httpHead(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
+	body := readHTTPResponse(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%q, want 200", resp.StatusCode, body)
 	}
 	blobs.assertNoRequests(t)
 }
@@ -85,22 +78,15 @@ func TestRegistryEndpointIndexManifestDoesNotFillBlobs(t *testing.T) {
 		),
 	}
 	blobs := newEndpointBlobService()
-	endpoint := NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	endpoint := container.NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	baseURL := startAPIServer(t, endpoint)
 
-	out := endpoint.manifest(context.Background(), &registryInput{}, endpointManifestRoute(), http.MethodGet)
-	if out.Status != http.StatusOK {
-		t.Fatalf("status = %d, want 200", out.Status)
+	resp := httpGet(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
+	body := readHTTPResponse(t, resp)
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d body=%q, want 200", resp.StatusCode, body)
 	}
 	blobs.assertNoRequests(t)
-}
-
-func endpointManifestRoute() reference.Route {
-	return reference.Route{
-		Kind:      reference.RouteManifest,
-		Alias:     "hub",
-		Repo:      "library/alpine",
-		Reference: "latest",
-	}
 }
 
 func endpointImageManifestBody(t *testing.T, configDigest string, layerDigests ...string) []byte {
@@ -218,7 +204,7 @@ func (s *endpointBlobService) Get(ctx context.Context, req cache.BlobRequest) (*
 	select {
 	case <-s.released:
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("wait for blob release: %w", ctx.Err())
 	}
 	return &cache.BlobReadResult{
 		Reader: &endpointBlobReader{

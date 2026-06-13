@@ -95,42 +95,6 @@ func (p blobProxy) shouldVerifySharedBlob(ctx context.Context, req BlobRequest) 
 	return false, nil
 }
 
-func (p blobProxy) touchSharedBlobMetadata(ctx context.Context, req BlobRequest, now time.Time) error {
-	if p.metadata == nil {
-		return nil
-	}
-	blob, ok, err := p.metadata.Blob(ctx, meta.BlobKey{Digest: req.Digest})
-	if err != nil {
-		return wrapError(err, "lookup shared blob metadata")
-	}
-	if !ok {
-		return nil
-	}
-	blob.LastAccessAt = now
-	_, err = p.metadata.UpsertBlob(ctx, *blob)
-	if err != nil {
-		return wrapError(err, "touch shared blob metadata")
-	}
-	repoBlob, ok, err := p.metadata.RepoBlob(ctx, meta.RepoBlobKey{
-		Alias:      req.UpstreamAlias,
-		Repository: req.Repo,
-		Digest:     req.Digest,
-	})
-	if err != nil {
-		return wrapError(err, "lookup shared repo blob metadata")
-	}
-	if !ok {
-		return nil
-	}
-	repoBlob.LastAccessAt = now
-	repoBlob.LastVerifiedAt = now
-	_, err = p.metadata.UpsertRepoBlob(ctx, *repoBlob)
-	if err != nil {
-		return wrapError(err, "touch shared repo blob metadata")
-	}
-	return nil
-}
-
 func (p blobProxy) logBlobCacheHit(ctx context.Context, req BlobRequest, reason string) {
 	if p.logger == nil {
 		return

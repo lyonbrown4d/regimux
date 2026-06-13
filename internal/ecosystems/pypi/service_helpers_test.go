@@ -1,69 +1,67 @@
-package golang_test
+package pypi_test
 
 import (
 	"context"
 	"io"
 	"net/http"
+	"net/url"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/pypi"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
-func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *golang.Service {
+func newTestService(ctx context.Context, t *testing.T, upstreamURL string, now func() time.Time) *pypi.Service {
 	t.Helper()
-	return newTestServiceWithUpstreams(ctx, t, map[string]config.DependencyUpstreamConfig{
-		"default": {Registry: upstreamURL},
-	})
-}
-
-func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) *golang.Service {
-	t.Helper()
-	service, _ := newTestServiceWithMetadata(ctx, t, upstreams)
+	service, _, _ := newTestServiceWithStores(ctx, t, upstreamURL, now)
 	return service
 }
 
-func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store) {
-	t.Helper()
-	service, metadata, _ := newTestServiceWithStores(ctx, t, upstreams)
-	return service, metadata
-}
-
-func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store, object.Store) {
-	t.Helper()
-	db := newTestMetadata(ctx, t)
-	objects, err := object.NewMemory("go-test")
-	requireNoError(t, "open objects", err)
-	return golang.NewService(golang.ServiceDependencies{
-		Config:   config.Config{Go: upstreams},
-		Metadata: db,
-		Objects:  objects,
-	}), db, objects
-}
-
-func newTestMetadata(ctx context.Context, t *testing.T) meta.Store {
+func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreamURL string, now func() time.Time) (*pypi.Service, meta.Store, object.Store) {
 	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	return db
+	objects, err := object.NewMemory("pypi-test")
+	requireNoError(t, "open objects", err)
+	return pypi.NewService(pypi.ServiceDependencies{
+		Config: config.Config{
+			PyPI: config.DependencyEcosystemConfig{
+				"pypi": {Registry: upstreamURL},
+			},
+		},
+		Metadata: db,
+		Objects:  objects,
+		Now:      now,
+	}), db, objects
 }
 
-func assertBody(t *testing.T, resp *golang.Response, want string) {
+func upstreamPackageURL(r *http.Request, path string) string {
+	return "http://" + r.Host + path
+}
+
+func expectedLocalHref(t *testing.T, alias, upstreamURL, path string) string {
 	t.Helper()
-	body := responseBody(t, resp)
-	if body != want {
-		t.Fatalf("body = %q, want %q", body, want)
-	}
+	parsed, err := url.Parse(upstreamURL)
+	requireNoError(t, "parse upstream url", err)
+	return "/pypi/" + alias + "/packages/" + parsed.Scheme + "/" + parsed.Host + path
 }
 
-func responseBody(t *testing.T, resp *golang.Response) string {
+func packageTailFor(t *testing.T, upstreamURL, path string) string {
+	t.Helper()
+	parsed, err := url.Parse(upstreamURL)
+	requireNoError(t, "parse upstream url", err)
+	return "packages/" + parsed.Scheme + "/" + parsed.Host + "/" + strings.TrimLeft(path, "/")
+}
+
+func readResponse(t *testing.T, resp *pypi.Response) string {
 	t.Helper()
 	if resp == nil || resp.Body == nil {
 		t.Fatalf("response body is empty")
@@ -76,7 +74,7 @@ func responseBody(t *testing.T, resp *golang.Response) string {
 
 func writeResponse(t *testing.T, w http.ResponseWriter, body string) {
 	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
+	if _, err := strings.NewReader(body).WriteTo(w); err != nil {
 		t.Fatalf("write response: %v", err)
 	}
 }
@@ -110,40 +108,11 @@ func assertPolicyDeniedPull(ctx context.Context, t *testing.T, metadata meta.Sto
 	}
 }
 
-func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {
-	t.Helper()
-	expiresAt := time.Now().UTC().Add(-time.Minute)
-	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
-	if err != nil || !ok {
-		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
-	}
-	tag.ExpiresAt = expiresAt
-	if _, updateErr := metadata.UpsertTag(ctx, *tag); updateErr != nil {
-		t.Fatalf("expire tag: %v", updateErr)
-	}
-	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: tag.Digest})
-	if err != nil || !ok {
-		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
-	}
-	manifest.ExpiresAt = expiresAt
-	if _, updateErr := metadata.UpsertManifest(ctx, *manifest); updateErr != nil {
-		t.Fatalf("expire manifest: %v", updateErr)
-	}
-}
-
 func assertStoredArtifact(ctx context.Context, t *testing.T, metadata meta.Store, objects object.Store, key meta.TagKey, wantBody, wantMediaType string) {
 	t.Helper()
 	tag := requireStoredTag(ctx, t, metadata, key)
 	manifest := requireStoredManifest(ctx, t, metadata, key, tag.Digest)
-	if manifest.Reference != key.Reference {
-		t.Fatalf("manifest reference = %q, want %q", manifest.Reference, key.Reference)
-	}
-	if manifest.MediaType != wantMediaType {
-		t.Fatalf("manifest media type = %q, want %q", manifest.MediaType, wantMediaType)
-	}
-	if manifest.Size != int64(len(wantBody)) {
-		t.Fatalf("manifest size = %d, want %d", manifest.Size, len(wantBody))
-	}
+	assertStoredManifest(t, manifest, key, wantBody, wantMediaType)
 	blob := requireStoredBlob(ctx, t, metadata, tag.Digest)
 	if blob.ObjectKey != tag.Digest {
 		t.Fatalf("blob object key = %q, want %q", blob.ObjectKey, tag.Digest)
@@ -173,6 +142,19 @@ func requireStoredManifest(ctx context.Context, t *testing.T, metadata meta.Stor
 		t.Fatalf("manifest %s/%s@%s was not stored", key.Alias, key.Repository, digest)
 	}
 	return manifest
+}
+
+func assertStoredManifest(t *testing.T, manifest *meta.ManifestRecord, key meta.TagKey, wantBody, wantMediaType string) {
+	t.Helper()
+	if manifest.Reference != key.Reference {
+		t.Fatalf("manifest reference = %q, want %q", manifest.Reference, key.Reference)
+	}
+	if manifest.MediaType != wantMediaType {
+		t.Fatalf("manifest media type = %q, want %q", manifest.MediaType, wantMediaType)
+	}
+	if manifest.Size != int64(len(wantBody)) {
+		t.Fatalf("manifest size = %d, want %d", manifest.Size, len(wantBody))
+	}
 }
 
 func requireStoredBlob(ctx context.Context, t *testing.T, metadata meta.Store, digest string) *meta.BlobRecord {

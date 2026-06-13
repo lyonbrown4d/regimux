@@ -132,20 +132,8 @@ func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Sto
 
 func assertStoredArtifact(ctx context.Context, t *testing.T, metadata meta.Store, objects object.Store, key meta.TagKey, wantBody, wantMediaType string) {
 	t.Helper()
-	tag, ok, err := metadata.Tag(ctx, key)
-	requireNoError(t, "lookup stored tag", err)
-	if !ok {
-		t.Fatalf("tag %s was not stored", key.String())
-	}
-	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{
-		Alias:      key.Alias,
-		Repository: key.Repository,
-		Digest:     tag.Digest,
-	})
-	requireNoError(t, "lookup stored manifest", err)
-	if !ok {
-		t.Fatalf("manifest %s/%s@%s was not stored", key.Alias, key.Repository, tag.Digest)
-	}
+	tag := requireStoredTag(ctx, t, metadata, key)
+	manifest := requireStoredManifest(ctx, t, metadata, key, tag.Digest)
 	if manifest.Reference != key.Reference {
 		t.Fatalf("manifest reference = %q, want %q", manifest.Reference, key.Reference)
 	}
@@ -155,26 +143,59 @@ func assertStoredArtifact(ctx context.Context, t *testing.T, metadata meta.Store
 	if manifest.Size != int64(len(wantBody)) {
 		t.Fatalf("manifest size = %d, want %d", manifest.Size, len(wantBody))
 	}
-	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: tag.Digest})
-	requireNoError(t, "lookup stored blob", err)
-	if !ok {
-		t.Fatalf("blob %s was not stored", tag.Digest)
-	}
+	blob := requireStoredBlob(ctx, t, metadata, tag.Digest)
 	if blob.ObjectKey != tag.Digest {
 		t.Fatalf("blob object key = %q, want %q", blob.ObjectKey, tag.Digest)
 	}
-	repoBlob, ok, err := metadata.RepoBlob(ctx, meta.RepoBlobKey{
-		Alias:      key.Alias,
-		Repository: key.Repository,
-		Digest:     tag.Digest,
-	})
-	requireNoError(t, "lookup stored repo blob", err)
-	if !ok {
-		t.Fatalf("repo blob %s/%s@%s was not stored", key.Alias, key.Repository, tag.Digest)
-	}
+	repoBlob := requireStoredRepoBlob(ctx, t, metadata, key, tag.Digest)
 	if repoBlob.SourceManifest != tag.Digest {
 		t.Fatalf("repo blob source manifest = %q, want %q", repoBlob.SourceManifest, tag.Digest)
 	}
+	assertStoredObject(ctx, t, objects, manifest, wantBody)
+}
+
+func requireStoredTag(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey) *meta.TagRecord {
+	t.Helper()
+	tag, ok, err := metadata.Tag(ctx, key)
+	requireNoError(t, "lookup stored tag", err)
+	if !ok {
+		t.Fatalf("tag %s was not stored", key.String())
+	}
+	return tag
+}
+
+func requireStoredManifest(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey, digest string) *meta.ManifestRecord {
+	t.Helper()
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: key.Alias, Repository: key.Repository, Digest: digest})
+	requireNoError(t, "lookup stored manifest", err)
+	if !ok {
+		t.Fatalf("manifest %s/%s@%s was not stored", key.Alias, key.Repository, digest)
+	}
+	return manifest
+}
+
+func requireStoredBlob(ctx context.Context, t *testing.T, metadata meta.Store, digest string) *meta.BlobRecord {
+	t.Helper()
+	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
+	requireNoError(t, "lookup stored blob", err)
+	if !ok {
+		t.Fatalf("blob %s was not stored", digest)
+	}
+	return blob
+}
+
+func requireStoredRepoBlob(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey, digest string) *meta.RepoBlobRecord {
+	t.Helper()
+	repoBlob, ok, err := metadata.RepoBlob(ctx, meta.RepoBlobKey{Alias: key.Alias, Repository: key.Repository, Digest: digest})
+	requireNoError(t, "lookup stored repo blob", err)
+	if !ok {
+		t.Fatalf("repo blob %s/%s@%s was not stored", key.Alias, key.Repository, digest)
+	}
+	return repoBlob
+}
+
+func assertStoredObject(ctx context.Context, t *testing.T, objects object.Store, manifest *meta.ManifestRecord, wantBody string) {
+	t.Helper()
 	objectKey := manifest.ObjectKey
 	if objectKey == "" {
 		objectKey = manifest.Digest

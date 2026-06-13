@@ -30,7 +30,7 @@ func parsePOM(source Source, opts ParseOptions) ([]Artifact, error) {
 	if err := xml.Unmarshal(source.Body, &project); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode pom.xml")
 	}
-	dependencies := append(project.Dependencies, project.DependencyManagement...)
+	dependencies := pomDependencies(project)
 	artifacts := make([]Artifact, 0, len(dependencies))
 	for i := range dependencies {
 		artifact, ok := mavenArtifactFromDependency(source, opts, alias, dependencies[i])
@@ -39,6 +39,13 @@ func parsePOM(source Source, opts ParseOptions) ([]Artifact, error) {
 		}
 	}
 	return dedupeArtifacts(artifacts), nil
+}
+
+func pomDependencies(project pomProject) []pomDependency {
+	dependencies := make([]pomDependency, len(project.Dependencies)+len(project.DependencyManagement))
+	copy(dependencies, project.Dependencies)
+	copy(dependencies[len(project.Dependencies):], project.DependencyManagement)
+	return dependencies
 }
 
 func mavenArtifactFromDependency(source Source, opts ParseOptions, alias string, dep pomDependency) (Artifact, bool) {

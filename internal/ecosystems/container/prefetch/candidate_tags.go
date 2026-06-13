@@ -1,6 +1,7 @@
 package prefetch
 
 import (
+	"math"
 	"slices"
 	"strconv"
 	"strings"
@@ -197,13 +198,12 @@ func minVersionSegments(left, right versionTag) int {
 }
 
 func safeUint64ToInt(value uint64) int {
-	maxInt := int(^uint(0) >> 1)
-	if value > uint64(maxInt) {
-		return maxInt
+	if value > math.MaxInt {
+		return math.MaxInt
 	}
 	out, err := strconv.Atoi(strconv.FormatUint(value, 10))
 	if err != nil {
-		return maxInt
+		return math.MaxInt
 	}
 	return out
 }

@@ -1,9 +1,13 @@
-package policy
+package policy_test
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/lyonbrown4d/regimux/internal/policy"
+)
 
 func TestDependencyPolicyAllowsByDefault(t *testing.T) {
-	decision := DependencyPolicy{}.Evaluate(DependencyTarget{
+	decision := policy.DependencyPolicy{}.Evaluate(policy.DependencyTarget{
 		Ecosystem: "npm",
 		Alias:     "npmjs",
 		Artifact:  "left-pad",
@@ -15,11 +19,11 @@ func TestDependencyPolicyAllowsByDefault(t *testing.T) {
 }
 
 func TestDependencyPolicyBlockOverridesAllow(t *testing.T) {
-	policy := DependencyPolicy{
-		Allow: []DependencyRule{{Ecosystem: "npm", Alias: "npmjs", Artifact: "*"}},
-		Block: []DependencyRule{{Ecosystem: "npm", Alias: "npmjs", Artifact: "left-pad"}},
+	dependencyPolicy := policy.DependencyPolicy{
+		Allow: []policy.DependencyRule{{Ecosystem: "npm", Alias: "npmjs", Artifact: "*"}},
+		Block: []policy.DependencyRule{{Ecosystem: "npm", Alias: "npmjs", Artifact: "left-pad"}},
 	}
-	decision := policy.Evaluate(DependencyTarget{
+	decision := dependencyPolicy.Evaluate(policy.DependencyTarget{
 		Ecosystem: "npm",
 		Alias:     "npmjs",
 		Artifact:  "left-pad",
@@ -31,10 +35,10 @@ func TestDependencyPolicyBlockOverridesAllow(t *testing.T) {
 }
 
 func TestDependencyPolicyAllowListBlocksNonMatchingTarget(t *testing.T) {
-	policy := DependencyPolicy{
-		Allow: []DependencyRule{{Ecosystem: "container", Alias: "hub", Artifact: "library/*"}},
+	dependencyPolicy := policy.DependencyPolicy{
+		Allow: []policy.DependencyRule{{Ecosystem: "container", Alias: "hub", Artifact: "library/*"}},
 	}
-	allowed := policy.Evaluate(DependencyTarget{
+	allowed := dependencyPolicy.Evaluate(policy.DependencyTarget{
 		Ecosystem: "container",
 		Alias:     "hub",
 		Artifact:  "library/nginx",
@@ -43,7 +47,7 @@ func TestDependencyPolicyAllowListBlocksNonMatchingTarget(t *testing.T) {
 	if !allowed.Allowed() {
 		t.Fatalf("allowed decision = %#v, want allowed", allowed)
 	}
-	blocked := policy.Evaluate(DependencyTarget{
+	blocked := dependencyPolicy.Evaluate(policy.DependencyTarget{
 		Ecosystem: "container",
 		Alias:     "hub",
 		Artifact:  "private/nginx",

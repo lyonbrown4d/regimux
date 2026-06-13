@@ -1,87 +1,106 @@
-package golang_test
+package npm_test
 
 import (
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/npm"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
-func newTestService(ctx context.Context, t *testing.T, upstreamURL string) *golang.Service {
+func newTestService(ctx context.Context, t *testing.T, upstreamURL string, metadataTTL time.Duration) *npm.Service {
 	t.Helper()
-	return newTestServiceWithUpstreams(ctx, t, map[string]config.DependencyUpstreamConfig{
-		"default": {Registry: upstreamURL},
-	})
-}
-
-func newTestServiceWithUpstreams(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) *golang.Service {
-	t.Helper()
-	service, _ := newTestServiceWithMetadata(ctx, t, upstreams)
+	service, _ := newTestServiceWithMetadata(ctx, t, upstreamURL, metadataTTL)
 	return service
 }
 
-func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store) {
+func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreamURL string, metadataTTL time.Duration) (*npm.Service, meta.Store) {
 	t.Helper()
-	service, metadata, _ := newTestServiceWithStores(ctx, t, upstreams)
+	service, metadata, _ := newTestServiceWithStores(ctx, t, upstreamURL, metadataTTL)
 	return service, metadata
 }
 
-func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store, object.Store) {
-	t.Helper()
-	db := newTestMetadata(ctx, t)
-	objects, err := object.NewMemory("go-test")
-	requireNoError(t, "open objects", err)
-	return golang.NewService(golang.ServiceDependencies{
-		Config:   config.Config{Go: upstreams},
-		Metadata: db,
-		Objects:  objects,
-	}), db, objects
-}
-
-func newTestMetadata(ctx context.Context, t *testing.T) meta.Store {
+func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreamURL string, metadataTTL time.Duration) (*npm.Service, meta.Store, object.Store) {
 	t.Helper()
 	db, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
 	requireNoError(t, "open metadata", err)
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	return db
+	objects, err := object.NewMemory("npm-test")
+	requireNoError(t, "open objects", err)
+	return npm.NewService(npm.ServiceDependencies{
+		Config: config.Config{
+			NPM: config.DependencyEcosystemConfig{
+				"npmjs": {Registry: upstreamURL},
+			},
+		},
+		Metadata:    db,
+		Objects:     objects,
+		MetadataTTL: metadataTTL,
+	}), db, objects
 }
 
-func assertBody(t *testing.T, resp *golang.Response, want string) {
+func readJSON(t *testing.T, resp *npm.Response) map[string]any {
 	t.Helper()
-	body := responseBody(t, resp)
-	if body != want {
-		t.Fatalf("body = %q, want %q", body, want)
+	body := readBody(t, resp)
+	var doc map[string]any
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatalf("decode response json: %v\nbody: %s", err, body)
 	}
+	return doc
 }
 
-func responseBody(t *testing.T, resp *golang.Response) string {
+func readBody(t *testing.T, resp *npm.Response) string {
 	t.Helper()
 	if resp == nil || resp.Body == nil {
-		t.Fatalf("response body is empty")
+		t.Fatal("response body is empty")
 	}
-	defer closeBody(t, resp.Body)
+	defer closeTestBody(t, resp.Body)
 	body, err := io.ReadAll(resp.Body)
 	requireNoError(t, "read body", err)
 	return string(body)
 }
 
+func assertTarball(t *testing.T, doc map[string]any, version, want string) {
+	t.Helper()
+	versions, ok := doc["versions"].(map[string]any)
+	if !ok {
+		t.Fatalf("versions missing in %#v", doc)
+	}
+	versionDoc, ok := versions[version].(map[string]any)
+	if !ok {
+		t.Fatalf("version %s missing in %#v", version, versions)
+	}
+	dist, ok := versionDoc["dist"].(map[string]any)
+	if !ok {
+		t.Fatalf("dist missing in %#v", versionDoc)
+	}
+	if got := dist["tarball"]; got != want {
+		t.Fatalf("tarball = %q, want %q", got, want)
+	}
+}
+
+func upstreamTarballURL(r *http.Request, tail string) string {
+	return "https://" + r.Host + "/" + tail
+}
+
 func writeResponse(t *testing.T, w http.ResponseWriter, body string) {
 	t.Helper()
-	if _, err := io.WriteString(w, body); err != nil {
+	if _, err := strings.NewReader(body).WriteTo(w); err != nil {
 		t.Fatalf("write response: %v", err)
 	}
 }
 
-func closeBody(t *testing.T, body io.Closer) {
+func closeTestBody(t *testing.T, body io.Closer) {
 	t.Helper()
 	if err := body.Close(); err != nil {
 		t.Fatalf("close body: %v", err)
@@ -113,37 +132,41 @@ func assertPolicyDeniedPull(ctx context.Context, t *testing.T, metadata meta.Sto
 func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {
 	t.Helper()
 	expiresAt := time.Now().UTC().Add(-time.Minute)
-	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
-	if err != nil || !ok {
-		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
-	}
+	tag := requireTagForExpiration(ctx, t, metadata, alias, repo, reference)
 	tag.ExpiresAt = expiresAt
 	if _, updateErr := metadata.UpsertTag(ctx, *tag); updateErr != nil {
 		t.Fatalf("expire tag: %v", updateErr)
 	}
-	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: tag.Digest})
-	if err != nil || !ok {
-		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
-	}
+	manifest := requireManifestForExpiration(ctx, t, metadata, alias, repo, tag.Digest)
 	manifest.ExpiresAt = expiresAt
 	if _, updateErr := metadata.UpsertManifest(ctx, *manifest); updateErr != nil {
 		t.Fatalf("expire manifest: %v", updateErr)
 	}
 }
 
+func requireTagForExpiration(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) *meta.TagRecord {
+	t.Helper()
+	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
+	if err != nil || !ok {
+		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
+	}
+	return tag
+}
+
+func requireManifestForExpiration(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, digest string) *meta.ManifestRecord {
+	t.Helper()
+	manifest, ok, err := metadata.Manifest(ctx, meta.ManifestKey{Alias: alias, Repository: repo, Digest: digest})
+	if err != nil || !ok {
+		t.Fatalf("lookup manifest for expiration: ok=%v err=%v", ok, err)
+	}
+	return manifest
+}
+
 func assertStoredArtifact(ctx context.Context, t *testing.T, metadata meta.Store, objects object.Store, key meta.TagKey, wantBody, wantMediaType string) {
 	t.Helper()
 	tag := requireStoredTag(ctx, t, metadata, key)
 	manifest := requireStoredManifest(ctx, t, metadata, key, tag.Digest)
-	if manifest.Reference != key.Reference {
-		t.Fatalf("manifest reference = %q, want %q", manifest.Reference, key.Reference)
-	}
-	if manifest.MediaType != wantMediaType {
-		t.Fatalf("manifest media type = %q, want %q", manifest.MediaType, wantMediaType)
-	}
-	if manifest.Size != int64(len(wantBody)) {
-		t.Fatalf("manifest size = %d, want %d", manifest.Size, len(wantBody))
-	}
+	assertStoredManifest(t, manifest, key, wantBody, wantMediaType)
 	blob := requireStoredBlob(ctx, t, metadata, tag.Digest)
 	if blob.ObjectKey != tag.Digest {
 		t.Fatalf("blob object key = %q, want %q", blob.ObjectKey, tag.Digest)
@@ -175,6 +198,19 @@ func requireStoredManifest(ctx context.Context, t *testing.T, metadata meta.Stor
 	return manifest
 }
 
+func assertStoredManifest(t *testing.T, manifest *meta.ManifestRecord, key meta.TagKey, wantBody, wantMediaType string) {
+	t.Helper()
+	if manifest.Reference != key.Reference {
+		t.Fatalf("manifest reference = %q, want %q", manifest.Reference, key.Reference)
+	}
+	if manifest.MediaType != wantMediaType {
+		t.Fatalf("manifest media type = %q, want %q", manifest.MediaType, wantMediaType)
+	}
+	if manifest.Size != int64(len(wantBody)) {
+		t.Fatalf("manifest size = %d, want %d", manifest.Size, len(wantBody))
+	}
+}
+
 func requireStoredBlob(ctx context.Context, t *testing.T, metadata meta.Store, digest string) *meta.BlobRecord {
 	t.Helper()
 	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
@@ -203,7 +239,7 @@ func assertStoredObject(ctx context.Context, t *testing.T, objects object.Store,
 	}
 	reader, info, err := objects.Get(ctx, objectKey, object.GetOptions{})
 	requireNoError(t, "open stored object", err)
-	defer closeBody(t, reader)
+	defer closeTestBody(t, reader)
 	body, err := io.ReadAll(reader)
 	requireNoError(t, "read stored object", err)
 	if string(body) != wantBody {

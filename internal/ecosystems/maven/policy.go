@@ -6,10 +6,13 @@ import (
 )
 
 func (s *Service) checkDependencyPolicy(requestRoute Route) error {
-	return accesspolicy.FromConfig(s.cfg.Policy.Dependency).Check(accesspolicy.DependencyTarget{
+	if err := accesspolicy.FromConfig(s.cfg.Policy.Dependency).Check(accesspolicy.DependencyTarget{
 		Ecosystem: ecosystem.Maven,
 		Alias:     requestRoute.Alias,
 		Artifact:  requestRoute.Repository,
 		Reference: requestRoute.Reference,
-	})
+	}); err != nil {
+		return wrapError(err, "check maven dependency policy")
+	}
+	return nil
 }

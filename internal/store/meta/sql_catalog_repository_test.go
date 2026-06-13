@@ -14,32 +14,7 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	first := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	second := first.Add(time.Hour)
 	repoKey := meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}
-
-	_, err := store.RecordPull(ctx, repoKey, first)
-	requireNoError(t, "record pull", err)
-	_, err = store.RecordPull(ctx, repoKey, second)
-	requireNoError(t, "record second pull", err)
-	deniedAt := second.Add(30 * time.Minute)
-	_, err = store.RecordPolicyDeniedPull(ctx, repoKey, deniedAt)
-	requireNoError(t, "record policy denied pull", err)
-	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 100})
-	requireNoError(t, "upsert blob", err)
-	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: secondTestDigest, Size: 300})
-	requireNoError(t, "upsert second blob", err)
-	_, err = store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
-		Alias:        "hub",
-		Repository:   "library/node",
-		Digest:       testDigest,
-		LastAccessAt: second,
-	})
-	requireNoError(t, "upsert repo blob", err)
-	_, err = store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
-		Alias:        "hub",
-		Repository:   "library/node",
-		Digest:       secondTestDigest,
-		LastAccessAt: second.Add(time.Minute),
-	})
-	requireNoError(t, "upsert second repo blob", err)
+	deniedAt := seedRepositoryAggregateRecords(ctx, t, store, repoKey, first, second)
 
 	upstream, err := store.UpstreamByAlias(ctx, "hub")
 	requireNoError(t, "get upstream metadata", err)
@@ -73,4 +48,41 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 	repository, err = store.RepositoryByName(ctx, upstream.ID, "library/node")
 	requireNoError(t, "get repository metadata after delete", err)
 	assertRepositoryAggregate(t, repository, 2, 1, 100, 1, second, deniedAt, second)
+}
+
+func seedRepositoryAggregateRecords(
+	ctx context.Context,
+	t *testing.T,
+	store *meta.SQLStore,
+	repoKey meta.PullKey,
+	first time.Time,
+	second time.Time,
+) time.Time {
+	t.Helper()
+	_, err := store.RecordPull(ctx, repoKey, first)
+	requireNoError(t, "record pull", err)
+	_, err = store.RecordPull(ctx, repoKey, second)
+	requireNoError(t, "record second pull", err)
+	deniedAt := second.Add(30 * time.Minute)
+	_, err = store.RecordPolicyDeniedPull(ctx, repoKey, deniedAt)
+	requireNoError(t, "record policy denied pull", err)
+	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: testDigest, Size: 100})
+	requireNoError(t, "upsert blob", err)
+	_, err = store.UpsertBlob(ctx, meta.BlobRecord{Digest: secondTestDigest, Size: 300})
+	requireNoError(t, "upsert second blob", err)
+	_, err = store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
+		Alias:        "hub",
+		Repository:   "library/node",
+		Digest:       testDigest,
+		LastAccessAt: second,
+	})
+	requireNoError(t, "upsert repo blob", err)
+	_, err = store.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
+		Alias:        "hub",
+		Repository:   "library/node",
+		Digest:       secondTestDigest,
+		LastAccessAt: second.Add(time.Minute),
+	})
+	requireNoError(t, "upsert second repo blob", err)
+	return deniedAt
 }

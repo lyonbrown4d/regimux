@@ -140,7 +140,7 @@ func (e *RegistryEndpoint) drainFilledBlob(
 func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]manifestBlobDescriptor, error) {
 	var payload ocispec.Manifest
 	if err := json.Unmarshal(manifestBody(manifest), &payload); err != nil {
-		return nil, err
+		return nil, wrapError(err, "decode image manifest")
 	}
 
 	descriptors := make([]manifestBlobDescriptor, 0, len(payload.Layers)+1)

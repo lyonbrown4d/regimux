@@ -54,14 +54,14 @@ func (s *SFTPStore) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
 	if s == nil || s.aferoStore == nil {
 		return errorf("object store is not configured")
 	}
-	return s.aferoStore.walkObjects(ctx, fn)
+	return s.walkObjects(ctx, fn)
 }
 
 func (s *SFTPStore) ListObjects(ctx context.Context) ([]Info, error) {
 	if s == nil || s.aferoStore == nil {
 		return nil, errorf("object store is not configured")
 	}
-	return s.aferoStore.listObjects(ctx)
+	return s.listObjects(ctx)
 }
 
 func normalizeSFTPOptions(opts SFTPOptions) SFTPOptions {
