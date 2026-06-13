@@ -228,13 +228,13 @@ func (s *endpointBlobService) release() {
 func (s *endpointBlobService) requestSnapshot() []cache.BlobRequest {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]cache.BlobRequest(nil), s.requests...)
+	return slices.Clone(s.requests)
 }
 
 func (s *endpointBlobService) closedSnapshot() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return append([]string(nil), s.closed...)
+	return slices.Clone(s.closed)
 }
 
 func (s *endpointBlobService) waitRequests(t *testing.T, count int) {

@@ -3,8 +3,6 @@ package object_test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"os"
@@ -225,8 +223,7 @@ func expectedCASPath(root, digest string) string {
 }
 
 func digestFor(body []byte) string {
-	sum := sha256.Sum256(body)
-	return ocidigest.SHA256.String() + ":" + hex.EncodeToString(sum[:])
+	return ocidigest.SHA256.FromBytes(body).String()
 }
 
 func requireNoError(t *testing.T, action string, err error) {

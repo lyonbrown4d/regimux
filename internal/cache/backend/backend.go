@@ -2,6 +2,7 @@
 package backend
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"strings"
@@ -38,12 +39,7 @@ func normalizePrefix(prefix string) string {
 }
 
 func cloneBytes(in []byte) []byte {
-	if in == nil {
-		return nil
-	}
-	out := make([]byte, len(in))
-	copy(out, in)
-	return out
+	return bytes.Clone(in)
 }
 
 func normalizeRemoteTTL(ttl time.Duration) time.Duration {

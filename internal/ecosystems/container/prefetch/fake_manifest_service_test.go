@@ -3,6 +3,7 @@ package prefetch_test
 import (
 	"context"
 	"errors"
+	"slices"
 	"sync"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
@@ -40,5 +41,5 @@ func (f *fakeManifestService) get(req cache.ManifestRequest) (*cache.CachedManif
 func (f *fakeManifestService) requestSnapshot() []cache.ManifestRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]cache.ManifestRequest(nil), f.entries...)
+	return slices.Clone(f.entries)
 }

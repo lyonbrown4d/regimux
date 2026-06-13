@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"testing"
@@ -280,9 +281,7 @@ func (c *fakeTagClient) callCount() int {
 func (c *fakeTagClient) requests() []upstream.ListTagsRequest {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	out := make([]upstream.ListTagsRequest, len(c.calls))
-	copy(out, c.calls)
-	return out
+	return slices.Clone(c.calls)
 }
 
 var (

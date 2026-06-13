@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -95,24 +96,15 @@ func withDefaults(artifact Artifact, source Source, opts ParseOptions) Artifact 
 }
 
 func dedupeArtifacts(artifacts []Artifact) []Artifact {
-	seen := map[string]struct{}{}
-	out := make([]Artifact, 0, len(artifacts))
-	for i := range artifacts {
-		artifact := artifacts[i]
-		key := strings.Join([]string{
+	return lo.UniqBy(artifacts, func(artifact Artifact) string {
+		return strings.Join([]string{
 			artifact.Ecosystem,
 			artifact.Alias,
 			artifact.Artifact,
 			artifact.Reference,
 			artifact.Accept,
 		}, "\x1f")
-		if _, ok := seen[key]; ok {
-			continue
-		}
-		seen[key] = struct{}{}
-		out = append(out, artifact)
-	}
-	return out
+	})
 }
 
 func looksJSON(body string) bool {

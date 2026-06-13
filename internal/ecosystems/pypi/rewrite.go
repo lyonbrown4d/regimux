@@ -69,15 +69,3 @@ func localPackageHref(alias string, upstreamSimpleURL *url.URL, href string) str
 	}
 	return local
 }
-
-func bytesEqual(left, right []byte) bool {
-	if len(left) != len(right) {
-		return false
-	}
-	for i := range left {
-		if left[i] != right[i] {
-			return false
-		}
-	}
-	return true
-}

@@ -2,12 +2,11 @@
 package reference
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"mime"
 	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/samber/lo"
 )
 
@@ -22,8 +21,7 @@ func NormalizeAccept(header string) string {
 
 // AcceptKey returns a stable sha256 hex key for a normalized Accept header.
 func AcceptKey(header string) string {
-	sum := sha256.Sum256([]byte(NormalizeAccept(header)))
-	return hex.EncodeToString(sum[:])
+	return ocidigest.SHA256.FromBytes([]byte(NormalizeAccept(header))).Encoded()
 }
 
 func normalizeAcceptItem(item string) string {

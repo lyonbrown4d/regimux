@@ -1,6 +1,7 @@
 package meta
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/samber/lo"
@@ -266,6 +267,6 @@ func cloneHeaders(headers map[string][]string) map[string][]string {
 		return nil
 	}
 	return lo.MapValues(headers, func(values []string, _ string) []string {
-		return append([]string(nil), values...)
+		return slices.Clone(values)
 	})
 }

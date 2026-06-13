@@ -246,13 +246,13 @@ func (f *fakeBlobService) Get(_ context.Context, req cache.BlobRequest) (*cache.
 func (f *fakeBlobService) requestSnapshot() []cache.BlobRequest {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]cache.BlobRequest(nil), f.entries...)
+	return slices.Clone(f.entries)
 }
 
 func (f *fakeBlobService) closedSnapshot() []string {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	return append([]string(nil), f.closures...)
+	return slices.Clone(f.closures)
 }
 
 type trackedReader struct {

@@ -2,7 +2,6 @@ package object
 
 import (
 	"context"
-	"encoding/hex"
 	"errors"
 	"hash"
 	"io"
@@ -12,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/spf13/afero"
 )
 
@@ -87,11 +87,11 @@ func (s *putSession) write(r io.Reader) (int64, error) {
 }
 
 func (s *putSession) validateDigest() error {
-	actual := hex.EncodeToString(s.hasher.Sum(nil))
-	if actual == s.expected {
+	actual := ocidigest.NewDigest(ocidigest.Algorithm(s.algorithm), s.hasher)
+	if actual.Encoded() == s.expected {
 		return nil
 	}
-	return NewDigestMismatch(s.normalized, s.algorithm+":"+actual)
+	return NewDigestMismatch(s.normalized, actual.String())
 }
 
 func (s *putSession) rename(ctx context.Context, size int64, opts PutOptions) (*Info, error) {
@@ -162,10 +162,10 @@ func (s *aferoStore) putDirect(ctx context.Context, normalized, target string, r
 		return nil, joinError("close object file and remove temp file", wrapError(closeErr, "close object file"), removeTempObject(s.fs, tmpName))
 	}
 
-	actual := hex.EncodeToString(hasher.Sum(nil))
-	if actual != expected {
+	actual := ocidigest.NewDigest(ocidigest.Algorithm(algorithm), hasher)
+	if actual.Encoded() != expected {
 		return nil, joinError("remove object temp file after digest mismatch",
-			NewDigestMismatch(normalized, algorithm+":"+actual),
+			NewDigestMismatch(normalized, actual.String()),
 			removeTempObject(s.fs, tmpName),
 		)
 	}

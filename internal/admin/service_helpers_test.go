@@ -3,8 +3,6 @@ package admin_test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
@@ -153,8 +151,7 @@ func newAdminObjectStore(ctx context.Context, t *testing.T) object.Store {
 }
 
 func digestForBody(body []byte) string {
-	sum := sha256.Sum256(body)
-	return ocidigest.SHA256.String() + ":" + hex.EncodeToString(sum[:])
+	return ocidigest.SHA256.FromBytes(body).String()
 }
 
 func seedAdminMetadata(ctx context.Context, t *testing.T, store meta.Store) {

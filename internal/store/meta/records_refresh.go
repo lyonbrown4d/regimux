@@ -1,10 +1,10 @@
 package meta
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"strings"
 	"time"
+
+	ocidigest "github.com/opencontainers/go-digest"
 )
 
 type RefreshIntentEcosystem string
@@ -45,6 +45,5 @@ func (k RefreshIntentKey) String() string {
 		strings.TrimSpace(k.Reference),
 		strings.TrimSpace(k.Accept),
 	}
-	sum := sha256.Sum256([]byte(strings.Join(parts, "\x00")))
-	return hex.EncodeToString(sum[:])
+	return ocidigest.SHA256.FromBytes([]byte(strings.Join(parts, "\x00"))).Encoded()
 }

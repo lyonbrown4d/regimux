@@ -2,8 +2,6 @@ package golang
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"io"
 	"net/http"
 	"os"
@@ -11,6 +9,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/samber/oops"
 )
 
@@ -27,8 +26,8 @@ func (s *Service) store(ctx context.Context, requestRoute route, fetched *upstre
 	tmpName := tmp.Name()
 	defer removePath(tmpName, s.logger)
 
-	hasher := sha256.New()
-	size, err := io.Copy(io.MultiWriter(tmp, hasher), fetched.body)
+	digester := ocidigest.SHA256.Digester()
+	size, err := io.Copy(io.MultiWriter(tmp, digester.Hash()), fetched.body)
 	if err != nil {
 		return storedResponse{}, closeAndRemoveTemp(tmp, tmpName, err, "write go proxy temp file")
 	}
@@ -37,7 +36,7 @@ func (s *Service) store(ctx context.Context, requestRoute route, fetched *upstre
 		return storedResponse{}, closeAndRemoveTemp(tmp, tmpName, seekErr, "rewind go proxy temp file")
 	}
 
-	digest := "sha256:" + hex.EncodeToString(hasher.Sum(nil))
+	digest := digester.Digest().String()
 	headers := cacheHeaders(fetched.headers, size)
 	contentType := contentType(headers, requestRoute.Reference)
 	info, err := s.objects.Put(ctx, digest, tmp, object.PutOptions{ContentType: contentType})

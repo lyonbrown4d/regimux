@@ -2,6 +2,7 @@ package prefetch
 
 import (
 	"encoding/xml"
+	"slices"
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
@@ -42,10 +43,7 @@ func parsePOM(source Source, opts ParseOptions) ([]Artifact, error) {
 }
 
 func pomDependencies(project pomProject) []pomDependency {
-	dependencies := make([]pomDependency, len(project.Dependencies)+len(project.DependencyManagement))
-	copy(dependencies, project.Dependencies)
-	copy(dependencies[len(project.Dependencies):], project.DependencyManagement)
-	return dependencies
+	return slices.Concat(project.Dependencies, project.DependencyManagement)
 }
 
 func mavenArtifactFromDependency(source Source, opts ParseOptions, alias string, dep pomDependency) (Artifact, bool) {

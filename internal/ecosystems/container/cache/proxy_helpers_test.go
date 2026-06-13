@@ -3,8 +3,6 @@ package cache_test
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"io"
@@ -18,6 +16,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	ocidigest "github.com/opencontainers/go-digest"
 )
 
 func newTestStores(t *testing.T) (meta.Store, object.Store) {
@@ -217,8 +216,7 @@ func requirePullRecord(ctx context.Context, t *testing.T, metadata meta.Store, k
 }
 
 func testDigestFor(body []byte) string {
-	sum := sha256.Sum256(body)
-	return "sha256:" + hex.EncodeToString(sum[:])
+	return ocidigest.SHA256.FromBytes(body).String()
 }
 
 type blockingBlobReader struct {

@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -50,7 +51,7 @@ func cacheHeaders(headers http.Header, size int64) http.Header {
 	out := http.Header{}
 	for _, key := range cacheHeaderKeys() {
 		if values, ok := headers[key]; ok {
-			out[key] = append([]string(nil), values...)
+			out[key] = slices.Clone(values)
 		}
 	}
 	if size >= 0 {

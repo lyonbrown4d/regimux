@@ -1,16 +1,16 @@
 package artifactcache
 
 import (
-	"crypto/sha256"
-	"encoding/hex"
 	"errors"
 	"io"
 	"log/slog"
 	"net/http"
 	"os"
+	"slices"
 	"strconv"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	ocidigest "github.com/opencontainers/go-digest"
 )
 
 var (
@@ -19,22 +19,22 @@ var (
 )
 
 func hashToTemp(tmp *os.File, tmpName string, source io.Reader) (string, int64, error) {
-	hasher := sha256.New()
-	size, err := io.Copy(io.MultiWriter(tmp, hasher), source)
+	digester := ocidigest.SHA256.Digester()
+	size, err := io.Copy(io.MultiWriter(tmp, digester.Hash()), source)
 	if err != nil {
 		return "", 0, closeAndRemoveTemp(tmp, tmpName, err, "write artifact temp file")
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
 		return "", 0, closeAndRemoveTemp(tmp, tmpName, err, "rewind artifact temp file")
 	}
-	return "sha256:" + hex.EncodeToString(hasher.Sum(nil)), size, nil
+	return digester.Digest().String(), size, nil
 }
 
 func cacheHeaders(headers http.Header, size int64) http.Header {
 	out := http.Header{}
 	for _, key := range cacheHeaderKeys() {
 		if values, ok := headers[key]; ok {
-			out[key] = append([]string(nil), values...)
+			out[key] = slices.Clone(values)
 		}
 	}
 	if size >= 0 {

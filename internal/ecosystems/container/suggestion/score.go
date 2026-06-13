@@ -4,6 +4,7 @@ import (
 	"strings"
 	"unicode"
 
+	"github.com/agext/levenshtein"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
@@ -68,7 +69,7 @@ func rankValues(target string, values []string, limit int) []string {
 		if score <= 0 {
 			return scoredValue{}, false
 		}
-		return scoredValue{value: value, score: score, distance: levenshteinDistance(target, value)}, true
+		return scoredValue{value: value, score: score, distance: levenshtein.Distance(target, value, nil)}, true
 	})...)
 	if scored.IsEmpty() {
 		return nil
@@ -108,7 +109,7 @@ func substringBonus(target, value string) int {
 }
 
 func editDistanceBonus(target, value string) int {
-	return max(40-levenshteinDistance(target, value)*4, 0)
+	return max(40-levenshtein.Distance(target, value, nil)*4, 0)
 }
 
 func sharedDigitBonus(target, value string) int {
@@ -160,26 +161,6 @@ func commonSuffixLength(left, right string) int {
 		}
 	}
 	return limit
-}
-
-func levenshteinDistance(left, right string) int {
-	previous := make([]int, len(right)+1)
-	for i := range previous {
-		previous[i] = i
-	}
-	for i := 1; i <= len(left); i++ {
-		current := make([]int, len(right)+1)
-		current[0] = i
-		for j := 1; j <= len(right); j++ {
-			cost := 0
-			if left[i-1] != right[j-1] {
-				cost = 1
-			}
-			current[j] = min(previous[j]+1, current[j-1]+1, previous[j-1]+cost)
-		}
-		previous = current
-	}
-	return previous[len(right)]
 }
 
 func compareScoredValue(left, right scoredValue) int {

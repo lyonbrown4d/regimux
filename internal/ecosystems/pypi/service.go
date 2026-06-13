@@ -152,7 +152,7 @@ func (s *Service) prepareFetched(req Request, requestRoute Route, fetched *upstr
 	closeReadCloser(fetched.body, s.logger, "close pypi upstream body")
 
 	rewritten := rewriteSimpleIndexLinks(body, requestRoute.Alias, fetched.requestURL, requestPublicURL(s.publicURL, req.PublicURL))
-	if bytesEqual(body, rewritten) {
+	if bytes.Equal(body, rewritten) {
 		return &upstreamFetch{
 			status:     fetched.status,
 			headers:    fetched.headers,
