@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	defaultStartupBaseURL = "http://localhost:5000"
+	defaultStartupBaseURL = "http://localhost:8080"
 	defaultPprofPath      = "/debug/pprof"
 )
 

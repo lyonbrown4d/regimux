@@ -12,7 +12,7 @@ RegiMux is positioned as a read-only dependency proxy for development and CI env
 - Keep endpoint services and runtime/capability implementations inside each ecosystem subpackage.
 - Container, Go, npm, PyPI, and Maven all register runtime jobs/capabilities; container has predictive scheduled `prefetch`, while Go, npm, PyPI, and Maven share scheduled endpoint `probe` and recent-pull prefetch rewarming through the same runtime abstraction.
 - Add a Go module proxy read-through cache under `/go/{goAlias}/{module}/@v/...`. Done.
-- Keep the default example Go alias backed by `https://proxy.golang.org`. Clients can set `GOPROXY=http://localhost:5000/go/{goAlias}`.
+- Keep the default example Go alias backed by `https://proxy.golang.org`. Clients can set `GOPROXY=http://localhost:8080/go/{goAlias}`.
 - Store Go proxy responses in the object store by content sha256, with metadata mapping request paths to object digests. Done.
 - npm is available at `/npm/{npmAlias}/...`, covering packuments, dist-tags, scoped packages, tarball URL rewriting, and integrity metadata.
 - PyPI is available at `/pypi/{pypiAlias}/...` with PEP 503 simple index caching, normalized package names, and file link rewriting.

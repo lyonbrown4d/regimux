@@ -53,7 +53,7 @@ func NewServer(opts Options) *Server {
 	}
 	listen := opts.Listen
 	if listen == "" {
-		listen = ":5000"
+		listen = ":8080"
 	}
 
 	fiberApp := fiber.New(fiber.Config{

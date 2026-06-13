@@ -31,8 +31,8 @@ func defaultRegistryAuthConfig() RegistryAuthConfig {
 
 func defaultServerConfig() ServerConfig {
 	return ServerConfig{
-		Listen:       ":5000",
-		PublicURL:    "http://localhost:5000",
+		Listen:       ":8080",
+		PublicURL:    "http://localhost:8080",
 		ReadTimeout:  30 * time.Second,
 		WriteTimeout: 0,
 		IdleTimeout:  120 * time.Second,

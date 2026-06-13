@@ -46,7 +46,7 @@ Set this in `examples/compose/.env`:
 
 ```text
 REGIMUX_IMAGE=ghcr.io/lyonbrown4d/regimux:v0.0.2
-REGIMUX_HTTP_PORT=5000
+REGIMUX_HTTP_PORT=8080
 ```
 
 For Debian:
@@ -60,7 +60,7 @@ REGIMUX_IMAGE=ghcr.io/lyonbrown4d/regimux:v0.0.2-debian
 Compose passes `REGIMUX_*` variables into the container. RegiMux loads them through `configx`:
 
 ```text
-REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
+REGIMUX_SERVER__PUBLIC_URL=http://localhost:8080
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379

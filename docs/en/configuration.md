@@ -16,7 +16,7 @@ Minimal config:
 
 ```hcl
 server {
-  listen = ":5000"
+  listen = ":8080"
 }
 
 container {
@@ -65,8 +65,8 @@ Defaults are defined as typed Go config, then validated after file, dotenv, envi
 
 Important defaults:
 
-- `server.listen = ":5000"`
-- `server.public_url = "http://localhost:5000"`
+- `server.listen = ":8080"`
+- `server.public_url = "http://localhost:8080"`
 - `server.middleware.request_id.enabled = true`
 - `server.middleware.request_logger.enabled = false`
 - `server.middleware.healthcheck.enabled = true` with `/livez` and `/readyz`
@@ -119,7 +119,7 @@ Top-level ecosystem blocks define dependency proxy namespaces:
 
 These blocks are also the input to the ecosystem runtime layer. RegiMux normalizes them into typed runtime entries with an ecosystem kind, alias, registry, mirrors, probe settings, auth, and HTTP policy. The scheduler then works from runtime capabilities such as `probe` and `prefetch` instead of reading a legacy `upstreams` block.
 
-`dist` aliases support the same `registry`, `mirrors`, `mirror_policy`, `probe`, `auth`, and `http` fields as other dependency proxy ecosystems, plus an `allow` list for path patterns. Requests are tried against the selected registry/mirror endpoints in order after health-based sorting. Transport errors and upstream `404`, `410`, `408`, `429`, or `5xx` responses fall through to the next endpoint when one is available; `403` and other non-retryable responses are returned directly.
+`dist` aliases support the same `registry`, `mirrors`, `mirror_policy`, `probe`, `auth`, and `http` fields as other dependency proxy ecosystems, plus an `allow` list for path patterns. This is a generic file-download mirror: add as many aliases as needed for Gradle distributions, Electron release artifacts, CLI installers, or internal binary drops. Requests are tried against the selected registry/mirror endpoints in order after health-based sorting. Transport errors and upstream `404`, `410`, `408`, `429`, or `5xx` responses fall through to the next endpoint when one is available; `403` and other non-retryable responses are returned directly.
 
 Container runtimes expose scheduled `probe` and predictive `prefetch` capabilities. Go, npm, PyPI, Maven, and dist expose the shared endpoint `probe` capability when an alias has `probe.enabled = true`, and they also participate in scheduled `prefetch` by rewarming recently requested artifacts.
 
@@ -210,7 +210,7 @@ cache {
 
 The `docker` block is optional and disabled by default. When enabled, RegiMux connects to the host Docker daemon through the Docker socket. It can observe local image events and ask the host daemon to pull configured images through the RegiMux proxy after startup, warming the RegiMux cache.
 
-The container runtime must explicitly mount the socket, for example `/var/run/docker.sock:/var/run/docker.sock` on Linux Docker Engine. With Docker Desktop, set `prewarm.registry` to an address reachable by the Docker daemon, such as `192.168.1.2:5000`, instead of container-local `localhost:5000`.
+The container runtime must explicitly mount the socket, for example `/var/run/docker.sock:/var/run/docker.sock` on Linux Docker Engine. With Docker Desktop, set `prewarm.registry` to an address reachable by the Docker daemon, such as `192.168.1.2:8080`, instead of container-local `localhost:8080`.
 
 ```hcl
 docker {
@@ -219,7 +219,7 @@ docker {
 
   prewarm {
     enabled = true
-    registry = "192.168.1.2:5000"
+    registry = "192.168.1.2:8080"
     alias = "hub"
     images = ["alpine:latest", "library/nginx:1.27"]
     timeout = "10m"
@@ -232,8 +232,8 @@ docker {
 Environment variables use `REGIMUX_` and `__` for nesting:
 
 ```text
-REGIMUX_SERVER__LISTEN=:5000
-REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
+REGIMUX_SERVER__LISTEN=:8080
+REGIMUX_SERVER__PUBLIC_URL=http://localhost:8080
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_LOG__DEBUG=true
 REGIMUX_SERVER__MIDDLEWARE__REQUEST_LOGGER__ENABLED=true
@@ -241,7 +241,7 @@ REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 REGIMUX_CACHE__BLOB__SMALL_CACHE__ENABLED=true
 REGIMUX_DOCKER__ENABLED=true
-REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
+REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:8080
 REGIMUX_SCHEDULER__MANIFEST_REFRESH__ECOSYSTEMS__CONTAINER__ENABLED=true
 REGIMUX_SCHEDULER__MANIFEST_REFRESH__ECOSYSTEMS__CONTAINER__INTERVAL=10m
 REGIMUX_CONTAINER__HUB__REGISTRY=https://registry-1.docker.io
@@ -260,7 +260,7 @@ The loader also reads `.env` when present. Environment variables override `.env`
 Unknown Cobra flags are passed to `configx` as config overrides:
 
 ```bash
-regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=debug
+regimuxd --config /etc/regimux/regimux.hcl --server.listen=:8080 --log.level=debug
 ```
 
 `log.debug = true` and `REGIMUX_LOG__DEBUG=true` are accepted as compatibility aliases for setting debug logging, but `log.level = "debug"` is the preferred form.

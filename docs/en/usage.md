@@ -19,7 +19,7 @@ The default image is Alpine-based:
 
 ```bash
 docker run --rm \
-  -p 5000:5000 \
+  -p 8080:8080 \
   -v regimux-data:/var/lib/regimux \
   ghcr.io/lyonbrown4d/regimux:latest
 ```
@@ -28,7 +28,7 @@ Pinned release images are also published:
 
 ```bash
 docker run --rm \
-  -p 5000:5000 \
+  -p 8080:8080 \
   -v regimux-data:/var/lib/regimux \
   ghcr.io/lyonbrown4d/regimux:v0.0.2
 ```
@@ -37,12 +37,12 @@ Debian-based images use the `-debian` suffix:
 
 ```bash
 docker run --rm \
-  -p 5000:5000 \
+  -p 8080:8080 \
   -v regimux-data:/var/lib/regimux \
   ghcr.io/lyonbrown4d/regimux:v0.0.2-debian
 ```
 
-The container reads `/etc/regimux/regimux.hcl`, uses `/var/lib/regimux` as its working directory, and listens on `:5000` by default.
+The container reads `/etc/regimux/regimux.hcl`, uses `/var/lib/regimux` as its working directory, and listens on `:8080` by default.
 
 ## deb and rpm
 
@@ -88,9 +88,9 @@ Expand-Archive .\regimux_0.0.2_windows_amd64.zip
 ## Health Checks
 
 ```bash
-curl -i http://localhost:5000/livez
-curl -i http://localhost:5000/readyz
-curl -i http://localhost:5000/v2/
+curl -i http://localhost:8080/livez
+curl -i http://localhost:8080/readyz
+curl -i http://localhost:8080/v2/
 ```
 
 ## Container Images
@@ -98,15 +98,15 @@ curl -i http://localhost:5000/v2/
 RegiMux uses the first repository path segment as the container alias:
 
 ```text
-localhost:5000/{containerAlias}/library/alpine:latest
-localhost:5000/{containerAlias}/org/app:v1.2.3
-localhost:5000/{containerAlias}/coreos/etcd:v3.5.0
+localhost:8080/{containerAlias}/library/alpine:latest
+localhost:8080/{containerAlias}/org/app:v1.2.3
+localhost:8080/{containerAlias}/coreos/etcd:v3.5.0
 ```
 
 Pull images through the container dependency proxy:
 
 ```bash
-docker pull localhost:5000/{containerAlias}/library/alpine:latest
+docker pull localhost:8080/{containerAlias}/library/alpine:latest
 ```
 
 Fetch a manifest directly:
@@ -114,7 +114,7 @@ Fetch a manifest directly:
 ```bash
 curl -i \
   -H 'Accept: application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json' \
-  http://localhost:5000/v2/{containerAlias}/library/alpine/manifests/latest
+  http://localhost:8080/v2/{containerAlias}/library/alpine/manifests/latest
 ```
 
 ## Go Module Proxy
@@ -122,7 +122,7 @@ curl -i \
 Each alias under the `go` block exposes a Go module proxy endpoint at `/go/{goAlias}`. Go clients use RegiMux as their dependency proxy by setting `GOPROXY`:
 
 ```bash
-export GOPROXY=http://localhost:5000/go/{goAlias},direct
+export GOPROXY=http://localhost:8080/go/{goAlias},direct
 go env GOPROXY
 go mod download github.com/pkg/errors@v0.9.1
 ```
@@ -143,7 +143,7 @@ The selected Go alias is resolved only within the `go` block. Container, npm, Py
 
 ## Dist Mirror
 
-Each alias under the `dist` block exposes a binary distribution mirror at `/dist/{distAlias}/{path}`. The default `gradle` alias points at `https://services.gradle.org/distributions` and allows Gradle wrapper archives:
+Each alias under the `dist` block exposes a generic file download mirror at `/dist/{distAlias}/{path}`. RegiMux does not need package-specific code for Gradle, Electron, CLI installers, or other release assets; each one is just a configured alias with an upstream, optional mirrors, and path allow rules. The default `gradle` alias points at `https://services.gradle.org/distributions` and allows Gradle wrapper archives:
 
 ```text
 GET /dist/gradle/gradle-8.7-bin.zip
@@ -160,13 +160,79 @@ dist {
     mirror_policy = "ordered"
     allow = ["gradle-*-bin.zip", "gradle-*-all.zip"]
   }
+
+  electron {
+    registry = "https://github.com/electron/electron/releases/download"
+    mirrors = ["https://dist-cache.example.com/electron"]
+    mirror_policy = "ordered"
+    allow = [
+      "v*/electron-v*",
+      "v*/SHASUMS256.txt",
+      "v*/SHASUMS256.txt.sig",
+    ]
+  }
+
+  playwright {
+    registry = "https://cdn.playwright.dev"
+    mirrors = ["https://dist-cache.example.com/playwright"]
+    mirror_policy = "ordered"
+    allow = ["builds/*", "dbazure/download/playwright/*"]
+  }
+
+  cypress {
+    registry = "https://download.cypress.io"
+    mirrors = ["https://dist-cache.example.com/cypress"]
+    mirror_policy = "ordered"
+    allow = ["desktop", "desktop.json", "desktop/*"]
+  }
+
+  nodejs {
+    registry = "https://nodejs.org/download/release"
+    mirrors = ["https://dist-cache.example.com/nodejs"]
+    mirror_policy = "ordered"
+    allow = ["v*/node-v*", "index.json", "index.tab"]
+  }
+
+  hashicorp {
+    registry = "https://releases.hashicorp.com"
+    mirrors = ["https://dist-cache.example.com/hashicorp"]
+    mirror_policy = "ordered"
+    allow = ["terraform/*", "vault/*", "consul/*", "nomad/*"]
+  }
 }
 ```
 
 Use it from `gradle/wrapper/gradle-wrapper.properties`:
 
 ```properties
-distributionUrl=http\://localhost\:5000/dist/gradle/gradle-8.7-bin.zip
+distributionUrl=http\://localhost\:8080/dist/gradle/gradle-8.7-bin.zip
+```
+
+For Electron installed through npm, npm downloads the package from the npm registry first, then Electron's install path uses `@electron/get` to download release artifacts. `@electron/get` builds URLs from a mirror base, version directory, and artifact file name; it reads mirror settings from `.npmrc`, package config, or environment variables such as `ELECTRON_MIRROR`. Point that mirror base at a dist alias:
+
+```ini
+electron_mirror=http://localhost:8080/dist/electron/
+```
+
+or:
+
+```bash
+export ELECTRON_MIRROR=http://localhost:8080/dist/electron/
+npm install electron
+```
+
+Other common clients expose similar download-base settings:
+
+```bash
+PLAYWRIGHT_DOWNLOAD_HOST=http://localhost:8080/dist/playwright npx playwright install
+CYPRESS_DOWNLOAD_MIRROR=http://localhost:8080/dist/cypress cypress install
+npm_config_disturl=http://localhost:8080/dist/nodejs npm rebuild
+```
+
+For release sites without a built-in mirror setting, use the dist URL directly in CI scripts, for example:
+
+```bash
+curl -LO http://localhost:8080/dist/hashicorp/terraform/1.9.0/terraform_1.9.0_linux_amd64.zip
 ```
 
 Full `GET` responses are stored in the object store by content sha256 and linked to metadata for cache accounting and cleanup. `HEAD` requests do not store bytes. `Range` requests are served from the local object when the full artifact is already cached; range misses are passed through to upstream and are not stored as partial objects.
@@ -197,7 +263,7 @@ More details: [Compose examples](../../examples/compose/README.md).
 Open:
 
 ```text
-http://localhost:5000/admin
+http://localhost:8080/admin
 ```
 
 The Admin UI is embedded in the binary. It includes dashboard, upstream health, pulls, activity, cache, storage, scheduler, manual refresh, auth audit, and effective config views.
@@ -219,7 +285,7 @@ RegiMux reads typed HCL config, dotenv, environment variables, and command-line 
 Environment variables use the `REGIMUX_` prefix and `__` for nesting:
 
 ```text
-REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
+REGIMUX_SERVER__PUBLIC_URL=http://localhost:8080
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379
@@ -228,7 +294,7 @@ REGIMUX_CACHE__REDIS__ADDRS=redis:6379
 Command-line overrides use dotted keys:
 
 ```bash
-regimuxd --config /etc/regimux/regimux.hcl --server.listen=:5000 --log.level=debug
+regimuxd --config /etc/regimux/regimux.hcl --server.listen=:8080 --log.level=debug
 ```
 
 ## Development

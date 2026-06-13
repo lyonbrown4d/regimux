@@ -62,8 +62,8 @@ flowchart LR
 For containers, RegiMux acts as a Registry-compatible dependency proxy. Image names use the first repository path segment as the container alias:
 
 ```text
-localhost:5000/{containerAlias}/library/alpine:latest
-localhost:5000/{containerAlias}/org/app:v1.2.3
+localhost:8080/{containerAlias}/library/alpine:latest
+localhost:8080/{containerAlias}/org/app:v1.2.3
 ```
 
 Registry API examples:
@@ -92,7 +92,7 @@ go {
 Clients use:
 
 ```bash
-GOPROXY=http://localhost:5000/go/{goAlias},direct
+GOPROXY=http://localhost:8080/go/{goAlias},direct
 ```
 
 Go proxy API examples:

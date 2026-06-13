@@ -46,7 +46,7 @@ docker compose --env-file examples/compose/.env -f examples/compose/compose.obse
 
 ```text
 REGIMUX_IMAGE=ghcr.io/lyonbrown4d/regimux:v0.0.2
-REGIMUX_HTTP_PORT=5000
+REGIMUX_HTTP_PORT=8080
 ```
 
 Debian 镜像：
@@ -60,7 +60,7 @@ REGIMUX_IMAGE=ghcr.io/lyonbrown4d/regimux:v0.0.2-debian
 Compose 会把 `REGIMUX_*` 变量传入容器。RegiMux 通过 `configx` 加载这些变量：
 
 ```text
-REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
+REGIMUX_SERVER__PUBLIC_URL=http://localhost:8080
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379

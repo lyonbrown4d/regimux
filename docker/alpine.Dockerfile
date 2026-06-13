@@ -14,7 +14,7 @@ COPY configs/regimux.minimal.hcl /etc/regimux/regimux.hcl
 
 WORKDIR /var/lib/regimux
 USER regimux
-EXPOSE 5000
+EXPOSE 8080
 VOLUME ["/var/lib/regimux"]
 
 ENTRYPOINT ["/usr/local/bin/regimuxd"]

@@ -140,7 +140,7 @@ func (s *Service) realm(c fiber.Ctx) string {
 		}
 	}
 	if base == "" {
-		base = "http://localhost:5000"
+		base = "http://localhost:8080"
 	}
 	return base + "/auth/token"
 }

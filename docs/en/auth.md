@@ -36,8 +36,8 @@ users {
 ## Docker Login
 
 ```bash
-docker login localhost:5000
-docker pull localhost:5000/{containerAlias}/library/alpine:latest
+docker login localhost:8080
+docker pull localhost:8080/{containerAlias}/library/alpine:latest
 ```
 
 The Registry token flow uses the configured service, issuer, secret, and user repository scopes.

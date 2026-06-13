@@ -5,7 +5,7 @@ The Admin UI is embedded into the RegiMux binary. It uses Fiber template renderi
 Open:
 
 ```text
-http://localhost:5000/admin
+http://localhost:8080/admin
 ```
 
 ## Security

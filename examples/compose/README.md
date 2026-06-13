@@ -16,8 +16,8 @@ Use this for local testing or a small single-node deployment. Manifest, tag, and
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.memory.yml up -d
-curl -i http://localhost:5000/livez
-docker pull localhost:5000/hub/library/alpine:latest
+curl -i http://localhost:8080/livez
+docker pull localhost:8080/hub/library/alpine:latest
 ```
 
 ## Redis cache and distributed scheduler lock
@@ -26,8 +26,8 @@ Use this when cache metadata should survive RegiMux restarts and scheduler jobs 
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.redis.yml up -d
-curl -i http://localhost:5000/v2/
-docker pull localhost:5000/hub/library/nginx:latest
+curl -i http://localhost:8080/v2/
+docker pull localhost:8080/hub/library/nginx:latest
 ```
 
 This example also enables predictive prefetch and latency-based mirror selection for Docker Hub blobs.
@@ -37,7 +37,7 @@ This example also enables predictive prefetch and latency-based mirror selection
 The Compose configs include a `golang` upstream for `https://proxy.golang.org`. After starting any example, point Go at RegiMux:
 
 ```bash
-export GOPROXY=http://localhost:5000,direct
+export GOPROXY=http://localhost:8080,direct
 go mod download github.com/pkg/errors@v0.9.1
 ```
 
@@ -49,8 +49,8 @@ Use this if you prefer Valkey instead of Redis. RegiMux still uses the Redis-com
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.valkey.yml up -d
-curl -i http://localhost:5000/v2/
-docker pull localhost:5000/hub/library/busybox:latest
+curl -i http://localhost:8080/v2/
+docker pull localhost:8080/hub/library/busybox:latest
 ```
 
 ## Prometheus and Grafana
@@ -98,7 +98,7 @@ Then enable the runtime config in `.env` or HCL:
 REGIMUX_DOCKER__ENABLED=true
 REGIMUX_DOCKER__OBSERVE=true
 REGIMUX_DOCKER__PREWARM__ENABLED=true
-REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:5000
+REGIMUX_DOCKER__PREWARM__REGISTRY=192.168.1.2:8080
 REGIMUX_DOCKER__PREWARM__ALIAS=hub
 ```
 
@@ -160,7 +160,7 @@ For a pinned release, put this in `examples/compose/.env`:
 
 ```text
 REGIMUX_IMAGE=ghcr.io/lyonbrown4d/regimux:v0.0.2
-REGIMUX_HTTP_PORT=5000
+REGIMUX_HTTP_PORT=8080
 ```
 
 Debian-based images are also published:
@@ -175,7 +175,7 @@ ghcr.io/lyonbrown4d/regimux:latest-debian
 RegiMux config paths can be overridden with `REGIMUX_` environment variables. Use `__` for nesting:
 
 ```text
-REGIMUX_SERVER__PUBLIC_URL=http://localhost:5000
+REGIMUX_SERVER__PUBLIC_URL=http://localhost:8080
 REGIMUX_LOG__LEVEL=debug
 REGIMUX_CACHE__BACKEND=redis
 REGIMUX_CACHE__REDIS__ADDRS=redis:6379

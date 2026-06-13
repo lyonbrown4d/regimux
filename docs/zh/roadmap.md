@@ -12,7 +12,7 @@ RegiMux 定位为面向研发和 CI 环境的只读 Dependency Proxy（依赖代
 - endpoint service 和 runtime/capability 实现都保留在各自生态子包内。
 - container、Go、npm、PyPI 和 Maven 都注册 runtime job/capability；container 具备预测性定时 `prefetch`，Go、npm、PyPI 和 Maven 通过同一 runtime 抽象共享定时 endpoint `probe` 和 recent-pull prefetch rewarm。
 - 增加 Go module proxy read-through cache，路径为 `/go/{goAlias}/{module}/@v/...`。已完成。
-- 默认示例 Go alias 指向 `https://proxy.golang.org`。客户端可通过 `GOPROXY=http://localhost:5000/go/{goAlias}` 使用。
+- 默认示例 Go alias 指向 `https://proxy.golang.org`。客户端可通过 `GOPROXY=http://localhost:8080/go/{goAlias}` 使用。
 - 将 Go proxy 响应按内容 sha256 写入对象存储，并通过元数据记录请求路径到对象 digest 的映射。已完成。
 - npm 已在 `/npm/{npmAlias}/...` 可用，覆盖 packument、dist-tags、scoped package、tarball URL rewrite 和 integrity。
 - PyPI 已在 `/pypi/{pypiAlias}/...` 可用，实现 PEP 503 simple index 缓存、包名 normalize 和文件链接重写。

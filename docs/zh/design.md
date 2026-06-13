@@ -62,8 +62,8 @@ flowchart LR
 对 container 来说，RegiMux 是兼容 Registry 的依赖代理。镜像名使用仓库路径的第一段作为 container alias：
 
 ```text
-localhost:5000/{containerAlias}/library/alpine:latest
-localhost:5000/{containerAlias}/org/app:v1.2.3
+localhost:8080/{containerAlias}/library/alpine:latest
+localhost:8080/{containerAlias}/org/app:v1.2.3
 ```
 
 Registry API 示例：
@@ -92,7 +92,7 @@ go {
 客户端使用：
 
 ```bash
-GOPROXY=http://localhost:5000/go/{goAlias},direct
+GOPROXY=http://localhost:8080/go/{goAlias},direct
 ```
 
 Go proxy API 示例：

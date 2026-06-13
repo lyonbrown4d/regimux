@@ -1,6 +1,6 @@
 server {
-  listen = ":5000"
-  public_url = "http://localhost:5000"
+  listen = ":8080"
+  public_url = "http://localhost:8080"
   read_timeout = "30s"
   write_timeout = "0s"
   idle_timeout = "120s"
@@ -505,4 +505,68 @@ dist {
       type = "anonymous"
     }
   }
+
+  # Example: npm-installed Electron can point electron_mirror or ELECTRON_MIRROR
+  # at http://<regimux>/dist/electron/ without any npm proxy rewrite.
+  #
+  # electron {
+  #   registry = "https://github.com/electron/electron/releases/download"
+  #   mirrors = []
+  #   mirror_policy = "ordered"
+  #   tag_ttl = "24h"
+  #   allow = [
+  #     "v*/electron-v*",
+  #     "v*/SHASUMS256.txt",
+  #     "v*/SHASUMS256.txt.sig",
+  #   ]
+  #
+  #   probe {
+  #     enabled = false
+  #     interval = "1m"
+  #     timeout = "3s"
+  #     cooldown = "2m"
+  #     jitter = "10s"
+  #   }
+  #
+  #   auth {
+  #     type = "anonymous"
+  #   }
+  # }
+  #
+  # playwright {
+  #   registry = "https://cdn.playwright.dev"
+  #   mirrors = []
+  #   mirror_policy = "ordered"
+  #   tag_ttl = "24h"
+  #   allow = ["builds/*", "dbazure/download/playwright/*"]
+  # }
+  #
+  # cypress {
+  #   registry = "https://download.cypress.io"
+  #   mirrors = []
+  #   mirror_policy = "ordered"
+  #   tag_ttl = "24h"
+  #   allow = ["desktop", "desktop.json", "desktop/*"]
+  # }
+  #
+  # nodejs {
+  #   registry = "https://nodejs.org/download/release"
+  #   mirrors = []
+  #   mirror_policy = "ordered"
+  #   tag_ttl = "24h"
+  #   allow = ["v*/node-v*", "index.json", "index.tab"]
+  # }
+  #
+  # hashicorp {
+  #   registry = "https://releases.hashicorp.com"
+  #   mirrors = []
+  #   mirror_policy = "ordered"
+  #   tag_ttl = "24h"
+  #   allow = [
+  #     "terraform/*",
+  #     "vault/*",
+  #     "consul/*",
+  #     "nomad/*",
+  #   ]
+  # }
 }

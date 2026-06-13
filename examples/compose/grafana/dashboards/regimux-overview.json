@@ -27,7 +27,7 @@
       "title": "RegiMux Admin",
       "tooltip": "Open the local RegiMux admin UI",
       "type": "link",
-      "url": "http://localhost:5000/admin"
+      "url": "http://localhost:8080/admin"
     },
     {
       "icon": "external link",

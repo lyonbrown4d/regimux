@@ -1,6 +1,6 @@
 server {
-  listen = ":5000"
-  public_url = "http://localhost:5000"
+  listen = ":8080"
+  public_url = "http://localhost:8080"
 }
 
 log {
