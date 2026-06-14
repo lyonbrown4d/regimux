@@ -158,6 +158,17 @@ func TestLoadReleaseExampleConfigs(t *testing.T) {
 	}
 }
 
+func TestLoadSplitExampleConfigDirectory(t *testing.T) {
+	configDir := filepath.Join("..", "..", "configs", "split")
+	cfg, err := config.Load(context.Background(), configDir)
+	if err != nil {
+		t.Fatalf("load split example config directory: %v", err)
+	}
+	if len(cfg.Container) == 0 || len(cfg.Dist) == 0 || len(cfg.NPM) == 0 {
+		t.Fatalf("expected split ecosystem config: container=%#v dist=%#v npm=%#v", cfg.Container, cfg.Dist, cfg.NPM)
+	}
+}
+
 func unsetEnv(t *testing.T, key string) {
 	t.Helper()
 

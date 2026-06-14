@@ -11,6 +11,7 @@ Repository examples:
 - [configs/regimux.minimal.hcl](../../configs/regimux.minimal.hcl): smallest runnable config.
 - [configs/regimux.hcl](../../configs/regimux.hcl): practical default config.
 - [configs/regimux.full.hcl](../../configs/regimux.full.hcl): full reference config.
+- [configs/split](../../configs/split): the same style split into multiple directory-loaded HCL files.
 
 `--config` accepts either one `.hcl` file or a directory. When a directory is provided, RegiMux loads all `.hcl` files directly under that directory in lexical filename order. This keeps single-file deployments simple while allowing larger installs to split configuration by concern, for example:
 
@@ -19,11 +20,27 @@ Repository examples:
   00-server.hcl
   10-store.hcl
   20-container.hcl
-  30-dist.hcl
+  30-languages.hcl
+  40-dist.hcl
   90-policy.hcl
 ```
 
 Later files can override earlier keys, so numeric prefixes are recommended when order matters. Subdirectories are ignored.
+
+The split example in [configs/split](../../configs/split) follows that layout:
+
+- [00-server.hcl](../../configs/split/00-server.hcl): listener, auth, logging, and metadata cache defaults.
+- [10-store.hcl](../../configs/split/10-store.hcl): metadata database and object store.
+- [20-container.hcl](../../configs/split/20-container.hcl): container registry dependency proxy aliases.
+- [30-languages.hcl](../../configs/split/30-languages.hcl): Go, npm, PyPI, and Maven proxy aliases.
+- [40-dist.hcl](../../configs/split/40-dist.hcl): generic distribution mirrors such as Gradle, Electron, Playwright, and Node.js.
+- [90-policy.hcl](../../configs/split/90-policy.hcl): dependency allow/block rules.
+
+Run a split config directory with:
+
+```bash
+regimuxd --config configs/split
+```
 
 Minimal config:
 

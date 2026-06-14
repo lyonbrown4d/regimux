@@ -89,6 +89,7 @@ archives:
       - README.md
       - configs/regimux.minimal.hcl
       - configs/regimux.full.hcl
+      - configs/split/*.hcl
 
   - id: regimuxd-windows-exe
     ids:
