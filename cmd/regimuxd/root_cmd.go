@@ -26,7 +26,7 @@ func newRootCommand() *cobra.Command {
 			return run(cmd.Context(), configPath, args...)
 		},
 	}
-	cmd.Flags().StringVarP(&configPath, "config", "c", "configs/regimux.hcl", "path to regimux HCL config file")
+	cmd.Flags().StringVarP(&configPath, "config", "c", "configs/regimux.hcl", "path to a regimux HCL config file or directory")
 	cmd.Flags().BoolVar(&showVersion, "version", false, "print version and exit")
 	cmd.Flags().ParseErrorsAllowlist.UnknownFlags = true
 	return cmd

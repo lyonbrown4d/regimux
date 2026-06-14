@@ -5,11 +5,10 @@ import (
 	"context"
 	"io"
 
-	dockerevents "github.com/docker/docker/api/types/events"
-	"github.com/docker/docker/api/types/filters"
-	dockerimage "github.com/docker/docker/api/types/image"
-	"github.com/docker/docker/client"
+	"github.com/containerd/platforms"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	dockerevents "github.com/moby/moby/api/types/events"
+	"github.com/moby/moby/client"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
@@ -41,13 +40,11 @@ func (dockerConnector) Connect(ctx context.Context, cfg config.DockerConfig) (da
 	if cfg.Host != "" {
 		opts = append(opts, client.WithHost(cfg.Host))
 	}
-	opts = append(opts, client.WithAPIVersionNegotiation())
-
-	cli, err := client.NewClientWithOpts(opts...)
+	cli, err := client.New(opts...)
 	if err != nil {
 		return nil, daemonStatus{}, oops.In("docker").Wrapf(err, "create docker client")
 	}
-	ping, err := cli.Ping(ctx)
+	ping, err := cli.Ping(ctx, client.PingOptions{})
 	if err != nil {
 		if closeErr := cli.Close(); closeErr != nil {
 			err = multierr.Combine(err, closeErr)
@@ -73,17 +70,21 @@ func (c *dockerDaemonClient) Close() error {
 func (c *dockerDaemonClient) ImageEvents(ctx context.Context) (<-chan ImageEvent, <-chan error) {
 	out := make(chan ImageEvent)
 	outErrs := make(chan error, 1)
-	messages, errs := c.client.Events(ctx, dockerevents.ListOptions{
-		Filters: filters.NewArgs(filters.Arg("type", string(dockerevents.ImageEventType))),
+	result := c.client.Events(ctx, client.EventsListOptions{
+		Filters: make(client.Filters).Add("type", string(dockerevents.ImageEventType)),
 	})
-	go translateDockerEvents(ctx, messages, errs, out, outErrs)
+	go translateDockerEvents(ctx, result.Messages, result.Err, out, outErrs)
 	return out, outErrs
 }
 
 func (c *dockerDaemonClient) ImagePull(ctx context.Context, ref, platform string) (io.ReadCloser, error) {
-	opts := dockerimage.PullOptions{}
+	opts := client.ImagePullOptions{}
 	if platform != "" {
-		opts.Platform = platform
+		parsed, err := platforms.Parse(platform)
+		if err != nil {
+			return nil, oops.In("docker").With("platform", platform).Wrapf(err, "parse docker pull platform")
+		}
+		opts.Platforms = append(opts.Platforms, parsed)
 	}
 	body, err := c.client.ImagePull(ctx, ref, opts)
 	if err != nil {

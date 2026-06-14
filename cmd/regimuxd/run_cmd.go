@@ -4,7 +4,6 @@ import (
 	"context"
 	"time"
 
-	"github.com/arcgolabs/configx"
 	"github.com/arcgolabs/dix"
 	"github.com/lyonbrown4d/regimux/internal/admin"
 	"github.com/lyonbrown4d/regimux/internal/api"
@@ -37,11 +36,16 @@ func run(ctx context.Context, configPath string, args ...string) error {
 
 func buildApp(configPath string, args ...string) *dix.App {
 	version := build.VersionFromBuildInfo()
-
-	configModule := config.Module(
-		configx.WithFiles(configPath),
-		configx.WithArgs(args...),
+	configOptions, configOptionsErr := config.BuildLoadOptions(configPath, args...)
+	configPathModule := dix.NewModule("config_path",
+		dix.Providers(dix.ProviderErr0[configPathValidation](func() (configPathValidation, error) {
+			if configOptionsErr != nil {
+				return configPathValidation{}, oops.Wrapf(configOptionsErr, "build config load options")
+			}
+			return configPathValidation{}, nil
+		})),
 	)
+	configModule := config.Module(configOptions...)
 	artifactCacheModule := artifactcache.Module
 	clientFactoryModule := clientfactory.Module
 	observabilityModule := observability.Module
@@ -62,6 +66,8 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux developer dependency cache gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, apiModule),
+		dix.Modules(configPathModule, configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, apiModule),
 	)
 }
+
+type configPathValidation struct{}

@@ -23,6 +23,67 @@ func TestLoadHCLFile(t *testing.T) {
 	assertLoadedHCLConfig(t, cfg)
 }
 
+func TestLoadHCLDirectory(t *testing.T) {
+	dir := t.TempDir()
+	writeTestConfigFile(t, dir, "00-server.hcl", `
+server {
+  listen = "127.0.0.1:1111"
+}
+`)
+	writeTestConfigFile(t, dir, "10-container.hcl", `
+container {
+  split {
+    registry = "https://registry.example.com"
+  }
+}
+`)
+	writeTestConfigFile(t, dir, "20-dist.hcl", `
+dist {
+  assets {
+    registry = "https://downloads.example.com"
+    allow = ["tools/*"]
+  }
+}
+`)
+	writeTestConfigFile(t, dir, "99-server.hcl", `
+server {
+  listen = "127.0.0.1:2222"
+}
+`)
+	writeTestConfigFile(t, dir, "ignored.txt", `
+server {
+  listen = "127.0.0.1:3333"
+}
+`)
+
+	cfg, err := config.Load(context.Background(), dir)
+	if err != nil {
+		t.Fatalf("load hcl config directory: %v", err)
+	}
+	if cfg.Server.Listen != "127.0.0.1:2222" {
+		t.Fatalf("unexpected directory server.listen %q", cfg.Server.Listen)
+	}
+	if cfg.Container["split"].Registry != "https://registry.example.com" {
+		t.Fatalf("unexpected directory container config: %#v", cfg.Container["split"])
+	}
+	if cfg.Dist["assets"].Registry != "https://downloads.example.com" || len(cfg.Dist["assets"].Allow) != 1 {
+		t.Fatalf("unexpected directory dist config: %#v", cfg.Dist["assets"])
+	}
+}
+
+func TestLoadHCLDirectoryRejectsEmptyDirectory(t *testing.T) {
+	if _, err := config.Load(context.Background(), t.TempDir()); err == nil {
+		t.Fatal("expected empty config directory error")
+	}
+}
+
+func writeTestConfigFile(t *testing.T, dir, name, body string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		t.Fatalf("write %s: %v", name, err)
+	}
+}
+
 func testHCLConfig() string {
 	return testHCLServer +
 		testHCLAuth +

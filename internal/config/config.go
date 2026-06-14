@@ -3,6 +3,7 @@ package config
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -67,10 +68,11 @@ func (c *Config) NormalizeAndValidate() error {
 func buildLoadOptions(path string, args ...string) ([]configx.Option, error) {
 	opts := []configx.Option{}
 	if strings.TrimSpace(path) != "" {
-		if err := validateConfigPath(path); err != nil {
+		pathOption, err := configPathOption(path)
+		if err != nil {
 			return nil, err
 		}
-		opts = append(opts, configx.WithFiles(path))
+		opts = append(opts, pathOption)
 	}
 	if len(args) > 0 {
 		opts = append(opts, configx.WithArgs(args...))
@@ -91,7 +93,35 @@ func baseLoadOptions() []configx.Option {
 	}
 }
 
-func validateConfigPath(path string) error {
+// BuildLoadOptions returns configx options for the configured path and command-line overrides.
+func BuildLoadOptions(path string, args ...string) ([]configx.Option, error) {
+	return buildLoadOptions(path, args...)
+}
+
+func configPathOption(path string) (configx.Option, error) {
+	path = strings.TrimSpace(path)
+	info, err := os.Stat(path)
+	if err != nil {
+		return nil, oops.In("config").With("path", path).Wrapf(err, "stat config path")
+	}
+	if !info.IsDir() {
+		if validateErr := validateConfigFile(path); validateErr != nil {
+			return nil, validateErr
+		}
+		return configx.WithFiles(path), nil
+	}
+	pattern := filepath.Join(path, "*.hcl")
+	matches, err := filepath.Glob(pattern)
+	if err != nil {
+		return nil, oops.In("config").With("path", path).Wrapf(err, "build config directory glob")
+	}
+	if len(matches) == 0 {
+		return nil, oops.In("config").With("path", path).Errorf("config directory contains no .hcl files: %s", path)
+	}
+	return configx.WithFileGlobs(pattern), nil
+}
+
+func validateConfigFile(path string) error {
 	if strings.ToLower(filepath.Ext(strings.TrimSpace(path))) != ".hcl" {
 		return oops.In("config").With("path", path).Errorf("config file must use .hcl extension: %s", path)
 	}

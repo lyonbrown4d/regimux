@@ -12,6 +12,19 @@ Repository examples:
 - [configs/regimux.hcl](../../configs/regimux.hcl): practical default config.
 - [configs/regimux.full.hcl](../../configs/regimux.full.hcl): full reference config.
 
+`--config` accepts either one `.hcl` file or a directory. When a directory is provided, RegiMux loads all `.hcl` files directly under that directory in lexical filename order. This keeps single-file deployments simple while allowing larger installs to split configuration by concern, for example:
+
+```text
+/etc/regimux/
+  00-server.hcl
+  10-store.hcl
+  20-container.hcl
+  30-dist.hcl
+  90-policy.hcl
+```
+
+Later files can override earlier keys, so numeric prefixes are recommended when order matters. Subdirectories are ignored.
+
 Minimal config:
 
 ```hcl
@@ -261,6 +274,12 @@ Unknown Cobra flags are passed to `configx` as config overrides:
 
 ```bash
 regimuxd --config /etc/regimux/regimux.hcl --server.listen=:8080 --log.level=debug
+```
+
+Directory configs use the same flag:
+
+```bash
+regimuxd --config /etc/regimux/conf.d --server.listen=:8080 --log.level=debug
 ```
 
 `log.debug = true` and `REGIMUX_LOG__DEBUG=true` are accepted as compatibility aliases for setting debug logging, but `log.level = "debug"` is the preferred form.
