@@ -21,6 +21,7 @@ const (
 type Dependencies struct {
 	Metadata meta.Store
 	Objects  object.Store
+	Fills    *FillTracker
 	Logger   *slog.Logger
 	Now      func() time.Time
 }
@@ -28,6 +29,7 @@ type Dependencies struct {
 type Store struct {
 	metadata meta.Store
 	objects  object.Store
+	fills    *FillTracker
 	logger   *slog.Logger
 	now      func() time.Time
 }

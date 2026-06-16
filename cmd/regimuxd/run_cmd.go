@@ -10,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/auth"
 	"github.com/lyonbrown4d/regimux/internal/build"
+	cachemodule "github.com/lyonbrown4d/regimux/internal/cache"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
@@ -46,6 +47,7 @@ func buildApp(configPath string, args ...string) *dix.App {
 		})),
 	)
 	configModule := config.Module(configOptions...)
+	cacheModule := cachemodule.Module
 	artifactCacheModule := artifactcache.Module
 	clientFactoryModule := clientfactory.Module
 	observabilityModule := observability.Module
@@ -66,7 +68,7 @@ func buildApp(configPath string, args ...string) *dix.App {
 		dix.AppDescription("RegiMux developer dependency cache gateway"),
 		dix.RunStopTimeout(30*time.Second),
 		dix.RecentEvents(128),
-		dix.Modules(configPathModule, configModule, buildModule, clientFactoryModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, apiModule),
+		dix.Modules(configPathModule, configModule, buildModule, clientFactoryModule, cacheModule, artifactCacheModule, observabilityModule, authModule, eventsModule, workerModule, probeHealthModule, storeModule, ecosystemModule, ecosystemsModule, schedulerModule, adminModule, apiModule),
 	)
 }
 

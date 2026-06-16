@@ -21,12 +21,38 @@ func New(deps Dependencies) *Store {
 	if now == nil {
 		now = func() time.Time { return time.Now().UTC() }
 	}
+	fills := deps.Fills
+	if fills == nil {
+		fills = NewFillTracker()
+	}
 	return &Store{
 		metadata: deps.Metadata,
 		objects:  deps.Objects,
+		fills:    fills,
 		logger:   logger.With("component", "artifact-cache"),
 		now:      now,
 	}
+}
+
+func (s *Store) Metadata() meta.Store {
+	if s == nil {
+		return nil
+	}
+	return s.metadata
+}
+
+func (s *Store) Objects() object.Store {
+	if s == nil {
+		return nil
+	}
+	return s.objects
+}
+
+func (s *Store) FillTracker() *FillTracker {
+	if s == nil {
+		return nil
+	}
+	return s.fills
 }
 
 func (s *Store) Get(ctx context.Context, key Key) (Entry, bool, error) {

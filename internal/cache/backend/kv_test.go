@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -62,8 +63,50 @@ func TestKVBackendCopiesValues(t *testing.T) {
 	}
 }
 
+func TestKVBackendAcquiresPrefixedLease(t *testing.T) {
+	ctx := context.Background()
+	client := &fakeKVClient{values: map[string][]byte{}}
+	cache := backend.NewKV(client, "regimux")
+
+	lease, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
+	if err != nil {
+		t.Fatalf("acquire first lease: %v", err)
+	}
+	if !ok || lease == nil {
+		t.Fatal("expected first lease acquisition to succeed")
+	}
+	if _, held := client.locks["regimux:artifact-fill"]; !held {
+		t.Fatal("expected prefixed lock key in kv client")
+	}
+
+	second, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
+	if err != nil {
+		t.Fatalf("acquire second lease: %v", err)
+	}
+	if ok || second != nil {
+		t.Fatal("expected second lease acquisition to be denied while first is held")
+	}
+
+	if err := lease.Extend(ctx, time.Minute); err != nil {
+		t.Fatalf("extend lease: %v", err)
+	}
+	if err := lease.Release(ctx); err != nil {
+		t.Fatalf("release lease: %v", err)
+	}
+
+	third, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
+	if err != nil {
+		t.Fatalf("acquire third lease: %v", err)
+	}
+	if !ok || third == nil {
+		t.Fatal("expected lease acquisition to succeed after release")
+	}
+}
+
 type fakeKVClient struct {
+	mu     sync.Mutex
 	values map[string][]byte
+	locks  map[string]string
 }
 
 func (c *fakeKVClient) Get(_ context.Context, key string) ([]byte, error) {
@@ -89,4 +132,36 @@ func (c *fakeKVClient) Delete(_ context.Context, key string) error {
 
 func (c *fakeKVClient) Close() error {
 	return nil
+}
+
+func (c *fakeKVClient) Acquire(_ context.Context, key string, token string, _ time.Duration) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locks == nil {
+		c.locks = map[string]string{}
+	}
+	if _, ok := c.locks[key]; ok {
+		return false, nil
+	}
+	c.locks[key] = token
+	return true, nil
+}
+
+func (c *fakeKVClient) Release(_ context.Context, key string, token string) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locks == nil || c.locks[key] != token {
+		return false, nil
+	}
+	delete(c.locks, key)
+	return true, nil
+}
+
+func (c *fakeKVClient) Extend(_ context.Context, key string, token string, _ time.Duration) (bool, error) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.locks == nil || c.locks[key] != token {
+		return false, nil
+	}
+	return true, nil
 }

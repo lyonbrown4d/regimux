@@ -39,6 +39,10 @@ func NewService(deps ServiceDependencies) *Service {
 			Now:      now,
 		})
 	}
+	fills := cache.FillTracker()
+	if fills == nil {
+		fills = artifactcache.NewFillTracker()
+	}
 	return &Service{
 		cfg:       deps.Config,
 		cache:     cache,
@@ -47,7 +51,7 @@ func NewService(deps ServiceDependencies) *Service {
 		factory:   factory,
 		logger:    logger.With("component", "pypi"),
 		publicURL: strings.TrimRight(deps.Config.Server.PublicURL, "/"),
-		fills:     artifactcache.NewFillTracker(),
+		fills:     fills,
 		now:       now,
 		events:    deps.Events,
 	}
@@ -86,7 +90,23 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	}
 
 	if shouldCoalesceFill(req, mode) {
-		return s.getFromUpstreamWithFill(ctx, req, requestRoute, upstreamCfg, mode, cached, cachedOK)
+		return artifactcache.CoalesceFill(ctx, s.fills, artifactKey(requestRoute), func() (*Response, bool, error) {
+			cached, cachedOK, err := s.cached(ctx, requestRoute)
+			if err != nil {
+				return nil, true, err
+			}
+			resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
+			if cachedHit || cacheErr != nil {
+				return resp, true, cacheErr
+			}
+			return nil, false, nil
+		}, func() (*Response, error) {
+			fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
+			if err != nil {
+				return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
+			}
+			return s.responseFromFetched(ctx, req, requestRoute, fetched)
+		})
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
@@ -211,49 +231,4 @@ func routeTTL(requestRoute Route, simpleTTL time.Duration) time.Duration {
 
 func shouldCoalesceFill(req Request, mode requestMode) bool {
 	return mode == requestModeClient && methodOrGet(req.Method) == http.MethodGet
-}
-
-func (s *Service) getFromUpstreamWithFill(
-	ctx context.Context,
-	req Request,
-	requestRoute Route,
-	upstreamCfg config.UpstreamConfig,
-	mode requestMode,
-	cached storedResponse,
-	cachedOK bool,
-) (*Response, error) {
-	fillKey := artifactKey(requestRoute)
-	for {
-		fill, owner := s.fills.Begin(fillKey)
-		if !owner {
-			if resp, ok, err := s.waitForFill(ctx, req, requestRoute, fill, mode); ok || err != nil {
-				return resp, err
-			}
-			continue
-		}
-
-		fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
-		if err != nil {
-			s.fills.Finish(fillKey, fill, err)
-			return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
-		}
-		resp, err := s.responseFromFetched(ctx, req, requestRoute, fetched)
-		s.fills.Finish(fillKey, fill, err)
-		return resp, err
-	}
-}
-
-func (s *Service) waitForFill(ctx context.Context, req Request, requestRoute Route, fill *artifactcache.Fill, mode requestMode) (*Response, bool, error) {
-	if err := fill.Wait(ctx); err != nil && ctx.Err() != nil {
-		return nil, true, wrapError(ctx.Err(), "wait for pypi artifact cache fill")
-	}
-	cached, cachedOK, err := s.cached(ctx, requestRoute)
-	if err != nil {
-		return nil, true, err
-	}
-	resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
-	if cachedHit || cacheErr != nil {
-		return resp, true, cacheErr
-	}
-	return nil, false, nil
 }
