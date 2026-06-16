@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -72,6 +74,93 @@ func TestServiceRewritesSimpleLinksAndCaches(t *testing.T) {
 	}
 	if requests != 1 {
 		t.Fatalf("upstream requests = %d, want 1", requests)
+	}
+}
+
+func TestServiceCoalescesConcurrentSimpleIndexMiss(t *testing.T) {
+	ctx := context.Background()
+	var requests atomic.Int64
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(started)
+		}
+		if r.URL.Path != "/simple/demo/" {
+			t.Fatalf("upstream path = %s, want /simple/demo/", r.URL.Path)
+		}
+		<-release
+		w.Header().Set("Content-Type", "text/html")
+		writeResponse(t, w, "<html><body>demo</body></html>")
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newTestService(ctx, t, upstream.URL, nil)
+	const clients = 8
+	type getResult struct {
+		resp *pypi.Response
+		err  error
+	}
+	start := make(chan struct{})
+	results := make(chan getResult, clients)
+	var ready sync.WaitGroup
+	ready.Add(clients)
+	for range clients {
+		go func() {
+			ready.Done()
+			<-start
+			resp, err := service.Get(ctx, pypi.Request{
+				Alias: "pypi",
+				Tail:  "simple/demo/",
+			})
+			results <- getResult{resp: resp, err: err}
+		}()
+	}
+	ready.Wait()
+	close(start)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("upstream requests while first fill is blocked = %d, want 1", got)
+	}
+	releaseOnce.Do(func() { close(release) })
+
+	misses := 0
+	hits := 0
+	for range clients {
+		var result getResult
+		select {
+		case result = <-results:
+			requireNoError(t, "concurrent simple index get", result.err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("concurrent simple index get did not return")
+		}
+		resp := result.resp
+		if got := readResponse(t, resp); got != "<html><body>demo</body></html>" {
+			t.Fatalf("body = %q", got)
+		}
+		switch resp.Cache {
+		case cacheMiss:
+			misses++
+		case cacheHit:
+			hits++
+		default:
+			t.Fatalf("cache = %q, want hit or miss", resp.Cache)
+		}
+	}
+	if misses != 1 || hits != clients-1 {
+		t.Fatalf("cache statuses: misses=%d hits=%d, want 1 miss and %d hits", misses, hits, clients-1)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("upstream requests = %d, want 1", got)
 	}
 }
 

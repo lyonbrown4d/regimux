@@ -5,7 +5,10 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
@@ -68,6 +71,93 @@ func TestServiceCachesReleaseArtifactByPath(t *testing.T) {
 	}
 	if !tag.ExpiresAt.IsZero() {
 		t.Fatalf("release artifact expires_at = %s, want zero", tag.ExpiresAt)
+	}
+}
+
+func TestServiceCoalescesConcurrentReleaseArtifactMiss(t *testing.T) {
+	ctx := context.Background()
+	var requests atomic.Int64
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(started)
+		}
+		if r.URL.Path != "/com/acme/demo/1.2.3/demo-1.2.3.jar" {
+			t.Fatalf("upstream path = %s", r.URL.Path)
+		}
+		<-release
+		w.Header().Set("Content-Type", "application/java-archive")
+		writeResponse(t, w, "jar bytes")
+	}))
+	t.Cleanup(upstream.Close)
+
+	service, _ := newTestService(ctx, t, map[string]config.DependencyUpstreamConfig{
+		"central": {Registry: upstream.URL},
+	})
+	const clients = 8
+	type getResult struct {
+		resp *maven.Response
+		err  error
+	}
+	start := make(chan struct{})
+	results := make(chan getResult, clients)
+	var ready sync.WaitGroup
+	ready.Add(clients)
+	for range clients {
+		go func() {
+			ready.Done()
+			<-start
+			resp, err := service.Get(ctx, maven.Request{
+				Alias: "central",
+				Tail:  "com/acme/demo/1.2.3/demo-1.2.3.jar",
+			})
+			results <- getResult{resp: resp, err: err}
+		}()
+	}
+	ready.Wait()
+	close(start)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("upstream requests while first fill is blocked = %d, want 1", got)
+	}
+	releaseOnce.Do(func() { close(release) })
+
+	misses := 0
+	hits := 0
+	for range clients {
+		var result getResult
+		select {
+		case result = <-results:
+			requireNoError(t, "concurrent release get", result.err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("concurrent release get did not return")
+		}
+		resp := result.resp
+		assertBody(t, resp, "jar bytes")
+		switch resp.Cache {
+		case cacheMiss:
+			misses++
+		case cacheHit:
+			hits++
+		default:
+			t.Fatalf("cache = %q, want hit or miss", resp.Cache)
+		}
+	}
+	if misses != 1 || hits != clients-1 {
+		t.Fatalf("cache statuses: misses=%d hits=%d, want 1 miss and %d hits", misses, hits, clients-1)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("upstream requests = %d, want 1", got)
 	}
 }
 

@@ -47,6 +47,7 @@ type Service struct {
 	factory   *clientfactory.Factory
 	logger    *slog.Logger
 	publicURL string
+	fills     *artifactcache.FillTracker
 	now       func() time.Time
 	events    events.Bus
 }

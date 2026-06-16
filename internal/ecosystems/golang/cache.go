@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
@@ -76,4 +77,12 @@ func (s *Service) openCachedObject(ctx context.Context, metadata cachedMetadata)
 		body:    reader,
 		expired: expiredAt(metadata.tag.ExpiresAt, now) || metadata.manifest.Expired(now),
 	}, true, nil
+}
+
+func artifactKey(requestRoute route) artifactcache.Key {
+	return artifactcache.Key{
+		Alias:      requestRoute.Alias,
+		Repository: requestRoute.Module,
+		Reference:  requestRoute.Reference,
+	}
 }

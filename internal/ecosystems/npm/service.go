@@ -50,6 +50,7 @@ func NewService(deps ServiceDependencies) *Service {
 		logger:      logger.With("component", "npm"),
 		publicURL:   strings.TrimRight(deps.Config.Server.PublicURL, "/"),
 		metadataTTL: deps.MetadataTTL,
+		fills:       artifactcache.NewFillTracker(),
 		now:         now,
 		events:      deps.Events,
 	}
@@ -107,6 +108,10 @@ func (s *Service) getFromUpstream(
 	resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
 	if cachedHit || cacheErr != nil {
 		return resp, cacheErr
+	}
+
+	if shouldCoalesceFill(req, requestRoute, mode) {
+		return s.getFromUpstreamWithFill(ctx, req, requestRoute, upstreamCfg, mode, cached, cachedOK)
 	}
 
 	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
@@ -291,4 +296,55 @@ func shouldPassThrough(req Request, status int) bool {
 	return status < http.StatusOK ||
 		status >= http.StatusMultipleChoices ||
 		requestMethod(req.Method) == http.MethodHead
+}
+
+func shouldCoalesceFill(req Request, requestRoute route, mode requestMode) bool {
+	return mode == requestModeClient &&
+		requestMethod(req.Method) == http.MethodGet &&
+		cacheable(requestRoute)
+}
+
+func (s *Service) getFromUpstreamWithFill(
+	ctx context.Context,
+	req Request,
+	requestRoute route,
+	upstreamCfg config.UpstreamConfig,
+	mode requestMode,
+	cached storedResponse,
+	cachedOK bool,
+) (*Response, error) {
+	fillKey := artifactKey(requestRoute)
+	for {
+		fill, owner := s.fills.Begin(fillKey)
+		if !owner {
+			if resp, ok, err := s.waitForFill(ctx, req, requestRoute, fill, mode); ok || err != nil {
+				return resp, err
+			}
+			continue
+		}
+
+		fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
+		if err != nil {
+			s.fills.Finish(fillKey, fill, err)
+			return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
+		}
+		resp, err := s.responseFromFetched(ctx, req, requestRoute, fetched)
+		s.fills.Finish(fillKey, fill, err)
+		return resp, err
+	}
+}
+
+func (s *Service) waitForFill(ctx context.Context, req Request, requestRoute route, fill *artifactcache.Fill, mode requestMode) (*Response, bool, error) {
+	if err := fill.Wait(ctx); err != nil && ctx.Err() != nil {
+		return nil, true, wrapError(ctx.Err(), "wait for npm artifact cache fill")
+	}
+	cached, cachedOK, err := s.cached(ctx, requestRoute)
+	if err != nil {
+		return nil, true, err
+	}
+	resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
+	if cachedHit || cacheErr != nil {
+		return resp, true, cacheErr
+	}
+	return nil, false, nil
 }

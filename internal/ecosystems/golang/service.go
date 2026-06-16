@@ -44,6 +44,7 @@ type Service struct {
 	objects  object.Store
 	factory  *clientfactory.Factory
 	logger   *slog.Logger
+	fills    *artifactcache.FillTracker
 	events   events.Bus
 }
 
@@ -109,6 +110,7 @@ func NewService(deps ServiceDependencies) *Service {
 		objects:  deps.Objects,
 		factory:  factory,
 		logger:   logger.With("component", "go"),
+		fills:    artifactcache.NewFillTracker(),
 		events:   deps.Events,
 	}
 }
@@ -248,6 +250,10 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return s.responseFromStored(req, cached, cacheStale)
 	}
 
+	if shouldCoalesceFill(req, mode) {
+		return s.getFromUpstreamWithFill(ctx, req, requestRoute, upstreamCfg, upstreamAlias, mode, cached, cachedOK)
+	}
+
 	fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
 	if err != nil {
 		return s.responseFromFetchError(req, cached, cachedOK, err, mode)
@@ -256,4 +262,63 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return s.responseFromUpstream(req, fetched), nil
 	}
 	return s.storeFetchedResponse(ctx, req, requestRoute, fetched)
+}
+
+func shouldCoalesceFill(req Request, mode requestMode) bool {
+	return mode == requestModeClient && methodOr(req.Method, http.MethodGet) == http.MethodGet
+}
+
+func (s *Service) getFromUpstreamWithFill(
+	ctx context.Context,
+	req Request,
+	requestRoute route,
+	upstreamCfg config.UpstreamConfig,
+	upstreamAlias string,
+	mode requestMode,
+	cached storedResponse,
+	cachedOK bool,
+) (*Response, error) {
+	fillKey := artifactKey(requestRoute)
+	for {
+		fill, owner := s.fills.Begin(fillKey)
+		if !owner {
+			if resp, ok, err := s.waitForFill(ctx, req, requestRoute, fill, mode); ok || err != nil {
+				return resp, err
+			}
+			continue
+		}
+
+		fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
+		if err != nil {
+			s.fills.Finish(fillKey, fill, err)
+			return s.responseFromFetchError(req, cached, cachedOK, err, mode)
+		}
+		if shouldPassThrough(req, requestRoute, fetched.status) {
+			resp := s.responseFromUpstream(req, fetched)
+			s.fills.Finish(fillKey, fill, nil)
+			return resp, nil
+		}
+		resp, err := s.storeFetchedResponse(ctx, req, requestRoute, fetched)
+		s.fills.Finish(fillKey, fill, err)
+		return resp, err
+	}
+}
+
+func (s *Service) waitForFill(ctx context.Context, req Request, requestRoute route, fill *artifactcache.Fill, mode requestMode) (*Response, bool, error) {
+	if err := fill.Wait(ctx); err != nil && ctx.Err() != nil {
+		return nil, true, wrapError(ctx.Err(), "wait for go proxy artifact cache fill")
+	}
+	cached, cachedOK, err := s.cached(ctx, requestRoute)
+	if err != nil {
+		return nil, true, err
+	}
+	if mode != requestModeRefresh && cacheFresh(cached, cachedOK) {
+		resp, err := s.responseFromStored(req, cached, cacheHit)
+		return resp, true, err
+	}
+	if mode != requestModeRefresh && cachedOK && cached.expired {
+		resp, err := s.responseFromStored(req, cached, cacheStale)
+		return resp, true, err
+	}
+	return nil, false, nil
 }

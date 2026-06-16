@@ -45,6 +45,7 @@ type Service struct {
 	client   *http.Client
 	factory  *clientfactory.Factory
 	logger   *slog.Logger
+	fills    *artifactcache.FillTracker
 	now      func() time.Time
 }
 

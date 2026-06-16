@@ -7,6 +7,8 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -71,6 +73,93 @@ func TestServiceRewritesMetadataTarballsAndCaches(t *testing.T) {
 	assertTarball(t, secondDoc, "1.0.0", "https://cache.example.test/npm/npmjs/left-pad/-/left-pad-1.0.0.tgz")
 	if requests != 1 {
 		t.Fatalf("upstream requests = %d, want 1", requests)
+	}
+}
+
+func TestServiceCoalescesConcurrentMetadataMiss(t *testing.T) {
+	ctx := context.Background()
+	var requests atomic.Int64
+	started := make(chan struct{})
+	release := make(chan struct{})
+	var releaseOnce sync.Once
+	defer releaseOnce.Do(func() { close(release) })
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if requests.Add(1) == 1 {
+			close(started)
+		}
+		if r.URL.Path != "/left-pad" {
+			t.Fatalf("upstream path = %s, want /left-pad", r.URL.Path)
+		}
+		<-release
+		w.Header().Set("Content-Type", "application/json")
+		writeResponse(t, w, `{"name":"left-pad","versions":{}}`)
+	}))
+	t.Cleanup(upstream.Close)
+
+	service := newTestService(ctx, t, upstream.URL, 5*time.Minute)
+	const clients = 8
+	type getResult struct {
+		resp *npm.Response
+		err  error
+	}
+	start := make(chan struct{})
+	results := make(chan getResult, clients)
+	var ready sync.WaitGroup
+	ready.Add(clients)
+	for range clients {
+		go func() {
+			ready.Done()
+			<-start
+			resp, err := service.Get(ctx, npm.Request{
+				Alias: "npmjs",
+				Tail:  "left-pad",
+			})
+			results <- getResult{resp: resp, err: err}
+		}()
+	}
+	ready.Wait()
+	close(start)
+
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("upstream request did not start")
+	}
+	time.Sleep(100 * time.Millisecond)
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("upstream requests while first fill is blocked = %d, want 1", got)
+	}
+	releaseOnce.Do(func() { close(release) })
+
+	misses := 0
+	hits := 0
+	for range clients {
+		var result getResult
+		select {
+		case result = <-results:
+			requireNoError(t, "concurrent metadata get", result.err)
+		case <-time.After(2 * time.Second):
+			t.Fatal("concurrent metadata get did not return")
+		}
+		resp := result.resp
+		if got := readBody(t, resp); got != `{"name":"left-pad","versions":{}}` {
+			t.Fatalf("body = %q", got)
+		}
+		switch resp.Cache {
+		case cacheMiss:
+			misses++
+		case cacheHit:
+			hits++
+		default:
+			t.Fatalf("cache = %q, want hit or miss", resp.Cache)
+		}
+	}
+	if misses != 1 || hits != clients-1 {
+		t.Fatalf("cache statuses: misses=%d hits=%d, want 1 miss and %d hits", misses, hits, clients-1)
+	}
+	if got := requests.Load(); got != 1 {
+		t.Fatalf("upstream requests = %d, want 1", got)
 	}
 }
 

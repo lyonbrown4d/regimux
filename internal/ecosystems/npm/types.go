@@ -54,6 +54,7 @@ type Service struct {
 	logger      *slog.Logger
 	publicURL   string
 	metadataTTL time.Duration
+	fills       *artifactcache.FillTracker
 	now         func() time.Time
 	events      events.Bus
 }
