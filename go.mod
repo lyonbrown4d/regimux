@@ -22,9 +22,9 @@ require (
 	github.com/arcgolabs/eventx v0.1.2
 	github.com/arcgolabs/httpx v0.1.8
 	github.com/arcgolabs/httpx/adapter/fiber v0.1.8
-	github.com/arcgolabs/kvx v0.3.0
-	github.com/arcgolabs/kvx/adapter/redis v0.2.1
-	github.com/arcgolabs/kvx/adapter/valkey v0.2.1
+	github.com/arcgolabs/kvx v0.3.1
+	github.com/arcgolabs/kvx/adapter/redis v0.2.2
+	github.com/arcgolabs/kvx/adapter/valkey v0.2.2
 	github.com/arcgolabs/logx v0.1.3
 	github.com/arcgolabs/mapper v0.2.0
 	github.com/arcgolabs/observabilityx v0.4.0
@@ -70,7 +70,7 @@ require (
 	golang.org/x/crypto v0.53.0
 	modernc.org/sqlite v1.52.0
 	oras.land/oras-go/v2 v2.6.1
-	resty.dev/v3 v3.0.0-rc.1
+	resty.dev/v3 v3.0.0-rc.2
 )
 
 require (
@@ -193,7 +193,7 @@ require (
 	google.golang.org/protobuf v1.36.11 // indirect
 	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
-	modernc.org/libc v1.73.1 // indirect
+	modernc.org/libc v1.73.4 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
 	modernc.org/memory v1.11.0 // indirect
 )

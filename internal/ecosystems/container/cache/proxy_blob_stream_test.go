@@ -102,6 +102,74 @@ func TestBlobProxyHeadMissBypassesStoreWhenStreamAndCacheEnabled(t *testing.T) {
 	assertObjectPresence(ctx, t, objects, digest, false)
 }
 
+func TestBlobProxyConcurrentFullMissWaitsForStreamedFill(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	reader := newBlockingBlobReader(body)
+	client := &fakeRegistryClient{blobBody: body, blobReader: reader, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	proxy := newTestProxy(
+		client,
+		metadata,
+		objects,
+		nil,
+		config.Config{
+			Cache: config.CacheConfig{
+				Blob: config.BlobCacheConfig{
+					StreamAndCache: true,
+				},
+			},
+		},
+	)
+
+	first, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first blob get: %v", err)
+	}
+	if first.Cache != cache.CacheMiss {
+		t.Fatalf("first cache status = %s, want miss", first.Cache)
+	}
+
+	secondCh := make(chan blobGetResult, 1)
+	go func() {
+		result, getErr := proxy.Blobs().Get(ctx, cache.BlobRequest{
+			UpstreamAlias: "hub",
+			Repo:          "library/alpine",
+			Digest:        digest,
+			Method:        http.MethodGet,
+		})
+		secondCh <- blobGetResult{result: result, err: getErr}
+	}()
+
+	select {
+	case second := <-secondCh:
+		t.Fatalf("second blob get returned before streamed fill completed: result=%#v err=%v", second.result, second.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	reader.Release()
+	assertFullBlobMiss(t, first, body)
+	waitObjectStored(ctx, t, objects, digest)
+
+	var second blobGetResult
+	select {
+	case second = <-secondCh:
+	case <-time.After(time.Second):
+		t.Fatal("second blob get did not resume after streamed fill completed")
+	}
+	if second.err != nil {
+		t.Fatalf("second blob get: %v", second.err)
+	}
+	assertFullBlobHit(t, second.result, body)
+	assertBlobRequestCounters(t, client, 1, 0)
+}
+
 func TestBlobProxySkipsVerifyForRecentSharedBlobWithinTTL(t *testing.T) {
 	ctx := context.Background()
 	body := []byte("0123456789")

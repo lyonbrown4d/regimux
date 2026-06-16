@@ -39,6 +39,7 @@ type Proxy struct {
 	logger               *slog.Logger
 	manifestGroup        singleflightx.Group[string, *CachedManifest]
 	blobGroup            singleflightx.Group[string, struct{}]
+	blobFills            *blobFillTracker
 }
 
 type ProxyDependencies struct {
@@ -72,6 +73,7 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 			maxSizeBytes: deps.CacheConfig.Blob.SmallCache.MaxSizeBytes,
 			ttl:          deps.CacheConfig.Blob.SmallCache.TTL,
 		},
+		blobFills: newBlobFillTracker(),
 	}
 	if deps.CacheConfig.Manifest.TagTTL > 0 {
 		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
@@ -133,6 +135,7 @@ func (p *Proxy) Blobs() BlobService {
 		verifyMembership: p.blobVerifyTTL,
 		smallCache:       p.blobSmallCache,
 		group:            &p.blobGroup,
+		fills:            p.blobFills,
 	}
 }
 
@@ -178,6 +181,7 @@ type blobProxy struct {
 	verifyMembership time.Duration
 	smallCache       smallBlobCacheConfig
 	group            *singleflightx.Group[string, struct{}]
+	fills            *blobFillTracker
 }
 
 type tagProxy struct {

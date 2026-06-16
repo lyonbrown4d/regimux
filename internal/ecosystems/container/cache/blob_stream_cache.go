@@ -14,17 +14,22 @@ func (p blobProxy) streamBlobToCache(
 	req BlobRequest,
 	resp *upstream.BlobResponse,
 	mediaType string,
+	onDone func(error),
 ) io.ReadCloser {
 	reader, writer := io.Pipe()
 	done := make(chan error, 1)
 	go func() {
-		done <- p.storeStreamedBlob(context.WithoutCancel(ctx), req, streamedBlob{
+		err := p.storeStreamedBlob(context.WithoutCancel(ctx), req, streamedBlob{
 			reader:    reader,
 			digest:    resp.Digest,
 			size:      resp.Size,
 			headers:   resp.Headers.Clone(),
 			mediaType: mediaType,
 		})
+		if onDone != nil {
+			onDone(err)
+		}
+		done <- err
 	}()
 	return newBlobTeeReadCloser(resp.Body, writer, done, func(err error) {
 		p.logBlobStreamCacheError(ctx, req, "write streamed blob to cache pipe failed", err)

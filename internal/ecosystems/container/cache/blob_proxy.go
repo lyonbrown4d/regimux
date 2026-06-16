@@ -52,7 +52,7 @@ func (p blobProxy) shouldStreamAndCache(req BlobRequest) bool {
 }
 
 func (p blobProxy) fetchStored(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
-	key := "blob:" + req.Digest
+	key := blobFillCacheKey(req.Digest)
 	if p.group == nil {
 		return p.fetchAndOpenStored(ctx, req)
 	}
@@ -79,6 +79,38 @@ func (p blobProxy) fetchRangeStream(ctx context.Context, req BlobRequest) (*Blob
 }
 
 func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
+	key := blobFillCacheKey(req.Digest)
+	for {
+		fill, owner := p.fills.begin(key)
+		if owner {
+			return p.fetchFullStreamAndStoreOwner(ctx, req, key, fill)
+		}
+		result, retry, err := p.waitForStreamedFullBlob(ctx, req, fill)
+		if err != nil || !retry {
+			return result, err
+		}
+	}
+}
+
+func (p blobProxy) waitForStreamedFullBlob(ctx context.Context, req BlobRequest, fill *blobFill) (*BlobReadResult, bool, error) {
+	if err := fill.wait(ctx); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return nil, false, wrapError(ctxErr, "wait for streamed blob cache fill")
+		}
+		p.logBlobStreamCacheError(ctx, req, "streamed blob cache fill failed; retrying blob fetch", err)
+		return nil, true, nil
+	}
+	if cached, ok, err := p.lookupSmallBlobCache(ctx, req); err != nil || ok {
+		return cached, false, err
+	}
+	if cached, ok, err := p.lookup(ctx, req); err != nil || ok {
+		return cached, false, err
+	}
+	p.logBlobLookupSkip(ctx, req, "streamed_blob_fill_completed_without_object")
+	return nil, true, nil
+}
+
+func (p blobProxy) fetchFullStreamAndStoreOwner(ctx context.Context, req BlobRequest, key string, fill *blobFill) (*BlobReadResult, error) {
 	resp, err := p.client.GetBlob(ctx, upstream.GetBlobRequest{
 		UpstreamAlias: req.UpstreamAlias,
 		Repo:          req.Repo,
@@ -86,9 +118,11 @@ func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest)
 		Method:        req.Method,
 	})
 	if err != nil {
+		p.fills.finish(key, fill, err)
 		return nil, wrapError(err, "stream blob from upstream")
 	}
 	if err := validateStoredBlobDigest(req.Digest, resp.Digest); err != nil {
+		p.fills.finish(key, fill, err)
 		if closeErr := closeHTTPBody(resp.Body, "blob stream response body"); closeErr != nil {
 			return nil, joinError("close blob stream after digest mismatch", err, closeErr)
 		}
@@ -96,7 +130,9 @@ func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest)
 	}
 
 	mediaType := contentTypeFromHeader(resp.Headers)
-	reader := p.streamBlobToCache(ctx, req, resp, mediaType)
+	reader := p.streamBlobToCache(ctx, req, resp, mediaType, func(err error) {
+		p.fills.finish(key, fill, err)
+	})
 	p.logBlobCacheHit(ctx, req, "stream_and_cache_full")
 	return &BlobReadResult{
 		Reader:  reader,
@@ -106,6 +142,10 @@ func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest)
 		Headers: resp.Headers,
 		Cache:   CacheMiss,
 	}, nil
+}
+
+func blobFillCacheKey(digest string) string {
+	return "blob:" + digest
 }
 
 func (p blobProxy) fetchAndOpenStored(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
@@ -124,7 +164,32 @@ func (p blobProxy) ensureStored(ctx context.Context, req BlobRequest) error {
 	}); err != nil || ok {
 		return err
 	}
+	if err := p.waitForOngoingStreamedFill(ctx, req); err != nil {
+		return err
+	}
+	if _, ok, err := p.lookup(ctx, BlobRequest{
+		UpstreamAlias: req.UpstreamAlias,
+		Repo:          req.Repo,
+		Digest:        req.Digest,
+		Method:        http.MethodHead,
+	}); err != nil || ok {
+		return err
+	}
 	return p.fetchAndStore(ctx, req)
+}
+
+func (p blobProxy) waitForOngoingStreamedFill(ctx context.Context, req BlobRequest) error {
+	fill, ok := p.fills.current(blobFillCacheKey(req.Digest))
+	if !ok {
+		return nil
+	}
+	if err := fill.wait(ctx); err != nil {
+		if ctxErr := ctx.Err(); ctxErr != nil {
+			return wrapError(ctxErr, "wait for streamed blob cache fill")
+		}
+		p.logBlobStreamCacheError(ctx, req, "streamed blob cache fill failed; falling back to direct blob storage", err)
+	}
+	return nil
 }
 
 func (p blobProxy) fetchPassthrough(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
