@@ -169,7 +169,7 @@ container {
 
 `cache.blob.stream_and_cache` is enabled by default. Full blob misses stream back to Docker while the same bytes are written into object storage; the cache and metadata are committed only after the client completes the blob stream. HEAD requests do not store blob bytes. Range misses fill the full blob into object storage first, then serve the requested range from the local object.
 
-Admin `Committed Blob Bytes (metadata)` is derived from committed blob metadata, not from a live scan of `store.object` or from bytes merely passing through the proxy. `cache.backend` is a KV cache backend and is separate from the object store configured by `store.object`.
+Admin `Committed Blob Bytes (metadata)` is derived from committed blob metadata, not from a live scan of `store.object` or from bytes merely passing through the proxy. `cache.backend` is a KV cache backend and is separate from the object store configured by `store.object`. When Redis or Valkey is configured, the same KV backend is also used for scheduler distributed locks, endpoint health hot state, and cross-replica cache-fill leases; large object bytes still go to `store.object`.
 
 ## Dependency Policy
 

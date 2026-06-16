@@ -9,7 +9,7 @@ Run RegiMux close to your developers, CI runners, or build cluster, then point d
 - Docker/containerd uses the Registry-compatible `/v2/{containerAlias}/...` path.
 - Go uses `GOPROXY=http://<regimux>/go/{goAlias}`.
 - npm, PyPI, and Maven use their ecosystem proxy paths under `/npm/{npmAlias}`, `/pypi/{pypiAlias}`, and `/maven/{mavenAlias}`.
-- Binary distributions, such as Gradle wrapper zips or CLI installers, use `/dist/{distAlias}/{path}`.
+- Binary distributions, such as Gradle wrapper zips or CLI installers, use the dist ecosystem proxy path `/dist/{distAlias}/{path}`.
 
 RegiMux is read-only. It proxies dependency reads, caches immutable artifacts, keeps metadata for cache accounting and cleanup, and can warm or refresh artifacts in the background. It is not a package publishing endpoint and it is not a push registry.
 
@@ -137,7 +137,7 @@ GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.zip
 GET /go/{goAlias}/github.com/pkg/errors/@latest
 ```
 
-The selected Go alias is resolved only within the `go` block. Container, npm, PyPI, and Maven aliases use their own namespaces.
+The selected Go alias is resolved only within the `go` block. Container, npm, PyPI, Maven, and dist aliases use their own namespaces.
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in the object store by content sha256 and reused long term. The current implementation is a read-only Go dependency proxy; it does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 

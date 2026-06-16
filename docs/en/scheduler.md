@@ -13,7 +13,7 @@ Current jobs:
 
 When Redis or Valkey is configured, scheduler jobs can use distributed locks to avoid duplicate work across replicas. Probe jobs also publish endpoint health into Redis/Valkey hot state, while SQL metadata remains the durable source of truth.
 
-The scheduler does not own ecosystem-specific dependency fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises `ecosystem.JobSpec` values through `JobProvider`, and the scheduler only translates those specs into `gocron` jobs. Container, Go, npm, PyPI, and Maven can add or remove ecosystem-specific background work without changing scheduler orchestration.
+The scheduler does not own ecosystem-specific dependency fetch logic. Ecosystem modules register runtimes through `dix`, each runtime advertises `ecosystem.JobSpec` values through `JobProvider`, and the scheduler only translates those specs into `gocron` jobs. Container, Go, npm, PyPI, Maven, and dist can add or remove ecosystem-specific background work without changing scheduler orchestration.
 
 ## Cleanup
 
@@ -60,7 +60,7 @@ container {
 
 Container blob fetches prefer healthy low-latency endpoints. Failing endpoints enter cooldown windows, and content mismatches can downgrade an endpoint.
 
-Go, npm, PyPI, and Maven aliases can enable the same endpoint reachability probe:
+Go, npm, PyPI, Maven, and dist aliases can enable the same endpoint reachability probe:
 
 ```hcl
 npm {
@@ -83,7 +83,7 @@ Endpoint health is stored in SQL metadata and, when the cache backend is Redis o
 
 ## Predictive Prefetch
 
-Runtimes that implement `prefetch` can schedule cache warming. Container prefetch predicts likely next tags from pull history, then warms manifests and referenced blobs through the same cache path as client pulls. Go, npm, PyPI, and Maven currently implement recent-pull rewarming: once an artifact has been requested by a client, scheduled prefetch can refresh that exact artifact through the ecosystem proxy cache path.
+Runtimes that implement `prefetch` can schedule cache warming. Container prefetch predicts likely next tags from pull history, then warms manifests and referenced blobs through the same cache path as client pulls. Go, npm, PyPI, Maven, and dist currently implement recent-pull rewarming: once an artifact has been requested by a client, scheduled prefetch can refresh that exact artifact through the ecosystem proxy cache path.
 
 ```hcl
 scheduler {

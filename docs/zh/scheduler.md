@@ -13,7 +13,7 @@ RegiMux 使用 `gocron` 执行依赖代理后台任务，并通过 worker 池限
 
 配置 Redis 或 Valkey 后，调度任务可以使用分布式锁，避免多个副本重复执行同一类后台任务。probe 任务也会把 endpoint 健康状态发布到 Redis/Valkey 热状态层，但 SQL 元数据仍是持久化事实来源。
 
-调度器不持有具体生态的依赖 fetch 逻辑。生态模块通过 `dix` 注册 runtime，每个 runtime 通过 `JobProvider` 声明 `ecosystem.JobSpec`，调度器只把这些 spec 翻译成 `gocron` job。container、Go、npm、PyPI 和 Maven 后续增减生态专属后台任务时，不需要改调度器主流程。
+调度器不持有具体生态的依赖 fetch 逻辑。生态模块通过 `dix` 注册 runtime，每个 runtime 通过 `JobProvider` 声明 `ecosystem.JobSpec`，调度器只把这些 spec 翻译成 `gocron` job。container、Go、npm、PyPI、Maven 和 dist 后续增减生态专属后台任务时，不需要改调度器主流程。
 
 ## 清理
 
@@ -60,7 +60,7 @@ container {
 
 container blob 拉取会优先选择健康且低延迟的 endpoint。失败 endpoint 会进入冷却窗口，内容不一致也会降低该 endpoint 的优先级。
 
-Go、npm、PyPI 和 Maven alias 也可以启用同一套 endpoint 可达性探测：
+Go、npm、PyPI、Maven 和 dist alias 也可以启用同一套 endpoint 可达性探测：
 
 ```hcl
 npm {
@@ -83,7 +83,7 @@ endpoint 健康状态会写入 SQL 元数据；当 cache backend 是 Redis 或 V
 
 ## 预测预拉取
 
-实现 `prefetch` 的 runtime 可以调度缓存预热。container prefetch 会基于拉取历史预测可能的后续 tag，然后通过和客户端拉取相同的缓存路径预热 manifest 和关联 blob。Go、npm、PyPI 和 Maven 当前实现的是 recent-pull rewarm：客户端请求过某个制品后，定时 prefetch 可以沿用对应生态 proxy 缓存路径刷新同一个制品。
+实现 `prefetch` 的 runtime 可以调度缓存预热。container prefetch 会基于拉取历史预测可能的后续 tag，然后通过和客户端拉取相同的缓存路径预热 manifest 和关联 blob。Go、npm、PyPI、Maven 和 dist 当前实现的是 recent-pull rewarm：客户端请求过某个制品后，定时 prefetch 可以沿用对应生态 proxy 缓存路径刷新同一个制品。
 
 ```hcl
 scheduler {

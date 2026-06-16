@@ -1,8 +1,8 @@
 # RegiMux Documentation
 
-RegiMux is a read-only dependency proxy for development and CI environments. Clients configure Docker/containerd, Go, npm, PyPI, or Maven to use RegiMux as their dependency endpoint; RegiMux forwards misses to configured upstreams, caches immutable artifacts, and keeps metadata for observability, cleanup, and background refresh.
+RegiMux is a read-only dependency proxy for development and CI environments. Clients configure Docker/containerd, Go, npm, PyPI, Maven, or generic binary distribution downloads to use RegiMux as their dependency endpoint; RegiMux forwards misses to configured upstreams, caches immutable artifacts, and keeps metadata for observability, cleanup, and background refresh.
 
-Container registry, Go modules, npm, PyPI, and Maven are first-class dependency ecosystems with independent configuration blocks, endpoint services, and runtime capabilities. The scheduler consumes runtime-declared jobs and capabilities instead of importing per-ecosystem orchestration logic.
+Container registry, Go modules, npm, PyPI, Maven, and dist are first-class dependency ecosystems with independent configuration blocks, endpoint services, and runtime capabilities. The scheduler consumes runtime-declared jobs and capabilities instead of importing per-ecosystem orchestration logic.
 
 ## Start Here
 

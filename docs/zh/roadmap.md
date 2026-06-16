@@ -1,22 +1,23 @@
 # RegiMux Roadmap
 
-RegiMux 定位为面向研发和 CI 环境的只读 Dependency Proxy（依赖代理）。产品继续保持缓存导向，container registry、Go modules、npm、PyPI 和 Maven 都作为一等依赖生态。
+RegiMux 定位为面向研发和 CI 环境的只读 Dependency Proxy（依赖代理）。产品继续保持缓存导向，container registry、Go modules、npm、PyPI、Maven 和 dist 都作为一等依赖生态。
 
 ## 近期
 
 ### 研发依赖代理
 
 - 保持 OCI / Docker Registry V2 API `/v2/{containerAlias}/...`，作为稳定 container 依赖代理路径。
-- 使用独立顶层生态配置块：`container`、`go`、`npm`、`pypi` 和 `maven`，每个块定义一个或多个依赖代理 alias。
+- 使用独立顶层生态配置块：`container`、`go`、`npm`、`pypi`、`maven` 和 `dist`，每个块定义一个或多个依赖代理 alias。
 - 将 proxy、mirror、probe 和 prefetch 行为通过 `dix` 注册的生态 runtime 承载；调度器按 runtime capability 分发，而不是直接导入具体生态实现。
 - endpoint service 和 runtime/capability 实现都保留在各自生态子包内。
-- container、Go、npm、PyPI 和 Maven 都注册 runtime job/capability；container 具备预测性定时 `prefetch`，Go、npm、PyPI 和 Maven 通过同一 runtime 抽象共享定时 endpoint `probe` 和 recent-pull prefetch rewarm。
+- container、Go、npm、PyPI、Maven 和 dist 都注册 runtime job/capability；container 具备预测性定时 `prefetch`，Go、npm、PyPI、Maven 和 dist 通过同一 runtime 抽象共享定时 endpoint `probe` 和 recent-pull prefetch rewarm。
 - 增加 Go module proxy read-through cache，路径为 `/go/{goAlias}/{module}/@v/...`。已完成。
 - 默认示例 Go alias 指向 `https://proxy.golang.org`。客户端可通过 `GOPROXY=http://localhost:8080/go/{goAlias}` 使用。
 - 将 Go proxy 响应按内容 sha256 写入对象存储，并通过元数据记录请求路径到对象 digest 的映射。已完成。
 - npm 已在 `/npm/{npmAlias}/...` 可用，覆盖 packument、dist-tags、scoped package、tarball URL rewrite 和 integrity。
 - PyPI 已在 `/pypi/{pypiAlias}/...` 可用，实现 PEP 503 simple index 缓存、包名 normalize 和文件链接重写。
 - Maven 已在 `/maven/{mavenAlias}/...` 可用，实现 read-through 仓库布局缓存，支持 release 制品、`maven-metadata.xml` 和 checksum 文件。
+- dist 已在 `/dist/{distAlias}/...` 可用，覆盖 Gradle、Electron、Playwright、Cypress、Node.js、HashiCorp 等通用二进制分发物 mirror。
 - 继续用真实包管理器客户端和各生态依赖解析边界场景强化 npm、PyPI 和 Maven 兼容性。
 
 ### S3 兼容对象存储

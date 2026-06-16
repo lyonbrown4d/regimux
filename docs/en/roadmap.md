@@ -1,22 +1,23 @@
 # RegiMux Roadmap
 
-RegiMux is positioned as a read-only dependency proxy for development and CI environments. The product remains cache-oriented, with container registry, Go modules, npm, PyPI, and Maven treated as first-class dependency ecosystems.
+RegiMux is positioned as a read-only dependency proxy for development and CI environments. The product remains cache-oriented, with container registry, Go modules, npm, PyPI, Maven, and dist treated as first-class dependency ecosystems.
 
 ## Near Term
 
 ### Developer dependency proxy
 
 - Keep the OCI / Docker Registry V2 API at `/v2/{containerAlias}/...` as the stable container dependency proxy path.
-- Use separate top-level ecosystem config blocks: `container`, `go`, `npm`, `pypi`, and `maven`, each defining one or more dependency proxy aliases.
+- Use separate top-level ecosystem config blocks: `container`, `go`, `npm`, `pypi`, `maven`, and `dist`, each defining one or more dependency proxy aliases.
 - Route proxy, mirror, probe, and prefetch behavior through ecosystem runtimes registered by `dix`; the scheduler dispatches by runtime capability rather than by ecosystem-specific imports.
 - Keep endpoint services and runtime/capability implementations inside each ecosystem subpackage.
-- Container, Go, npm, PyPI, and Maven all register runtime jobs/capabilities; container has predictive scheduled `prefetch`, while Go, npm, PyPI, and Maven share scheduled endpoint `probe` and recent-pull prefetch rewarming through the same runtime abstraction.
+- Container, Go, npm, PyPI, Maven, and dist all register runtime jobs/capabilities; container has predictive scheduled `prefetch`, while Go, npm, PyPI, Maven, and dist share scheduled endpoint `probe` and recent-pull prefetch rewarming through the same runtime abstraction.
 - Add a Go module proxy read-through cache under `/go/{goAlias}/{module}/@v/...`. Done.
 - Keep the default example Go alias backed by `https://proxy.golang.org`. Clients can set `GOPROXY=http://localhost:8080/go/{goAlias}`.
 - Store Go proxy responses in the object store by content sha256, with metadata mapping request paths to object digests. Done.
 - npm is available at `/npm/{npmAlias}/...`, covering packuments, dist-tags, scoped packages, tarball URL rewriting, and integrity metadata.
 - PyPI is available at `/pypi/{pypiAlias}/...` with PEP 503 simple index caching, normalized package names, and file link rewriting.
 - Maven is available at `/maven/{mavenAlias}/...` as a read-through repository-layout cache for release artifacts, `maven-metadata.xml`, and checksum files.
+- dist is available at `/dist/{distAlias}/...` for generic binary distribution mirrors such as Gradle, Electron, Playwright, Cypress, Node.js, and HashiCorp release assets.
 - Continue hardening npm, PyPI, and Maven compatibility with real package-manager clients and ecosystem-specific dependency resolution edge cases.
 
 ### S3-compatible object storage

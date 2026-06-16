@@ -20,9 +20,9 @@ curl -i http://localhost:8080/livez
 docker pull localhost:8080/hub/library/alpine:latest
 ```
 
-## Redis cache and distributed scheduler lock
+## Redis cache and distributed coordination
 
-Use this when cache metadata should survive RegiMux restarts and scheduler jobs should use Redis-backed distributed locking.
+Use this when KV cache metadata should survive RegiMux restarts and scheduler jobs plus cache fills should use Redis-backed distributed coordination. Redis is used for small KV entries, endpoint health hot state, scheduler locks, and cache-fill leases; committed artifact bytes still belong in `store.object`.
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.redis.yml up -d
@@ -43,9 +43,9 @@ go mod download github.com/pkg/errors@v0.9.1
 
 Go module proxy responses are cached in the same object store used for OCI blobs. The root Go proxy path tries configured `type = "go"` upstreams in stable alias order, preferring the `golang` alias when present. Use `/go/{alias}/...` only when you need to target one Go upstream explicitly.
 
-## Valkey cache and distributed scheduler lock
+## Valkey cache and distributed coordination
 
-Use this if you prefer Valkey instead of Redis. RegiMux still uses the Redis-compatible lock protocol for scheduler coordination.
+Use this if you prefer Valkey instead of Redis. RegiMux still uses the Redis-compatible protocol for scheduler locks, endpoint health hot state, and cache-fill leases.
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.valkey.yml up -d
@@ -204,4 +204,4 @@ The Compose examples mount `/var/lib/regimux` as a named volume, so cached blobs
 
 ## Notes for replicas
 
-Redis or Valkey shares the byte cache and scheduler locks, but the default Compose files still use local SQLite metadata and local blob object storage per RegiMux container. Do not scale these Compose files with multiple RegiMux replicas sharing the same `/var/lib/regimux` volume. If you run multiple replicas, use `store.meta.driver = "mysql"` or `"postgres"` with a shared DSN and `store.object.driver = "s3"` or `"sftp"` with shared object storage, then put the replicas behind an external load balancer.
+Redis or Valkey shares KV cache state, scheduler locks, endpoint health hot state, and cache-fill leases, but the default Compose files still use local SQLite metadata and local blob object storage per RegiMux container. Do not scale these Compose files with multiple RegiMux replicas sharing the same `/var/lib/regimux` volume. If you run multiple replicas, use `store.meta.driver = "mysql"` or `"postgres"` with a shared DSN, `store.object.driver = "s3"` or `"sftp"` with shared object storage, and Redis or Valkey for distributed coordination, then put the replicas behind an external load balancer.

@@ -20,13 +20,13 @@ Single-node memory cache:
 docker compose --env-file examples/compose/.env -f examples/compose/compose.memory.yml up -d
 ```
 
-Redis cache and distributed scheduler lock:
+Redis cache and distributed coordination:
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.redis.yml up -d
 ```
 
-Valkey cache and distributed scheduler lock:
+Valkey cache and distributed coordination:
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.valkey.yml up -d

@@ -4,9 +4,9 @@
 
 RegiMux is a read-only dependency proxy for development and CI environments. It gives build clients one local dependency endpoint, then routes each request to the configured upstream registry, module proxy, package index, or repository while caching reusable artifacts locally.
 
-Container registry, Go modules, npm, PyPI, and Maven are first-class dependency ecosystems. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, and `maven` blocks, and each ecosystem owns its endpoint service and runtime implementation under `internal/ecosystems/*`.
+Container registry, Go modules, npm, PyPI, Maven, and dist binary distribution mirrors are first-class dependency ecosystems. Configuration is split by ecosystem through `container`, `go`, `npm`, `pypi`, `maven`, and `dist` blocks, and each ecosystem owns its endpoint service and runtime implementation under `internal/ecosystems/*`.
 
-The container ecosystem exposes a Registry-compatible pull API and routes requests to configured upstream registries by container alias. Go, npm, PyPI, and Maven expose read-through proxy cache APIs under their own path prefixes and route requests to upstreams configured in their matching ecosystem blocks.
+The container ecosystem exposes a Registry-compatible pull API and routes requests to configured upstream registries by container alias. Go, npm, PyPI, Maven, and dist expose read-through proxy cache APIs under their own path prefixes and route requests to upstreams configured in their matching ecosystem blocks.
 
 RegiMux is intentionally read-only. Upload, publish, manifest write, package deletion, and push registry APIs are out of scope; the product boundary is dependency resolution, caching, metadata accounting, and background maintenance.
 
@@ -22,37 +22,51 @@ flowchart LR
   routes --> npm["npm dependency proxy<br/>package metadata / tarball cache"]
   routes --> pypi["PyPI dependency proxy<br/>simple index / file cache"]
   routes --> maven["Maven dependency proxy<br/>repository layout cache"]
+  routes --> dist["dist dependency proxy<br/>binary distribution cache"]
 
   container --> upstreams["Upstream endpoints / mirrors"]
   golang --> upstreams
   npm --> upstreams
   pypi --> upstreams
   maven --> upstreams
+  dist --> upstreams
 
   container --> meta["Metadata store<br/>SQLite / MySQL / PostgreSQL"]
   golang --> meta
   npm --> meta
   pypi --> meta
   maven --> meta
+  dist --> meta
 
   container --> objects["Object store<br/>local / memory / S3 / SFTP"]
   golang --> objects
   npm --> objects
   pypi --> objects
   maven --> objects
+  dist --> objects
+
+  container --> cachebackend["KV cache backend<br/>memory / Redis / Valkey"]
+  golang --> cachebackend
+  npm --> cachebackend
+  pypi --> cachebackend
+  maven --> cachebackend
+  dist --> cachebackend
 
   scheduler["Scheduler + Worker Pool"] --> container
   scheduler --> golang
   scheduler --> npm
   scheduler --> pypi
   scheduler --> maven
+  scheduler --> dist
   events["Event Bus"] --> scheduler
   container --> events
   golang --> events
   npm --> events
   pypi --> events
   maven --> events
+  dist --> events
   scheduler --> meta
+  scheduler --> cachebackend
   admin["Admin UI"] --> scheduler
   admin --> meta
 ```
@@ -105,7 +119,7 @@ GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.zip
 GET /go/{goAlias}/github.com/pkg/errors/@latest
 ```
 
-The Go alias is resolved only within the `go` block. It does not share a namespace with container, npm, PyPI, or Maven aliases.
+The Go alias is resolved only within the `go` block. It does not share a namespace with container, npm, PyPI, Maven, or dist aliases.
 
 `@latest` and `@v/list` use a short TTL. Versioned `.info`, `.mod`, and `.zip` responses are stored in object storage by content sha256, with metadata mapping module/reference to digest. The current implementation does not proxy `sum.golang.org` and does not perform VCS direct fetching.
 
@@ -144,12 +158,13 @@ sequenceDiagram
 
 ## Other Ecosystem Prefixes
 
-npm, PyPI, and Maven are first-class dependency proxy ecosystems with independent alias namespaces under their own path prefixes:
+npm, PyPI, Maven, and dist are first-class dependency proxy ecosystems with independent alias namespaces under their own path prefixes:
 
 ```text
 GET /npm/{npmAlias}/...
 GET /pypi/{pypiAlias}/...
 GET /maven/{mavenAlias}/...
+GET /dist/{distAlias}/...
 ```
 
 ## Ecosystem Runtime Abstraction
@@ -163,6 +178,7 @@ Ecosystem implementations live under `internal/ecosystems/*`:
 - `internal/ecosystems/npm`
 - `internal/ecosystems/pypi`
 - `internal/ecosystems/maven`
+- `internal/ecosystems/dist`
 
 The scheduler consumes the runtime set from `dix` and registers background work from `ecosystem.JobProvider` / `ecosystem.JobSpec`:
 
@@ -173,9 +189,9 @@ The scheduler consumes the runtime set from `dix` and registers background work 
 
 The scheduler also subscribes to `artifact.pulled`. This path is not a periodic job declared by one ecosystem; it is a lightweight response to recent client pull activity. Services only publish refresh intent. The scheduler persists that intent in SQL metadata, and a shared drain job consumes due intents later.
 
-Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, and Maven support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
+Current capability coverage is intentionally uneven. The container runtime supports predictive `prefetch` because OCI pulls already depend on mirror scoring and manifest/blob warming. Go, npm, PyPI, Maven, and dist support the shared endpoint `probe` capability and recent-pull `prefetch` rewarming through the same runtime registration boundary; ecosystem-specific version prediction can be added without changing scheduler wiring.
 
-Go, npm, PyPI, and Maven still own their protocol details in their ecosystem packages, but share lightweight `internal/depruntime` glue for repeated runtime wiring: upstream mapping, runtime-declared jobs, manual refresh job wrappers, and prefetch/refresh response draining. Route parsing, cache keys, upstream requests, content rewriting, and refresh mode selection stay inside each ecosystem service so protocol differences do not leak into the scheduler or shared glue.
+Go, npm, PyPI, Maven, and dist still own their protocol details in their ecosystem packages, but share lightweight `internal/depruntime` glue for repeated runtime wiring: upstream mapping, runtime-declared jobs, manual refresh job wrappers, and prefetch/refresh response draining. Route parsing, cache keys, upstream requests, content rewriting, and refresh mode selection stay inside each ecosystem service so protocol differences do not leak into the scheduler or shared glue.
 
 Manual refresh is also standardized in the same abstraction:
 
@@ -234,11 +250,13 @@ flowchart TB
     nr["npm: dependency proxy cache, endpoint probe"]
     pr["PyPI: simple index and file cache, endpoint probe"]
     mr["Maven: repository layout cache, endpoint probe"]
+    dr["dist: binary distribution mirror, endpoint probe"]
   end
 
   subgraph storage["Storage Layer"]
     metadata["Metadata store: SQLite / MySQL / PostgreSQL"]
     objectstore["Object store: local / memory / S3-compatible / SFTP"]
+    cachebackend["KV cache backend: memory / Redis / Valkey"]
   end
 
   http --> authmw
@@ -250,16 +268,25 @@ flowchart TB
   proxy --> nr
   proxy --> pr
   proxy --> mr
+  proxy --> dr
   cr --> metadata
   gr --> metadata
   nr --> metadata
   pr --> metadata
   mr --> metadata
+  dr --> metadata
   cr --> objectstore
   gr --> objectstore
   nr --> objectstore
   pr --> objectstore
   mr --> objectstore
+  dr --> objectstore
+  cr --> cachebackend
+  gr --> cachebackend
+  nr --> cachebackend
+  pr --> cachebackend
+  mr --> cachebackend
+  dr --> cachebackend
 ```
 
 Background services run through the scheduler and worker pool:
@@ -269,6 +296,7 @@ Background services run through the scheduler and worker pool:
 - runtime-declared predictive prefetch and manifest refresh
 - distributed locks when Redis or Valkey is configured
 - Redis/Valkey endpoint health hot state when a remote cache backend is configured
+- distributed cache-fill leases for artifact and container blob fills when Redis or Valkey is configured
 
 ## Metadata Model
 
@@ -326,6 +354,12 @@ Tags and referrers are cached with TTLs and upstream revalidation.
 
 The container runtime coalesces concurrent work for same-key upstream tokens, manifests, blob store operations, and tag index building with typed `singleflightx`, reducing duplicate upstream work and removing runtime type assertions. The protocol-specific paths still own key composition: manifest keys keep the `Accept` dimension, and blob responses still verify repository-to-blob membership before serving cached content.
 
+Go, npm, PyPI, Maven, and dist immutable response caching share `internal/artifactcache.Store`. This component packages metadata, object storage, and `FillTracker` as an injectable cache service; each ecosystem still owns its route parsing, cache keys, upstream requests, and content rewriting. `FillTracker` uses a `collectionx` concurrent map in-process to coalesce same-key fills and avoid duplicate upstream fetches inside one replica.
+
+When `cache.backend` is Redis or Valkey, `internal/cache/backend.LeaseBackend` provides distributed leases. The first replica that acquires a lease fetches upstream and commits object/metadata; other replicas wait until the committed object appears in the shared object store, then return a cache hit. The lease only coordinates concurrent fills. It does not replace SQL metadata or object storage. Multi-replica deployments still need shared MySQL/PostgreSQL metadata and shared S3/SFTP object storage.
+
+Container blob streaming uses the same lease shape with a different execution model: the owner replica holds the blob-fill lease while it streams from upstream to the client and writes the same bytes into object storage. Other replicas wait until the owner commits blob metadata, then read from the shared object store. Range misses also wait for the full blob fill and then serve the requested slice from the local object. If Redis/Valkey is unavailable, RegiMux keeps local coalescing and remains available, but separate replicas may duplicate upstream fetches.
+
 ## Mirror Scheduling
 
 One container alias may have multiple mirrors. The container runtime advertises the `probe` capability when probing is enabled for an alias. Blob fetches can use latency-aware selection:
@@ -373,7 +407,7 @@ The application is assembled with `dix`.
 
 Important lifecycle decisions:
 
-- logger, config, auth, scheduler, worker, admin, and store are shared modules; container-owned cache, upstream, registry tooling, suggestion, and Docker daemon integration live under the container ecosystem module set
+- logger, config, auth, scheduler, worker, admin, store, cache backend, and artifact cache are shared modules; container-owned upstream, registry tooling, suggestion, and Docker daemon integration live under the container ecosystem module set
 - ecosystem runtime implementations are registered with `dix`; the scheduler consumes the registered runtime set rather than importing per-ecosystem handlers
 - metadata mapper is a DI singleton
 - `*dbx.DB` is managed by DI lifecycle and closed on stop

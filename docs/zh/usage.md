@@ -9,7 +9,7 @@ RegiMux 默认通过 [GitHub Releases](https://github.com/lyonbrown4d/regimux/re
 - Docker/containerd 使用兼容 Registry 的 `/v2/{containerAlias}/...` 路径。
 - Go 使用 `GOPROXY=http://<regimux>/go/{goAlias}`。
 - npm、PyPI 和 Maven 分别使用 `/npm/{npmAlias}`、`/pypi/{pypiAlias}`、`/maven/{mavenAlias}` 下的生态代理路径。
-- Gradle wrapper zip、CLI installer 等二进制分发物使用 `/dist/{distAlias}/{path}`。
+- Gradle wrapper zip、CLI installer 等二进制分发物使用 dist 生态代理路径 `/dist/{distAlias}/{path}`。
 
 RegiMux 是只读的。它代理依赖读取请求，缓存不可变制品，维护 metadata 用于缓存统计和清理，并可以在后台预热或刷新制品。它不是包发布入口，也不是 push registry。
 
@@ -137,7 +137,7 @@ GET /go/{goAlias}/github.com/pkg/errors/@v/v0.9.1.zip
 GET /go/{goAlias}/github.com/pkg/errors/@latest
 ```
 
-选中的 Go alias 只在 `go` 配置块内解析。container、npm、PyPI 和 Maven alias 各自使用独立命名空间。
+选中的 Go alias 只在 `go` 配置块内解析。container、npm、PyPI、Maven 和 dist alias 各自使用独立命名空间。
 
 `@latest` 和 `@v/list` 使用短 TTL；版本化的 `.info`、`.mod` 和 `.zip` 按内容 sha256 写入对象存储并长期复用。当前实现是只读 Go dependency proxy，不代理 `sum.golang.org`，也不做 VCS direct 拉取。
 

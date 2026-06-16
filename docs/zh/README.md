@@ -1,8 +1,8 @@
 # RegiMux 文档
 
-RegiMux 是面向研发和 CI 环境的只读 Dependency Proxy（依赖代理）。Docker/containerd、Go、npm、PyPI 或 Maven 客户端把 RegiMux 配成依赖入口；RegiMux 将 miss 转发到配置的上游，缓存不可变制品，并维护 metadata，用于可观测性、清理和后台刷新。
+RegiMux 是面向研发和 CI 环境的只读 Dependency Proxy（依赖代理）。Docker/containerd、Go、npm、PyPI、Maven 或通用二进制分发客户端把 RegiMux 配成依赖入口；RegiMux 将 miss 转发到配置的上游，缓存不可变制品，并维护 metadata，用于可观测性、清理和后台刷新。
 
-container registry、Go modules、npm、PyPI 和 Maven 都是一等依赖生态，分别拥有独立配置块、endpoint service 和 runtime capability。调度器消费各生态 runtime 声明的 job 和 capability，而不是直接导入具体生态的编排逻辑。
+container registry、Go modules、npm、PyPI、Maven 和 dist 都是一等依赖生态，分别拥有独立配置块、endpoint service 和 runtime capability。调度器消费各生态 runtime 声明的 job 和 capability，而不是直接导入具体生态的编排逻辑。
 
 ## 入门
 

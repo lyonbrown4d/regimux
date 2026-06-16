@@ -112,12 +112,25 @@ Object stores expose CAS object walking where the driver supports listing. Admin
 
 The listing can be expensive on large or remote stores, so it is only surfaced on the storage view and may be unavailable when a driver cannot list objects or the backing service rejects the scan.
 
+## Cache Backend and Coordination
+
+`cache.backend` configures the KV cache backend. It is separate from `store.object`, which stores committed artifact bytes. Supported values:
+
+- empty: no shared KV cache; use the default in-process behavior
+- `memory`: in-process KV cache, suitable only for one replica
+- `redis`: Redis-compatible KV cache
+- `valkey`: Valkey-compatible KV cache
+
+Redis or Valkey backends can be used for small blob caching, endpoint health hot state, scheduler locks, and distributed cache-fill leases. Go, npm, PyPI, Maven, and dist artifact caches use shared `artifactcache` fill coordination to avoid multiple replicas fetching the same upstream object at once. Container blob streaming holds a lease while a full blob is being filled, so other replicas wait for the committed object and then read it from shared object storage.
+
+These leases are concurrency control, not durable storage. Redis/Valkey does not store large blobs and does not replace SQL metadata or object storage. If the backend is unavailable, RegiMux keeps in-process fill coalescing and remains available, but separate replicas may duplicate upstream fetches.
+
 ## Multi-replica Notes
 
 For multiple RegiMux replicas, use a shared metadata store and a shared object store:
 
 - metadata: MySQL or PostgreSQL
 - objects: S3-compatible storage or SFTP
-- scheduler coordination: Redis or Valkey distributed lock
+- coordination: Redis or Valkey distributed locks and cache-fill leases
 
 Do not scale multiple replicas on independent SQLite files and local object directories unless each replica is intentionally isolated.

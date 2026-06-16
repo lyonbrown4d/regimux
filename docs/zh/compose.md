@@ -20,13 +20,13 @@ cp examples/compose/.env.example examples/compose/.env
 docker compose --env-file examples/compose/.env -f examples/compose/compose.memory.yml up -d
 ```
 
-Redis cache 和分布式调度锁：
+Redis cache 和分布式协同：
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.redis.yml up -d
 ```
 
-Valkey cache 和分布式调度锁：
+Valkey cache 和分布式协同：
 
 ```bash
 docker compose --env-file examples/compose/.env -f examples/compose/compose.valkey.yml up -d
