@@ -1,0 +1,134 @@
+name: regimux-integration
+
+services:
+  redis:
+    image: ${REGIMUX_INTEGRATION_REDIS_IMAGE:-redis:7-alpine}
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  mysql:
+    image: ${REGIMUX_INTEGRATION_MYSQL_IMAGE:-mysql:8.4}
+    profiles: ["mysql"]
+    environment:
+      MYSQL_DATABASE: regimux
+      MYSQL_USER: regimux
+      MYSQL_PASSWORD: secret
+      MYSQL_ROOT_PASSWORD: root-secret
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uregimux -psecret --silent"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  postgres:
+    image: ${REGIMUX_INTEGRATION_POSTGRES_IMAGE:-postgres:16-alpine}
+    profiles: ["postgres"]
+    environment:
+      POSTGRES_DB: regimux
+      POSTGRES_USER: regimux
+      POSTGRES_PASSWORD: secret
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U regimux -d regimux"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  regimux:
+    image: ${REGIMUX_IMAGE:-regimux-integration:latest-amd64}
+    command: ["--config", "/etc/regimux/integration.hcl"]
+    ports:
+      - "${REGIMUX_INTEGRATION_PORT:-18080}:8080"
+    environment:
+      REGIMUX_STORE__META__DRIVER: ${REGIMUX_META_DRIVER:-sqlite}
+      REGIMUX_STORE__META__DSN: ${REGIMUX_META_DSN:-}
+    volumes:
+      - ./config/regimux.hcl:/etc/regimux/integration.hcl:ro
+      - regimux-data:/var/lib/regimux
+    depends_on:
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  dind:
+    image: ${REGIMUX_INTEGRATION_DIND_IMAGE:-docker:27-dind}
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    command:
+      - --host=tcp://0.0.0.0:2375
+      - --host=unix:///var/run/docker.sock
+      - --insecure-registry=regimux:8080
+    depends_on:
+      regimux:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+
+  npm-client:
+    image: ${REGIMUX_INTEGRATION_NODE_IMAGE:-node:22-alpine}
+    profiles: ["clients"]
+    environment:
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      regimux:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/npm-client.sh"]
+
+  pypi-client:
+    image: ${REGIMUX_INTEGRATION_PYTHON_IMAGE:-python:3.12-alpine}
+    profiles: ["clients"]
+    environment:
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      regimux:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/pypi-client.sh"]
+
+  maven-client:
+    image: ${REGIMUX_INTEGRATION_MAVEN_IMAGE:-maven:3.9-eclipse-temurin-21-alpine}
+    profiles: ["clients"]
+    environment:
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      regimux:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/maven-client.sh"]
+
+  container-client:
+    image: ${REGIMUX_INTEGRATION_DOCKER_CLI_IMAGE:-docker:27-cli}
+    profiles: ["clients"]
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+      DOCKER_TLS_CERTDIR: ""
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+      REGIMUX_CONTAINER_IMAGES: "regimux:8080/hub/library/busybox:1.36.1 regimux:8080/hub/library/alpine:3.19"
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      dind:
+        condition: service_healthy
+      regimux:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/container-client.sh"]
+
+volumes:
+  regimux-data:

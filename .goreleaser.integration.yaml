@@ -1,0 +1,38 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+version: 2
+
+project_name: regimux
+
+builds:
+  - id: regimuxd-linux
+    main: ./cmd/regimuxd
+    binary: regimuxd
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+      - -buildvcs=false
+    ldflags:
+      - -s -w -buildid=
+    goos:
+      - linux
+    goarch:
+      - amd64
+
+snapshot:
+  version_template: "integration"
+
+dockers_v2:
+  - id: regimuxd-integration
+    ids:
+      - regimuxd-linux
+    dockerfile: docker/alpine.Dockerfile
+    images:
+      - "{{ .Env.REGISTRY_IMAGE }}"
+    tags:
+      - latest
+      - integration
+    extra_files:
+      - configs/regimux.minimal.hcl
+    platforms:
+      - linux/amd64

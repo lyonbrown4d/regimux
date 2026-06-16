@@ -14,6 +14,10 @@ type Endpoint struct {
 	service *Service
 }
 
+type RootEndpoint struct {
+	endpoint *Endpoint
+}
+
 type input struct {
 	Alias string         `path:"alias"`
 	Tail  httpx.PathTail `path:"tail"`
@@ -37,6 +41,10 @@ func NewEndpoint(service *Service) *Endpoint {
 	return &Endpoint{service: service}
 }
 
+func NewRootEndpoint(service *Service) *RootEndpoint {
+	return &RootEndpoint{endpoint: NewEndpoint(service)}
+}
+
 func (e *Endpoint) EndpointSpec() httpx.EndpointSpec {
 	return httpx.EndpointSpec{
 		Tags:       httpx.Tags("go"),
@@ -50,8 +58,23 @@ func (e *Endpoint) Register(registrar httpx.Registrar) {
 	group := registrar.Scope()
 	httpx.MustGroupGet(group, "go/{alias}/{tail...}", e.get)
 	httpx.MustGroupRoute(group, http.MethodHead, "go/{alias}/{tail...}", e.head)
-	httpx.MustGroupGet(group, "{tail...}", e.getRoot)
-	httpx.MustGroupRoute(group, http.MethodHead, "{tail...}", e.headRoot)
+}
+
+func (e *RootEndpoint) EndpointSpec() httpx.EndpointSpec {
+	if e == nil || e.endpoint == nil {
+		return NewEndpoint(nil).EndpointSpec()
+	}
+	return e.endpoint.EndpointSpec()
+}
+
+func (e *RootEndpoint) Register(registrar httpx.Registrar) {
+	endpoint := e.endpoint
+	if endpoint == nil {
+		endpoint = NewEndpoint(nil)
+	}
+	group := registrar.Scope()
+	httpx.MustGroupGet(group, "{tail...}", endpoint.getRoot)
+	httpx.MustGroupRoute(group, http.MethodHead, "{tail...}", endpoint.headRoot)
 }
 
 func (e *Endpoint) get(ctx context.Context, input *input) (*output, error) {
@@ -158,4 +181,6 @@ func streamWithStatus(status int, stream httpx.ResponseStream) httpx.ResponseStr
 var (
 	_ httpx.Endpoint             = (*Endpoint)(nil)
 	_ httpx.EndpointSpecProvider = (*Endpoint)(nil)
+	_ httpx.Endpoint             = (*RootEndpoint)(nil)
+	_ httpx.EndpointSpecProvider = (*RootEndpoint)(nil)
 )

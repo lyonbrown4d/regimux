@@ -1,0 +1,116 @@
+version: "3"
+
+vars:
+  INTEGRATION_COMPOSE: tests/integration/compose.yml
+
+tasks:
+  test:
+    desc: Run unit tests.
+    cmds:
+      - go test ./...
+
+  lint:
+    desc: Run golangci-lint.
+    cmds:
+      - golangci-lint run ./...
+
+  integration:image:
+    desc: Build the local RegiMux container image with GoReleaser.
+    env:
+      REGISTRY_IMAGE: regimux-integration
+    cmds:
+      - go run github.com/goreleaser/goreleaser/v2@latest release --snapshot --clean --config .goreleaser.integration.yaml
+
+  integration:up:
+    desc: Start the integration test environment.
+    deps:
+      - integration:image
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} up -d --wait redis regimux dind
+
+  integration:mysql:up:
+    desc: Start the integration test environment with MySQL metadata storage.
+    deps:
+      - integration:image
+    env:
+      REGIMUX_META_DRIVER: mysql
+      REGIMUX_META_DSN: "regimux:secret@tcp(mysql:3306)/regimux?parseTime=true&multiStatements=true"
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile mysql up -d --wait redis mysql
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile mysql up -d --wait regimux dind
+
+  integration:postgres:up:
+    desc: Start the integration test environment with Postgres metadata storage.
+    deps:
+      - integration:image
+    env:
+      REGIMUX_META_DRIVER: postgres
+      REGIMUX_META_DSN: "postgres://regimux:secret@postgres:5432/regimux?sslmode=disable"
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile postgres up -d --wait redis postgres
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile postgres up -d --wait regimux dind
+
+  integration:deps:
+    desc: Run npm, PyPI, and Maven proxy integration checks.
+    cmds:
+      - task: integration:up
+      - task: integration:deps:run
+
+  integration:deps:run:
+    desc: Run npm, PyPI, and Maven proxy client containers.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm npm-client
+      - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm pypi-client
+      - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm maven-client
+
+  integration:container:
+    desc: Run the DinD container registry integration check.
+    cmds:
+      - task: integration:up
+      - task: integration:container:run
+
+  integration:container:run:
+    desc: Pull public container images through RegiMux from DinD.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm container-client
+
+  integration:mixed:run:
+    desc: Run all integration clients concurrently against the same RegiMux instance.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} up --no-deps --force-recreate --renew-anon-volumes --abort-on-container-failure npm-client pypi-client maven-client container-client
+
+  integration:
+    desc: Run the full Docker Compose integration suite.
+    cmds:
+      - task: integration:up
+      - defer:
+          task: integration:down
+      - task: integration:mixed:run
+
+  integration:mysql:
+    desc: Run the full integration suite with MySQL metadata storage.
+    cmds:
+      - task: integration:mysql:up
+      - defer:
+          task: integration:down
+      - task: integration:mixed:run
+
+  integration:postgres:
+    desc: Run the full integration suite with Postgres metadata storage.
+    cmds:
+      - task: integration:postgres:up
+      - defer:
+          task: integration:down
+      - task: integration:mixed:run
+
+  integration:databases:
+    desc: Run the integration suite against sqlite, MySQL, and Postgres metadata stores.
+    cmds:
+      - task: integration
+      - task: integration:mysql
+      - task: integration:postgres
+
+  integration:down:
+    desc: Stop and remove the integration test environment.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile clients --profile mysql --profile postgres down -v --remove-orphans

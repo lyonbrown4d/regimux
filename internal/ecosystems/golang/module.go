@@ -31,5 +31,6 @@ var Module = dix.NewModule("go",
 		),
 		dix.Provider5[*runtimeAdapter, *Service, *ecosystem.EndpointProber, meta.Store, *worker.Pools, *slog.Logger](newRuntimeAdapter, dix.Into[ecosystem.Runtime](dix.Key("go"), dix.Order(20))),
 		dix.Provider1[*Endpoint, *Service](NewEndpoint, dix.Into[httpx.Endpoint](dix.Key("go"), dix.Order(20))),
+		dix.Provider1[*RootEndpoint, *Service](NewRootEndpoint, dix.Into[httpx.Endpoint](dix.Key("go-root"), dix.Order(1000))),
 	),
 )

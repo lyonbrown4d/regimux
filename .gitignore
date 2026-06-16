@@ -22,6 +22,7 @@ data/
 coverage.out
 coverage.html
 *.prof
+__pycache__/
 
 # Editor and OS files
 .idea/
