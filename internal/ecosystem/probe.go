@@ -181,7 +181,7 @@ func (p *EndpointProber) probePool() *ants.Pool {
 	if p == nil || p.workers == nil {
 		return nil
 	}
-	return p.workers.ProbePool()
+	return p.workers.IOPool()
 }
 
 func (p *EndpointProber) recordSuccess(ctx context.Context, target ProbeTarget, endpoint string, latency time.Duration, at time.Time) error {

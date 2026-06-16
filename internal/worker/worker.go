@@ -10,42 +10,32 @@ import (
 )
 
 type Pools struct {
-	logger       *slog.Logger
-	probePool    *ants.Pool
-	prefetchPool *ants.Pool
-	leasePool    *ants.Pool
+	logger    *slog.Logger
+	ioPool    *ants.Pool
+	leasePool *ants.Pool
 }
 
-func NewPoolsConfig(probeConcurrency, prefetchConcurrency, leaseConcurrency int, logger *slog.Logger) *Pools {
+func NewPoolsConfig(ioConcurrency, leaseConcurrency int, logger *slog.Logger) *Pools {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	logger = logger.With("component", "worker")
 	logger.Info("creating worker pools",
-		"probe_concurrency", probeConcurrency,
-		"prefetch_concurrency", prefetchConcurrency,
+		"io_concurrency", ioConcurrency,
 		"lease_concurrency", leaseConcurrency,
 	)
 	return &Pools{
-		logger:       logger,
-		probePool:    newPool(probeConcurrency, logger.With("type", "probe")),
-		prefetchPool: newPool(prefetchConcurrency, logger.With("type", "prefetch")),
-		leasePool:    newPool(leaseConcurrency, logger.With("type", "lease")),
+		logger:    logger,
+		ioPool:    newPool(ioConcurrency, logger.With("type", "io")),
+		leasePool: newPool(leaseConcurrency, logger.With("type", "lease")),
 	}
 }
 
-func (p *Pools) ProbePool() *ants.Pool {
+func (p *Pools) IOPool() *ants.Pool {
 	if p == nil {
 		return nil
 	}
-	return p.probePool
-}
-
-func (p *Pools) PrefetchPool() *ants.Pool {
-	if p == nil {
-		return nil
-	}
-	return p.prefetchPool
+	return p.ioPool
 }
 
 func (p *Pools) LeasePool() *ants.Pool {
@@ -60,13 +50,9 @@ func (p *Pools) Close() {
 		return
 	}
 	p.logger.Info("closing worker pools")
-	if p.probePool != nil {
-		p.probePool.Release()
-		p.probePool = nil
-	}
-	if p.prefetchPool != nil {
-		p.prefetchPool.Release()
-		p.prefetchPool = nil
+	if p.ioPool != nil {
+		p.ioPool.Release()
+		p.ioPool = nil
 	}
 	if p.leasePool != nil {
 		p.leasePool.Release()

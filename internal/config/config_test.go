@@ -3,6 +3,7 @@ package config_test
 
 import (
 	"context"
+	"runtime"
 	"testing"
 	"time"
 
@@ -121,7 +122,7 @@ func assertDefaultUpstreamProbe(t *testing.T, probe config.UpstreamProbeConfig) 
 func assertDefaultWorker(t *testing.T, worker config.WorkerConfig) {
 	t.Helper()
 
-	if worker.ProbeConcurrency != 16 || worker.PrefetchConcurrency != 8 || worker.LeaseConcurrency != 64 {
+	if worker.IOConcurrency != runtime.NumCPU()*2+1 || worker.LeaseConcurrency != 64 {
 		t.Fatalf("unexpected worker defaults: %#v", worker)
 	}
 }

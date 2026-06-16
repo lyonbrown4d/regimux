@@ -164,7 +164,7 @@ func assertLoadedHCLProbe(t *testing.T, probe config.UpstreamProbeConfig) {
 func assertLoadedHCLWorker(t *testing.T, worker config.WorkerConfig) {
 	t.Helper()
 
-	if got := worker; got.ProbeConcurrency != 5 || got.PrefetchConcurrency != 7 || got.LeaseConcurrency != 11 {
+	if got := worker; got.IOConcurrency != 9 || got.LeaseConcurrency != 11 {
 		t.Fatalf("unexpected worker config: %#v", got)
 	}
 }

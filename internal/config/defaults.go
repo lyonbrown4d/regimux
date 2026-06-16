@@ -1,6 +1,9 @@
 package config
 
-import "time"
+import (
+	"runtime"
+	"time"
+)
 
 func defaultConfig() Config {
 	return Config{
@@ -155,10 +158,13 @@ func defaultSchedulerConfig() SchedulerConfig {
 
 func defaultWorkerConfig() WorkerConfig {
 	return WorkerConfig{
-		ProbeConcurrency:    16,
-		PrefetchConcurrency: 8,
-		LeaseConcurrency:    64,
+		IOConcurrency:    defaultWorkerIOConcurrency(),
+		LeaseConcurrency: 64,
 	}
+}
+
+func defaultWorkerIOConcurrency() int {
+	return runtime.NumCPU()*2 + 1
 }
 
 func defaultDockerConfig() DockerConfig {

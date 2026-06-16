@@ -99,7 +99,7 @@ func (c *Client) probePool() *ants.Pool {
 	if c.workers == nil {
 		return nil
 	}
-	return c.workers.ProbePool()
+	return c.workers.IOPool()
 }
 
 func (c *Client) probeRuntime(ctx context.Context, pool *upstreamPool, runtime upstreamRuntime) error {

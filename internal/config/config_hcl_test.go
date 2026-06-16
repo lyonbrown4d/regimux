@@ -198,8 +198,7 @@ maven {
 
 const testHCLWorker = `
 worker {
-  probe_concurrency = 5
-  prefetch_concurrency = 7
+  io_concurrency = 9
   lease_concurrency = 11
 }
 `

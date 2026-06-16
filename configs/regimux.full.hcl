@@ -255,8 +255,8 @@ scheduler {
 }
 
 worker {
-  probe_concurrency = 16
-  prefetch_concurrency = 8
+  # Default is runtime CPU count * 2 + 1; tune this for network IO.
+  # io_concurrency = 17
   lease_concurrency = 64
 }
 

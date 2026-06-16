@@ -116,15 +116,15 @@ container {
 }
 
 func TestLoadCommandLineOverrides(t *testing.T) {
-	cfg, err := config.Load(context.Background(), "", "--server.listen=:7777", "--worker.probe_concurrency=7")
+	cfg, err := config.Load(context.Background(), "", "--server.listen=:7777", "--worker.io_concurrency=7")
 	if err != nil {
 		t.Fatalf("load with command-line overrides: %v", err)
 	}
 	if cfg.Server.Listen != ":7777" {
 		t.Fatalf("unexpected server.listen %q", cfg.Server.Listen)
 	}
-	if cfg.Worker.ProbeConcurrency != 7 {
-		t.Fatalf("unexpected worker.probe_concurrency %d", cfg.Worker.ProbeConcurrency)
+	if cfg.Worker.IOConcurrency != 7 {
+		t.Fatalf("unexpected worker.io_concurrency %d", cfg.Worker.IOConcurrency)
 	}
 }
 

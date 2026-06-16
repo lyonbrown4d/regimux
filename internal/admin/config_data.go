@@ -156,8 +156,7 @@ func addManifestRefreshEcosystemRows(rows *collectionlist.List[ConfigRow], cfg c
 }
 
 func addWorkerRows(rows *collectionlist.List[ConfigRow], cfg config.WorkerConfig) {
-	addRow(rows, "worker.probe_concurrency", strconv.Itoa(cfg.ProbeConcurrency))
-	addRow(rows, "worker.prefetch_concurrency", strconv.Itoa(cfg.PrefetchConcurrency))
+	addRow(rows, "worker.io_concurrency", strconv.Itoa(cfg.IOConcurrency))
 	addRow(rows, "worker.lease_concurrency", strconv.Itoa(cfg.LeaseConcurrency))
 }
 

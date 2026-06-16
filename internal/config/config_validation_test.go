@@ -77,11 +77,11 @@ func invalidBlobProbeCases() []invalidConfigCase {
 		{name: "probe cooldown", mutate: mutateHub(func(upstreamCfg *config.UpstreamConfig) {
 			upstreamCfg.Probe.Cooldown = -time.Second
 		})},
-		{name: "worker probe concurrency", mutate: func(cfg *config.Config) {
-			cfg.Worker.ProbeConcurrency = -1
+		{name: "worker io concurrency", mutate: func(cfg *config.Config) {
+			cfg.Worker.IOConcurrency = -1
 		}},
-		{name: "worker prefetch concurrency", mutate: func(cfg *config.Config) {
-			cfg.Worker.PrefetchConcurrency = -1
+		{name: "worker lease concurrency", mutate: func(cfg *config.Config) {
+			cfg.Worker.LeaseConcurrency = -1
 		}},
 		{name: "cleanup max_scan", mutate: func(cfg *config.Config) {
 			cfg.Scheduler.Cleanup.MaxScan = -1

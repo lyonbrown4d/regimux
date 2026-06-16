@@ -224,7 +224,7 @@ func (s *Service) prefetchPool() *ants.Pool {
 	if s == nil || s.workers == nil {
 		return nil
 	}
-	return s.workers.PrefetchPool()
+	return s.workers.IOPool()
 }
 
 func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int) (*collectionlist.List[string], error) {
