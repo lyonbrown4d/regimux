@@ -89,31 +89,64 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		return resp, cacheErr
 	}
 
+	fillReq := upstreamFillRequest{
+		ctx:      ctx,
+		req:      req,
+		route:    requestRoute,
+		upstream: upstreamCfg,
+		cached:   cached,
+		cachedOK: cachedOK,
+		mode:     mode,
+	}
 	if shouldCoalesceFill(req, mode) {
-		return artifactcache.CoalesceFill(ctx, s.fills, artifactKey(requestRoute), func() (*Response, bool, error) {
-			cached, cachedOK, err := s.cached(ctx, requestRoute)
-			if err != nil {
-				return nil, true, err
-			}
-			resp, cachedHit, cacheErr := s.responseFromCached(req, requestRoute, cached, cachedOK, mode)
-			if cachedHit || cacheErr != nil {
-				return resp, true, cacheErr
-			}
-			return nil, false, nil
-		}, func() (*Response, error) {
-			fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
-			if err != nil {
-				return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
-			}
-			return s.responseFromFetched(ctx, req, requestRoute, fetched)
-		})
+		return s.coalesceFill(fillReq)
 	}
 
-	fetched, err := s.fetch(ctx, upstreamCfg, requestRoute.Alias, requestRoute, req.Method)
+	return s.fetchUncached(fillReq)
+}
+
+type upstreamFillRequest struct {
+	ctx      context.Context
+	req      Request
+	route    Route
+	upstream config.UpstreamConfig
+	cached   storedResponse
+	cachedOK bool
+	mode     requestMode
+}
+
+func (s *Service) coalesceFill(fillReq upstreamFillRequest) (*Response, error) {
+	resp, err := artifactcache.CoalesceFillWith(artifactcache.CoalesceRequest[*Response]{
+		Context: fillReq.ctx,
+		Tracker: s.fills,
+		Key:     artifactKey(fillReq.route),
+		Wait: func() (*Response, bool, error) {
+			refreshed, ok, refreshErr := s.cached(fillReq.ctx, fillReq.route)
+			if refreshErr != nil {
+				return nil, true, refreshErr
+			}
+			cachedResp, cachedHit, cacheErr := s.responseFromCached(fillReq.req, fillReq.route, refreshed, ok, fillReq.mode)
+			if cachedHit || cacheErr != nil {
+				return cachedResp, true, cacheErr
+			}
+			return nil, false, nil
+		},
+		Fill: func() (*Response, error) {
+			return s.fetchUncached(fillReq)
+		},
+	})
 	if err != nil {
-		return s.responseFromFetchError(req, requestRoute, cached, cachedOK, err, mode)
+		return nil, wrapError(err, "coalesce pypi artifact fill")
 	}
-	return s.responseFromFetched(ctx, req, requestRoute, fetched)
+	return resp, nil
+}
+
+func (s *Service) fetchUncached(fillReq upstreamFillRequest) (*Response, error) {
+	fetched, err := s.fetch(fillReq.ctx, fillReq.upstream, fillReq.route.Alias, fillReq.route, fillReq.req.Method)
+	if err != nil {
+		return s.responseFromFetchError(fillReq.req, fillReq.route, fillReq.cached, fillReq.cachedOK, err, fillReq.mode)
+	}
+	return s.responseFromFetched(fillReq.ctx, fillReq.req, fillReq.route, fetched)
 }
 
 func (s *Service) responseFromCached(req Request, requestRoute Route, cached storedResponse, cachedOK bool, mode requestMode) (*Response, bool, error) {

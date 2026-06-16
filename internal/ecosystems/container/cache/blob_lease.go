@@ -2,6 +2,7 @@ package cache
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -37,23 +38,40 @@ func (p blobProxy) startBlobFillLease(ctx context.Context, req BlobRequest, leas
 	}
 	stop := make(chan struct{})
 	var once sync.Once
-	go p.renewBlobFillLease(ctx, req, lease, stop)
+	p.scheduleBlobFillLeaseRenewal(ctx, req, lease, stop)
 	return func() {
 		once.Do(func() {
 			close(stop)
-			p.releaseBlobFillLease(req, lease)
+			p.releaseBlobFillLease(ctx, req, lease)
 		})
 	}
 }
 
-func (p blobProxy) releaseBlobFillLease(req BlobRequest, lease backend.Lease) {
+func (p blobProxy) scheduleBlobFillLeaseRenewal(ctx context.Context, req BlobRequest, lease backend.Lease, stop <-chan struct{}) {
+	if p.leaseScheduler == nil {
+		p.logBlobStreamCacheError(
+			ctx,
+			req,
+			"blob fill lease renewal scheduler unavailable",
+			errors.New("lease renewal scheduler unavailable"),
+		)
+		return
+	}
+	if err := p.leaseScheduler.Submit(func() {
+		p.renewBlobFillLease(ctx, req, lease, stop)
+	}); err != nil {
+		p.logBlobStreamCacheError(ctx, req, "submit blob fill lease renewal failed", err)
+	}
+}
+
+func (p blobProxy) releaseBlobFillLease(ctx context.Context, req BlobRequest, lease backend.Lease) {
 	if lease == nil {
 		return
 	}
-	releaseCtx, cancel := context.WithTimeout(context.Background(), blobFillLeaseReleaseTimeout)
+	releaseCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), blobFillLeaseReleaseTimeout)
 	defer cancel()
 	if err := lease.Release(releaseCtx); err != nil {
-		p.logBlobStreamCacheError(releaseCtx, req, "release blob fill lease failed", err)
+		p.logBlobStreamCacheError(ctx, req, "release blob fill lease failed", err)
 	}
 }
 
@@ -71,7 +89,7 @@ func (p blobProxy) renewBlobFillLease(ctx context.Context, req BlobRequest, leas
 		case <-ctx.Done():
 			return
 		case <-timer.C:
-			extendCtx, cancel := context.WithTimeout(context.Background(), blobFillLeaseReleaseTimeout)
+			extendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), blobFillLeaseReleaseTimeout)
 			err := lease.Extend(extendCtx, blobFillLeaseTTL)
 			cancel()
 			if err != nil {
@@ -83,9 +101,6 @@ func (p blobProxy) renewBlobFillLease(ctx context.Context, req BlobRequest, leas
 }
 
 func waitForBlobFillLeasePoll(ctx context.Context) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	timer := time.NewTimer(blobFillLeasePollInterval)
 	defer timer.Stop()
 	select {

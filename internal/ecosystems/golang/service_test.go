@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit Go proxy scenarios stay grouped to share fixtures and route assertions.
 package golang_test
 
 import (
@@ -59,6 +60,7 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	}
 }
 
+//nolint:cyclop,gocyclo,gocognit,funlen // Concurrent miss coalescing test keeps synchronization and cache-status assertions together.
 func TestServiceCoalescesConcurrentVersionedGoProxyMiss(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64

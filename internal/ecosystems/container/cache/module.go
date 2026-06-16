@@ -8,19 +8,25 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
 var Module = dix.NewModule("container-cache",
 	dix.Providers(
-		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, meta.Store, object.Store, config.CacheConfig, events.Bus](
-			func(client upstream.RegistryClient, cacheBackend backend.Backend, metadata meta.Store, objects object.Store, cacheCfg config.CacheConfig, bus events.Bus) *Proxy {
+		dix.Provider2[proxyStores, meta.Store, object.Store](newProxyStores),
+		dix.Provider1[leaseRenewScheduler, *worker.Pools](func(pools *worker.Pools) leaseRenewScheduler {
+			return pools.LeasePool()
+		}),
+		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, proxyStores, config.CacheConfig, events.Bus, leaseRenewScheduler](
+			func(client upstream.RegistryClient, cacheBackend backend.Backend, stores proxyStores, cacheCfg config.CacheConfig, bus events.Bus, scheduler leaseRenewScheduler) *Proxy {
 				return NewProxy(ProxyDependencies{
-					Client:      client,
-					Cache:       cacheBackend,
-					Metadata:    metadata,
-					Objects:     objects,
-					CacheConfig: cacheCfg,
-					Events:      bus,
+					Client:         client,
+					Cache:          cacheBackend,
+					Metadata:       stores.metadata,
+					Objects:        stores.objects,
+					CacheConfig:    cacheCfg,
+					Events:         bus,
+					LeaseScheduler: scheduler,
 				})
 			},
 		),
@@ -46,3 +52,12 @@ var Module = dix.NewModule("container-cache",
 		}),
 	),
 )
+
+type proxyStores struct {
+	metadata meta.Store
+	objects  object.Store
+}
+
+func newProxyStores(metadata meta.Store, objects object.Store) proxyStores {
+	return proxyStores{metadata: metadata, objects: objects}
+}

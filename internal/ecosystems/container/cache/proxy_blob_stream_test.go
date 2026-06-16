@@ -1,8 +1,10 @@
+//revive:disable:file-length-limit Blob streaming scenarios stay grouped to share fixtures and lease test doubles.
 package cache_test
 
 import (
 	"context"
 	"net/http"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -386,7 +388,7 @@ func (b *sharedLeaseBackend) AcquireLease(_ context.Context, key string, _ time.
 		return nil, false, nil
 	}
 	b.next++
-	token := key + "#" + string(rune('a'+b.next))
+	token := key + "#" + strconv.Itoa(b.next)
 	b.locks[key] = token
 	return &sharedLease{backend: b, key: key, token: token}, true, nil
 }

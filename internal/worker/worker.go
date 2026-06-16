@@ -13,18 +13,24 @@ type Pools struct {
 	logger       *slog.Logger
 	probePool    *ants.Pool
 	prefetchPool *ants.Pool
+	leasePool    *ants.Pool
 }
 
-func NewPoolsConfig(probeConcurrency, prefetchConcurrency int, logger *slog.Logger) *Pools {
+func NewPoolsConfig(probeConcurrency, prefetchConcurrency, leaseConcurrency int, logger *slog.Logger) *Pools {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	logger = logger.With("component", "worker")
-	logger.Info("creating worker pools", "probe_concurrency", probeConcurrency, "prefetch_concurrency", prefetchConcurrency)
+	logger.Info("creating worker pools",
+		"probe_concurrency", probeConcurrency,
+		"prefetch_concurrency", prefetchConcurrency,
+		"lease_concurrency", leaseConcurrency,
+	)
 	return &Pools{
 		logger:       logger,
 		probePool:    newPool(probeConcurrency, logger.With("type", "probe")),
 		prefetchPool: newPool(prefetchConcurrency, logger.With("type", "prefetch")),
+		leasePool:    newPool(leaseConcurrency, logger.With("type", "lease")),
 	}
 }
 
@@ -42,6 +48,13 @@ func (p *Pools) PrefetchPool() *ants.Pool {
 	return p.prefetchPool
 }
 
+func (p *Pools) LeasePool() *ants.Pool {
+	if p == nil {
+		return nil
+	}
+	return p.leasePool
+}
+
 func (p *Pools) Close() {
 	if p == nil {
 		return
@@ -54,6 +67,10 @@ func (p *Pools) Close() {
 	if p.prefetchPool != nil {
 		p.prefetchPool.Release()
 		p.prefetchPool = nil
+	}
+	if p.leasePool != nil {
+		p.leasePool.Release()
+		p.leasePool = nil
 	}
 }
 

@@ -25,7 +25,7 @@ func NewPools(cfg config.WorkerConfig, logger *slog.Logger) *Pools {
 	if logger == nil {
 		logger = slog.Default()
 	}
-	return NewPoolsConfig(cfg.ProbeConcurrency, cfg.PrefetchConcurrency, logger)
+	return NewPoolsConfig(cfg.ProbeConcurrency, cfg.PrefetchConcurrency, cfg.LeaseConcurrency, logger)
 }
 
 func closePools(_ context.Context, pools *Pools) error {

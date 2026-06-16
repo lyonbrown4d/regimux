@@ -2,8 +2,6 @@ package artifactcache
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"log/slog"
 	"time"
 
@@ -17,11 +15,12 @@ const (
 )
 
 type FillTracker struct {
-	fills        collectionmapping.ConcurrentMap[string, *Fill]
-	locker       FillLocker
-	leaseTTL     time.Duration
-	pollInterval time.Duration
-	logger       *slog.Logger
+	fills          collectionmapping.ConcurrentMap[string, *Fill]
+	locker         FillLocker
+	leaseScheduler FillLeaseScheduler
+	leaseTTL       time.Duration
+	pollInterval   time.Duration
+	logger         *slog.Logger
 }
 
 type Fill struct {
@@ -38,11 +37,23 @@ type FillLocker interface {
 	AcquireLease(ctx context.Context, key string, ttl time.Duration) (FillLease, bool, error)
 }
 
+type FillLeaseScheduler interface {
+	Submit(func()) error
+}
+
 type FillTrackerOption func(*FillTracker)
 
 type FillWaitFunc[T any] func() (T, bool, error)
 
 type FillOwnerFunc[T any] func() (T, error)
+
+type CoalesceRequest[T any] struct {
+	Context context.Context
+	Tracker *FillTracker
+	Key     Key
+	Wait    FillWaitFunc[T]
+	Fill    FillOwnerFunc[T]
+}
 
 func NewFillTracker(options ...FillTrackerOption) *FillTracker {
 	tracker := &FillTracker{
@@ -66,6 +77,12 @@ func NewFillTracker(options ...FillTrackerOption) *FillTracker {
 func WithFillLocker(locker FillLocker) FillTrackerOption {
 	return func(t *FillTracker) {
 		t.locker = locker
+	}
+}
+
+func WithFillLeaseScheduler(scheduler FillLeaseScheduler) FillTrackerOption {
+	return func(t *FillTracker) {
+		t.leaseScheduler = scheduler
 	}
 }
 
@@ -111,9 +128,6 @@ func (f *Fill) Wait(ctx context.Context) error {
 	if f == nil {
 		return nil
 	}
-	if ctx == nil {
-		ctx = context.Background()
-	}
 	select {
 	case <-ctx.Done():
 		return wrapError(ctx.Err(), "wait for artifact cache fill")
@@ -129,140 +143,56 @@ func CoalesceFill[T any](
 	wait FillWaitFunc[T],
 	fill FillOwnerFunc[T],
 ) (T, error) {
+	return CoalesceFillWith(CoalesceRequest[T]{
+		Context: ctx,
+		Tracker: tracker,
+		Key:     key,
+		Wait:    wait,
+		Fill:    fill,
+	})
+}
+
+//nolint:gocognit // The owner/waiter retry loop is clearer kept as one generic coordination state machine.
+func CoalesceFillWith[T any](req CoalesceRequest[T]) (T, error) {
 	var zero T
 	for {
-		current, owner := tracker.Begin(key)
+		current, owner := req.Tracker.Begin(req.Key)
 		if !owner {
-			if err := current.Wait(ctx); err != nil && ctx.Err() != nil {
+			if err := current.Wait(req.Context); err != nil && req.Context.Err() != nil {
 				return zero, err
 			}
-			result, ok, err := wait()
+			result, ok, err := req.Wait()
 			if ok || err != nil {
 				return result, err
 			}
 			continue
 		}
 
-		result, err := coalesceFillOwner(ctx, tracker, key, wait, fill)
-		tracker.Finish(key, current, err)
+		result, err := coalesceFillOwner(req)
+		req.Tracker.Finish(req.Key, current, err)
 		return result, err
 	}
 }
 
-func coalesceFillOwner[T any](
-	ctx context.Context,
-	tracker *FillTracker,
-	key Key,
-	wait FillWaitFunc[T],
-	fill FillOwnerFunc[T],
-) (T, error) {
+//nolint:gocognit // Lease ownership and waiter polling are one small state machine with explicit retry branches.
+func coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
 	var zero T
 	for {
-		result, ok, err := wait()
+		result, ok, err := req.Wait()
 		if ok || err != nil {
 			return result, err
 		}
 
-		lease, owner := acquireFillLease(ctx, tracker, key)
+		lease, owner := acquireFillLease(req.Context, req.Tracker, req.Key)
 		if owner {
 			if lease == nil {
-				return fill()
+				return req.Fill()
 			}
-			return fillWithLease(ctx, tracker, lease, fill)
+			return fillWithLease(req.Context, req.Tracker, lease, req.Fill)
 		}
-		if err := waitForFillPoll(ctx, tracker); err != nil {
+		if err := waitForFillPoll(req.Context, req.Tracker); err != nil {
 			return zero, err
 		}
-	}
-}
-
-func acquireFillLease(ctx context.Context, tracker *FillTracker, key Key) (FillLease, bool) {
-	if tracker == nil || tracker.locker == nil {
-		return nil, true
-	}
-	leaseKey := distributedFillKey(key)
-	if leaseKey == "" {
-		return nil, true
-	}
-	lease, ok, err := tracker.locker.AcquireLease(ctx, leaseKey, tracker.leaseTTL)
-	if err != nil {
-		if tracker.logger != nil {
-			tracker.logger.WarnContext(ctx, "artifact cache fill lease unavailable; falling back to local fill",
-				"alias", key.Alias,
-				"repository", key.Repository,
-				"reference", key.Reference,
-				"error", err,
-			)
-		}
-		return nil, true
-	}
-	return lease, ok
-}
-
-func fillWithLease[T any](ctx context.Context, tracker *FillTracker, lease FillLease, fill FillOwnerFunc[T]) (T, error) {
-	stopRenew := renewFillLease(ctx, tracker, lease)
-	result, err := fill()
-	close(stopRenew)
-	releaseFillLease(lease)
-	return result, err
-}
-
-func renewFillLease(ctx context.Context, tracker *FillTracker, lease FillLease) chan struct{} {
-	stop := make(chan struct{})
-	if tracker == nil || lease == nil || tracker.leaseTTL <= 0 {
-		return stop
-	}
-	interval := tracker.leaseTTL / 2
-	if interval <= 0 {
-		return stop
-	}
-	go func() {
-		timer := time.NewTimer(interval)
-		defer timer.Stop()
-		for {
-			select {
-			case <-stop:
-				return
-			case <-ctx.Done():
-				return
-			case <-timer.C:
-				extendCtx, cancel := context.WithTimeout(context.Background(), fillLeaseReleaseTimeout)
-				err := lease.Extend(extendCtx, tracker.leaseTTL)
-				cancel()
-				if err != nil && tracker.logger != nil {
-					tracker.logger.WarnContext(ctx, "artifact cache fill lease extend failed", "error", err)
-				}
-				timer.Reset(interval)
-			}
-		}
-	}()
-	return stop
-}
-
-func releaseFillLease(lease FillLease) {
-	if lease == nil {
-		return
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), fillLeaseReleaseTimeout)
-	defer cancel()
-	_ = lease.Release(ctx)
-}
-
-func waitForFillPoll(ctx context.Context, tracker *FillTracker) error {
-	if ctx == nil {
-		ctx = context.Background()
-	}
-	interval := defaultFillPollInterval
-	if tracker != nil && tracker.pollInterval > 0 {
-		interval = tracker.pollInterval
-	}
-	timer := time.NewTimer(interval)
-	defer timer.Stop()
-	select {
-	case <-ctx.Done():
-		return wrapError(ctx.Err(), "wait for artifact cache fill lease")
-	case <-timer.C:
-		return nil
 	}
 }
 
@@ -271,13 +201,4 @@ func fillKey(key Key) string {
 		return ""
 	}
 	return key.Alias + "\x00" + key.Repository + "\x00" + key.Reference
-}
-
-func distributedFillKey(key Key) string {
-	raw := fillKey(key)
-	if raw == "" {
-		return ""
-	}
-	sum := sha256.Sum256([]byte(raw))
-	return "artifact-cache:fill:" + hex.EncodeToString(sum[:])
 }

@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit PyPI proxy scenarios stay grouped to share fixtures and simple-index assertions.
 package pypi_test
 
 import (
@@ -77,6 +78,7 @@ func TestServiceRewritesSimpleLinksAndCaches(t *testing.T) {
 	}
 }
 
+//nolint:cyclop,gocyclo,gocognit,funlen // Concurrent miss coalescing test keeps synchronization and cache-status assertions together.
 func TestServiceCoalescesConcurrentSimpleIndexMiss(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64

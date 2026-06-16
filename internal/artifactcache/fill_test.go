@@ -10,6 +10,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 )
 
+//nolint:funlen,gocognit // This concurrent lease test keeps setup, blocking, release, and result assertions together.
 func TestCoalesceFillUsesSharedLeaseAcrossTrackers(t *testing.T) {
 	ctx := context.Background()
 	locker := newFakeFillLocker()
@@ -27,12 +28,17 @@ func TestCoalesceFillUsesSharedLeaseAcrossTrackers(t *testing.T) {
 
 	var upstreamCalls atomic.Int64
 	var cached atomic.Bool
+	var waitErr error
+	var fillErr error
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var releaseOnce sync.Once
 	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 
 	wait := func() (string, bool, error) {
+		if waitErr != nil {
+			return "", true, waitErr
+		}
 		if cached.Load() {
 			return "cached", true, nil
 		}
@@ -43,6 +49,9 @@ func TestCoalesceFillUsesSharedLeaseAcrossTrackers(t *testing.T) {
 			close(started)
 		}
 		<-release
+		if fillErr != nil {
+			return "", fillErr
+		}
 		cached.Store(true)
 		return "origin", nil
 	}
@@ -101,7 +110,7 @@ func assertFillResult(t *testing.T, results <-chan fillResult, want string) {
 type fakeFillLocker struct {
 	mu    sync.Mutex
 	locks map[string]string
-	next  int64
+	next  atomic.Int64
 }
 
 func newFakeFillLocker() *fakeFillLocker {
@@ -118,7 +127,7 @@ func (l *fakeFillLocker) AcquireLease(
 	if _, ok := l.locks[key]; ok {
 		return nil, false, nil
 	}
-	token := atomic.AddInt64(&l.next, 1)
+	token := l.next.Add(1)
 	value := time.Unix(0, token).String()
 	l.locks[key] = value
 	return &fakeFillLease{locker: l, key: key, token: value}, true, nil

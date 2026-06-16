@@ -1,6 +1,6 @@
 [Unit]
 Description=RegiMux developer dependency cache gateway
-Documentation=https://github.com/lyonbrown4d/regimux
+Documentation=https://github.com/lyonbrown4d/regimux/wiki
 After=network-online.target
 Wants=network-online.target
 

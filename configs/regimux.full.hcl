@@ -257,6 +257,7 @@ scheduler {
 worker {
   probe_concurrency = 16
   prefetch_concurrency = 8
+  lease_concurrency = 64
 }
 
 docker {

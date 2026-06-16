@@ -7,11 +7,12 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
 var Module = dix.NewModule("artifact-cache",
 	dix.Providers(
-		dix.Provider2[*FillTracker, backend.Backend, *slog.Logger](newFillTracker),
+		dix.Provider3[*FillTracker, backend.Backend, *worker.Pools, *slog.Logger](newFillTracker),
 		dix.Provider4[*Store, meta.Store, object.Store, *FillTracker, *slog.Logger](
 			func(metadata meta.Store, objects object.Store, fills *FillTracker, logger *slog.Logger) *Store {
 				return New(Dependencies{
@@ -25,10 +26,14 @@ var Module = dix.NewModule("artifact-cache",
 	),
 )
 
-func newFillTracker(cacheBackend backend.Backend, logger *slog.Logger) *FillTracker {
-	locker, _ := cacheBackend.(FillLocker)
+func newFillTracker(cacheBackend backend.Backend, pools *worker.Pools, logger *slog.Logger) *FillTracker {
+	locker, ok := cacheBackend.(FillLocker)
+	if !ok {
+		locker = nil
+	}
 	return NewFillTracker(
 		WithFillLocker(locker),
+		WithFillLeaseScheduler(pools.LeasePool()),
 		WithFillLogger(componentLogger(logger, "artifact-cache")),
 	)
 }

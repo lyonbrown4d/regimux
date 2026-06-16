@@ -157,6 +157,7 @@ func defaultWorkerConfig() WorkerConfig {
 	return WorkerConfig{
 		ProbeConcurrency:    16,
 		PrefetchConcurrency: 8,
+		LeaseConcurrency:    64,
 	}
 }
 

@@ -68,38 +68,45 @@ func TestKVBackendAcquiresPrefixedLease(t *testing.T) {
 	client := &fakeKVClient{values: map[string][]byte{}}
 	cache := backend.NewKV(client, "regimux")
 
-	lease, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
-	if err != nil {
-		t.Fatalf("acquire first lease: %v", err)
-	}
-	if !ok || lease == nil {
-		t.Fatal("expected first lease acquisition to succeed")
-	}
+	lease := requireLeaseAcquired(ctx, t, cache, "first")
 	if _, held := client.locks["regimux:artifact-fill"]; !held {
 		t.Fatal("expected prefixed lock key in kv client")
 	}
 
-	second, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
+	requireLeaseDenied(ctx, t, cache)
+
+	extendErr := lease.Extend(ctx, time.Minute)
+	if extendErr != nil {
+		t.Fatalf("extend lease: %v", extendErr)
+	}
+	releaseErr := lease.Release(ctx)
+	if releaseErr != nil {
+		t.Fatalf("release lease: %v", releaseErr)
+	}
+
+	requireLeaseAcquired(ctx, t, cache, "third")
+}
+
+func requireLeaseAcquired(ctx context.Context, t *testing.T, cache *backend.KV, label string) backend.Lease {
+	t.Helper()
+	lease, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
+	if err != nil {
+		t.Fatalf("acquire %s lease: %v", label, err)
+	}
+	if !ok || lease == nil {
+		t.Fatal("expected lease acquisition to succeed after release")
+	}
+	return lease
+}
+
+func requireLeaseDenied(ctx context.Context, t *testing.T, cache *backend.KV) {
+	t.Helper()
+	lease, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
 	if err != nil {
 		t.Fatalf("acquire second lease: %v", err)
 	}
-	if ok || second != nil {
+	if ok || lease != nil {
 		t.Fatal("expected second lease acquisition to be denied while first is held")
-	}
-
-	if err := lease.Extend(ctx, time.Minute); err != nil {
-		t.Fatalf("extend lease: %v", err)
-	}
-	if err := lease.Release(ctx); err != nil {
-		t.Fatalf("release lease: %v", err)
-	}
-
-	third, ok, err := cache.AcquireLease(ctx, "artifact-fill", time.Minute)
-	if err != nil {
-		t.Fatalf("acquire third lease: %v", err)
-	}
-	if !ok || third == nil {
-		t.Fatal("expected lease acquisition to succeed after release")
 	}
 }
 
@@ -134,7 +141,7 @@ func (c *fakeKVClient) Close() error {
 	return nil
 }
 
-func (c *fakeKVClient) Acquire(_ context.Context, key string, token string, _ time.Duration) (bool, error) {
+func (c *fakeKVClient) Acquire(_ context.Context, key, token string, _ time.Duration) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.locks == nil {
@@ -147,7 +154,7 @@ func (c *fakeKVClient) Acquire(_ context.Context, key string, token string, _ ti
 	return true, nil
 }
 
-func (c *fakeKVClient) Release(_ context.Context, key string, token string) (bool, error) {
+func (c *fakeKVClient) Release(_ context.Context, key, token string) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.locks == nil || c.locks[key] != token {
@@ -157,7 +164,7 @@ func (c *fakeKVClient) Release(_ context.Context, key string, token string) (boo
 	return true, nil
 }
 
-func (c *fakeKVClient) Extend(_ context.Context, key string, token string, _ time.Duration) (bool, error) {
+func (c *fakeKVClient) Extend(_ context.Context, key, token string, _ time.Duration) (bool, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if c.locks == nil || c.locks[key] != token {

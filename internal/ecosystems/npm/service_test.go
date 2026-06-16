@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit npm proxy scenarios stay grouped to share fixtures and rewrite assertions.
 package npm_test
 
 import (
@@ -76,6 +77,7 @@ func TestServiceRewritesMetadataTarballsAndCaches(t *testing.T) {
 	}
 }
 
+//nolint:cyclop,gocyclo,gocognit,funlen // Concurrent miss coalescing test keeps synchronization and cache-status assertions together.
 func TestServiceCoalescesConcurrentMetadataMiss(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64

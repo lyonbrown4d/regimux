@@ -104,6 +104,7 @@ type SchedulerRefreshConfig struct {
 type WorkerConfig struct {
 	ProbeConcurrency    int `json:"probe_concurrency"    koanf:"probe_concurrency"    mapstructure:"probe_concurrency"    validate:"min=0"`
 	PrefetchConcurrency int `json:"prefetch_concurrency" koanf:"prefetch_concurrency" mapstructure:"prefetch_concurrency" validate:"min=0"`
+	LeaseConcurrency    int `json:"lease_concurrency"    koanf:"lease_concurrency"    mapstructure:"lease_concurrency"    validate:"min=0"`
 }
 
 type ContainerConfig map[string]ContainerRegistryConfig

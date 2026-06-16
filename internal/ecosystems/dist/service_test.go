@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit Dist service scenarios stay grouped to share fixtures and protocol assertions.
 package dist_test
 
 import (
@@ -58,6 +59,7 @@ func TestServiceCachesFullDistArtifact(t *testing.T) {
 	}
 }
 
+//nolint:cyclop,gocyclo,gocognit,funlen // Concurrent miss coalescing test keeps synchronization and cache-status assertions together.
 func TestServiceCoalescesConcurrentFullArtifactMiss(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64

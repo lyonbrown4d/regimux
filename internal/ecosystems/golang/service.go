@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit Go service keeps route, cache, and upstream orchestration in one implementation file.
 package golang
 
 import (
@@ -264,48 +265,86 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	if err != nil {
 		return nil, err
 	}
-	if mode != requestModeRefresh && cacheFresh(cached, cachedOK) {
-		return s.responseFromStored(req, cached, cacheHit)
-	}
-	if mode != requestModeRefresh && cachedOK && cached.expired {
-		return s.responseFromStored(req, cached, cacheStale)
+	resp, cachedHit, cacheErr := s.responseFromCached(req, cached, cachedOK, mode)
+	if cachedHit || cacheErr != nil {
+		return resp, cacheErr
 	}
 
+	fillReq := upstreamFillRequest{
+		ctx:           ctx,
+		req:           req,
+		route:         requestRoute,
+		upstream:      upstreamCfg,
+		upstreamAlias: upstreamAlias,
+		cached:        cached,
+		cachedOK:      cachedOK,
+		mode:          mode,
+	}
 	if shouldCoalesceFill(req, mode) {
-		return artifactcache.CoalesceFill(ctx, s.fills, artifactKey(requestRoute), func() (*Response, bool, error) {
-			cached, cachedOK, err := s.cached(ctx, requestRoute)
-			if err != nil {
-				return nil, true, err
+		return s.coalesceFill(fillReq)
+	}
+
+	return s.fetchUncached(fillReq)
+}
+
+type upstreamFillRequest struct {
+	ctx           context.Context
+	req           Request
+	route         route
+	upstream      config.UpstreamConfig
+	upstreamAlias string
+	cached        storedResponse
+	cachedOK      bool
+	mode          requestMode
+}
+
+func (s *Service) coalesceFill(fillReq upstreamFillRequest) (*Response, error) {
+	resp, err := artifactcache.CoalesceFillWith(artifactcache.CoalesceRequest[*Response]{
+		Context: fillReq.ctx,
+		Tracker: s.fills,
+		Key:     artifactKey(fillReq.route),
+		Wait: func() (*Response, bool, error) {
+			refreshed, ok, refreshErr := s.cached(fillReq.ctx, fillReq.route)
+			if refreshErr != nil {
+				return nil, true, refreshErr
 			}
-			if mode != requestModeRefresh && cacheFresh(cached, cachedOK) {
-				resp, err := s.responseFromStored(req, cached, cacheHit)
-				return resp, true, err
-			}
-			if mode != requestModeRefresh && cachedOK && cached.expired {
-				resp, err := s.responseFromStored(req, cached, cacheStale)
-				return resp, true, err
+			cachedResp, cacheOK, cacheErr := s.responseFromCached(fillReq.req, refreshed, ok, fillReq.mode)
+			if cacheOK || cacheErr != nil {
+				return cachedResp, true, cacheErr
 			}
 			return nil, false, nil
-		}, func() (*Response, error) {
-			fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
-			if err != nil {
-				return s.responseFromFetchError(req, cached, cachedOK, err, mode)
-			}
-			if shouldPassThrough(req, requestRoute, fetched.status) {
-				return s.responseFromUpstream(req, fetched), nil
-			}
-			return s.storeFetchedResponse(ctx, req, requestRoute, fetched)
-		})
-	}
-
-	fetched, err := s.fetch(ctx, upstreamCfg, upstreamAlias, requestRoute, req.Method)
+		},
+		Fill: func() (*Response, error) {
+			return s.fetchUncached(fillReq)
+		},
+	})
 	if err != nil {
-		return s.responseFromFetchError(req, cached, cachedOK, err, mode)
+		return nil, wrapError(err, "coalesce go artifact fill")
 	}
-	if shouldPassThrough(req, requestRoute, fetched.status) {
-		return s.responseFromUpstream(req, fetched), nil
+	return resp, nil
+}
+
+func (s *Service) responseFromCached(req Request, cached storedResponse, cachedOK bool, mode requestMode) (*Response, bool, error) {
+	if mode != requestModeRefresh && cacheFresh(cached, cachedOK) {
+		resp, err := s.responseFromStored(req, cached, cacheHit)
+		return resp, true, err
 	}
-	return s.storeFetchedResponse(ctx, req, requestRoute, fetched)
+	if mode != requestModeRefresh && cachedOK && cached.expired {
+		resp, err := s.responseFromStored(req, cached, cacheStale)
+		return resp, true, err
+	}
+	return nil, false, nil
+}
+
+func (s *Service) fetchUncached(fillReq upstreamFillRequest) (*Response, error) {
+	fetched, err := s.fetch(fillReq.ctx, fillReq.upstream, fillReq.upstreamAlias, fillReq.route, fillReq.req.Method)
+	if err != nil {
+		return s.responseFromFetchError(fillReq.req, fillReq.cached, fillReq.cachedOK, err, fillReq.mode)
+	}
+	if shouldPassThrough(fillReq.req, fillReq.route, fetched.status) {
+		return s.responseFromUpstream(fillReq.req, fetched), nil
+	}
+	return s.storeFetchedResponse(fillReq.ctx, fillReq.req, fillReq.route, fetched)
 }
 
 func shouldCoalesceFill(req Request, mode requestMode) bool {
