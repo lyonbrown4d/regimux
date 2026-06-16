@@ -3,9 +3,11 @@ package cache_test
 import (
 	"context"
 	"net/http"
+	"sync"
 	"testing"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -170,6 +172,132 @@ func TestBlobProxyConcurrentFullMissWaitsForStreamedFill(t *testing.T) {
 	assertBlobRequestCounters(t, client, 1, 0)
 }
 
+func TestBlobProxyDistributedFullMissWaitsForStreamedFill(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	reader := newBlockingBlobReader(body)
+	client := &fakeRegistryClient{blobBody: body, blobReader: reader, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	leases := newSharedLeaseBackend()
+	cfg := config.Config{
+		Cache: config.CacheConfig{
+			Blob: config.BlobCacheConfig{
+				StreamAndCache: true,
+			},
+		},
+	}
+	left := newTestProxy(client, metadata, objects, leases, cfg)
+	right := newTestProxy(client, metadata, objects, leases, cfg)
+
+	first, err := left.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first blob get: %v", err)
+	}
+	if first.Cache != cache.CacheMiss {
+		t.Fatalf("first cache status = %s, want miss", first.Cache)
+	}
+
+	secondCh := make(chan blobGetResult, 1)
+	go func() {
+		result, getErr := right.Blobs().Get(ctx, cache.BlobRequest{
+			UpstreamAlias: "hub",
+			Repo:          "library/alpine",
+			Digest:        digest,
+			Method:        http.MethodGet,
+		})
+		secondCh <- blobGetResult{result: result, err: getErr}
+	}()
+
+	select {
+	case second := <-secondCh:
+		t.Fatalf("second blob get returned before distributed streamed fill completed: result=%#v err=%v", second.result, second.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	reader.Release()
+	assertFullBlobMiss(t, first, body)
+
+	var second blobGetResult
+	select {
+	case second = <-secondCh:
+	case <-time.After(time.Second):
+		t.Fatal("second blob get did not resume after distributed streamed fill completed")
+	}
+	if second.err != nil {
+		t.Fatalf("second blob get: %v", second.err)
+	}
+	assertFullBlobHit(t, second.result, body)
+	assertBlobRequestCounters(t, client, 1, 0)
+}
+
+func TestBlobProxyDistributedRangeMissWaitsForStreamedFill(t *testing.T) {
+	ctx := context.Background()
+	body := []byte("0123456789")
+	digest := testDigestFor(body)
+	reader := newBlockingBlobReader(body)
+	client := &fakeRegistryClient{blobBody: body, blobReader: reader, blobDigest: digest}
+	metadata, objects := newTestStores(t)
+	leases := newSharedLeaseBackend()
+	cfg := config.Config{
+		Cache: config.CacheConfig{
+			Blob: config.BlobCacheConfig{
+				StreamAndCache: true,
+			},
+		},
+	}
+	left := newTestProxy(client, metadata, objects, leases, cfg)
+	right := newTestProxy(client, metadata, objects, leases, cfg)
+
+	first, err := left.Blobs().Get(ctx, cache.BlobRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/alpine",
+		Digest:        digest,
+		Method:        http.MethodGet,
+	})
+	if err != nil {
+		t.Fatalf("first blob get: %v", err)
+	}
+
+	rangeCh := make(chan blobGetResult, 1)
+	go func() {
+		result, getErr := right.Blobs().Get(ctx, cache.BlobRequest{
+			UpstreamAlias: "hub",
+			Repo:          "library/alpine",
+			Digest:        digest,
+			Range:         &object.HTTPRange{Start: 2, End: 5},
+			Method:        http.MethodGet,
+		})
+		rangeCh <- blobGetResult{result: result, err: getErr}
+	}()
+
+	select {
+	case ranged := <-rangeCh:
+		t.Fatalf("range blob get returned before distributed streamed fill completed: result=%#v err=%v", ranged.result, ranged.err)
+	case <-time.After(100 * time.Millisecond):
+	}
+
+	reader.Release()
+	assertFullBlobMiss(t, first, body)
+
+	var ranged blobGetResult
+	select {
+	case ranged = <-rangeCh:
+	case <-time.After(time.Second):
+		t.Fatal("range blob get did not resume after distributed streamed fill completed")
+	}
+	if ranged.err != nil {
+		t.Fatalf("range blob get: %v", ranged.err)
+	}
+	assertRangeBlobHit(t, ranged.result)
+	assertBlobRequestCounters(t, client, 1, 0)
+}
+
 func TestBlobProxySkipsVerifyForRecentSharedBlobWithinTTL(t *testing.T) {
 	ctx := context.Background()
 	body := []byte("0123456789")
@@ -238,4 +366,46 @@ func TestBlobProxySkipsVerifyForRecentSharedBlobWithinTTL(t *testing.T) {
 		t.Fatalf("third cache status = %s, want hit", third.Cache)
 	}
 	assertBlobRequestCounters(t, client, 1, 1)
+}
+
+type sharedLeaseBackend struct {
+	backend.Noop
+	mu    sync.Mutex
+	locks map[string]string
+	next  int
+}
+
+func newSharedLeaseBackend() *sharedLeaseBackend {
+	return &sharedLeaseBackend{locks: map[string]string{}}
+}
+
+func (b *sharedLeaseBackend) AcquireLease(_ context.Context, key string, _ time.Duration) (backend.Lease, bool, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if _, ok := b.locks[key]; ok {
+		return nil, false, nil
+	}
+	b.next++
+	token := key + "#" + string(rune('a'+b.next))
+	b.locks[key] = token
+	return &sharedLease{backend: b, key: key, token: token}, true, nil
+}
+
+type sharedLease struct {
+	backend *sharedLeaseBackend
+	key     string
+	token   string
+}
+
+func (l *sharedLease) Release(context.Context) error {
+	l.backend.mu.Lock()
+	defer l.backend.mu.Unlock()
+	if l.backend.locks[l.key] == l.token {
+		delete(l.backend.locks, l.key)
+	}
+	return nil
+}
+
+func (l *sharedLease) Extend(context.Context, time.Duration) error {
+	return nil
 }

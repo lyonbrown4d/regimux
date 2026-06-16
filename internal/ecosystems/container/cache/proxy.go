@@ -38,7 +38,7 @@ type Proxy struct {
 	blobSmallCache       smallBlobCacheConfig
 	logger               *slog.Logger
 	manifestGroup        singleflightx.Group[string, *CachedManifest]
-	blobGroup            singleflightx.Group[string, struct{}]
+	blobGroup            singleflightx.Group[string, bool]
 	blobFills            *blobFillTracker
 }
 
@@ -180,7 +180,7 @@ type blobProxy struct {
 	streamAndCache   bool
 	verifyMembership time.Duration
 	smallCache       smallBlobCacheConfig
-	group            *singleflightx.Group[string, struct{}]
+	group            *singleflightx.Group[string, bool]
 	fills            *blobFillTracker
 }
 
