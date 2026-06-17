@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
-	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -37,25 +36,11 @@ type Proxy struct {
 	blobVerifyTTL        time.Duration
 	blobSmallCache       smallBlobCacheConfig
 	blobLeaseScheduler   leaseRenewScheduler
+	blobStreamScheduler  blobStreamScheduler
 	logger               *slog.Logger
 	manifestGroup        singleflightx.Group[string, *CachedManifest]
 	blobGroup            singleflightx.Group[string, bool]
 	blobFills            *blobFillTracker
-}
-
-type leaseRenewScheduler interface {
-	Submit(func()) error
-}
-
-type ProxyDependencies struct {
-	Client         upstream.RegistryClient
-	Cache          backend.Backend
-	Metadata       meta.Store
-	Objects        object.Store
-	CacheConfig    config.CacheConfig
-	Events         events.Bus
-	LeaseScheduler leaseRenewScheduler
-	Logger         *slog.Logger
 }
 
 func NewProxy(deps ProxyDependencies) *Proxy {
@@ -66,6 +51,7 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 		objects:              deps.Objects,
 		events:               deps.Events,
 		blobLeaseScheduler:   deps.LeaseScheduler,
+		blobStreamScheduler:  deps.BlobStreamScheduler,
 		logger:               deps.Logger,
 		manifestTTL:          defaultManifestTTL(),
 		manifestMaxStale:     168 * time.Hour,
@@ -142,6 +128,7 @@ func (p *Proxy) Blobs() BlobService {
 		verifyMembership: p.blobVerifyTTL,
 		smallCache:       p.blobSmallCache,
 		leaseScheduler:   p.blobLeaseScheduler,
+		streamScheduler:  p.blobStreamScheduler,
 		group:            &p.blobGroup,
 		fills:            p.blobFills,
 	}
@@ -189,6 +176,7 @@ type blobProxy struct {
 	verifyMembership time.Duration
 	smallCache       smallBlobCacheConfig
 	leaseScheduler   leaseRenewScheduler
+	streamScheduler  blobStreamScheduler
 	group            *singleflightx.Group[string, bool]
 	fills            *blobFillTracker
 }

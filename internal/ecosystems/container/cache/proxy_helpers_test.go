@@ -205,6 +205,17 @@ func assertPullRecordState(t *testing.T, pull *meta.PullRecord, count int64, ups
 	}
 }
 
+type asyncStreamScheduler struct{}
+
+func (asyncStreamScheduler) Submit(task func()) error {
+	go task()
+	return nil
+}
+
+func (asyncStreamScheduler) Free() int {
+	return 1
+}
+
 func requirePullRecord(ctx context.Context, t *testing.T, metadata meta.Store, key meta.PullKey) *meta.PullRecord {
 	t.Helper()
 

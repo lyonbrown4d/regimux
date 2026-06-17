@@ -30,12 +30,51 @@ func (e *RegistryEndpoint) fillManifestBlobsAsync(ctx context.Context, route ref
 		return
 	}
 	mediaType := cachedManifestMediaType(manifest)
-	if !isImageManifestMediaType(mediaType) {
-		e.logSkippedManifestBlobFill(ctx, route, manifest, mediaType, "unsupported manifest media type")
+	if isImageManifestMediaType(mediaType) {
+		e.submitManifestBlobFill(ctx, route, manifest, func(taskCtx context.Context) {
+			e.fillManifestBlobsForManifest(taskCtx, route, manifest, mediaType)
+		})
 		return
 	}
+	if isIndexManifestMediaType(mediaType) {
+		e.submitManifestBlobFill(ctx, route, manifest, func(taskCtx context.Context) {
+			e.fillManifestBlobsForIndex(taskCtx, route, manifest, mediaType)
+		})
+		return
+	}
+	e.logSkippedManifestBlobFill(ctx, route, manifest, mediaType, "unsupported manifest media type")
+}
 
-	go e.fillManifestBlobsForManifest(context.WithoutCancel(ctx), route, manifest, mediaType)
+func (e *RegistryEndpoint) submitManifestBlobFill(
+	ctx context.Context,
+	route reference.Route,
+	manifest *cache.CachedManifest,
+	task func(context.Context),
+) {
+	if task == nil {
+		return
+	}
+	taskCtx := context.WithoutCancel(ctx)
+	pool := e.workers.IOPool()
+	if pool == nil {
+		e.logSkippedManifestBlobFill(ctx, route, manifest, cachedManifestMediaType(manifest), "worker pool unavailable")
+		return
+	}
+	if pool.Free() == 0 {
+		e.logSkippedManifestBlobFill(ctx, route, manifest, cachedManifestMediaType(manifest), "worker pool saturated")
+		return
+	}
+	if err := pool.Submit(func() {
+		task(taskCtx)
+	}); err != nil {
+		e.logger.DebugContext(ctx, "submit manifest blob fill failed",
+			"alias", route.Alias,
+			"repository", route.Repo,
+			"reference", route.Reference,
+			"digest", manifest.Digest,
+			"error", err,
+		)
+	}
 }
 
 func (e *RegistryEndpoint) fillManifestBlobsForManifest(

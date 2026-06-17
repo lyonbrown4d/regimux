@@ -9,6 +9,11 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 )
 
+var (
+	errBlobStreamSchedulerSaturated   = errors.New("blob stream scheduler saturated")
+	errBlobStreamSchedulerUnavailable = errors.New("blob stream scheduler unavailable")
+)
+
 func (p blobProxy) streamBlobToCache(
 	ctx context.Context,
 	req BlobRequest,
@@ -18,7 +23,7 @@ func (p blobProxy) streamBlobToCache(
 ) io.ReadCloser {
 	reader, writer := io.Pipe()
 	done := make(chan error, 1)
-	go func() {
+	if err := p.submitStreamedBlobCache(func() {
 		err := p.storeStreamedBlob(context.WithoutCancel(ctx), req, streamedBlob{
 			reader:    reader,
 			digest:    resp.Digest,
@@ -30,10 +35,48 @@ func (p blobProxy) streamBlobToCache(
 			onDone(err)
 		}
 		done <- err
-	}()
+	}); err != nil {
+		p.closeStreamedBlobPipeAfterSchedulerFailure(ctx, req, reader, writer, err)
+		p.logBlobStreamCacheError(ctx, req, "submit streamed blob cache failed", err)
+		if onDone != nil {
+			onDone(err)
+		}
+		return resp.Body
+	}
 	return newBlobTeeReadCloser(resp.Body, writer, done, func(err error) {
 		p.logBlobStreamCacheError(ctx, req, "write streamed blob to cache pipe failed", err)
 	})
+}
+
+func (p blobProxy) closeStreamedBlobPipeAfterSchedulerFailure(
+	ctx context.Context,
+	req BlobRequest,
+	reader *io.PipeReader,
+	writer *io.PipeWriter,
+	cause error,
+) {
+	if closeErr := writer.CloseWithError(cause); closeErr != nil && !errors.Is(closeErr, io.ErrClosedPipe) {
+		p.logBlobStreamCacheError(ctx, req, "close streamed blob cache writer after scheduler failure failed", closeErr)
+	}
+	if closeErr := reader.CloseWithError(cause); closeErr != nil && !errors.Is(closeErr, io.ErrClosedPipe) {
+		p.logBlobStreamCacheError(ctx, req, "close streamed blob cache reader after scheduler failure failed", closeErr)
+	}
+}
+
+func (p blobProxy) submitStreamedBlobCache(task func()) error {
+	if task == nil {
+		return nil
+	}
+	if p.streamScheduler == nil {
+		return errBlobStreamSchedulerUnavailable
+	}
+	if capacity, ok := p.streamScheduler.(schedulerCapacity); ok && capacity.Free() == 0 {
+		return errBlobStreamSchedulerSaturated
+	}
+	if err := p.streamScheduler.Submit(task); err != nil {
+		return wrapError(err, "submit streamed blob cache task")
+	}
+	return nil
 }
 
 type streamedBlob struct {

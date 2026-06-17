@@ -18,6 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/mo"
 )
@@ -32,6 +33,7 @@ type RegistryEndpoint struct {
 	suggestions suggestion.ManifestService
 	metadata    meta.Store
 	events      events.Bus
+	workers     *worker.Pools
 
 	defaultNamespaces *collectionmapping.Map[string, string]
 	dependencyPolicy  accesspolicy.DependencyPolicy
@@ -76,6 +78,7 @@ type RegistryEndpointOptions struct {
 	Suggestions suggestion.ManifestService
 	Metadata    meta.Store
 	Events      events.Bus
+	Workers     *worker.Pools
 }
 
 func NewRegistryEndpointFromOptions(
@@ -91,6 +94,7 @@ func NewRegistryEndpointFromOptions(
 	endpoint.suggestions = options.Suggestions
 	endpoint.metadata = options.Metadata
 	endpoint.events = options.Events
+	endpoint.workers = options.Workers
 	endpoint.dependencyPolicy = accesspolicy.FromConfig(options.Config.Policy.Dependency)
 	return endpoint
 }
@@ -138,11 +142,11 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	if err != nil {
 		if errors.Is(err, reference.ErrDigestInvalid) {
 			out := errorOutput(distribution.ErrDigestInvalid.WithDetail(err.Error()))
-			e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), nil)
+			e.observeAPI(ctx, routeName, reference.Route{}, method, out, time.Since(startedAt), nil)
 			return out, nil
 		}
 		out := errorOutput(distribution.ErrNameInvalid.WithDetail(err.Error()))
-		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), nil)
+		e.observeAPI(ctx, routeName, reference.Route{}, method, out, time.Since(startedAt), nil)
 		return out, nil
 	}
 	route = route.WithDefaultNamespace(e.defaultNamespace(route.Alias).OrEmpty())
@@ -150,7 +154,7 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	if policyErr := e.checkDependencyPolicy(route); policyErr != nil {
 		e.recordPolicyDeniedPull(ctx, route, policyErr)
 		out := errorOutput(distribution.ErrDenied.WithDetail(policyErr.Error()))
-		e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), policyErr)
+		e.observeAPI(ctx, routeName, route, method, out, time.Since(startedAt), policyErr)
 		return out, nil
 	}
 
@@ -169,7 +173,7 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	default:
 		out = errorOutput(distribution.ErrNameInvalid.WithDetail("unknown registry route"))
 	}
-	e.observeAPI(ctx, routeName, method, out, time.Since(startedAt), err)
+	e.observeAPI(ctx, routeName, route, method, out, time.Since(startedAt), err)
 	return out, err
 }
 

@@ -33,7 +33,7 @@ func TestRegistryEndpointManifestGetFillsImageManifestBlobsAsync(t *testing.T) {
 		),
 	}
 	blobs := newEndpointBlobService()
-	endpoint := container.NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	endpoint := newEndpointWithIOWorkers(t, &manifests, blobs)
 	baseURL := startAPIServer(t, endpoint)
 
 	resp := httpGet(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
@@ -58,30 +58,10 @@ func TestRegistryEndpointHeadManifestDoesNotFillBlobs(t *testing.T) {
 		),
 	}
 	blobs := newEndpointBlobService()
-	endpoint := container.NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
+	endpoint := container.NewRegistryEndpoint(&manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
 	baseURL := startAPIServer(t, endpoint)
 
 	resp := httpHead(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
-	body := readHTTPResponse(t, resp)
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("status = %d body=%q, want 200", resp.StatusCode, body)
-	}
-	blobs.assertNoRequests(t)
-}
-
-func TestRegistryEndpointIndexManifestDoesNotFillBlobs(t *testing.T) {
-	manifests := endpointManifestService{
-		manifest: cachedEndpointManifest(
-			endpointTestDigest("m"),
-			distribution.MediaTypeOCIIndex,
-			endpointIndexManifestBody(t, endpointTestDigest("child")),
-		),
-	}
-	blobs := newEndpointBlobService()
-	endpoint := container.NewRegistryEndpoint(manifests, blobs, nil, nil, slog.New(slog.DiscardHandler))
-	baseURL := startAPIServer(t, endpoint)
-
-	resp := httpGet(t, baseURL+"/v2/hub/library/alpine/manifests/latest")
 	body := readHTTPResponse(t, resp)
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d body=%q, want 200", resp.StatusCode, body)
@@ -107,18 +87,6 @@ func endpointImageManifestBody(t *testing.T, configDigest string, layerDigests .
 			Size:      64,
 		},
 		Layers: layers,
-	})
-}
-
-func endpointIndexManifestBody(t *testing.T, childDigest string) []byte {
-	t.Helper()
-	return marshalEndpointManifest(t, ocispec.Index{
-		MediaType: distribution.MediaTypeOCIIndex,
-		Manifests: []ocispec.Descriptor{{
-			MediaType: distribution.MediaTypeOCIManifest,
-			Digest:    digest.Digest(childDigest),
-			Size:      512,
-		}},
 	})
 }
 
@@ -177,11 +145,28 @@ func assertEndpointBlobReadersClosed(t *testing.T, closed, want []string) {
 }
 
 type endpointManifestService struct {
-	manifest *cache.CachedManifest
+	manifest  *cache.CachedManifest
+	manifests map[string]*cache.CachedManifest
+	mu        sync.Mutex
+	requests  []cache.ManifestRequest
 }
 
-func (s endpointManifestService) Get(context.Context, cache.ManifestRequest) (*cache.CachedManifest, error) {
+func (s *endpointManifestService) Get(_ context.Context, req cache.ManifestRequest) (*cache.CachedManifest, error) {
+	s.mu.Lock()
+	s.requests = append(s.requests, req)
+	s.mu.Unlock()
+	if s.manifests != nil {
+		if manifest, ok := s.manifests[req.Reference]; ok {
+			return manifest, nil
+		}
+	}
 	return s.manifest, nil
+}
+
+func (s *endpointManifestService) requestSnapshot() []cache.ManifestRequest {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return slices.Clone(s.requests)
 }
 
 type endpointBlobService struct {
@@ -285,6 +270,6 @@ func (r *endpointBlobReader) Close() error {
 }
 
 var (
-	_ cache.ManifestService = endpointManifestService{}
+	_ cache.ManifestService = (*endpointManifestService)(nil)
 	_ cache.BlobService     = (*endpointBlobService)(nil)
 )

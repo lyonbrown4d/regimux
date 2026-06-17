@@ -18,11 +18,12 @@ import (
 
 func newTestProxy(client upstream.RegistryClient, metadata meta.Store, objects object.Store, cacheBackend backend.Backend, cfg config.Config) *cache.Proxy {
 	return cache.NewProxy(cache.ProxyDependencies{
-		Client:      client,
-		Cache:       cacheBackend,
-		Metadata:    metadata,
-		Objects:     objects,
-		CacheConfig: cfg.Cache,
+		Client:              client,
+		Cache:               cacheBackend,
+		Metadata:            metadata,
+		Objects:             objects,
+		CacheConfig:         cfg.Cache,
+		BlobStreamScheduler: asyncStreamScheduler{},
 	})
 }
 

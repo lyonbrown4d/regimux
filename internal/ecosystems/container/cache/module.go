@@ -14,19 +14,18 @@ import (
 var Module = dix.NewModule("container-cache",
 	dix.Providers(
 		dix.Provider2[proxyStores, meta.Store, object.Store](newProxyStores),
-		dix.Provider1[leaseRenewScheduler, *worker.Pools](func(pools *worker.Pools) leaseRenewScheduler {
-			return pools.LeasePool()
-		}),
-		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, proxyStores, config.CacheConfig, events.Bus, leaseRenewScheduler](
-			func(client upstream.RegistryClient, cacheBackend backend.Backend, stores proxyStores, cacheCfg config.CacheConfig, bus events.Bus, scheduler leaseRenewScheduler) *Proxy {
+		dix.Provider1[proxySchedulers, *worker.Pools](newProxySchedulers),
+		dix.Provider6[*Proxy, upstream.RegistryClient, backend.Backend, proxyStores, config.CacheConfig, events.Bus, proxySchedulers](
+			func(client upstream.RegistryClient, cacheBackend backend.Backend, stores proxyStores, cacheCfg config.CacheConfig, bus events.Bus, schedulers proxySchedulers) *Proxy {
 				return NewProxy(ProxyDependencies{
-					Client:         client,
-					Cache:          cacheBackend,
-					Metadata:       stores.metadata,
-					Objects:        stores.objects,
-					CacheConfig:    cacheCfg,
-					Events:         bus,
-					LeaseScheduler: scheduler,
+					Client:              client,
+					Cache:               cacheBackend,
+					Metadata:            stores.metadata,
+					Objects:             stores.objects,
+					CacheConfig:         cacheCfg,
+					Events:              bus,
+					LeaseScheduler:      schedulers.lease,
+					BlobStreamScheduler: schedulers.stream,
 				})
 			},
 		),
@@ -58,6 +57,18 @@ type proxyStores struct {
 	objects  object.Store
 }
 
+type proxySchedulers struct {
+	lease  leaseRenewScheduler
+	stream blobStreamScheduler
+}
+
 func newProxyStores(metadata meta.Store, objects object.Store) proxyStores {
 	return proxyStores{metadata: metadata, objects: objects}
+}
+
+func newProxySchedulers(pools *worker.Pools) proxySchedulers {
+	return proxySchedulers{
+		lease:  pools.LeasePool(),
+		stream: pools.IOPool(),
+	}
 }
