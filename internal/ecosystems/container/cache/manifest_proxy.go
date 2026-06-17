@@ -157,6 +157,9 @@ func (p manifestProxy) fetch(ctx context.Context, req ManifestRequest) (*CachedM
 	if err != nil {
 		return nil, wrapError(err, "fetch manifest from upstream")
 	}
+	if err := validateManifestMediaType(resp.MediaType); err != nil {
+		return nil, closeHTTPBodyWithError(resp.Body, err, "unsupported manifest response body")
+	}
 
 	body, err := readManifestBody(resp.Body, req.Method)
 	if err != nil {

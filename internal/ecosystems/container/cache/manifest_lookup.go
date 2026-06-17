@@ -39,6 +39,12 @@ func (p manifestProxy) lookupEnvelope(ctx context.Context, req ManifestRequest, 
 		}
 		return nil, false, nil
 	}
+	if err := validateManifestMediaType(manifest.MediaType); err != nil {
+		if deleteErr := p.cache.Delete(ctx, cacheKey); deleteErr != nil {
+			return nil, false, wrapError(deleteErr, "delete invalid manifest cache entry")
+		}
+		return nil, false, nil
+	}
 	return manifestForMethod(manifest, req.Method), true, nil
 }
 
@@ -210,6 +216,9 @@ func (p manifestProxy) withinStaleWindow(expiresAt, now time.Time) bool {
 
 func (p manifestProxy) manifestFromRecord(ctx context.Context, req ManifestRequest, record *meta.ManifestRecord, status CacheStatus) (*CachedManifest, bool, error) {
 	if record == nil {
+		return nil, false, nil
+	}
+	if err := validateManifestMediaType(record.MediaType); err != nil {
 		return nil, false, nil
 	}
 

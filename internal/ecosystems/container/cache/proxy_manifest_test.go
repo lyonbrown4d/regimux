@@ -155,6 +155,36 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 	}
 }
 
+func TestManifestProxyRejectsUnsupportedUpstreamMediaType(t *testing.T) {
+	ctx := context.Background()
+	client := &fakeRegistryClient{
+		manifestBody:  []byte(`<html>not a registry manifest</html>`),
+		manifestMedia: "text/html; charset=utf-8",
+	}
+	proxy := newTestProxy(client, nil, nil, backend.NewMemory(backend.MemoryOptions{}), config.Config{})
+
+	_, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/debian",
+		Reference:     "bookworm-slim",
+		Method:        http.MethodGet,
+	})
+	if err == nil {
+		t.Fatal("manifest get unexpectedly succeeded")
+	}
+
+	got := distribution.FromError(err)
+	if got.Status != http.StatusBadGateway || len(got.Errors) != 1 || got.Errors[0].Code != distribution.CodeUpstreamError {
+		t.Fatalf("unexpected error: %#v", got)
+	}
+	if detail, ok := got.Errors[0].Detail.(string); !ok || !bytes.Contains([]byte(detail), []byte("text/html")) {
+		t.Fatalf("unexpected error detail: %#v", got.Errors[0].Detail)
+	}
+	if client.manifestGets != 1 {
+		t.Fatalf("manifest gets = %d, want 1", client.manifestGets)
+	}
+}
+
 func TestManifestProxyManifestCacheIgnoresAcceptMismatch(t *testing.T) {
 	ctx := context.Background()
 	body := []byte(`{"schemaVersion":2}`)
