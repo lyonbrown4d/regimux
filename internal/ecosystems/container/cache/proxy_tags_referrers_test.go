@@ -104,3 +104,54 @@ func TestReferrersFallbackTagIsCached(t *testing.T) {
 		t.Fatalf("unexpected upstream calls: referrers=%d manifests=%d", client.referrersGets, client.manifestGets)
 	}
 }
+
+func TestReferrersRejectsUnsupportedUpstreamMediaType(t *testing.T) {
+	ctx := context.Background()
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	client := &fakeRegistryClient{
+		referrersBody:  []byte(`<html>not referrers</html>`),
+		referrersMedia: "text/html; charset=utf-8",
+	}
+	proxy := newTestProxy(client, nil, nil, backend.NewMemory(backend.MemoryOptions{}), config.Config{})
+
+	_, err := proxy.Referrers().Get(ctx, cache.ReferrerRequest{UpstreamAlias: "hub", Repo: "library/ubuntu", Digest: digest})
+	assertReferrersUpstreamError(t, err, "text/html")
+}
+
+func TestReferrersFallbackRejectsInvalidJSON(t *testing.T) {
+	ctx := context.Background()
+	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	client := &fakeRegistryClient{
+		referrersErr:  distribution.ErrManifestUnknown.WithDetail("no referrers api"),
+		manifestBody:  []byte(`<html>not referrers</html>`),
+		manifestMedia: distribution.MediaTypeOCIIndex,
+	}
+	proxy := newTestProxy(
+		client,
+		nil,
+		nil,
+		backend.NewMemory(backend.MemoryOptions{}),
+		config.Config{
+			Cache: config.CacheConfig{
+				Referrers: config.ReferrersConfig{FallbackTag: true},
+			},
+		},
+	)
+
+	_, err := proxy.Referrers().Get(ctx, cache.ReferrerRequest{UpstreamAlias: "hub", Repo: "library/ubuntu", Digest: digest})
+	assertReferrersUpstreamError(t, err, "invalid upstream referrers index JSON")
+}
+
+func assertReferrersUpstreamError(t *testing.T, err error, wantDetail string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("referrers get unexpectedly succeeded")
+	}
+	got := distribution.FromError(err)
+	if got.Status != http.StatusBadGateway || len(got.Errors) != 1 || got.Errors[0].Code != distribution.CodeUpstreamError {
+		t.Fatalf("unexpected error: %#v", got)
+	}
+	if detail, ok := got.Errors[0].Detail.(string); !ok || !bytes.Contains([]byte(detail), []byte(wantDetail)) {
+		t.Fatalf("unexpected error detail: %#v", got.Errors[0].Detail)
+	}
+}

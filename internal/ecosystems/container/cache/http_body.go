@@ -19,3 +19,10 @@ func (p manifestProxy) deleteInvalidManifestCache(ctx context.Context, cacheKey 
 	}
 	return nil, false, nil
 }
+
+func (p referrerProxy) deleteInvalidReferrersCache(ctx context.Context, cacheKey string) (*ReferrersResult, bool, error) {
+	if deleteErr := p.cache.Delete(ctx, cacheKey); deleteErr != nil {
+		return nil, false, wrapError(deleteErr, "delete invalid referrers cache entry")
+	}
+	return nil, false, nil
+}

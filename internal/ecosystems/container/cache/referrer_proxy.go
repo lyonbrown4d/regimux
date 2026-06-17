@@ -48,10 +48,10 @@ func (p referrerProxy) cached(ctx context.Context, cacheKey string) (*ReferrersR
 
 	result, err := referrersFromEnvelope(data)
 	if err != nil {
-		if deleteErr := p.cache.Delete(ctx, cacheKey); deleteErr != nil {
-			return nil, false, wrapError(deleteErr, "delete invalid referrers cache entry")
-		}
-		return nil, false, nil
+		return p.deleteInvalidReferrersCache(ctx, cacheKey)
+	}
+	if !supportedReferrersMediaType(result.MediaType) || validateReferrersBody(result.Body) != nil {
+		return p.deleteInvalidReferrersCache(ctx, cacheKey)
 	}
 	result.Cache = CacheHit
 	return result, true, nil
@@ -69,9 +69,15 @@ func (p referrerProxy) fetch(ctx context.Context, req ReferrerRequest) (*Referre
 		}
 		return nil, wrapError(err, "fetch referrers from upstream")
 	}
+	if mediaErr := validateReferrersMediaType(resp.MediaType); mediaErr != nil {
+		return nil, closeHTTPBodyWithError(resp.Body, mediaErr, "unsupported referrers response body")
+	}
 
 	body, err := readHTTPBody(resp.Body, "referrers body")
 	if err != nil {
+		return nil, err
+	}
+	if err := validateReferrersBody(body); err != nil {
 		return nil, err
 	}
 	return &ReferrersResult{
@@ -97,14 +103,21 @@ func (p referrerProxy) fetchFallbackTag(ctx context.Context, req ReferrerRequest
 	if err != nil {
 		return nil, wrapError(err, "fetch referrers fallback tag from upstream")
 	}
+	mediaType := referrersMediaType(resp.MediaType)
+	if mediaErr := validateReferrersMediaType(mediaType); mediaErr != nil {
+		return nil, closeHTTPBodyWithError(resp.Body, mediaErr, "unsupported referrers fallback body")
+	}
 
 	body, err := readHTTPBody(resp.Body, "referrers fallback body")
 	if err != nil {
 		return nil, err
 	}
+	if err := validateReferrersBody(body); err != nil {
+		return nil, err
+	}
 	return &ReferrersResult{
 		Body:      body,
-		MediaType: referrersMediaType(resp.MediaType),
+		MediaType: mediaType,
 		Headers:   resp.Headers,
 		Cache:     CacheBypass,
 	}, nil

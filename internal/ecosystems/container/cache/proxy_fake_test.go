@@ -24,9 +24,10 @@ type fakeRegistryClient struct {
 	tagsHeader http.Header
 	tagsLists  int
 
-	referrersBody []byte
-	referrersErr  error
-	referrersGets int
+	referrersBody  []byte
+	referrersMedia string
+	referrersErr   error
+	referrersGets  int
 
 	manifestBody      []byte
 	manifestMedia     string
@@ -146,10 +147,14 @@ func (c *fakeRegistryClient) GetReferrers(context.Context, upstream.ReferrersReq
 	if c.referrersErr != nil {
 		return nil, c.referrersErr
 	}
+	mediaType := c.referrersMedia
+	if mediaType == "" {
+		mediaType = distribution.MediaTypeOCIIndex
+	}
 	return &upstream.ReferrersResponse{
 		Body:      io.NopCloser(bytes.NewReader(c.referrersBody)),
-		MediaType: distribution.MediaTypeOCIIndex,
-		Headers:   http.Header{distribution.HeaderContentType: {distribution.MediaTypeOCIIndex}},
+		MediaType: mediaType,
+		Headers:   http.Header{distribution.HeaderContentType: {mediaType}},
 	}, nil
 }
 

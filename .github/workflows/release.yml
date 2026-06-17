@@ -50,6 +50,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Free runner disk space
+        shell: bash
+        run: |
+          sudo rm -rf /usr/local/lib/android /usr/share/dotnet /usr/local/share/boost /opt/ghc /opt/hostedtoolcache/CodeQL
+          docker system prune -af || true
+          df -h
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
@@ -97,6 +104,6 @@ jobs:
         with:
           distribution: goreleaser
           version: "~> v2"
-          args: release --clean
+          args: release --clean --parallelism 1
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
