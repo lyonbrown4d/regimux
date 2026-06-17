@@ -8,7 +8,7 @@ require (
 	github.com/arcgolabs/authx v0.3.2
 	github.com/arcgolabs/authx/http/fiber v0.4.0
 	github.com/arcgolabs/authx/jwt v0.3.0
-	github.com/arcgolabs/clientx v0.1.2
+	github.com/arcgolabs/clientx v0.1.3
 	github.com/arcgolabs/collectionx/bitset v0.9.0
 	github.com/arcgolabs/collectionx/interval v0.9.0
 	github.com/arcgolabs/collectionx/list v0.9.0
@@ -31,7 +31,7 @@ require (
 	github.com/aws/aws-sdk-go-v2 v1.42.0
 	github.com/aws/aws-sdk-go-v2/config v1.32.25
 	github.com/aws/aws-sdk-go-v2/credentials v1.19.24
-	github.com/aws/aws-sdk-go-v2/service/s3 v1.103.3
+	github.com/aws/aws-sdk-go-v2/service/s3 v1.104.0
 	github.com/containerd/platforms v0.2.1
 	github.com/danielgtaylor/huma/v2 v2.38.0
 	github.com/distribution/reference v0.6.0
@@ -85,7 +85,7 @@ require (
 	github.com/arcgolabs/pkg/option v0.0.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.13 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.18.29 // indirect
-	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.27 // indirect
+	github.com/aws/aws-sdk-go-v2/feature/s3/manager v1.22.28 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/configsources v1.4.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/endpoints/v2 v2.7.29 // indirect
 	github.com/aws/aws-sdk-go-v2/internal/v4a v1.4.30 // indirect

@@ -167,6 +167,7 @@ func cachedManifestHandler(t *testing.T, authURL string) http.HandlerFunc {
 			return
 		}
 		requireEqual(t, got, "Bearer cached-token", "manifest authorization")
+		w.Header().Set(distribution.HeaderContentType, distribution.MediaTypeDockerManifest)
 		writeString(t, w, `{"schemaVersion":2}`)
 	}
 }
@@ -215,6 +216,7 @@ func scopedManifestHandler(t *testing.T, authURL string) http.HandlerFunc {
 			return
 		}
 		requireEqual(t, got, wantAuth, "manifest authorization")
+		w.Header().Set(distribution.HeaderContentType, distribution.MediaTypeDockerManifest)
 		writeString(t, w, `{"schemaVersion":2}`)
 	}
 }

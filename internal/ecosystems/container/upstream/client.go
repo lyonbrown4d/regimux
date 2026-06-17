@@ -157,10 +157,14 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationManifest))
 		}
+		mediaType := contentType(resp.Header)
+		if mediaErr := distribution.ValidateManifestMediaType(mediaType); mediaErr != nil {
+			return closeBodyWithError(resp.Body, mediaErr)
+		}
 		out = &ManifestResponse{
 			Body:      resp.Body,
 			Digest:    resp.Header.Get(distribution.HeaderDockerContentDigest),
-			MediaType: contentType(resp.Header),
+			MediaType: mediaType,
 			Size:      contentLength(resp.Header),
 			Headers:   resp.Header.Clone(),
 		}
@@ -247,9 +251,13 @@ func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*Refer
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			return closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationReferrers))
 		}
+		mediaType := contentType(resp.Header)
+		if mediaErr := distribution.ValidateReferrersMediaType(mediaType); mediaErr != nil {
+			return closeBodyWithError(resp.Body, mediaErr)
+		}
 		out = &ReferrersResponse{
 			Body:      resp.Body,
-			MediaType: contentType(resp.Header),
+			MediaType: mediaType,
 			Headers:   resp.Header.Clone(),
 		}
 		return nil

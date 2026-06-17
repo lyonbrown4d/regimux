@@ -35,6 +35,7 @@ func simpleManifestHandler(t *testing.T, requests *atomic.Int32) http.HandlerFun
 	return func(w http.ResponseWriter, _ *http.Request) {
 		t.Helper()
 		requests.Add(1)
+		w.Header().Set(distribution.HeaderContentType, distribution.MediaTypeDockerManifest)
 		writeString(t, w, `{"schemaVersion":2}`)
 	}
 }

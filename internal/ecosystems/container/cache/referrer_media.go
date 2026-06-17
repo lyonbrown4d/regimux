@@ -2,27 +2,19 @@ package cache
 
 import (
 	"encoding/json"
-	"strconv"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
 func validateReferrersMediaType(mediaType string) error {
-	normalized := normalizeManifestMediaType(mediaType)
-	switch normalized {
-	case distribution.MediaTypeOCIIndex,
-		distribution.MediaTypeDockerManifestList:
-		return nil
-	default:
-		if normalized == "" {
-			normalized = "missing"
-		}
-		return distribution.ErrUpstream.WithDetail("unsupported upstream referrers media type: " + strconv.Quote(normalized))
+	if err := distribution.ValidateReferrersMediaType(mediaType); err != nil {
+		return wrapError(err, "validate referrers media type")
 	}
+	return nil
 }
 
 func supportedReferrersMediaType(mediaType string) bool {
-	return validateReferrersMediaType(mediaType) == nil
+	return distribution.SupportedReferrersMediaType(mediaType)
 }
 
 func validateReferrersBody(body []byte) error {
