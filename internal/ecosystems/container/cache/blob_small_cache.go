@@ -135,10 +135,11 @@ func validSmallBlobCache(expectedDigest string, envelope smallBlobCacheEnvelope)
 	if envelope.Size != int64(len(envelope.Body)) {
 		return false
 	}
-	verifier := ocidigest.Digest(expectedDigest).Verifier()
-	if verifier == nil {
+	digest, err := ocidigest.Parse(expectedDigest)
+	if err != nil {
 		return false
 	}
+	verifier := digest.Verifier()
 	if _, err := verifier.Write(envelope.Body); err != nil {
 		return false
 	}

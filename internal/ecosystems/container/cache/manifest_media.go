@@ -24,6 +24,10 @@ func validateManifestMediaType(mediaType string) error {
 	}
 }
 
+func supportedManifestMediaType(mediaType string) bool {
+	return validateManifestMediaType(mediaType) == nil
+}
+
 func normalizeManifestMediaType(value string) string {
 	value = strings.TrimSpace(value)
 	if value == "" {

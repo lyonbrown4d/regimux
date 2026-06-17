@@ -95,8 +95,10 @@ func (p manifestProxy) revalidationHead(ctx context.Context, req ManifestRequest
 		Method:        http.MethodHead,
 	})
 	if fetchErr == nil {
-		if err := validateManifestMediaType(resp.MediaType); err != nil {
-			_ = closeHTTPBody(resp.Body, "invalid revalidation manifest body")
+		if !supportedManifestMediaType(resp.MediaType) {
+			if closeErr := closeHTTPBody(resp.Body, "invalid revalidation manifest body"); closeErr != nil {
+				return nil, false, closeErr
+			}
 			return nil, false, nil
 		}
 		if err := closeHTTPBody(resp.Body, "manifest revalidation body"); err != nil {

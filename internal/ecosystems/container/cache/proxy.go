@@ -238,14 +238,6 @@ func closeHTTPBody(body io.Closer, label string) error {
 	return nil
 }
 
-func closeHTTPBodyWithError(body io.Closer, err error, label string) error {
-	closeErr := closeHTTPBody(body, label)
-	if closeErr != nil {
-		return joinError("close response after error", err, closeErr)
-	}
-	return err
-}
-
 func contentTypeFromHeader(headers http.Header) string {
 	value := headers.Get(distribution.HeaderContentType)
 	if value == "" {
