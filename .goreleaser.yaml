@@ -152,6 +152,7 @@ dockers_v2:
     dockerfile: docker/alpine.Dockerfile
     images:
       - "{{ .Env.REGISTRY_IMAGE }}"
+      - "{{ .Env.DOCKERHUB_IMAGE }}"
     tags:
       - "{{ .Tag }}"
       - "{{ .Tag }}-alpine"
@@ -182,6 +183,7 @@ dockers_v2:
     dockerfile: docker/debian.Dockerfile
     images:
       - "{{ .Env.REGISTRY_IMAGE }}"
+      - "{{ .Env.DOCKERHUB_IMAGE }}"
     tags:
       - "{{ .Tag }}-debian"
       - "{{ .Version }}-debian"
