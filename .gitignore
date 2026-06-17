@@ -23,6 +23,10 @@ coverage.out
 coverage.html
 *.prof
 __pycache__/
+tests/stress/reports/*.json
+tests/stress/reports/*.md
+!tests/stress/reports/.gitkeep
+!tests/stress/reports/regimux-stress-load-comparison.md
 
 # Editor and OS files
 .idea/

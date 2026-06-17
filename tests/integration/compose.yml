@@ -130,5 +130,21 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/scripts/container-client.sh"]
 
+  k6:
+    image: ${REGIMUX_STRESS_K6_IMAGE:-grafana/k6:latest}
+    profiles: ["stress"]
+    environment:
+      REGIMUX_BASE_URL: ${REGIMUX_BASE_URL:-http://regimux:8080}
+      REGIMUX_STRESS_PROFILE: ${REGIMUX_STRESS_PROFILE:-load}
+      REGIMUX_K6_REPORT_DIR: /stress/reports
+      REGIMUX_K6_REPORT_NAME: ${REGIMUX_K6_REPORT_NAME:-}
+    volumes:
+      - ../stress/k6:/stress/k6:ro
+      - ../stress/reports:/stress/reports
+    depends_on:
+      regimux:
+        condition: service_healthy
+    entrypoint: ["k6"]
+
 volumes:
   regimux-data:

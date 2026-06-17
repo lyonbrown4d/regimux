@@ -110,6 +110,50 @@ tasks:
       - task: integration:mysql
       - task: integration:postgres
 
+  stress:run:
+    desc: Run the k6 stress script against the current integration environment.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm k6 run --quiet /stress/k6/regimux.js
+
+  stress:smoke:
+    desc: Run a short k6 smoke profile against sqlite metadata storage.
+    cmds:
+      - task: integration:up
+      - defer:
+          task: integration:down
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=smoke -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-smoke k6 run --quiet /stress/k6/regimux.js
+
+  stress:
+    desc: Run the default k6 load profile against sqlite metadata storage.
+    cmds:
+      - task: integration:up
+      - defer:
+          task: integration:down
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-load k6 run --quiet /stress/k6/regimux.js
+
+  stress:mysql:
+    desc: Run the default k6 load profile against MySQL metadata storage.
+    cmds:
+      - task: integration:mysql:up
+      - defer:
+          task: integration:down
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_K6_REPORT_NAME=regimux-stress-mysql-load k6 run --quiet /stress/k6/regimux.js
+
+  stress:postgres:
+    desc: Run the default k6 load profile against Postgres metadata storage.
+    cmds:
+      - task: integration:postgres:up
+      - defer:
+          task: integration:down
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_K6_REPORT_NAME=regimux-stress-postgres-load k6 run --quiet /stress/k6/regimux.js
+
+  stress:databases:
+    desc: Run the k6 load profile against sqlite, MySQL, and Postgres metadata stores.
+    cmds:
+      - task: stress
+      - task: stress:mysql
+      - task: stress:postgres
+
   integration:down:
     desc: Stop and remove the integration test environment.
     cmds:
