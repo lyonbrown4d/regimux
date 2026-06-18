@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
-	"github.com/samber/lo"
 )
 
 type contentInconsistentError struct {
@@ -51,7 +50,10 @@ func isContentInconsistent(err error) bool {
 	if list == nil || list.Status != http.StatusBadGateway {
 		return false
 	}
-	return lo.ContainsBy(list.Errors, func(item distribution.Error) bool {
-		return item.Code == distribution.CodeDigestInvalid
-	})
+	for _, item := range list.Errors {
+		if item.Code == distribution.CodeDigestInvalid {
+			return true
+		}
+	}
+	return false
 }

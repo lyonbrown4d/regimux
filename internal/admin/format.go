@@ -5,7 +5,6 @@ import (
 
 	"github.com/dustin/go-humanize"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/samber/lo"
 )
 
 func formatTime(value time.Time) string {
@@ -82,7 +81,16 @@ func endpointStatus(snapshot ecosystem.EndpointHealthSnapshot) string {
 }
 
 func latestTime(values ...time.Time) time.Time {
-	return lo.Latest(values...)
+	if len(values) == 0 {
+		return time.Time{}
+	}
+	latest := values[0]
+	for _, value := range values[1:] {
+		if latest.Before(value) {
+			latest = value
+		}
+	}
+	return latest
 }
 
 func dash(value string) string {

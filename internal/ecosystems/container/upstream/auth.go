@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
-	"github.com/samber/lo"
 )
 
 const defaultBearerTokenTTL = 5 * time.Minute
@@ -108,22 +108,24 @@ func parseBearerChallengeFallback(params string) bearerChallenge {
 }
 
 func normalizeChallengeParams(raw string) string {
-	normalized := lo.FilterMap(splitChallengeParams(raw), func(rawPart string, _ int) (string, bool) {
+	normalized := collectionlist.NewList[string]()
+	for _, rawPart := range splitChallengeParams(raw) {
 		name, value, ok := strings.Cut(rawPart, "=")
 		if !ok {
-			return "", false
+			continue
 		}
 		name = strings.ToLower(strings.TrimSpace(name))
 		value = strings.Trim(strings.TrimSpace(value), `"`)
 		if name == "" {
-			return "", false
+			continue
 		}
 		if value != "" {
-			return name + "=" + value, true
+			normalized.Add(name + "=" + value)
+			continue
 		}
-		return name, true
-	})
-	return strings.Join(normalized, ";")
+		normalized.Add(name)
+	}
+	return strings.Join(normalized.Values(), ";")
 }
 
 func normalizeChallengeValue(value string) string {

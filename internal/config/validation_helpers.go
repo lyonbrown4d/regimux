@@ -7,7 +7,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	"github.com/samber/lo"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/samber/oops"
 )
 
@@ -184,5 +184,18 @@ func validateURL(name, value string) error {
 }
 
 func uniqueStrings(values []string) []string {
-	return lo.Uniq(lo.Compact(values))
+	if len(values) == 0 {
+		return nil
+	}
+
+	out := make([]string, 0, len(values))
+	seen := collectionset.NewSet[string]()
+	for _, value := range values {
+		if value == "" || seen.Contains(value) {
+			continue
+		}
+		seen.Add(value)
+		out = append(out, value)
+	}
+	return out
 }

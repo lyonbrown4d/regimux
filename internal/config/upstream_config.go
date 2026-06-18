@@ -142,15 +142,13 @@ func validateUpstreamSource(alias string, upstreamCfg UpstreamConfig) error {
 }
 
 func normalizeMirrors(alias string, mirrors []string) ([]string, error) {
-	normalized, err := lo.MapErr(mirrors, func(mirror string, i int) (string, error) {
+	normalized := make([]string, 0, len(mirrors))
+	for i, mirror := range mirrors {
 		mirror = strings.TrimSpace(mirror)
 		if err := validateURL(fmt.Sprintf("upstreams.%s.mirrors[%d]", alias, i), mirror); err != nil {
-			return "", err
+			return nil, oops.In("config").With("alias", alias).Wrapf(err, "normalize upstream mirrors")
 		}
-		return mirror, nil
-	})
-	if err != nil {
-		return nil, oops.In("config").With("alias", alias).Wrapf(err, "normalize upstream mirrors")
+		normalized = append(normalized, mirror)
 	}
 	return uniqueStrings(normalized), nil
 }

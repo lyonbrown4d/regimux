@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
-	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -103,15 +103,23 @@ func withDefaults(artifact Artifact, source Source, opts ParseOptions) Artifact 
 }
 
 func dedupeArtifacts(artifacts []Artifact) []Artifact {
-	return lo.UniqBy(artifacts, func(artifact Artifact) string {
-		return strings.Join([]string{
+	seen := collectionset.NewSet[string]()
+	out := make([]Artifact, 0, len(artifacts))
+	for _, artifact := range artifacts {
+		key := strings.Join([]string{
 			artifact.Ecosystem,
 			artifact.Alias,
 			artifact.Artifact,
 			artifact.Reference,
 			artifact.Accept,
 		}, "\x1f")
-	})
+		if seen.Contains(key) {
+			continue
+		}
+		seen.Add(key)
+		out = append(out, artifact)
+	}
+	return out
 }
 
 func looksJSON(body string) bool {

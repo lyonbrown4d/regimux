@@ -6,7 +6,6 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/samber/lo"
 )
 
 func auditSummary(cfg config.Config) AuditSummary {
@@ -42,14 +41,17 @@ func listString(values []string) string {
 	if len(values) == 0 {
 		return "-"
 	}
-	clean := lo.FilterMap(values, func(value string, _ int) (string, bool) {
+	clean := collectionlist.NewList[string]()
+	for _, value := range values {
 		value = strings.TrimSpace(value)
-		return value, value != ""
-	})
-	if len(clean) == 0 {
+		if value != "" {
+			clean.Add(value)
+		}
+	}
+	if clean.Len() == 0 {
 		return "-"
 	}
-	return strings.Join(clean, ", ")
+	return strings.Join(clean.Values(), ", ")
 }
 
 func credentialKind(user config.AuthUserConfig) string {

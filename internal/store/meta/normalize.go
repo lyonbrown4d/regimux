@@ -3,8 +3,6 @@ package meta
 import (
 	"slices"
 	"strings"
-
-	"github.com/samber/lo"
 )
 
 func normalizeEndpointHealthRecord(record EndpointHealthRecord) (EndpointHealthKey, EndpointHealthRecord, error) {
@@ -266,7 +264,9 @@ func cloneHeaders(headers map[string][]string) map[string][]string {
 	if len(headers) == 0 {
 		return nil
 	}
-	return lo.MapValues(headers, func(values []string, _ string) []string {
-		return slices.Clone(values)
-	})
+	out := make(map[string][]string, len(headers))
+	for key, values := range headers {
+		out[key] = slices.Clone(values)
+	}
+	return out
 }

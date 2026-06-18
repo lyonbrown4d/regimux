@@ -8,7 +8,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
-	"github.com/samber/lo"
 )
 
 func (p referrerProxy) Get(ctx context.Context, req ReferrerRequest) (*ReferrersResult, error) {
@@ -142,9 +141,12 @@ func isManifestUnknown(err error) bool {
 	if list == nil {
 		return false
 	}
-	return lo.ContainsBy(list.Errors, func(item distribution.Error) bool {
-		return item.Code == distribution.CodeManifestUnknown
-	})
+	for _, item := range list.Errors {
+		if item.Code == distribution.CodeManifestUnknown {
+			return true
+		}
+	}
+	return false
 }
 
 func referrersFallbackReference(digest string) (string, error) {

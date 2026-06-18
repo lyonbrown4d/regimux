@@ -9,16 +9,19 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	ocidigest "github.com/opencontainers/go-digest"
-	"github.com/samber/lo"
 )
 
 // NormalizeAccept canonicalizes an Accept header for use in cache keys.
 // It preserves media-range order because order can affect content negotiation.
 func NormalizeAccept(header string) string {
-	return strings.Join(lo.FilterMap(splitHeaderList(header), func(part string, _ int) (string, bool) {
+	items := collectionlist.NewList[string]()
+	for _, part := range splitHeaderList(header) {
 		item := normalizeAcceptItem(part)
-		return item, item != ""
-	}), ",")
+		if item != "" {
+			items.Add(item)
+		}
+	}
+	return strings.Join(items.Values(), ",")
 }
 
 // AcceptKey returns a stable sha256 hex key for a normalized Accept header.
@@ -69,17 +72,25 @@ func normalizeMediaType(value string) string {
 }
 
 func normalizeAcceptParams(rawParams []string) *collectionlist.List[string] {
-	return collectionlist.NewList(lo.FilterMap(rawParams, func(raw string, _ int) (string, bool) {
-		return normalizeAcceptParam(raw)
-	})...).Sort(strings.Compare)
+	clean := collectionlist.NewList[string]()
+	for _, raw := range rawParams {
+		if param, ok := normalizeAcceptParam(raw); ok {
+			clean.Add(param)
+		}
+	}
+	return clean.Sort(strings.Compare)
 }
 
 func normalizeAcceptParamMap(params map[string]string) *collectionlist.List[string] {
-	return collectionlist.NewList(lo.FilterMap(slices.Sorted(maps.Keys(params)), func(name string, _ int) (string, bool) {
+	clean := collectionlist.NewList[string]()
+	for _, name := range slices.Sorted(maps.Keys(params)) {
 		value := params[name]
 		param, ok := normalizeAcceptParam(name + "=" + value)
-		return param, ok
-	})...).Sort(strings.Compare)
+		if ok {
+			clean.Add(param)
+		}
+	}
+	return clean.Sort(strings.Compare)
 }
 
 func normalizeAcceptParam(raw string) (string, bool) {

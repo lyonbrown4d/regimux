@@ -5,11 +5,10 @@ import (
 
 	"github.com/arcgolabs/configx"
 	"github.com/arcgolabs/dix"
-	"github.com/samber/lo"
 )
 
 var Module = func(options ...configx.Option) dix.Module {
-	optCopy := lo.Clone(options)
+	optCopy := append([]configx.Option{}, options...)
 	return dix.NewModule("config",
 		dix.Providers(
 			dix.ProviderErr0[Config](func() (Config, error) {

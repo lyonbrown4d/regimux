@@ -10,7 +10,6 @@ import (
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
-	"github.com/samber/lo"
 )
 
 const (
@@ -76,9 +75,12 @@ func latestEndpointHealthByEndpoint(ctx context.Context, metadata meta.EndpointH
 
 func endpointHealthCandidates(endpoints []string, recordByEndpoint *collectionmapping.Map[string, meta.EndpointHealthRecord]) *collectionlist.List[endpointHealthCandidate] {
 	now := time.Now()
-	return collectionlist.NewList(lo.Map(endpoints, func(endpoint string, i int) endpointHealthCandidate {
-		return buildEndpointHealthCandidate(endpoint, i, now, recordByEndpoint)
-	})...)
+	return collectionlist.MapList(
+		collectionlist.NewList(endpoints...),
+		func(index int, endpoint string) endpointHealthCandidate {
+			return buildEndpointHealthCandidate(endpoint, index, now, recordByEndpoint)
+		},
+	)
 }
 
 func buildEndpointHealthCandidate(
@@ -128,9 +130,12 @@ func mapEndpointCandidates(candidates *collectionlist.List[endpointHealthCandida
 	if candidates == nil {
 		return nil
 	}
-	return lo.Map(candidates.Values(), func(candidate endpointHealthCandidate, _ int) string {
-		return candidate.endpoint
+	out := collectionlist.NewList[string]()
+	candidates.Range(func(_ int, candidate endpointHealthCandidate) bool {
+		out.Add(candidate.endpoint)
+		return true
 	})
+	return out.Values()
 }
 
 func compareEndpointHealthCandidate(left, right endpointHealthCandidate) int {
@@ -163,10 +168,16 @@ func compareDurations(left, right time.Duration) int {
 }
 
 func normalizedUpstreamEndpoints(cfg config.UpstreamConfig) []string {
-	return lo.FilterMap(lo.Concat([]string{cfg.Registry}, cfg.Mirrors), func(endpoint string, _ int) (string, bool) {
+	ordered := append([]string{cfg.Registry}, cfg.Mirrors...)
+	out := collectionlist.NewList[string]()
+	for _, endpoint := range ordered {
 		endpoint = normalizeEndpoint(endpoint)
-		return endpoint, endpoint != ""
-	})
+		if endpoint == "" {
+			continue
+		}
+		out.Add(endpoint)
+	}
+	return out.Values()
 }
 
 func normalizeEndpoint(endpoint string) string {

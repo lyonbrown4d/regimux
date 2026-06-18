@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-
-	"github.com/samber/lo"
 )
 
 func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challenge bearerChallenge, fallbackScope string) (string, error) {
@@ -68,7 +66,10 @@ func readTokenResponse(raw upstreamResponse) (string, time.Time, error) {
 		return "", time.Time{}, err
 	}
 
-	token := lo.CoalesceOrEmpty(tokenResp.Token, tokenResp.AccessToken)
+	token := tokenResp.Token
+	if token == "" {
+		token = tokenResp.AccessToken
+	}
 	if token == "" {
 		return "", time.Time{}, newError("upstream token response did not include a token")
 	}

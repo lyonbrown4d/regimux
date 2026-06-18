@@ -9,7 +9,7 @@ import (
 	clienthttp "github.com/arcgolabs/clientx/http"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	"github.com/samber/lo"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"golang.org/x/sync/semaphore"
 )
 
@@ -87,11 +87,20 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes *collectionlist.L
 }
 
 func endpointRegistries(cfg Config) *collectionlist.List[string] {
-	registries := lo.FilterMap(lo.Concat(cfg.Mirrors, []string{cfg.Registry}), func(registry string, _ int) (string, bool) {
+	registries := collectionlist.NewList(cfg.Mirrors...)
+	registries.Add(cfg.Registry)
+	seen := collectionset.NewSetWithCapacity[string](registries.Len())
+	out := collectionlist.NewList[string]()
+	registries.Range(func(_ int, registry string) bool {
 		registry = strings.TrimRight(strings.TrimSpace(registry), "/")
-		return registry, registry != ""
+		if registry == "" || seen.Contains(registry) {
+			return true
+		}
+		seen.Add(registry)
+		out.Add(registry)
+		return true
 	})
-	return collectionlist.NewList(lo.Uniq(registries)...)
+	return out
 }
 
 func normalizeMirrorPolicy(policy string) string {

@@ -6,7 +6,7 @@ import (
 
 	"github.com/arcgolabs/authx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/samber/lo"
+	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 type Scope struct {
@@ -33,21 +33,36 @@ func parseScope(value string) (Scope, error) {
 		Type: strings.TrimSpace(parts[0]),
 		Name: strings.Trim(strings.TrimSpace(parts[1]), "/"),
 	}
-	scope.Actions = lo.FilterMap(strings.Split(parts[2], ","), func(action string, _ int) (string, bool) {
-		action = strings.TrimSpace(action)
-		return action, action != ""
-	})
-	if scope.Type == "" || scope.Name == "" || len(scope.Actions) == 0 {
+	rawActions := collectionlist.NewList(strings.Split(parts[2], ",")...)
+	scope.Actions = collectionlist.MapList(
+		collectionlist.FilterList(rawActions, func(_ int, action string) bool {
+			return strings.TrimSpace(action) != ""
+		}),
+		func(_ int, action string) string {
+			return strings.TrimSpace(action)
+		},
+	).Values()
+	if len(scope.Actions) == 0 {
+		return Scope{}, newAuthError(authx.ErrorCodeInvalidAuthorizationModel, "registry token scope is incomplete")
+	}
+	if scope.Type == "" || scope.Name == "" {
 		return Scope{}, newAuthError(authx.ErrorCodeInvalidAuthorizationModel, "registry token scope is incomplete")
 	}
 	return scope, nil
 }
 
 func normalizeScopes(values []string) []string {
-	return lo.Uniq(lo.FilterMap(values, func(value string, _ int) (string, bool) {
+	seen := collectionset.NewSet[string]()
+	out := collectionlist.NewList[string]()
+	for _, value := range values {
 		value = strings.TrimSpace(value)
-		return value, value != ""
-	}))
+		if value == "" || seen.Contains(value) {
+			continue
+		}
+		seen.Add(value)
+		out.Add(value)
+	}
+	return out.Values()
 }
 
 func repositoryPatternMatches(pattern, resource string) bool {

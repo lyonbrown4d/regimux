@@ -10,9 +10,9 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/samber/lo"
 )
 
 const (
@@ -158,11 +158,21 @@ func upstreamDisplayName(upstream ecosystem.Upstream) string {
 }
 
 func upstreamEndpointRegistries(cfg config.UpstreamConfig) *collectionlist.List[string] {
-	registries := lo.FilterMap(lo.Concat(cfg.Mirrors, []string{cfg.Registry}), func(registry string, _ int) (string, bool) {
+	endpoints := collectionlist.NewList[string]()
+	seen := collectionset.NewSet[string]()
+	for _, registry := range cfg.Mirrors {
 		endpoint := cleanRegistry(registry)
-		return endpoint, endpoint != ""
-	})
-	return collectionlist.NewList(lo.Uniq(registries)...)
+		if endpoint == "" || seen.Contains(endpoint) {
+			continue
+		}
+		seen.Add(endpoint)
+		endpoints.Add(endpoint)
+	}
+	registryEndpoint := cleanRegistry(cfg.Registry)
+	if registryEndpoint != "" && !seen.Contains(registryEndpoint) {
+		endpoints.Add(registryEndpoint)
+	}
+	return endpoints
 }
 
 func serviceBaseURL(cfg config.ServerConfig) string {
