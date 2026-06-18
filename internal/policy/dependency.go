@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
@@ -85,16 +86,14 @@ func FromConfig(cfg config.DependencyPolicyConfig) DependencyPolicy {
 }
 
 func dependencyRulesFromConfig(rules []config.DependencyRuleConfig) []DependencyRule {
-	out := make([]DependencyRule, 0, len(rules))
-	for i := range rules {
-		out = append(out, DependencyRule{
-			Ecosystem: rules[i].Ecosystem,
-			Alias:     rules[i].Alias,
-			Artifact:  rules[i].Artifact,
-			Reference: rules[i].Reference,
-		})
-	}
-	return out
+	return collectionlist.MapList(rules, func(_ int, rule config.DependencyRuleConfig) DependencyRule {
+		return DependencyRule{
+			Ecosystem: rule.Ecosystem,
+			Alias:     rule.Alias,
+			Artifact:  rule.Artifact,
+			Reference: rule.Reference,
+		}
+	}).Values()
 }
 
 func firstMatchingDependencyRule(rules []DependencyRule, target DependencyTarget) (DependencyRule, bool) {

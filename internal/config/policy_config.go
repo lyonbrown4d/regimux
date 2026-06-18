@@ -1,6 +1,10 @@
 package config
 
-import "strings"
+import (
+	"strings"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
+)
 
 func (c *Config) normalizePolicy() {
 	c.Policy.Dependency.Allow = normalizeDependencyPolicyRules(c.Policy.Dependency.Allow)
@@ -11,18 +15,19 @@ func normalizeDependencyPolicyRules(rules []DependencyRuleConfig) []DependencyRu
 	if len(rules) == 0 {
 		return nil
 	}
-	out := make([]DependencyRuleConfig, 0, len(rules))
-	for i := range rules {
-		rule := DependencyRuleConfig{
-			Ecosystem: strings.ToLower(strings.TrimSpace(rules[i].Ecosystem)),
-			Alias:     strings.TrimSpace(rules[i].Alias),
-			Artifact:  strings.TrimSpace(rules[i].Artifact),
-			Reference: strings.TrimSpace(rules[i].Reference),
+	out := collectionlist.MapList(rules, func(_ int, rule DependencyRuleConfig) DependencyRuleConfig {
+		return DependencyRuleConfig{
+			Ecosystem: strings.ToLower(strings.TrimSpace(rule.Ecosystem)),
+			Alias:     strings.TrimSpace(rule.Alias),
+			Artifact:  strings.TrimSpace(rule.Artifact),
+			Reference: strings.TrimSpace(rule.Reference),
 		}
-		if rule.Ecosystem == "" && rule.Alias == "" && rule.Artifact == "" && rule.Reference == "" {
-			continue
-		}
-		out = append(out, rule)
+	})
+	rules = collectionlist.FilterList(out, func(_ int, rule DependencyRuleConfig) bool {
+		return rule.Ecosystem != "" || rule.Alias != "" || rule.Artifact != "" || rule.Reference != ""
+	}).Values()
+	if len(rules) == 0 {
+		return nil
 	}
-	return out
+	return rules
 }

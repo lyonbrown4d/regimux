@@ -120,12 +120,24 @@ type configuredEndpoint struct {
 }
 
 func configuredUpstreamEndpoints(cfg config.UpstreamConfig) []configuredEndpoint {
-	endpoints := lo.FilterMap(cfg.Mirrors, func(mirror string, _ int) (configuredEndpoint, bool) {
-		registry := cleanMetricRegistry(mirror)
-		return configuredEndpoint{registry: registry, role: "mirror"}, registry != ""
-	})
-	if registry := cleanMetricRegistry(cfg.Registry); registry != "" {
-		endpoints = append(endpoints, configuredEndpoint{registry: registry, role: "primary"})
+	mirrorCount := len(cfg.Mirrors)
+	endpoints := collectionlist.FilterList(
+		collectionlist.MapList(lo.Concat(cfg.Mirrors, []string{cfg.Registry}), func(index int, endpoint string) configuredEndpoint {
+			role := "primary"
+			if index < mirrorCount {
+				role = "mirror"
+			}
+			return configuredEndpoint{
+				registry: cleanMetricRegistry(endpoint),
+				role:     role,
+			}
+		}),
+		func(_ int, endpoint configuredEndpoint) bool {
+			return endpoint.registry != ""
+		},
+	).Values()
+	if len(endpoints) == 0 {
+		return nil
 	}
 	return endpoints
 }
