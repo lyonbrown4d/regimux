@@ -21,10 +21,6 @@ type manifestBlobDescriptor struct {
 	kind      string
 }
 
-type manifestMediaEnvelope struct {
-	MediaType string `json:"mediaType"`
-}
-
 func (e *RegistryEndpoint) fillManifestBlobsAsync(ctx context.Context, route reference.Route, manifest *cache.CachedManifest) {
 	if e == nil || e.blobs == nil || manifest == nil {
 		return
@@ -210,11 +206,7 @@ func cachedManifestMediaType(manifest *cache.CachedManifest) string {
 	if mediaType != "" {
 		return mediaType
 	}
-	var envelope manifestMediaEnvelope
-	if err := json.Unmarshal(manifest.Body, &envelope); err != nil {
-		return ""
-	}
-	return normalizeManifestMediaType(envelope.MediaType)
+	return manifestBodyMediaType(manifest.Body)
 }
 
 func manifestBody(manifest *cache.CachedManifest) []byte {

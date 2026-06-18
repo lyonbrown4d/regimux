@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
+	"github.com/lyonbrown4d/regimux/internal/coalescer"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
@@ -40,7 +41,7 @@ type Proxy struct {
 	logger               *slog.Logger
 	manifestGroup        singleflightx.Group[string, *CachedManifest]
 	blobGroup            singleflightx.Group[string, bool]
-	blobFills            *blobFillTracker
+	blobFills            *coalescer.Tracker
 }
 
 func NewProxy(deps ProxyDependencies) *Proxy {
@@ -66,7 +67,7 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 			maxSizeBytes: deps.CacheConfig.Blob.SmallCache.MaxSizeBytes,
 			ttl:          deps.CacheConfig.Blob.SmallCache.TTL,
 		},
-		blobFills: newBlobFillTracker(),
+		blobFills: coalescer.NewTracker(),
 	}
 	if deps.CacheConfig.Manifest.TagTTL > 0 {
 		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
@@ -178,7 +179,7 @@ type blobProxy struct {
 	leaseScheduler   leaseRenewScheduler
 	streamScheduler  blobStreamScheduler
 	group            *singleflightx.Group[string, bool]
-	fills            *blobFillTracker
+	fills            *coalescer.Tracker
 }
 
 type tagProxy struct {

@@ -5,7 +5,7 @@ import (
 	"log/slog"
 	"time"
 
-	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	"github.com/lyonbrown4d/regimux/internal/coalescer"
 )
 
 const (
@@ -15,7 +15,7 @@ const (
 )
 
 type FillTracker struct {
-	fills          collectionmapping.ConcurrentMap[string, *Fill]
+	fills          *coalescer.Tracker
 	locker         FillLocker
 	leaseScheduler FillLeaseScheduler
 	leaseTTL       time.Duration
@@ -23,10 +23,7 @@ type FillTracker struct {
 	logger         *slog.Logger
 }
 
-type Fill struct {
-	done chan struct{}
-	err  error
-}
+type Fill = coalescer.Fill
 
 type FillLease interface {
 	Release(ctx context.Context) error
@@ -57,6 +54,7 @@ type CoalesceRequest[T any] struct {
 
 func NewFillTracker(options ...FillTrackerOption) *FillTracker {
 	tracker := &FillTracker{
+		fills:        coalescer.NewTracker(),
 		leaseTTL:     defaultFillLeaseTTL,
 		pollInterval: defaultFillPollInterval,
 	}
@@ -109,9 +107,7 @@ func (t *FillTracker) Begin(key Key) (*Fill, bool) {
 	if t == nil || cacheKey == "" {
 		return nil, true
 	}
-	fill := &Fill{done: make(chan struct{})}
-	actual, loaded := t.fills.GetOrStore(cacheKey, fill)
-	return actual, !loaded
+	return t.fills.Begin(cacheKey)
 }
 
 func (t *FillTracker) Finish(key Key, fill *Fill, err error) {
@@ -119,21 +115,7 @@ func (t *FillTracker) Finish(key Key, fill *Fill, err error) {
 		return
 	}
 	cacheKey := fillKey(key)
-	t.fills.LoadAndDelete(cacheKey)
-	fill.err = err
-	close(fill.done)
-}
-
-func (f *Fill) Wait(ctx context.Context) error {
-	if f == nil {
-		return nil
-	}
-	select {
-	case <-ctx.Done():
-		return wrapError(ctx.Err(), "wait for artifact cache fill")
-	case <-f.done:
-		return f.err
-	}
+	t.fills.Finish(cacheKey, fill, err)
 }
 
 func CoalesceFill[T any](
@@ -159,7 +141,7 @@ func CoalesceFillWith[T any](req CoalesceRequest[T]) (T, error) {
 		current, owner := req.Tracker.Begin(req.Key)
 		if !owner {
 			if err := current.Wait(req.Context); err != nil && req.Context.Err() != nil {
-				return zero, err
+				return zero, wrapError(err, "wait for artifact cache fill")
 			}
 			result, ok, err := req.Wait()
 			if ok || err != nil {

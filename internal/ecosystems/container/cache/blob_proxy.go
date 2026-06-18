@@ -87,7 +87,7 @@ func (p blobProxy) fetchRangeStream(ctx context.Context, req BlobRequest) (*Blob
 func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
 	key := blobFillCacheKey(req.Digest)
 	for {
-		fill, owner := p.fills.begin(key)
+		fill, owner := p.fills.Begin(key)
 		attempt := blobFillAttempt{ctx: ctx, req: req, key: key, fill: fill}
 		if owner {
 			result, retry, err := p.fetchFullStreamAndStoreLocalOwner(attempt)
@@ -104,7 +104,7 @@ func (p blobProxy) fetchFullStreamAndStore(ctx context.Context, req BlobRequest)
 }
 
 func (p blobProxy) waitForStreamedFullBlob(attempt blobFillAttempt) (*BlobReadResult, bool, error) {
-	if err := attempt.fill.wait(attempt.ctx); err != nil {
+	if err := attempt.fill.Wait(attempt.ctx); err != nil {
 		if ctxErr := attempt.ctx.Err(); ctxErr != nil {
 			return nil, false, wrapError(ctxErr, "wait for streamed blob cache fill")
 		}
@@ -142,7 +142,7 @@ func (p blobProxy) fetchFullStreamAndStoreLocalOwner(attempt blobFillAttempt) (*
 
 func (p blobProxy) waitForBlobFillLeaseOwner(attempt blobFillAttempt) error {
 	if err := waitForBlobFillLeasePoll(attempt.ctx); err != nil {
-		p.fills.finish(attempt.key, attempt.fill, err)
+		p.fills.Finish(attempt.key, attempt.fill, err)
 		return err
 	}
 	return nil
@@ -151,12 +151,12 @@ func (p blobProxy) waitForBlobFillLeaseOwner(attempt blobFillAttempt) error {
 func (p blobProxy) lookupAfterBlobFillLease(attempt blobFillAttempt, lease backend.Lease) (*BlobReadResult, bool, error) {
 	if cached, ok, err := p.lookupSmallBlobCache(attempt.ctx, attempt.req); err != nil || ok {
 		p.releaseBlobFillLease(attempt.ctx, attempt.req, lease)
-		p.fills.finish(attempt.key, attempt.fill, err)
+		p.fills.Finish(attempt.key, attempt.fill, err)
 		return cached, true, err
 	}
 	if cached, ok, err := p.lookup(attempt.ctx, attempt.req); err != nil || ok {
 		p.releaseBlobFillLease(attempt.ctx, attempt.req, lease)
-		p.fills.finish(attempt.key, attempt.fill, err)
+		p.fills.Finish(attempt.key, attempt.fill, err)
 		return cached, true, err
 	}
 	return nil, false, nil
@@ -172,12 +172,12 @@ func (p blobProxy) fetchFullStreamAndStoreOwner(owner blobFillOwner) (*BlobReadR
 	})
 	if err != nil {
 		releaseLease()
-		p.fills.finish(owner.key, owner.fill, err)
+		p.fills.Finish(owner.key, owner.fill, err)
 		return nil, false, wrapError(err, "stream blob from upstream")
 	}
 	if err := validateStoredBlobDigest(owner.req.Digest, resp.Digest); err != nil {
 		releaseLease()
-		p.fills.finish(owner.key, owner.fill, err)
+		p.fills.Finish(owner.key, owner.fill, err)
 		if closeErr := closeHTTPBody(resp.Body, "blob stream response body"); closeErr != nil {
 			return nil, false, joinError("close blob stream after digest mismatch", err, closeErr)
 		}
@@ -187,7 +187,7 @@ func (p blobProxy) fetchFullStreamAndStoreOwner(owner blobFillOwner) (*BlobReadR
 	mediaType := contentTypeFromHeader(resp.Headers)
 	reader := p.streamBlobToCache(owner.ctx, owner.req, resp, mediaType, func(err error) {
 		releaseLease()
-		p.fills.finish(owner.key, owner.fill, err)
+		p.fills.Finish(owner.key, owner.fill, err)
 	})
 	p.logBlobCacheHit(owner.ctx, owner.req, "stream_and_cache_full")
 	return &BlobReadResult{
@@ -224,11 +224,11 @@ func (p blobProxy) ensureStored(ctx context.Context, req BlobRequest) (bool, err
 }
 
 func (p blobProxy) waitForOngoingStreamedFill(ctx context.Context, req BlobRequest) error {
-	fill, ok := p.fills.current(blobFillCacheKey(req.Digest))
+	fill, ok := p.fills.Current(blobFillCacheKey(req.Digest))
 	if !ok {
 		return nil
 	}
-	if err := fill.wait(ctx); err != nil {
+	if err := fill.Wait(ctx); err != nil {
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return wrapError(ctxErr, "wait for streamed blob cache fill")
 		}
