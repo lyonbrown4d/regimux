@@ -6,7 +6,6 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/samber/lo"
 )
 
 // PrefetchReport summarizes a prefetch run for any ecosystem.
@@ -75,13 +74,16 @@ func ProbeTargets(upstreams *collectionlist.List[Upstream]) *collectionlist.List
 	if upstreams == nil {
 		return collectionlist.NewList[ProbeTarget]()
 	}
-	return collectionlist.NewList(lo.FilterMap(upstreams.Values(), func(upstream Upstream, _ int) (ProbeTarget, bool) {
+	out := collectionlist.NewList[ProbeTarget]()
+	upstreams.Range(func(_ int, upstream Upstream) bool {
 		probeCfg := upstream.Config.Probe
 		if !probeCfg.Enabled || probeCfg.Interval <= 0 {
-			return ProbeTarget{}, false
+			return true
 		}
-		return ProbeTarget(upstream), true
-	})...)
+		out.Add(ProbeTarget(upstream))
+		return true
+	})
+	return out
 }
 
 // CapabilityTargets converts upstream snapshots to capability targets.
@@ -119,21 +121,28 @@ func ConfiguredUpstreams(runtimes *collectionlist.List[Runtime]) *collectionlist
 	if runtimes == nil {
 		return collectionlist.NewList[Upstream]()
 	}
-	return collectionlist.FlatMapList(runtimes, func(_ int, runtime Runtime) []Upstream {
+	out := collectionlist.NewList[Upstream]()
+	runtimes.Range(func(_ int, runtime Runtime) bool {
 		provider, ok := runtime.(UpstreamProvider)
 		if !ok || provider == nil {
-			return nil
+			return true
 		}
 		name := strings.TrimSpace(runtime.Name())
 		upstreams := provider.Upstreams()
 		if upstreams == nil {
-			return nil
+			return true
 		}
-		return lo.FilterMap(upstreams.Values(), func(upstream Upstream, _ int) (Upstream, bool) {
+		upstreams.Range(func(_ int, upstream Upstream) bool {
 			upstream.Ecosystem = upstreamEcosystem(name, upstream.Ecosystem)
-			return upstream, upstream.Ecosystem != "" && strings.TrimSpace(upstream.Alias) != ""
+			if upstream.Ecosystem == "" || strings.TrimSpace(upstream.Alias) == "" {
+				return true
+			}
+			out.Add(upstream)
+			return true
 		})
+		return true
 	})
+	return out
 }
 
 func upstreamEcosystem(runtimeName, upstreamName string) string {
