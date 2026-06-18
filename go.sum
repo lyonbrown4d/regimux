@@ -42,6 +42,8 @@ github.com/arcgolabs/collectionx/list v0.9.0 h1:Z2DZp/QTc1rFSM7J0urge7mqCBenOdMK
 github.com/arcgolabs/collectionx/list v0.9.0/go.mod h1:ljn1rjvCXgliu1T7qnFGbozhSUmMqJqlYeLcoLF1YMM=
 github.com/arcgolabs/collectionx/mapping v0.9.0 h1:oczGpSxWHGAbav4OgitfNysLroTqDnp5OC+vt6QVLqs=
 github.com/arcgolabs/collectionx/mapping v0.9.0/go.mod h1:X/bcV1HjKy+GRRuLHFUiHQ22hZ8yIF9QDGYIvdQFLo4=
+github.com/arcgolabs/collectionx/prefix v0.9.0 h1:MxPDssfopL5W6HJZSe28T9HDELI6PxwK5D8i+9155AI=
+github.com/arcgolabs/collectionx/prefix v0.9.0/go.mod h1:eqUGSenPOVYjFjgMJBQhl9YrU5gvLRyCwpCwdUjHBPE=
 github.com/arcgolabs/collectionx/set v0.9.0 h1:KNOUlmtPSAGrPb2N/8UKFgpj9tU+YsSFq2sWofyxKoE=
 github.com/arcgolabs/collectionx/set v0.9.0/go.mod h1:575TbrhYlQ2LlnYuIDXb7TZRVru9EipuPG5bTE5RxAk=
 github.com/arcgolabs/configx v0.6.1 h1:RbWBtgso5AsUjoeEs2zUhuePZTE9FPlBJCkMF2QGv64=

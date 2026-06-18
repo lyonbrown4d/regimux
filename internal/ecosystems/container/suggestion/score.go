@@ -7,8 +7,14 @@ import (
 
 	"github.com/agext/levenshtein"
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionprefix "github.com/arcgolabs/collectionx/prefix"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
+)
+
+const (
+	minPrefixCandidateLength = 3
+	minPrefixSearchValues    = 64
 )
 
 type SuggestOptions struct {
@@ -61,6 +67,16 @@ func rankRepositories(repository string, repositories []string, limit int) []str
 }
 
 func rankValues(target string, values []string, limit int) []string {
+	if candidates, ok := prefixCandidateValues(target, values, limit); ok {
+		ranked := rankCandidateValues(target, candidates, limit)
+		if len(ranked) >= limit {
+			return ranked
+		}
+	}
+	return rankCandidateValues(target, values, limit)
+}
+
+func rankCandidateValues(target string, values []string, limit int) []string {
 	scored := collectionlist.NewList(lo.FilterMap(values, func(value string, _ int) (scoredValue, bool) {
 		value = strings.TrimSpace(value)
 		if value == "" || value == target {
@@ -82,6 +98,63 @@ func rankValues(target string, values []string, limit int) []string {
 	return lo.Map(scored.Values(), func(item scoredValue, _ int) string {
 		return item.value
 	})
+}
+
+func prefixCandidateValues(target string, values []string, limit int) ([]string, bool) {
+	target, ok := prefixSearchTarget(target, values, limit)
+	if !ok {
+		return nil, false
+	}
+
+	trie := buildPrefixTrie(target, values)
+	if trie.IsEmpty() {
+		return nil, false
+	}
+	return trieCandidatesForTargetPrefix(trie, target, limit)
+}
+
+func prefixSearchTarget(target string, values []string, limit int) (string, bool) {
+	target = strings.ToLower(strings.TrimSpace(target))
+	if len(target) < minPrefixCandidateLength || len(values) < minPrefixSearchValues || limit <= 0 {
+		return "", false
+	}
+	return target, true
+}
+
+func buildPrefixTrie(target string, values []string) *collectionprefix.Trie[string] {
+	trie := collectionprefix.NewTrie[string]()
+	for _, value := range values {
+		addPrefixCandidate(trie, target, value)
+	}
+	return trie
+}
+
+func addPrefixCandidate(trie *collectionprefix.Trie[string], target, value string) {
+	value = strings.TrimSpace(value)
+	key := strings.ToLower(value)
+	if key == "" || key == target || trie.Has(key) {
+		return
+	}
+	trie.Put(key, value)
+}
+
+func trieCandidatesForTargetPrefix(
+	trie *collectionprefix.Trie[string],
+	target string,
+	limit int,
+) ([]string, bool) {
+	for prefixLength := len(target); prefixLength >= minPrefixCandidateLength; prefixLength-- {
+		prefix := target[:prefixLength]
+		count := trie.CountPrefix(prefix)
+		if count == 0 {
+			continue
+		}
+		if count < limit && prefixLength > minPrefixCandidateLength {
+			continue
+		}
+		return trie.ValuesWithPrefix(prefix), count >= limit
+	}
+	return nil, false
 }
 
 func suggestionScore(target, value string) int {
