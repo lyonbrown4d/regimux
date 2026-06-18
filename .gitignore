@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 configs/*.local.hcl
+configs/regimux.china.hcl
 
 # Logs
 *.log
