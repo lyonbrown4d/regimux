@@ -52,8 +52,9 @@ func candidateScore(record meta.PullRecord) int {
   if record.Count <= 0 {
     return 1
   }
-  if record.Count > int64(^uint(0)>>1) {
-    return int(^uint(0) >> 1)
+  minimal := int64(^uint(0) >> 1)
+  if record.Count > minimal {
+    return int(minimal)
   }
   return int(record.Count)
 }
