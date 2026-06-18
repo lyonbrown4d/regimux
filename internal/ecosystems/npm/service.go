@@ -16,6 +16,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
@@ -213,18 +214,14 @@ func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstream
 }
 
 func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string) (*upstreamFetch, error) {
-	req, err := http.NewRequestWithContext(ctx, requestMethod(method), requestURL, http.NoBody)
-	if err != nil {
-		return nil, wrapError(err, "create npm upstream request")
-	}
-	req.Header.Set("User-Agent", "regimux/dev")
-	applyAuth(req, cfg.Auth)
-
-	client, err := s.clientFor(cfg, requestURL)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
+	headers := http.Header{}
+	headers.Set("User-Agent", "regimux/dev")
+	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
+		Method:  requestMethod(method),
+		URL:     requestURL,
+		Headers: headers,
+		Auth:    cfg.Auth,
+	})
 	if err != nil {
 		return nil, wrapError(err, "send npm upstream request")
 	}
@@ -234,11 +231,30 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 		return nil, err
 	}
 	return &upstreamFetch{
-		status:     resp.StatusCode,
-		headers:    resp.Header.Clone(),
+		status:     resp.Status,
+		headers:    resp.Headers,
 		body:       body,
 		requestURL: requestURL,
 	}, nil
+}
+
+func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseURL string, req upstreamhttp.Request) (*upstreamhttp.Response, error) {
+	if s.client != nil {
+		resp, err := upstreamhttp.RawDo(ctx, s.client, req)
+		if err != nil {
+			return nil, wrapError(err, "send npm upstream raw request")
+		}
+		return resp, nil
+	}
+	client, err := s.clientFor(cfg, baseURL)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := upstreamhttp.Do(ctx, client, req)
+	if err != nil {
+		return nil, wrapError(err, "send npm upstream clientx request")
+	}
+	return resp, nil
 }
 
 func (s *Service) prepareFetched(req Request, requestRoute route, fetched *upstreamFetch) (*upstreamFetch, error) {

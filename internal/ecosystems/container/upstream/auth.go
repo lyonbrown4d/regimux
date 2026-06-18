@@ -9,12 +9,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/jellydator/ttlcache/v3"
+	lru "github.com/hashicorp/golang-lru/v2"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 )
 
 const defaultBearerTokenTTL = 5 * time.Minute
+const bearerTokenCacheMaxEntries = 4096
 
 type bearerChallenge struct {
 	Realm   string
@@ -36,7 +37,12 @@ type bearerTokenCacheKey struct {
 }
 
 type bearerTokenCache struct {
-	entries *ttlcache.Cache[bearerTokenCacheKey, string]
+	entries *lru.Cache[bearerTokenCacheKey, bearerTokenEntry]
+}
+
+type bearerTokenEntry struct {
+	token     string
+	expiresAt time.Time
 }
 
 type bearerTokenResponse struct {
@@ -129,10 +135,12 @@ func normalizeChallengeValue(value string) string {
 }
 
 func newBearerTokenCache() *bearerTokenCache {
+	entries, err := lru.New[bearerTokenCacheKey, bearerTokenEntry](bearerTokenCacheMaxEntries)
+	if err != nil {
+		panic(err)
+	}
 	return &bearerTokenCache{
-		entries: ttlcache.New[bearerTokenCacheKey, string](
-			ttlcache.WithDisableTouchOnHit[bearerTokenCacheKey, string](),
-		),
+		entries: entries,
 	}
 }
 
@@ -140,11 +148,15 @@ func (c *bearerTokenCache) get(key bearerTokenCacheKey) (string, bool) {
 	if c == nil || c.entries == nil {
 		return "", false
 	}
-	item := c.entries.Get(key)
-	if item == nil {
+	entry, ok := c.entries.Get(key)
+	if !ok {
 		return "", false
 	}
-	return item.Value(), true
+	if !time.Now().Before(entry.expiresAt) {
+		c.entries.Remove(key)
+		return "", false
+	}
+	return entry.token, true
 }
 
 func (c *bearerTokenCache) set(key bearerTokenCacheKey, token string, expiresAt time.Time) {
@@ -155,7 +167,7 @@ func (c *bearerTokenCache) set(key bearerTokenCacheKey, token string, expiresAt 
 	if ttl <= 0 {
 		return
 	}
-	c.entries.Set(key, token, ttl)
+	c.entries.Add(key, bearerTokenEntry{token: token, expiresAt: expiresAt})
 }
 
 func newBearerTokenRequest(cfg Config, challenge bearerChallenge, fallbackScope string) (bearerTokenRequest, error) {

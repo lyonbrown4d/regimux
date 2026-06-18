@@ -8,11 +8,13 @@ import (
 	"sync/atomic"
 	"time"
 
+	clienthttp "github.com/arcgolabs/clientx/http"
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/probehealth"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/panjf2000/ants/v2"
 	"github.com/samber/oops"
@@ -112,22 +114,20 @@ func (p *EndpointProber) probeEndpoint(ctx context.Context, target ProbeTarget, 
 			"timeout", target.Config.Probe.Timeout,
 		)
 	}
-	req, err := http.NewRequestWithContext(probeCtx, http.MethodHead, probeURLValue, http.NoBody)
-	if err != nil {
-		p.recordFailure(ctx, target, endpoint, time.Now())
-		p.logEndpoint(ctx, target, endpoint, 0, 0, err)
-		return oops.Wrapf(err, "create ecosystem probe request")
-	}
-	req.Header.Set("User-Agent", "regimux/dev")
-	applyProbeAuth(req, target.Config.Auth)
-
 	client, err := p.clientFor(target.Config, endpoint)
 	if err != nil {
 		p.recordFailure(ctx, target, endpoint, time.Now())
 		p.logEndpoint(ctx, target, endpoint, 0, 0, err)
 		return err
 	}
-	resp, err := client.Do(req)
+	headers := http.Header{}
+	headers.Set("User-Agent", "regimux/dev")
+	resp, err := upstreamhttp.Do(probeCtx, client, upstreamhttp.Request{
+		Method:  http.MethodHead,
+		URL:     probeURLValue,
+		Headers: headers,
+		Auth:    target.Config.Auth,
+	})
 	latency := time.Since(startedAt)
 	now := time.Now()
 	if err != nil {
@@ -140,17 +140,17 @@ func (p *EndpointProber) probeEndpoint(ctx context.Context, target ProbeTarget, 
 			p.logger.Debug("close ecosystem probe response body failed", "error", closeErr)
 		}
 	}()
-	if probeStatusReachable(resp.StatusCode) {
+	if probeStatusReachable(resp.Status) {
 		if recordErr := p.recordSuccess(ctx, target, endpoint, latency, now); recordErr != nil {
 			return recordErr
 		}
-		p.logEndpoint(ctx, target, endpoint, latency, resp.StatusCode, nil)
+		p.logEndpoint(ctx, target, endpoint, latency, resp.Status, nil)
 		return nil
 	}
 
-	err = oops.With("status", resp.StatusCode).Errorf("ecosystem probe endpoint returned unreachable status")
+	err = oops.With("status", resp.Status).Errorf("ecosystem probe endpoint returned unreachable status")
 	p.recordFailure(ctx, target, endpoint, now)
-	p.logEndpoint(ctx, target, endpoint, latency, resp.StatusCode, err)
+	p.logEndpoint(ctx, target, endpoint, latency, resp.Status, err)
 	return err
 }
 
@@ -165,12 +165,9 @@ func (p *EndpointProber) probeContext(ctx context.Context, cfg config.UpstreamCo
 	return context.WithTimeout(ctx, timeout)
 }
 
-func (p *EndpointProber) clientFor(cfg config.UpstreamConfig, baseURL string) (*http.Client, error) {
+func (p *EndpointProber) clientFor(cfg config.UpstreamConfig, baseURL string) (clienthttp.Client, error) {
 	factory := p.factory
-	if factory == nil {
-		factory = clientfactory.New(p.logger)
-	}
-	client, err := factory.RawUpstreamHTTP(cfg, baseURL, "ecosystem.probe")
+	client, err := upstreamhttp.NewClient(factory, cfg, baseURL, "ecosystem.probe")
 	if err != nil {
 		return nil, oops.Wrapf(err, "create ecosystem probe client")
 	}

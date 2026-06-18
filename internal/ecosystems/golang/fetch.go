@@ -8,9 +8,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/clientfactory"
+	clienthttp "github.com/arcgolabs/clientx/http"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
 type tempBody struct {
@@ -36,18 +37,18 @@ func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstream
 
 func (s *Service) fetchEndpoint(ctx context.Context, cfg config.UpstreamConfig, endpoint, tail, method string) (*upstreamFetch, error) {
 	requestURL := strings.TrimRight(endpoint, "/") + "/" + tail
-	req, err := http.NewRequestWithContext(ctx, methodOr(method, http.MethodGet), requestURL, http.NoBody)
-	if err != nil {
-		return nil, wrapError(err, "create go proxy upstream request")
-	}
-	req.Header.Set("User-Agent", "regimux/dev")
-	applyAuth(req, cfg.Auth)
-
+	headers := http.Header{}
+	headers.Set("User-Agent", "regimux/dev")
 	client, err := s.clientFor(cfg, endpoint)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := client.Do(req)
+	resp, err := upstreamhttp.Do(ctx, client, upstreamhttp.Request{
+		Method:  methodOr(method, http.MethodGet),
+		URL:     requestURL,
+		Headers: headers,
+		Auth:    cfg.Auth,
+	})
 	if err != nil {
 		return nil, wrapError(err, "send go proxy upstream request")
 	}
@@ -61,18 +62,15 @@ func (s *Service) fetchEndpoint(ctx context.Context, cfg config.UpstreamConfig, 
 		return nil, err
 	}
 	return &upstreamFetch{
-		status:  resp.StatusCode,
-		headers: resp.Header.Clone(),
+		status:  resp.Status,
+		headers: resp.Headers,
 		body:    body,
 	}, nil
 }
 
-func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (*http.Client, error) {
+func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clienthttp.Client, error) {
 	factory := s.factory
-	if factory == nil {
-		factory = clientfactory.New(s.logger)
-	}
-	client, err := factory.RawUpstreamHTTP(cfg, baseURL, "go.clientx")
+	client, err := upstreamhttp.NewClient(factory, cfg, baseURL, "go.clientx")
 	if err != nil {
 		return nil, wrapError(err, "create go proxy upstream client")
 	}
@@ -110,15 +108,4 @@ func closeAndRemoveTemp(file *os.File, name string, err error, message string) e
 	closeErr := file.Close()
 	removeErr := os.Remove(name)
 	return wrapError(errors.Join(err, closeErr, removeErr), message)
-}
-
-func applyAuth(req *http.Request, cfg config.AuthConfig) {
-	switch strings.ToLower(strings.TrimSpace(cfg.Type)) {
-	case "basic":
-		req.SetBasicAuth(cfg.Username, cfg.Password)
-	case "bearer":
-		if token := strings.TrimSpace(cfg.Token); token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
 }

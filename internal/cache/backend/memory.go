@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"github.com/jellydator/ttlcache/v3"
+	lru "github.com/hashicorp/golang-lru/v2"
 )
 
 type MemoryOptions struct {
@@ -13,20 +13,19 @@ type MemoryOptions struct {
 }
 
 type Memory struct {
-	cache  *ttlcache.Cache[string, []byte]
+	cache  *lru.Cache[string, memoryEntry]
 	prefix string
 }
 
 var _ Backend = (*Memory)(nil)
 
 func NewMemory(opts MemoryOptions) *Memory {
-	cacheOpts := make([]ttlcache.Option[string, []byte], 0, 1)
-	if opts.MaxItems > 0 {
-		cacheOpts = append(cacheOpts, ttlcache.WithCapacity[string, []byte](uint64(opts.MaxItems)))
+	cache, err := lru.New[string, memoryEntry](memoryMaxItems(opts.MaxItems))
+	if err != nil {
+		panic(err)
 	}
-
 	return &Memory{
-		cache:  ttlcache.New[string, []byte](cacheOpts...),
+		cache:  cache,
 		prefix: normalizePrefix(opts.Prefix),
 	}
 }
@@ -36,11 +35,15 @@ func (m *Memory) Get(_ context.Context, key string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
-	item := m.cache.Get(key, ttlcache.WithDisableTouchOnHit[string, []byte]())
-	if item == nil {
+	entry, ok := m.cache.Get(key)
+	if !ok {
 		return nil, false, nil
 	}
-	return cloneBytes(item.Value()), true, nil
+	if entry.expired(time.Now()) {
+		m.cache.Remove(key)
+		return nil, false, nil
+	}
+	return cloneBytes(entry.value), true, nil
 }
 
 func (m *Memory) Set(_ context.Context, key string, value []byte, ttl time.Duration) error {
@@ -48,7 +51,7 @@ func (m *Memory) Set(_ context.Context, key string, value []byte, ttl time.Durat
 	if err != nil {
 		return err
 	}
-	m.cache.Set(key, cloneBytes(value), normalizeTTL(ttl))
+	m.cache.Add(key, newMemoryEntry(value, ttl))
 	return nil
 }
 
@@ -57,12 +60,12 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 	if err != nil {
 		return err
 	}
-	m.cache.Delete(key)
+	m.cache.Remove(key)
 	return nil
 }
 
 func (m *Memory) Close() error {
-	m.cache.DeleteAll()
+	m.cache.Purge()
 	return nil
 }
 
@@ -70,9 +73,26 @@ func (m *Memory) key(key string) (string, error) {
 	return cacheKey(m.prefix, key)
 }
 
-func normalizeTTL(ttl time.Duration) time.Duration {
-	if ttl < 0 {
-		return ttlcache.NoTTL
+type memoryEntry struct {
+	value     []byte
+	expiresAt time.Time
+}
+
+func newMemoryEntry(value []byte, ttl time.Duration) memoryEntry {
+	entry := memoryEntry{value: cloneBytes(value)}
+	if ttl > 0 {
+		entry.expiresAt = time.Now().Add(ttl)
 	}
-	return ttl
+	return entry
+}
+
+func (e memoryEntry) expired(now time.Time) bool {
+	return !e.expiresAt.IsZero() && !now.Before(e.expiresAt)
+}
+
+func memoryMaxItems(maxItems int) int {
+	if maxItems > 0 {
+		return maxItems
+	}
+	return int(^uint(0) >> 1)
 }

@@ -10,7 +10,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
@@ -125,17 +124,6 @@ func requestPublicURL(servicePublicURL, requestedPublicURL string) string {
 		return strings.TrimRight(value, "/")
 	}
 	return servicePublicURL
-}
-
-func applyAuth(req *http.Request, cfg config.AuthConfig) {
-	switch strings.ToLower(strings.TrimSpace(cfg.Type)) {
-	case "basic":
-		req.SetBasicAuth(cfg.Username, cfg.Password)
-	case "bearer":
-		if token := strings.TrimSpace(cfg.Token); token != "" {
-			req.Header.Set(distribution.HeaderAuthorization, distribution.AuthSchemeBearer+" "+token)
-		}
-	}
 }
 
 func wrapError(err error, message string) error {

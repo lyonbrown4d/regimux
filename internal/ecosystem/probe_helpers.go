@@ -32,14 +32,3 @@ func ScopedAlias(ecosystem, alias string) string {
 	}
 	return ecosystem + "/" + alias
 }
-
-func applyProbeAuth(req *http.Request, cfg config.AuthConfig) {
-	switch strings.ToLower(strings.TrimSpace(cfg.Type)) {
-	case "basic":
-		req.SetBasicAuth(cfg.Username, cfg.Password)
-	case "bearer":
-		if token := strings.TrimSpace(cfg.Token); token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
-}

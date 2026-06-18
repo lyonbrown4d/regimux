@@ -8,9 +8,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/lyonbrown4d/regimux/internal/clientfactory"
+	clienthttp "github.com/arcgolabs/clientx/http"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
 type tempBody struct {
@@ -49,18 +50,14 @@ func upstreamTail(endpoint string, requestRoute Route) string {
 }
 
 func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string) (*upstreamFetch, error) {
-	req, err := http.NewRequestWithContext(ctx, methodOrGet(method), requestURL, http.NoBody)
-	if err != nil {
-		return nil, wrapError(err, "create pypi upstream request")
-	}
-	req.Header.Set("User-Agent", defaultUserAgent)
-	applyAuth(req, cfg.Auth)
-
-	client, err := s.clientFor(cfg, requestURL)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := client.Do(req)
+	headers := http.Header{}
+	headers.Set("User-Agent", defaultUserAgent)
+	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
+		Method:  methodOrGet(method),
+		URL:     requestURL,
+		Headers: headers,
+		Auth:    cfg.Auth,
+	})
 	if err != nil {
 		return nil, wrapError(err, "send pypi upstream request")
 	}
@@ -70,22 +67,35 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 		return nil, err
 	}
 	return &upstreamFetch{
-		status:     resp.StatusCode,
-		headers:    resp.Header.Clone(),
+		status:     resp.Status,
+		headers:    resp.Headers,
 		body:       body,
 		requestURL: requestURL,
 	}, nil
 }
 
-func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (*http.Client, error) {
+func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseURL string, req upstreamhttp.Request) (*upstreamhttp.Response, error) {
 	if s.client != nil {
-		return s.client, nil
+		resp, err := upstreamhttp.RawDo(ctx, s.client, req)
+		if err != nil {
+			return nil, wrapError(err, "send pypi upstream raw request")
+		}
+		return resp, nil
 	}
+	client, err := s.clientFor(cfg, baseURL)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := upstreamhttp.Do(ctx, client, req)
+	if err != nil {
+		return nil, wrapError(err, "send pypi upstream clientx request")
+	}
+	return resp, nil
+}
+
+func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clienthttp.Client, error) {
 	factory := s.factory
-	if factory == nil {
-		factory = clientfactory.New(s.logger)
-	}
-	client, err := factory.RawUpstreamHTTP(cfg, baseURL, "pypi.clientx")
+	client, err := upstreamhttp.NewClient(factory, cfg, baseURL, "pypi.clientx")
 	if err != nil {
 		return nil, wrapError(err, "create pypi upstream client")
 	}
@@ -128,15 +138,4 @@ func urlWithQuery(rawURL, rawQuery string) string {
 		return rawURL + "&" + rawQuery
 	}
 	return rawURL + "?" + rawQuery
-}
-
-func applyAuth(req *http.Request, cfg config.AuthConfig) {
-	switch strings.ToLower(strings.TrimSpace(cfg.Type)) {
-	case "basic":
-		req.SetBasicAuth(cfg.Username, cfg.Password)
-	case "bearer":
-		if token := strings.TrimSpace(cfg.Token); token != "" {
-			req.Header.Set("Authorization", "Bearer "+token)
-		}
-	}
 }
