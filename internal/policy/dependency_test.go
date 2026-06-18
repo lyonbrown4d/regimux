@@ -3,6 +3,7 @@ package policy_test
 import (
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/policy"
 )
 
@@ -20,8 +21,8 @@ func TestDependencyPolicyAllowsByDefault(t *testing.T) {
 
 func TestDependencyPolicyBlockOverridesAllow(t *testing.T) {
 	dependencyPolicy := policy.DependencyPolicy{
-		Allow: []policy.DependencyRule{{Ecosystem: "npm", Alias: "npmjs", Artifact: "*"}},
-		Block: []policy.DependencyRule{{Ecosystem: "npm", Alias: "npmjs", Artifact: "left-pad"}},
+		Allow: collectionlist.NewList(policy.DependencyRule{Ecosystem: "npm", Alias: "npmjs", Artifact: "*"}),
+		Block: collectionlist.NewList(policy.DependencyRule{Ecosystem: "npm", Alias: "npmjs", Artifact: "left-pad"}),
 	}
 	decision := dependencyPolicy.Evaluate(policy.DependencyTarget{
 		Ecosystem: "npm",
@@ -36,7 +37,7 @@ func TestDependencyPolicyBlockOverridesAllow(t *testing.T) {
 
 func TestDependencyPolicyAllowListBlocksNonMatchingTarget(t *testing.T) {
 	dependencyPolicy := policy.DependencyPolicy{
-		Allow: []policy.DependencyRule{{Ecosystem: "container", Alias: "hub", Artifact: "library/*"}},
+		Allow: collectionlist.NewList(policy.DependencyRule{Ecosystem: "container", Alias: "hub", Artifact: "library/*"}),
 	}
 	allowed := dependencyPolicy.Evaluate(policy.DependencyTarget{
 		Ecosystem: "container",

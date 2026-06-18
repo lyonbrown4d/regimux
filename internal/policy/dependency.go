@@ -23,8 +23,8 @@ type DependencyTarget struct {
 }
 
 type DependencyPolicy struct {
-	Allow []DependencyRule
-	Block []DependencyRule
+	Allow *collectionlist.List[DependencyRule]
+	Block *collectionlist.List[DependencyRule]
 }
 
 type DependencyRule struct {
@@ -54,13 +54,13 @@ func (e *DependencyDenyError) Unwrap() error {
 }
 
 func (p DependencyPolicy) Evaluate(target DependencyTarget) DependencyDecision {
-	if rule, ok := firstMatchingDependencyRule(collectionlist.NewList(p.Block...), target); ok {
+	if rule, ok := firstMatchingDependencyRule(p.Block, target); ok {
 		return DependencyDecision{Status: DependencyDecisionBlocked, Rule: rule, Target: target}
 	}
-	if len(p.Allow) == 0 {
+	if p.Allow == nil || p.Allow.Len() == 0 {
 		return DependencyDecision{Status: DependencyDecisionAllowed, Target: target}
 	}
-	if rule, ok := firstMatchingDependencyRule(collectionlist.NewList(p.Allow...), target); ok {
+	if rule, ok := firstMatchingDependencyRule(p.Allow, target); ok {
 		return DependencyDecision{Status: DependencyDecisionAllowed, Rule: rule, Target: target}
 	}
 	return DependencyDecision{Status: DependencyDecisionBlocked, Target: target}
@@ -82,8 +82,8 @@ func FromConfig(cfg config.DependencyPolicyConfig) DependencyPolicy {
 	allow := dependencyRulesFromConfig(collectionlist.NewList(cfg.Allow...))
 	block := dependencyRulesFromConfig(collectionlist.NewList(cfg.Block...))
 	return DependencyPolicy{
-		Allow: dependencyRulesFromConfigValues(allow),
-		Block: dependencyRulesFromConfigValues(block),
+		Allow: allow,
+		Block: block,
 	}
 }
 

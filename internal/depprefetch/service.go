@@ -7,9 +7,9 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
-	"github.com/samber/lo"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
 )
@@ -128,7 +128,10 @@ func (s *Service) repositories(candidates *collectionlist.List[Candidate]) int {
 	if candidates == nil {
 		return 0
 	}
-	return len(lo.Uniq(lo.Map(candidates.Values(), func(candidate Candidate, _ int) string {
-		return groupKey(candidate)
-	})))
+	repositories := collectionset.NewSet[string]()
+	candidates.Range(func(_ int, candidate Candidate) bool {
+		repositories.Add(groupKey(candidate))
+		return true
+	})
+	return repositories.Len()
 }
