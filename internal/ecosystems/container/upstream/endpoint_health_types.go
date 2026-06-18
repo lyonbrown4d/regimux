@@ -31,7 +31,7 @@ type EndpointHealthOptions struct {
 type EndpointHealthTracker struct {
 	mu     sync.Mutex
 	opts   EndpointHealthOptions
-	states *collectionmapping.ConcurrentTable[string, string, *endpointHealthState]
+	states *collectionmapping.Table[string, string, *endpointHealthState]
 }
 
 type endpointHealthState struct {
@@ -93,7 +93,7 @@ type endpointRuntimeCandidate struct {
 func NewEndpointHealthTracker(opts EndpointHealthOptions) *EndpointHealthTracker {
 	return &EndpointHealthTracker{
 		opts:   normalizeEndpointHealthOptions(opts),
-		states: collectionmapping.NewConcurrentTable[string, string, *endpointHealthState](),
+		states: collectionmapping.NewTable[string, string, *endpointHealthState](),
 	}
 }
 

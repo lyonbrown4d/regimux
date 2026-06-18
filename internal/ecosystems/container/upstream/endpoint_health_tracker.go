@@ -183,7 +183,7 @@ func (t *EndpointHealthTracker) runtimeSnapshot(registry, repository string, now
 
 func (t *EndpointHealthTracker) stateLocked(registry, repository string) *endpointHealthState {
 	if t.states == nil {
-		t.states = collectionmapping.NewConcurrentTable[string, string, *endpointHealthState]()
+		t.states = collectionmapping.NewTable[string, string, *endpointHealthState]()
 	}
 	t.opts = normalizeEndpointHealthOptions(t.opts)
 

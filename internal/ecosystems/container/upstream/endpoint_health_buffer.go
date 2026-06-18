@@ -28,11 +28,7 @@ func (c *Client) FlushEndpointHealth(ctx context.Context) error {
 	persistCtx, cancel := endpointHealthPersistenceContext(ctx)
 	defer cancel()
 	var flushErr error
-	records.Range(func(index int, _ meta.EndpointHealthRecord) bool {
-		record, ok := records.Get(index)
-		if !ok {
-			return true
-		}
+	records.Range(func(_ int, record meta.EndpointHealthRecord) bool {
 		if _, err := c.metadata.UpsertEndpointHealth(persistCtx, record); err != nil {
 			c.requeueEndpointHealth(record)
 			flushErr = multierr.Append(flushErr, err)
