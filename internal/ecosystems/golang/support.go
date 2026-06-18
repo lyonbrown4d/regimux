@@ -41,6 +41,12 @@ func removePath(path string, logger *slog.Logger) {
 	}
 }
 
+func closeAndRemoveTemp(file *os.File, name string, err error, message string) error {
+	closeErr := file.Close()
+	removeErr := os.Remove(name)
+	return wrapError(errors.Join(err, closeErr, removeErr), message)
+}
+
 func wrapError(err error, message string) error {
 	if err == nil {
 		return nil

@@ -1,49 +1,24 @@
 package npm
 
 import (
-	"errors"
 	"io"
 	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 	"strings"
 
+	"github.com/lyonbrown4d/regimux/internal/spool"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/oops"
 )
 
 func materializeBody(body io.ReadCloser) (io.ReadCloser, error) {
-	if body == nil {
-		return http.NoBody, nil
-	}
-	tmp, err := os.CreateTemp("", "regimux-npm-upstream-*")
+	materialized, err := spool.MaterializeReadCloser(body, "regimux-npm-upstream-*")
 	if err != nil {
-		return nil, wrapError(err, "create npm proxy upstream temp file")
+		return nil, wrapError(err, "materialize npm proxy upstream body")
 	}
-	name := tmp.Name()
-	if _, err := io.Copy(tmp, body); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err, "copy npm proxy upstream body")
-	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err, "rewind npm proxy upstream temp file")
-	}
-	return &tempBody{File: tmp, name: name}, nil
-}
-
-type tempBody struct {
-	*os.File
-	name string
-}
-
-func (t *tempBody) Close() error {
-	if t == nil || t.File == nil {
-		return nil
-	}
-	closeErr := t.File.Close()
-	removeErr := os.Remove(t.name)
-	return errors.Join(closeErr, removeErr)
+	return materialized, nil
 }
 
 func cacheHeaders(headers http.Header, size int64) http.Header {
@@ -92,12 +67,6 @@ func closeReadCloser(body io.Closer, logger *slog.Logger, message string) {
 	if err := body.Close(); err != nil && logger != nil {
 		logger.Warn(message+" failed", "error", err)
 	}
-}
-
-func closeAndRemoveTemp(file *os.File, name string, err error, message string) error {
-	closeErr := file.Close()
-	removeErr := os.Remove(name)
-	return wrapError(errors.Join(err, closeErr, removeErr), message)
 }
 
 func requestMethod(value string) string {

@@ -5,19 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	clienthttp "github.com/arcgolabs/clientx/http"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/spool"
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
-
-type tempBody struct {
-	*os.File
-	name string
-}
 
 func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Maven, upstreamAlias, cfg)
@@ -90,30 +85,11 @@ func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clientht
 }
 
 func materializeHTTPBody(body io.ReadCloser) (io.ReadCloser, error) {
-	if body == nil {
-		return http.NoBody, nil
-	}
-	tmp, err := os.CreateTemp("", "regimux-maven-upstream-*")
+	materialized, err := spool.MaterializeReadCloser(body, "regimux-maven-upstream-*")
 	if err != nil {
-		return nil, wrapError(err, "create maven upstream temp file")
+		return nil, wrapError(err, "materialize maven upstream body")
 	}
-	name := tmp.Name()
-	if _, err := io.Copy(tmp, body); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err, "copy maven upstream body")
-	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err, "rewind maven upstream temp file")
-	}
-	return &tempBody{File: tmp, name: name}, nil
-}
-
-func (t *tempBody) Close() error {
-	if t == nil || t.File == nil {
-		return nil
-	}
-	closeErr := t.File.Close()
-	removeErr := os.Remove(t.name)
-	return errors.Join(closeErr, removeErr)
+	return materialized, nil
 }
 
 func urlWithQuery(rawURL, rawQuery string) string {

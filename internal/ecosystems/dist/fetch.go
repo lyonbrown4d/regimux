@@ -5,19 +5,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 
 	clienthttp "github.com/arcgolabs/clientx/http"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/spool"
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
-
-type tempBody struct {
-	*os.File
-	name string
-}
 
 func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, requestRoute Route, req Request) (*upstreamFetch, error) {
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Dist, requestRoute.Alias, cfg)
@@ -113,34 +108,9 @@ func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clientht
 }
 
 func materializeHTTPBody(body io.ReadCloser) (io.ReadCloser, error) {
-	if body == nil {
-		return http.NoBody, nil
-	}
-	tmp, err := os.CreateTemp("", "regimux-dist-upstream-*")
+	materialized, err := spool.MaterializeReadCloser(body, "regimux-dist-upstream-*")
 	if err != nil {
-		return nil, wrapError(err, "create dist upstream temp file")
+		return nil, wrapError(err, "materialize dist upstream body")
 	}
-	name := tmp.Name()
-	if _, err := io.Copy(tmp, body); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err, "copy dist upstream body")
-	}
-	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err, "rewind dist upstream temp file")
-	}
-	return &tempBody{File: tmp, name: name}, nil
-}
-
-func (t *tempBody) Close() error {
-	if t == nil || t.File == nil {
-		return nil
-	}
-	closeErr := t.File.Close()
-	removeErr := os.Remove(t.name)
-	return errors.Join(closeErr, removeErr)
-}
-
-func closeAndRemoveTemp(file *os.File, name string, err error, message string) error {
-	closeErr := file.Close()
-	removeErr := os.Remove(name)
-	return wrapError(errors.Join(err, closeErr, removeErr), message)
+	return materialized, nil
 }

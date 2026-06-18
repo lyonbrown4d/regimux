@@ -7,6 +7,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
+	"golang.org/x/sync/semaphore"
 )
 
 func (p *upstreamPool) selectHealthyRuntimes(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time, operation string) *collectionlist.List[upstreamRuntime] {
@@ -112,23 +113,21 @@ func (p *upstreamPool) acquireRuntime(ctx context.Context, operation string, run
 		return releaseHealth, nil
 	}
 
-	select {
-	case limiter <- struct{}{}:
-		return func() {
-			<-limiter
-			releaseHealth()
-		}, nil
-	case <-ctx.Done():
+	if err := limiter.Acquire(ctx, 1); err != nil {
 		releaseHealth()
-		return nil, distribution.ErrUpstream.WithDetail(ctx.Err().Error())
+		return nil, distribution.ErrUpstream.WithDetail(err.Error())
 	}
+	return func() {
+		limiter.Release(1)
+		releaseHealth()
+	}, nil
 }
 
-func (p *upstreamPool) limiter(registry string) chan struct{} {
+func (p *upstreamPool) limiter(registry string) *semaphore.Weighted {
 	if p == nil || p.blobLimit <= 0 {
 		return nil
 	}
 	registry = normalizeEndpointHealthRegistry(registry)
-	limiter, _ := p.limiters.GetOrStore(registry, make(chan struct{}, p.blobLimit))
+	limiter, _ := p.limiters.GetOrStore(registry, semaphore.NewWeighted(int64(p.blobLimit)))
 	return limiter
 }

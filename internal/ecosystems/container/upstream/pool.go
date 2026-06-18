@@ -10,6 +10,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/samber/lo"
+	"golang.org/x/sync/semaphore"
 )
 
 const (
@@ -30,7 +31,7 @@ type upstreamPool struct {
 	runtimes        *collectionlist.List[upstreamRuntime]
 	next            int
 	nextBlob        int
-	limiters        *collectionmapping.ConcurrentMap[string, chan struct{}]
+	limiters        *collectionmapping.ConcurrentMap[string, *semaphore.Weighted]
 	health          *EndpointHealthTracker
 	scheduler       *layerScheduler
 	probeConfig     ProbeConfig
@@ -61,7 +62,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes *collectionlist.L
 		scheduler: newLayerScheduler(EndpointHealthOptions{
 			Cooldown: cfg.Probe.Cooldown,
 		}),
-		limiters: collectionmapping.NewConcurrentMap[string, chan struct{}](),
+		limiters: collectionmapping.NewConcurrentMap[string, *semaphore.Weighted](),
 		logger:   logger,
 	}
 	pool.runtimes = runtimes
