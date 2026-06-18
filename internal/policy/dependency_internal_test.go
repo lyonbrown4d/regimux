@@ -3,13 +3,32 @@ package policy
 import (
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
 func TestDependencyRulesFromConfigCopiesFields(t *testing.T) {
 	t.Parallel()
 
-	got := dependencyRulesFromConfig([]config.DependencyRuleConfig{
+	got := dependencyRulesFromConfigValues(dependencyRulesFromConfig(collectionlist.NewList(
+		config.DependencyRuleConfig{
+			Ecosystem: "npm",
+			Alias:     "npmjs",
+			Artifact:  "left-pad",
+			Reference: "metadata",
+		},
+		config.DependencyRuleConfig{
+			Ecosystem: "container",
+			Alias:     "docker",
+			Artifact:  "library/*",
+			Reference: "*",
+		},
+	)))
+	if got == nil {
+		t.Fatal("got = nil, want rules")
+	}
+
+	expected := []DependencyRule{
 		{
 			Ecosystem: "npm",
 			Alias:     "npmjs",
@@ -22,26 +41,24 @@ func TestDependencyRulesFromConfigCopiesFields(t *testing.T) {
 			Artifact:  "library/*",
 			Reference: "*",
 		},
-	})
-
-	if len(got) != 2 {
-		t.Fatalf("len = %d, want 2", len(got))
 	}
-	if got[0].Ecosystem != "npm" || got[0].Alias != "npmjs" || got[0].Artifact != "left-pad" || got[0].Reference != "metadata" {
-		t.Fatalf("got = %#v, want npm rule unchanged", got[0])
+	if len(got) != len(expected) {
+		t.Fatalf("len = %d, want %d", len(got), len(expected))
 	}
-	if got[1].Ecosystem != "container" || got[1].Alias != "docker" || got[1].Artifact != "library/*" || got[1].Reference != "*" {
-		t.Fatalf("got = %#v, want container rule unchanged", got[1])
+	for i := range expected {
+		if got[i] != expected[i] {
+			t.Fatalf("got[%d] = %#v, want %#v", i, got[i], expected[i])
+		}
 	}
 }
 
 func TestDependencyRulesFromConfigAllowsNilAndEmpty(t *testing.T) {
 	t.Parallel()
 
-	if got := dependencyRulesFromConfig(nil); got != nil && len(got) != 0 {
-		t.Fatalf("nil rules = %#v, want empty", got)
+	if got := dependencyRulesFromConfigValues(dependencyRulesFromConfig(nil)); got != nil {
+		t.Fatalf("nil rules = %#v, want nil", got)
 	}
-	if got := dependencyRulesFromConfig([]config.DependencyRuleConfig{}); len(got) != 0 {
-		t.Fatalf("empty rules len = %d, want 0", len(got))
+	if got := dependencyRulesFromConfigValues(dependencyRulesFromConfig(collectionlist.NewList[config.DependencyRuleConfig]())); got != nil {
+		t.Fatalf("nil rules = %#v, want empty", got)
 	}
 }

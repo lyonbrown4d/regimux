@@ -54,13 +54,13 @@ func (e *DependencyDenyError) Unwrap() error {
 }
 
 func (p DependencyPolicy) Evaluate(target DependencyTarget) DependencyDecision {
-	if rule, ok := firstMatchingDependencyRule(p.Block, target); ok {
+	if rule, ok := firstMatchingDependencyRule(collectionlist.NewList(p.Block...), target); ok {
 		return DependencyDecision{Status: DependencyDecisionBlocked, Rule: rule, Target: target}
 	}
 	if len(p.Allow) == 0 {
 		return DependencyDecision{Status: DependencyDecisionAllowed, Target: target}
 	}
-	if rule, ok := firstMatchingDependencyRule(p.Allow, target); ok {
+	if rule, ok := firstMatchingDependencyRule(collectionlist.NewList(p.Allow...), target); ok {
 		return DependencyDecision{Status: DependencyDecisionAllowed, Rule: rule, Target: target}
 	}
 	return DependencyDecision{Status: DependencyDecisionBlocked, Target: target}
@@ -79,27 +79,50 @@ func (p DependencyPolicy) Check(target DependencyTarget) error {
 }
 
 func FromConfig(cfg config.DependencyPolicyConfig) DependencyPolicy {
+	allow := dependencyRulesFromConfig(collectionlist.NewList(cfg.Allow...))
+	block := dependencyRulesFromConfig(collectionlist.NewList(cfg.Block...))
 	return DependencyPolicy{
-		Allow: dependencyRulesFromConfig(cfg.Allow),
-		Block: dependencyRulesFromConfig(cfg.Block),
+		Allow: dependencyRulesFromConfigValues(allow),
+		Block: dependencyRulesFromConfigValues(block),
 	}
 }
 
-func dependencyRulesFromConfig(rules []config.DependencyRuleConfig) []DependencyRule {
-	return collectionlist.MapList(rules, func(_ int, rule config.DependencyRuleConfig) DependencyRule {
+func dependencyRulesFromConfig(rules *collectionlist.List[config.DependencyRuleConfig]) *collectionlist.List[DependencyRule] {
+	if rules == nil || rules.Len() == 0 {
+		return nil
+	}
+	out := collectionlist.MapList(rules, func(_ int, rule config.DependencyRuleConfig) DependencyRule {
 		return DependencyRule{
 			Ecosystem: rule.Ecosystem,
 			Alias:     rule.Alias,
 			Artifact:  rule.Artifact,
 			Reference: rule.Reference,
 		}
-	}).Values()
+	})
+	if out == nil || out.Len() == 0 {
+		return nil
+	}
+	return out
 }
 
-func firstMatchingDependencyRule(rules []DependencyRule, target DependencyTarget) (DependencyRule, bool) {
-	for i := range rules {
-		if dependencyRuleMatches(rules[i], target) {
-			return rules[i], true
+func dependencyRulesFromConfigValues(rules *collectionlist.List[DependencyRule]) []DependencyRule {
+	if rules == nil {
+		return nil
+	}
+	return rules.Values()
+}
+
+func firstMatchingDependencyRule(rules *collectionlist.List[DependencyRule], target DependencyTarget) (DependencyRule, bool) {
+	if rules == nil || rules.Len() == 0 {
+		return DependencyRule{}, false
+	}
+	for i := range rules.Len() {
+		rule, ok := rules.Get(i)
+		if !ok {
+			continue
+		}
+		if dependencyRuleMatches(rule, target) {
+			return rule, true
 		}
 	}
 	return DependencyRule{}, false

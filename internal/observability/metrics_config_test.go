@@ -1,47 +1,94 @@
-package observability
+package observability_test
 
 import (
+	"context"
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/observability"
 )
 
 func TestConfiguredUpstreamEndpointsOrdersMirrorsThenPrimary(t *testing.T) {
-	t.Parallel()
+	recorder := &metricsRecorder{}
+	metrics := observability.NewMetricsFromObservability(recorder, nil)
+	cfg := config.DefaultConfig()
+	cfg.Container = config.ContainerConfig{
+		"hub": {
+			Registry: "https://registry.example.com/",
+			Mirrors:  []string{"https://mirror-1.example.com/", "  https://mirror-2.example.com"},
+		},
+	}
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		t.Fatalf("normalize config: %v", err)
+	}
+	runtimes := collectionlist.NewList[ecosystem.Runtime](
+		ecosystem.NewConfigRuntime(ecosystem.Container, cfg.OrderedContainerUpstreams()),
+	)
+	metrics.ObserveStaticConfigWithRuntimes(context.Background(), cfg, build.Version("test"), runtimes)
 
-	got := configuredUpstreamEndpoints(config.UpstreamConfig{
-		Mirrors:  []string{"https://mirror-1.example.com/", "  https://mirror-2.example.com"},
-		Registry: "https://registry.example.com/",
-	})
-
-	if len(got) != 3 {
-		t.Fatalf("len = %d, want 3", len(got))
+	endpoints := metricsForName(recorder.gauges, "service_config_upstream_endpoint")
+	if len(endpoints) != 3 {
+		t.Fatalf("len = %d, want 3", len(endpoints))
 	}
-	if got[0].registry != "https://mirror-1.example.com" || got[0].role != "mirror" {
-		t.Fatalf("endpoint0 = %#v, want mirror https://mirror-1.example.com", got[0])
+	if got, want := endpoints[0].attrs["registry"], "https://mirror-1.example.com"; got != want {
+		t.Fatalf("endpoint0 registry = %q, want %q", got, want)
 	}
-	if got[1].registry != "https://mirror-2.example.com" || got[1].role != "mirror" {
-		t.Fatalf("endpoint1 = %#v, want mirror https://mirror-2.example.com", got[1])
+	if got, want := endpoints[1].attrs["registry"], "https://mirror-2.example.com"; got != want {
+		t.Fatalf("endpoint1 registry = %q, want %q", got, want)
 	}
-	if got[2].registry != "https://registry.example.com" || got[2].role != "primary" {
-		t.Fatalf("endpoint2 = %#v, want primary https://registry.example.com", got[2])
+	if got, want := endpoints[2].attrs["registry"], "https://registry.example.com"; got != want {
+		t.Fatalf("endpoint2 registry = %q, want %q", got, want)
+	}
+	if got, want := endpoints[0].attrs["role"], "mirror"; got != want {
+		t.Fatalf("endpoint0 role = %q, want %q", got, want)
+	}
+	if got, want := endpoints[1].attrs["role"], "mirror"; got != want {
+		t.Fatalf("endpoint1 role = %q, want %q", got, want)
+	}
+	if got, want := endpoints[2].attrs["role"], "primary"; got != want {
+		t.Fatalf("endpoint2 role = %q, want %q", got, want)
 	}
 }
 
 func TestConfiguredUpstreamEndpointsSkipsBlankValues(t *testing.T) {
-	t.Parallel()
+	recorder := &metricsRecorder{}
+	metrics := observability.NewMetricsFromObservability(recorder, nil)
+	cfg := config.DefaultConfig()
+	cfg.Container = config.ContainerConfig{
+		"hub": {
+			Registry: "   ",
+			Mirrors:  []string{"https://mirror.example.com/"},
+		},
+	}
+	if err := cfg.NormalizeAndValidate(); err != nil {
+		t.Fatalf("normalize config: %v", err)
+	}
+	runtimes := collectionlist.NewList[ecosystem.Runtime](
+		ecosystem.NewConfigRuntime(ecosystem.Container, cfg.OrderedContainerUpstreams()),
+	)
+	metrics.ObserveStaticConfigWithRuntimes(context.Background(), cfg, build.Version("test"), runtimes)
 
-	got := configuredUpstreamEndpoints(config.UpstreamConfig{
-		Mirrors:  []string{"", "  ", "https://mirror.example.com/"},
-		Registry: "   ",
-	})
-	if len(got) != 1 {
-		t.Fatalf("len = %d, want 1", len(got))
+	endpoints := metricsForName(recorder.gauges, "service_config_upstream_endpoint")
+	if len(endpoints) != 1 {
+		t.Fatalf("len = %d, want 1", len(endpoints))
 	}
-	if got[0].registry != "https://mirror.example.com" {
-		t.Fatalf("endpoint = %#v, want https://mirror.example.com", got[0])
+	if got, want := endpoints[0].attrs["registry"], "https://mirror.example.com"; got != want {
+		t.Fatalf("endpoint registry = %q, want %q", got, want)
 	}
-	if got[0].role != "mirror" {
-		t.Fatalf("role = %q, want mirror", got[0].role)
+	if got, want := endpoints[0].attrs["role"], "mirror"; got != want {
+		t.Fatalf("endpoint role = %q, want %q", got, want)
 	}
+}
+
+func metricsForName(records []metricRecord, name string) []metricRecord {
+	out := make([]metricRecord, 0, len(records))
+	for _, record := range records {
+		if record.name == name {
+			out = append(out, record)
+		}
+	}
+	return out
 }

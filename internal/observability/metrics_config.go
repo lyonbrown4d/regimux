@@ -9,7 +9,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/samber/lo"
 )
 
 type configMetrics struct {
@@ -87,14 +86,14 @@ func (m *Metrics) ObserveStaticConfigWithRuntimes(
 	m.config.cacheBackend.Set(ctx, 1, observabilityx.String("backend", labelOrUnknown(cfg.Cache.Backend)))
 	m.config.storeBackend.Set(ctx, 1, observabilityx.String("kind", "meta"), observabilityx.String("driver", labelOrUnknown(cfg.Store.Meta.Driver)))
 	m.config.storeBackend.Set(ctx, 1, observabilityx.String("kind", "object"), observabilityx.String("driver", labelOrUnknown(cfg.Store.Object.Driver)))
-	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled), dockerConfigLabels("integration", cfg.Docker.Enabled)...)
-	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Observe), dockerConfigLabels("observe", cfg.Docker.Enabled && cfg.Docker.Observe)...)
-	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled), dockerConfigLabels("prewarm", cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled)...)
+	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled), dockerConfigLabels("integration", cfg.Docker.Enabled).Values()...)
+	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Observe), dockerConfigLabels("observe", cfg.Docker.Enabled && cfg.Docker.Observe).Values()...)
+	m.config.dockerIntegration.Set(ctx, boolFloat(cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled), dockerConfigLabels("prewarm", cfg.Docker.Enabled && cfg.Docker.Prewarm.Enabled).Values()...)
 	m.config.upstreams.Set(ctx, float64(upstreams.Len()))
 	observeConfiguredUpstreamEndpoints(ctx, m.config.upstreamEndpoint, upstreams)
-	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Enabled), schedulerConfigLabels("scheduler", cfg.Scheduler.Enabled)...)
-	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Cleanup.Enabled), schedulerConfigLabels("cleanup", cfg.Scheduler.Cleanup.Enabled)...)
-	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Prefetch.Enabled), schedulerConfigLabels("prefetch", cfg.Scheduler.Prefetch.Enabled)...)
+	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Enabled), schedulerConfigLabels("scheduler", cfg.Scheduler.Enabled).Values()...)
+	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Cleanup.Enabled), schedulerConfigLabels("cleanup", cfg.Scheduler.Cleanup.Enabled).Values()...)
+	m.config.schedulerComponent.Set(ctx, boolFloat(cfg.Scheduler.Prefetch.Enabled), schedulerConfigLabels("prefetch", cfg.Scheduler.Prefetch.Enabled).Values()...)
 }
 
 func observeConfiguredUpstreamEndpoints(ctx context.Context, metric observabilityx.Gauge, upstreams *collectionlist.List[ecosystem.Upstream]) {
@@ -102,14 +101,19 @@ func observeConfiguredUpstreamEndpoints(ctx context.Context, metric observabilit
 		return
 	}
 	upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
-		for _, endpoint := range configuredUpstreamEndpoints(upstream.Config) {
+		endpoints := configuredUpstreamEndpoints(collectionlist.NewList(upstream.Config.Mirrors...), upstream.Config.Registry)
+		if endpoints == nil {
+			return true
+		}
+		endpoints.Range(func(_ int, endpoint configuredEndpoint) bool {
 			metric.Set(ctx, 1,
 				observabilityx.String("ecosystem", upstream.Ecosystem),
 				observabilityx.String("alias", upstream.Alias),
 				observabilityx.String("registry", endpoint.registry),
 				observabilityx.String("role", endpoint.role),
 			)
-		}
+			return true
+		})
 		return true
 	})
 }
@@ -119,10 +123,21 @@ type configuredEndpoint struct {
 	role     string
 }
 
-func configuredUpstreamEndpoints(cfg config.UpstreamConfig) []configuredEndpoint {
-	mirrorCount := len(cfg.Mirrors)
+func configuredUpstreamEndpoints(mirrors *collectionlist.List[string], primaryRegistry string) *collectionlist.List[configuredEndpoint] {
+	mirrorCount := 0
+	if mirrors != nil {
+		mirrorCount = mirrors.Len()
+	}
+	all := collectionlist.NewList[string]()
+	if mirrors != nil {
+		mirrors.Range(func(_ int, mirror string) bool {
+			all.Add(mirror)
+			return true
+		})
+	}
+	all.Add(primaryRegistry)
 	endpoints := collectionlist.FilterList(
-		collectionlist.MapList(lo.Concat(cfg.Mirrors, []string{cfg.Registry}), func(index int, endpoint string) configuredEndpoint {
+		collectionlist.MapList(all, func(index int, endpoint string) configuredEndpoint {
 			role := "primary"
 			if index < mirrorCount {
 				role = "mirror"
@@ -135,8 +150,8 @@ func configuredUpstreamEndpoints(cfg config.UpstreamConfig) []configuredEndpoint
 		func(_ int, endpoint configuredEndpoint) bool {
 			return endpoint.registry != ""
 		},
-	).Values()
-	if len(endpoints) == 0 {
+	)
+	if endpoints == nil || endpoints.Len() == 0 {
 		return nil
 	}
 	return endpoints
@@ -146,16 +161,16 @@ func cleanMetricRegistry(registry string) string {
 	return strings.TrimRight(strings.TrimSpace(registry), "/")
 }
 
-func schedulerConfigLabels(component string, enabled bool) []observabilityx.Attribute {
-	return []observabilityx.Attribute{
+func schedulerConfigLabels(component string, enabled bool) *collectionlist.List[observabilityx.Attribute] {
+	return collectionlist.NewList(
 		observabilityx.String("component", component),
 		observabilityx.String("enabled", boolLabel(enabled)),
-	}
+	)
 }
 
-func dockerConfigLabels(component string, enabled bool) []observabilityx.Attribute {
-	return []observabilityx.Attribute{
+func dockerConfigLabels(component string, enabled bool) *collectionlist.List[observabilityx.Attribute] {
+	return collectionlist.NewList(
 		observabilityx.String("component", component),
 		observabilityx.String("enabled", boolLabel(enabled)),
-	}
+	)
 }

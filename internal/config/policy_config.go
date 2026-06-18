@@ -7,12 +7,16 @@ import (
 )
 
 func (c *Config) normalizePolicy() {
-	c.Policy.Dependency.Allow = normalizeDependencyPolicyRules(c.Policy.Dependency.Allow)
-	c.Policy.Dependency.Block = normalizeDependencyPolicyRules(c.Policy.Dependency.Block)
+	c.Policy.Dependency.Allow = normalizeDependencyPolicyRulesValues(
+		normalizeDependencyPolicyRules(collectionlist.NewList(c.Policy.Dependency.Allow...)),
+	)
+	c.Policy.Dependency.Block = normalizeDependencyPolicyRulesValues(
+		normalizeDependencyPolicyRules(collectionlist.NewList(c.Policy.Dependency.Block...)),
+	)
 }
 
-func normalizeDependencyPolicyRules(rules []DependencyRuleConfig) []DependencyRuleConfig {
-	if len(rules) == 0 {
+func normalizeDependencyPolicyRules(rules *collectionlist.List[DependencyRuleConfig]) *collectionlist.List[DependencyRuleConfig] {
+	if rules == nil || rules.Len() == 0 {
 		return nil
 	}
 	out := collectionlist.MapList(rules, func(_ int, rule DependencyRuleConfig) DependencyRuleConfig {
@@ -23,11 +27,18 @@ func normalizeDependencyPolicyRules(rules []DependencyRuleConfig) []DependencyRu
 			Reference: strings.TrimSpace(rule.Reference),
 		}
 	})
-	rules = collectionlist.FilterList(out, func(_ int, rule DependencyRuleConfig) bool {
+	filtered := collectionlist.FilterList(out, func(_ int, rule DependencyRuleConfig) bool {
 		return rule.Ecosystem != "" || rule.Alias != "" || rule.Artifact != "" || rule.Reference != ""
-	}).Values()
-	if len(rules) == 0 {
+	})
+	if filtered == nil || filtered.Len() == 0 {
 		return nil
 	}
-	return rules
+	return filtered
+}
+
+func normalizeDependencyPolicyRulesValues(rules *collectionlist.List[DependencyRuleConfig]) []DependencyRuleConfig {
+	if rules == nil {
+		return nil
+	}
+	return rules.Values()
 }
