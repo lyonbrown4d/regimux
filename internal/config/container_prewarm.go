@@ -6,6 +6,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/containerd/platforms"
 	"github.com/samber/oops"
 )
@@ -95,24 +96,24 @@ func defaultContainerPrewarmPlatform(arch string) string {
 }
 
 func activateContainerPrewarmPlatforms(container ContainerConfig) {
-	platformsByAlias := make(map[string][]string, len(container))
+	platformsByAlias := collectionmapping.NewMultiMapWithCapacity[string, string](len(container))
 	for key := range container {
 		alias := strings.TrimSpace(key)
 		if alias == "" {
 			continue
 		}
-		platformsByAlias[alias] = append([]string(nil), container[key].Prewarm.Platforms...)
+		platformsByAlias.Set(alias, append([]string(nil), container[key].Prewarm.Platforms...)...)
 	}
 	activeContainerPrewarmPlatforms.Store(platformsByAlias)
 }
 
 func ActiveContainerPrewarmPlatforms(alias string) []string {
-	platformsByAlias, ok := activeContainerPrewarmPlatforms.Load().(map[string][]string)
+	platformsByAlias, ok := activeContainerPrewarmPlatforms.Load().(*collectionmapping.MultiMap[string, string])
 	if !ok {
 		return []string{DefaultContainerPrewarmPlatform()}
 	}
-	if len(platformsByAlias) > 0 {
-		if values, ok := platformsByAlias[strings.TrimSpace(alias)]; ok && len(values) > 0 {
+	if platformsByAlias != nil && platformsByAlias.Len() > 0 {
+		if values := platformsByAlias.Get(strings.TrimSpace(alias)); len(values) > 0 {
 			return append([]string(nil), values...)
 		}
 	}
