@@ -4,9 +4,11 @@ import (
 	"context"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 )
 
@@ -135,4 +137,61 @@ func registryRouteName(kind reference.RouteKind) string {
 		return "registry.unknown"
 	}
 	return "registry." + string(kind)
+}
+
+func (e *RegistryEndpoint) publishWorkerFillSkipped(ctx context.Context, route reference.Route, kind, reason string) {
+	if e == nil || e.events == nil {
+		return
+	}
+	status := "skipped"
+	if strings.Contains(strings.ToLower(reason), "saturated") {
+		status = "saturated"
+	}
+	if err := events.Publish(ctx, e.events, events.ContainerPullFill{
+		Alias:  route.Alias,
+		Source: "worker",
+		Kind:   kind,
+		Status: status,
+		Reason: normalizeContainerPullMetricReason(reason),
+	}); err != nil && e.logger != nil {
+		e.logger.DebugContext(ctx, "publish container pull fill event failed", "error", err)
+	}
+}
+
+func normalizeContainerPullMetricReason(reason string) string {
+	reason = strings.TrimSpace(reason)
+	switch {
+	case reason == "":
+		return "unknown"
+	case strings.HasPrefix(reason, "failure backoff until "):
+		return "failure_backoff"
+	}
+	reason = strings.ToLower(reason)
+	replacer := strings.NewReplacer(
+		" ", "_",
+		"-", "_",
+		".", "_",
+		"/", "_",
+		":", "_",
+	)
+	reason = replacer.Replace(reason)
+	out := make([]rune, 0, len(reason))
+	lastUnderscore := false
+	for _, r := range reason {
+		ok := (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9')
+		if ok {
+			out = append(out, r)
+			lastUnderscore = false
+			continue
+		}
+		if !lastUnderscore {
+			out = append(out, '_')
+			lastUnderscore = true
+		}
+	}
+	normalized := strings.Trim(string(out), "_")
+	if normalized == "" {
+		return "unknown"
+	}
+	return normalized
 }

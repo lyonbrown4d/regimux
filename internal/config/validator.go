@@ -14,6 +14,7 @@ func newConfigValidator() *validator.Validate {
 	v.RegisterStructValidation(validateStoreMetaStruct, StoreMetaConfig{})
 	v.RegisterStructValidation(validateStoreObjectStruct, StoreObjectConfig{})
 	v.RegisterStructValidation(validateSchedulerCleanupStruct, SchedulerCleanupConfig{})
+	v.RegisterStructValidation(validateContainerRegistryStruct, ContainerRegistryConfig{})
 	v.RegisterStructValidation(validateDockerStruct, DockerConfig{})
 	return v
 }
@@ -133,6 +134,34 @@ func validateSchedulerCleanupStruct(sl validator.StructLevel) {
 	}
 	if cleanup.MaxBytes > 0 && cleanup.TargetBytes > cleanup.MaxBytes {
 		sl.ReportError(cleanup.TargetBytes, "target_bytes", "TargetBytes", "ltefield", "max_bytes")
+	}
+}
+
+func validateContainerRegistryStruct(sl validator.StructLevel) {
+	registry, ok := sl.Current().Interface().(ContainerRegistryConfig)
+	if !ok {
+		return
+	}
+	validateContainerPrewarmPlatforms(sl, registry.Prewarm.Platforms)
+}
+
+func validateContainerPrewarmPlatforms(sl validator.StructLevel, values []string) {
+	if len(values) == 0 {
+		return
+	}
+	all := false
+	for _, value := range values {
+		platform, err := normalizeContainerPrewarmPlatform(value)
+		if err != nil || platform == "" {
+			sl.ReportError(value, "prewarm.platforms", "Prewarm.Platforms", "container_platform", "")
+			continue
+		}
+		if platform == ContainerPrewarmAllPlatforms {
+			all = true
+		}
+	}
+	if all && len(values) > 1 {
+		sl.ReportError(values, "prewarm.platforms", "Prewarm.Platforms", "all_exclusive", "")
 	}
 }
 

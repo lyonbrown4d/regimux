@@ -55,6 +55,7 @@ func LoadWithOptions(ctx context.Context, options ...configx.Option) (Config, er
 	if err := loaded.Validate(&cfg); err != nil {
 		return Config{}, oops.In("config").Wrapf(err, "validate config")
 	}
+	activateContainerPrewarmPlatforms(cfg.Container)
 	return cfg, nil
 }
 
@@ -62,7 +63,11 @@ func (c *Config) NormalizeAndValidate() error {
 	if err := c.Normalize(); err != nil {
 		return err
 	}
-	return validateConfig(c)
+	if err := validateConfig(c); err != nil {
+		return err
+	}
+	activateContainerPrewarmPlatforms(c.Container)
+	return nil
 }
 
 func buildLoadOptions(path string, args ...string) ([]configx.Option, error) {

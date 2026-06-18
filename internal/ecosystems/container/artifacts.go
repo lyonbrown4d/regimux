@@ -67,6 +67,7 @@ func (e *RegistryEndpoint) submitManifestBlobFill(
 	if err := pool.Submit(func() {
 		task(taskCtx)
 	}); err != nil {
+		e.publishWorkerFillSkipped(ctx, route, "blob", "submit failed")
 		e.logger.DebugContext(ctx, "submit manifest blob fill failed",
 			"alias", route.Alias,
 			"repository", route.Repo,
@@ -251,7 +252,11 @@ func (e *RegistryEndpoint) logSkippedManifestBlobFill(
 	mediaType string,
 	reason string,
 ) {
-	if e == nil || e.logger == nil {
+	if e == nil {
+		return
+	}
+	e.publishWorkerFillSkipped(ctx, route, "blob", reason)
+	if e.logger == nil {
 		return
 	}
 	e.logger.DebugContext(ctx, "skipped manifest blob fill",
@@ -271,7 +276,11 @@ func (e *RegistryEndpoint) logSkippedManifestBlob(
 	descriptor manifestBlobDescriptor,
 	reason string,
 ) {
-	if e == nil || e.logger == nil {
+	if e == nil {
+		return
+	}
+	e.publishWorkerFillSkipped(ctx, route, "blob", reason)
+	if e.logger == nil {
 		return
 	}
 	e.logger.DebugContext(ctx, "skipped manifest blob",

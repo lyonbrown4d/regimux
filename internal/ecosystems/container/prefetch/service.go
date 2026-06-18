@@ -9,6 +9,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"go.uber.org/multierr"
@@ -29,6 +30,7 @@ type Service struct {
 	blobs           cache.BlobService
 	workers         *worker.Pools
 	logger          *slog.Logger
+	events          events.Bus
 	activeMu        sync.Mutex
 	activeRunID     int64
 	activeRunCancel context.CancelFunc
@@ -73,6 +75,7 @@ type ServiceDependencies struct {
 	Blobs             cache.BlobService
 	Logger            *slog.Logger
 	Workers           *worker.Pools
+	Events            events.Bus
 }
 
 func NewService(deps ServiceDependencies) *Service {
@@ -93,6 +96,7 @@ func NewService(deps ServiceDependencies) *Service {
 		manifestRefresh: manifestRefresh,
 		blobs:           deps.Blobs,
 		workers:         deps.Workers,
+		events:          deps.Events,
 		logger:          logger.With("component", prefetchLogGroup),
 	}
 }

@@ -42,8 +42,12 @@ func (s *SQLStore) ensureRepositoryMetadata(ctx context.Context, alias, name str
 	if err != nil {
 		return nil, err
 	}
-	if err := s.repositories.Create(ctx, &row); err != nil {
-		return nil, wrapError(err, "create repository metadata")
+	recovered, ok, err := s.createRepositoryMetadataRow(ctx, key, &row)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return recovered, nil
 	}
 	record.ID = row.ID
 	return &record, nil
@@ -75,11 +79,73 @@ func (s *SQLStore) ensureUpstreamMetadata(ctx context.Context, alias string, at 
 	if err != nil {
 		return nil, err
 	}
-	if err := s.upstreams.Create(ctx, &row); err != nil {
-		return nil, wrapError(err, "create upstream metadata")
+	recovered, ok, err := s.createUpstreamMetadataRow(ctx, alias, &row)
+	if err != nil {
+		return nil, err
+	}
+	if ok {
+		return recovered, nil
 	}
 	record.ID = row.ID
 	return &record, nil
+}
+
+func (s *SQLStore) createRepositoryMetadataRow(ctx context.Context, key string, row *repositoryRow) (*Repository, bool, error) {
+	if err := s.repositories.Create(ctx, row); err != nil {
+		recovered, ok, recoverErr := s.repositoryMetadataAfterCreateRace(ctx, key)
+		if recoverErr != nil {
+			return nil, false, recoverErr
+		}
+		if ok {
+			return recovered, true, nil
+		}
+		return nil, false, wrapError(err, "create repository metadata")
+	}
+	return nil, false, nil
+}
+
+func (s *SQLStore) createUpstreamMetadataRow(ctx context.Context, alias string, row *upstreamRow) (*Upstream, bool, error) {
+	if err := s.upstreams.Create(ctx, row); err != nil {
+		recovered, ok, recoverErr := s.upstreamMetadataAfterCreateRace(ctx, alias)
+		if recoverErr != nil {
+			return nil, false, recoverErr
+		}
+		if ok {
+			return recovered, true, nil
+		}
+		return nil, false, wrapError(err, "create upstream metadata")
+	}
+	return nil, false, nil
+}
+
+func (s *SQLStore) repositoryMetadataAfterCreateRace(ctx context.Context, key string) (*Repository, bool, error) {
+	row, err := repository.By(s.repositories, sqlRepositoryRows.Key).Get(ctx, key)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, wrapError(err, "get repository metadata after create race")
+	}
+	record, err := s.mapper.RepositoryRowToRecord(row)
+	if err != nil {
+		return nil, false, err
+	}
+	return record, true, nil
+}
+
+func (s *SQLStore) upstreamMetadataAfterCreateRace(ctx context.Context, alias string) (*Upstream, bool, error) {
+	row, err := repository.By(s.upstreams, sqlUpstreamRows.Alias).Get(ctx, alias)
+	if errors.Is(err, repository.ErrNotFound) {
+		return nil, false, nil
+	}
+	if err != nil {
+		return nil, false, wrapError(err, "get upstream metadata after create race")
+	}
+	record, err := s.mapper.UpstreamRowToRecord(row)
+	if err != nil {
+		return nil, false, err
+	}
+	return record, true, nil
 }
 
 func (s *SQLStore) refreshRepositoryMetadata(ctx context.Context, alias, name string, at time.Time) error {

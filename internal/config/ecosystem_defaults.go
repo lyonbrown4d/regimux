@@ -50,6 +50,9 @@ func defaultHubUpstreamConfig() UpstreamConfig {
 		MirrorPolicy:     "ordered",
 		DefaultNamespace: "library",
 		TagTTL:           10 * time.Minute,
+		Prewarm: ContainerPrewarmConfig{
+			Platforms: []string{DefaultContainerPrewarmPlatform()},
+		},
 		Blob: UpstreamBlobConfig{
 			MirrorPolicy:          "ordered",
 			TopN:                  3,

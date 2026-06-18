@@ -37,6 +37,12 @@ func (p blobProxy) streamBlobToCache(
 		done <- err
 	}); err != nil {
 		p.closeStreamedBlobPipeAfterSchedulerFailure(ctx, req, reader, writer, err)
+		p.publishStreamCacheFallback(ctx, req, streamCacheFallbackReason(err))
+		if errors.Is(err, errBlobStreamSchedulerSaturated) {
+			p.publishStreamCacheFill(ctx, req, "saturated", "scheduler_saturated")
+		} else {
+			p.publishStreamCacheFill(ctx, req, "skipped", streamCacheFallbackReason(err))
+		}
 		p.logBlobStreamCacheError(ctx, req, "submit streamed blob cache failed", err)
 		if onDone != nil {
 			onDone(err)

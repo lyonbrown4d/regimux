@@ -4,6 +4,7 @@ package config_test
 import (
 	"context"
 	"runtime"
+	"slices"
 	"testing"
 	"time"
 
@@ -34,6 +35,8 @@ func TestLoadDefaultsIncludeUpstreamBlobAndProbe(t *testing.T) {
 	cfg := loadDefaultConfig(t)
 	hub := assertDefaultContainerUpstreams(t, cfg)
 	assertDefaultDependencyUpstreams(t, cfg)
+	assertDefaultContainerPrewarm(t, cfg.Container["hub"].Prewarm)
+	assertDefaultContainerPrewarm(t, hub.Prewarm)
 	assertDefaultUpstreamBlob(t, hub.Blob)
 	assertDefaultUpstreamProbe(t, hub.Probe)
 	assertDefaultWorker(t, cfg.Worker)
@@ -63,6 +66,14 @@ func assertDefaultContainerUpstreams(t *testing.T, cfg config.Config) config.Ups
 		t.Fatalf("unexpected container defaults: %#v", cfg.Container)
 	}
 	return hub
+}
+
+func assertDefaultContainerPrewarm(t *testing.T, prewarm config.ContainerPrewarmConfig) {
+	t.Helper()
+
+	if !slices.Equal(prewarm.Platforms, []string{config.DefaultContainerPrewarmPlatform()}) {
+		t.Fatalf("unexpected container prewarm defaults: %#v", prewarm)
+	}
 }
 
 func assertDefaultDependencyUpstreams(t *testing.T, cfg config.Config) {

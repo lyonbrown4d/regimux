@@ -48,12 +48,24 @@ var Module = dix.NewModule("observability",
 			dix.Key("metrics.cache_store"), dix.Order(13),
 		),
 		dix.Contribute1[events.Subscriber, *Metrics](
+			NewContainerPullCacheAccessMetricsSubscriber,
+			dix.Key("metrics.container_pull_cache_access"), dix.Order(14),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewContainerPullStreamCacheFallbackMetricsSubscriber,
+			dix.Key("metrics.container_pull_stream_cache_fallback"), dix.Order(15),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
+			NewContainerPullFillMetricsSubscriber,
+			dix.Key("metrics.container_pull_fill"), dix.Order(16),
+		),
+		dix.Contribute1[events.Subscriber, *Metrics](
 			NewDependencyPulledMetricsSubscriber,
-			dix.Key("metrics.dependency_pulled"), dix.Order(14),
+			dix.Key("metrics.dependency_pulled"), dix.Order(17),
 		),
 		dix.Contribute1[events.Subscriber, *Metrics](
 			NewDependencyPullDeniedMetricsSubscriber,
-			dix.Key("metrics.dependency_pull_denied"), dix.Order(15),
+			dix.Key("metrics.dependency_pull_denied"), dix.Order(18),
 		),
 	),
 	dix.Hooks(

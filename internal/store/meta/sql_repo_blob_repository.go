@@ -80,10 +80,40 @@ func (s *SQLStore) writeRepoBlobRow(ctx context.Context, record *RepoBlobRecord,
 		return nil
 	}
 	if err := s.repoBlobs.Create(ctx, &row); err != nil {
+		recovered, recoverErr := s.updateRepoBlobAfterCreateRace(ctx, record, row.Key)
+		if recoverErr != nil {
+			return recoverErr
+		}
+		if recovered {
+			return nil
+		}
 		return wrapError(err, "upsert repository blob metadata")
 	}
 	record.ID = row.ID
 	return nil
+}
+
+func (s *SQLStore) updateRepoBlobAfterCreateRace(ctx context.Context, record *RepoBlobRecord, key string) (bool, error) {
+	row, err := repository.By(s.repoBlobs, sqlRepoBlobRows.Key).Get(ctx, key)
+	if errors.Is(err, repository.ErrNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		return false, wrapError(err, "get repository blob metadata after create race")
+	}
+	current, err := s.mapper.RepoBlobRowToRecord(row)
+	if err != nil {
+		return false, err
+	}
+	record.ID = current.ID
+	record.CreatedAt = current.CreatedAt
+	record.LastAccessAt = maxTime(record.LastAccessAt, current.LastAccessAt)
+	record.LastVerifiedAt = maxTime(record.LastVerifiedAt, current.LastVerifiedAt)
+	updateRow, err := s.mapper.RepoBlobRecordToRow(*record)
+	if err != nil {
+		return false, err
+	}
+	return true, s.updateRepoBlobRow(ctx, updateRow)
 }
 
 func (s *SQLStore) DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error {

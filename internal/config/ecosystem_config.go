@@ -60,6 +60,11 @@ func (c *Config) normalizeContainerUpstreams() (map[string]UpstreamConfig, error
 			normalizeErr = err
 			return false
 		}
+		upstreamCfg.Prewarm, err = normalizeContainerPrewarmConfig(upstreamCfg.Prewarm)
+		if err != nil {
+			normalizeErr = err
+			return false
+		}
 		containerCfg, err := mapper.UpstreamToContainerRegistry(upstreamCfg)
 		if err != nil {
 			normalizeErr = err

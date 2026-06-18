@@ -1,3 +1,4 @@
+//revive:disable:file-length-limit Prefetch integration helpers stay grouped to share fakes and fixtures.
 package prefetch_test
 
 import (
@@ -16,6 +17,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/prefetch"
+	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/opencontainers/go-digest"
@@ -65,6 +67,37 @@ func runPrefetchWithOptions(
 		return nil, fmt.Errorf("run prefetch service: %w", err)
 	}
 	return report, nil
+}
+
+func capturePrefetchFillEvents(t *testing.T) (events.Bus, <-chan events.ContainerPullFill) {
+	t.Helper()
+	bus := events.NewBus(slog.New(slog.DiscardHandler))
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Fatalf("close bus: %v", err)
+		}
+	})
+	received := make(chan events.ContainerPullFill, 1)
+	unsubscribe, err := events.NewSubscriber(func(_ context.Context, event events.ContainerPullFill) error {
+		received <- event
+		return nil
+	}).Subscribe(bus)
+	if err != nil {
+		t.Fatalf("subscribe prefetch fill: %v", err)
+	}
+	t.Cleanup(unsubscribe)
+	return bus, received
+}
+
+func receivePrefetchFillEvent(t *testing.T, received <-chan events.ContainerPullFill) events.ContainerPullFill {
+	t.Helper()
+	select {
+	case event := <-received:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for prefetch fill event")
+		return events.ContainerPullFill{}
+	}
 }
 
 func defaultRunOptions() prefetch.RunOptions {

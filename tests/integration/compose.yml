@@ -39,6 +39,20 @@ services:
       timeout: 5s
       retries: 60
 
+  fake-registry:
+    image: ${REGIMUX_INTEGRATION_PYTHON_IMAGE:-python:3.12-alpine}
+    profiles: ["multi"]
+    environment:
+      REGIMUX_FAKE_REGISTRY_CHUNK_DELAY_SECONDS: ${REGIMUX_FAKE_REGISTRY_CHUNK_DELAY_SECONDS:-0.01}
+    volumes:
+      - ./scripts:/scripts:ro
+    entrypoint: ["python", "/scripts/fake-registry.py"]
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=2).read()"]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+
   regimux:
     image: ${REGIMUX_IMAGE:-regimux-integration:latest-amd64}
     command: ["--config", "/etc/regimux/integration.hcl"]
@@ -52,6 +66,52 @@ services:
       - regimux-data:/var/lib/regimux
     depends_on:
       redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  regimux-a:
+    image: ${REGIMUX_IMAGE:-regimux-integration:latest-amd64}
+    profiles: ["multi"]
+    command: ["--config", "/etc/regimux/integration.hcl"]
+    ports:
+      - "${REGIMUX_INTEGRATION_A_PORT:-18081}:8080"
+    environment:
+      REGIMUX_STORE__META__DRIVER: ${REGIMUX_META_DRIVER:-sqlite}
+      REGIMUX_STORE__META__DSN: ${REGIMUX_META_DSN:-}
+    volumes:
+      - ./config/regimux.multi.hcl:/etc/regimux/integration.hcl:ro
+      - regimux-multi-data:/var/lib/regimux
+    depends_on:
+      redis:
+        condition: service_healthy
+      fake-registry:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null 2>&1 || exit 1"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+
+  regimux-b:
+    image: ${REGIMUX_IMAGE:-regimux-integration:latest-amd64}
+    profiles: ["multi"]
+    command: ["--config", "/etc/regimux/integration.hcl"]
+    ports:
+      - "${REGIMUX_INTEGRATION_B_PORT:-18082}:8080"
+    environment:
+      REGIMUX_STORE__META__DRIVER: ${REGIMUX_META_DRIVER:-sqlite}
+      REGIMUX_STORE__META__DSN: ${REGIMUX_META_DSN:-}
+    volumes:
+      - ./config/regimux.multi.hcl:/etc/regimux/integration.hcl:ro
+      - regimux-multi-data:/var/lib/regimux
+    depends_on:
+      redis:
+        condition: service_healthy
+      fake-registry:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null 2>&1 || exit 1"]
@@ -81,7 +141,7 @@ services:
     image: ${REGIMUX_INTEGRATION_NODE_IMAGE:-node:22-alpine}
     profiles: ["clients"]
     environment:
-      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-4}
     volumes:
       - ./scripts:/scripts:ro
     depends_on:
@@ -93,7 +153,7 @@ services:
     image: ${REGIMUX_INTEGRATION_PYTHON_IMAGE:-python:3.12-alpine}
     profiles: ["clients"]
     environment:
-      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-4}
     volumes:
       - ./scripts:/scripts:ro
     depends_on:
@@ -105,7 +165,7 @@ services:
     image: ${REGIMUX_INTEGRATION_MAVEN_IMAGE:-maven:3.9-eclipse-temurin-21-alpine}
     profiles: ["clients"]
     environment:
-      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-4}
     volumes:
       - ./scripts:/scripts:ro
     depends_on:
@@ -113,14 +173,26 @@ services:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/scripts/maven-client.sh"]
 
+  go-client:
+    image: ${REGIMUX_INTEGRATION_GO_IMAGE:-golang:1.25-alpine}
+    profiles: ["clients"]
+    environment:
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-4}
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      regimux:
+        condition: service_healthy
+    entrypoint: ["/bin/sh", "/scripts/go-client.sh"]
+
   container-client:
     image: ${REGIMUX_INTEGRATION_DOCKER_CLI_IMAGE:-docker:27-cli}
     profiles: ["clients"]
     environment:
       DOCKER_HOST: tcp://dind:2375
       DOCKER_TLS_CERTDIR: ""
-      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-8}
-      REGIMUX_CONTAINER_IMAGES: "regimux:8080/hub/library/busybox:1.36.1 regimux:8080/hub/library/alpine:3.19"
+      REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-4}
+      REGIMUX_CONTAINER_IMAGES: "regimux:8080/hub/library/busybox:1.36.1 regimux:8080/hub/library/ubuntu:24.04 regimux:8080/hub/moby/buildkit:buildx-stable-1"
     volumes:
       - ./scripts:/scripts:ro
     depends_on:
@@ -129,6 +201,20 @@ services:
       regimux:
         condition: service_healthy
     entrypoint: ["/bin/sh", "/scripts/container-client.sh"]
+
+  multi-replica-client:
+    image: ${REGIMUX_INTEGRATION_PYTHON_IMAGE:-python:3.12-alpine}
+    profiles: ["multi"]
+    volumes:
+      - ./scripts:/scripts:ro
+    depends_on:
+      fake-registry:
+        condition: service_healthy
+      regimux-a:
+        condition: service_healthy
+      regimux-b:
+        condition: service_healthy
+    entrypoint: ["python", "/scripts/multi-replica-client.py"]
 
   k6:
     image: ${REGIMUX_STRESS_K6_IMAGE:-grafana/k6:latest}
@@ -148,3 +234,4 @@ services:
 
 volumes:
   regimux-data:
+  regimux-multi-data:

@@ -3,12 +3,15 @@ package cache_test
 import (
 	"context"
 	"errors"
+	"log/slog"
 	"net/http"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/events"
 )
 
 func TestBlobProxyStreamAndCacheFallsBackWhenSchedulerRejects(t *testing.T) {
@@ -17,12 +20,14 @@ func TestBlobProxyStreamAndCacheFallsBackWhenSchedulerRejects(t *testing.T) {
 	digest := testDigestFor(body)
 	client := &fakeRegistryClient{blobBody: body, blobDigest: digest}
 	metadata, objects := newTestStores(t)
+	bus, fallbackEvents := captureStreamCacheFallbacks(t)
 	proxy := cache.NewProxy(cache.ProxyDependencies{
 		Client:              client,
 		Metadata:            metadata,
 		Objects:             objects,
 		CacheConfig:         streamAndCacheConfig().Cache,
 		BlobStreamScheduler: rejectingStreamScheduler{},
+		Events:              bus,
 	})
 
 	result, err := proxy.Blobs().Get(ctx, cache.BlobRequest{
@@ -37,6 +42,10 @@ func TestBlobProxyStreamAndCacheFallsBackWhenSchedulerRejects(t *testing.T) {
 	assertFullBlobMiss(t, result, body)
 	assertObjectPresence(ctx, t, objects, digest, false)
 	assertBlobRequestCounters(t, client, 1, 0)
+	event := receiveStreamCacheFallback(t, fallbackEvents)
+	if event.Alias != "hub" || event.Reason != "scheduler_submit_failed" {
+		t.Fatalf("unexpected stream cache fallback event: %#v", event)
+	}
 }
 
 func TestBlobProxyStreamAndCacheUsesScheduler(t *testing.T) {
@@ -96,6 +105,37 @@ type rejectingStreamScheduler struct{}
 
 func (rejectingStreamScheduler) Submit(func()) error {
 	return errors.New("stream scheduler saturated")
+}
+
+func captureStreamCacheFallbacks(t *testing.T) (events.Bus, <-chan events.ContainerPullStreamCacheFallback) {
+	t.Helper()
+	bus := events.NewBus(slog.New(slog.DiscardHandler))
+	t.Cleanup(func() {
+		if err := bus.Close(); err != nil {
+			t.Fatalf("close bus: %v", err)
+		}
+	})
+	received := make(chan events.ContainerPullStreamCacheFallback, 1)
+	unsubscribe, err := events.NewSubscriber(func(_ context.Context, event events.ContainerPullStreamCacheFallback) error {
+		received <- event
+		return nil
+	}).Subscribe(bus)
+	if err != nil {
+		t.Fatalf("subscribe stream fallback: %v", err)
+	}
+	t.Cleanup(unsubscribe)
+	return bus, received
+}
+
+func receiveStreamCacheFallback(t *testing.T, received <-chan events.ContainerPullStreamCacheFallback) events.ContainerPullStreamCacheFallback {
+	t.Helper()
+	select {
+	case event := <-received:
+		return event
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for stream cache fallback event")
+		return events.ContainerPullStreamCacheFallback{}
+	}
 }
 
 type recordingStreamScheduler struct {

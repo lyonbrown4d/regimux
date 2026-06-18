@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-concurrency="${REGIMUX_INTEGRATION_CONCURRENCY:-8}"
+concurrency="${REGIMUX_INTEGRATION_CONCURRENCY:-4}"
 status=0
 
 for i in $(seq 1 "$concurrency"); do

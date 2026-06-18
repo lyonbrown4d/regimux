@@ -28,19 +28,10 @@ func (s *SQLStore) UpsertManifest(ctx context.Context, record ManifestRecord) (*
 	if err != nil {
 		return nil, err
 	}
-	if record.ID != 0 {
-		if err := s.updateManifestRow(ctx, row); err != nil {
-			return nil, err
-		}
-		if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, record.UpdatedAt); err != nil {
-			return nil, err
-		}
-		return &record, nil
+	writeErr := s.writeManifestRow(ctx, key, &record, row)
+	if writeErr != nil {
+		return nil, writeErr
 	}
-	if err := s.manifest.Create(ctx, &row); err != nil {
-		return nil, wrapError(err, "upsert manifest metadata")
-	}
-	record.ID = row.ID
 	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, record.UpdatedAt); err != nil {
 		return nil, err
 	}
@@ -98,6 +89,41 @@ func (s *SQLStore) manifestByKey(ctx context.Context, key string) (*ManifestReco
 		return nil, false, err
 	}
 	return record, true, nil
+}
+
+func (s *SQLStore) writeManifestRow(ctx context.Context, key ManifestKey, record *ManifestRecord, row manifestRow) error {
+	if record.ID != 0 {
+		return s.updateManifestRow(ctx, row)
+	}
+	if err := s.manifest.Create(ctx, &row); err != nil {
+		recovered, recoverErr := s.updateManifestAfterCreateRace(ctx, key, record)
+		if recoverErr != nil {
+			return recoverErr
+		}
+		if recovered {
+			return nil
+		}
+		return wrapError(err, "upsert manifest metadata")
+	}
+	record.ID = row.ID
+	return nil
+}
+
+func (s *SQLStore) updateManifestAfterCreateRace(ctx context.Context, key ManifestKey, record *ManifestRecord) (bool, error) {
+	current, ok, err := s.Manifest(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	record.ID = current.ID
+	record.CreatedAt = current.CreatedAt
+	row, err := s.mapper.ManifestRecordToRow(*record)
+	if err != nil {
+		return false, err
+	}
+	return true, s.updateManifestRow(ctx, row)
 }
 
 func (s *SQLStore) updateManifestRow(ctx context.Context, row manifestRow) error {

@@ -155,3 +155,10 @@ func assertMetricAttr(t *testing.T, record metricRecord, key string, want any) {
 		t.Fatalf("unexpected %s attr: got=%v want=%v record=%#v", key, got, want, record)
 	}
 }
+
+func assertNoMetricAttr(t *testing.T, record metricRecord, key string) {
+	t.Helper()
+	if _, ok := record.attrs[key]; ok {
+		t.Fatalf("unexpected %s attr in record=%#v", key, record)
+	}
+}

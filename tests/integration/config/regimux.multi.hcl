@@ -22,7 +22,7 @@ log {
 
 cache {
   backend = "redis"
-  prefix = "regimux-it"
+  prefix = "regimux-it-multi"
   default_ttl = "10m"
 
   redis {
@@ -57,14 +57,13 @@ worker {
 
 container {
   hub {
-    registry = "https://registry-1.docker.io"
-    mirrors = ["https://docker.m.daocloud.io"]
+    registry = "http://fake-registry:5000"
     mirror_policy = "ordered"
     default_namespace = "library"
 
     blob {
-      mirror_policy = "round_robin"
-      max_concurrent_attempts = 2
+      mirror_policy = "ordered"
+      max_concurrent_attempts = 1
     }
 
     probe {
@@ -78,40 +77,10 @@ container {
     http {
       retry {
         enabled = true
-        max_retries = 2
-        wait_min = "100ms"
-        wait_max = "1s"
+        max_retries = 1
+        wait_min = "50ms"
+        wait_max = "250ms"
       }
     }
-  }
-}
-
-go {
-  default {
-    registry = "https://proxy.golang.org"
-  }
-}
-
-npm {
-  default {
-    registry = "https://registry.npmmirror.com"
-    mirrors = ["https://registry.npmjs.org"]
-    mirror_policy = "ordered"
-  }
-}
-
-pypi {
-  default {
-    registry = "https://mirrors.tuna.tsinghua.edu.cn/pypi/web/simple"
-    mirrors = ["https://pypi.org"]
-    mirror_policy = "ordered"
-  }
-}
-
-maven {
-  central {
-    registry = "https://maven.aliyun.com/repository/public"
-    mirrors = ["https://repo.maven.apache.org/maven2"]
-    mirror_policy = "ordered"
   }
 }

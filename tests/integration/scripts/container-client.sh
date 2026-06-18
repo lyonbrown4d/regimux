@@ -5,8 +5,8 @@ until docker info >/dev/null 2>&1; do
   sleep 1
 done
 
-concurrency="${REGIMUX_INTEGRATION_CONCURRENCY:-8}"
-images="${REGIMUX_CONTAINER_IMAGES:-regimux:8080/hub/library/busybox:1.36.1 regimux:8080/hub/library/alpine:3.19}"
+concurrency="${REGIMUX_INTEGRATION_CONCURRENCY:-4}"
+images="${REGIMUX_CONTAINER_IMAGES:-regimux:8080/hub/library/busybox:1.36.1 regimux:8080/hub/library/ubuntu:24.04 regimux:8080/hub/moby/buildkit:buildx-stable-1}"
 
 set -- $images
 if [ "$#" -eq 0 ]; then
@@ -51,4 +51,30 @@ fi
 for image in "$@"; do
   docker image inspect "$image" >/dev/null
   docker image rm "$image" >/dev/null 2>&1 || true
+done
+
+for image in "$@"; do
+  docker pull "$image" > "/tmp/regimux-second-pull.log" 2>&1 || {
+    cat "/tmp/regimux-second-pull.log"
+    exit 1
+  }
+  docker image inspect "$image" >/dev/null
+  docker image rm "$image" >/dev/null 2>&1 || true
+
+  repository="${image#regimux:8080/hub/}"
+  reference="${repository##*:}"
+  repository="${repository%:*}"
+  cache_status="$(
+    wget -S --spider \
+      --header="Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+      "http://regimux:8080/v2/hub/$repository/manifests/$reference" \
+      2>&1 |
+      awk 'tolower($0) ~ /x-mirror-cache:/ {print tolower($2); exit}' |
+      tr -d '\r'
+  )"
+
+  if [ "$cache_status" != "hit" ]; then
+    printf '%s\n' "expected second pull manifest cache hit for $image, got ${cache_status:-missing}" >&2
+    exit 1
+  fi
 done

@@ -136,6 +136,33 @@ type CacheStore struct {
 
 func (CacheStore) Name() string { return "cache.store" }
 
+type ContainerPullCacheAccess struct {
+	Kind        string
+	Alias       string
+	CacheStatus string
+}
+
+func (ContainerPullCacheAccess) Name() string { return "container.pull.cache_access" }
+
+type ContainerPullStreamCacheFallback struct {
+	Alias  string
+	Reason string
+}
+
+func (ContainerPullStreamCacheFallback) Name() string {
+	return "container.pull.stream_cache_fallback"
+}
+
+type ContainerPullFill struct {
+	Alias  string
+	Source string
+	Kind   string
+	Status string
+	Reason string
+}
+
+func (ContainerPullFill) Name() string { return "container.pull.fill" }
+
 type ArtifactPulled struct {
 	Ecosystem  string
 	Kind       string

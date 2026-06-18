@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
@@ -138,6 +139,10 @@ container {
     mirrors = ["https://mirror-a.example.com", "https://mirror-b.example.com"]
     mirror_policy = "round_robin"
 
+    prewarm {
+      platforms = ["linux/arm64", "linux/amd64"]
+    }
+
     blob {
       mirror_policy = "latency"
       top_n = 2
@@ -237,6 +242,9 @@ func assertLoadedHCLConfig(t *testing.T, cfg config.Config) {
 		t.Fatal("missing local container upstream")
 	}
 	assertLoadedHCLUpstream(t, local)
+	if !slices.Equal(local.Prewarm.Platforms, []string{"linux/arm64", "linux/amd64"}) {
+		t.Fatalf("unexpected container prewarm platforms: %#v", local.Prewarm)
+	}
 	assertLoadedHCLEcosystemConfig(t, cfg)
 	assertLoadedHCLPolicy(t, cfg.Policy)
 	assertLoadedHCLWorker(t, cfg.Worker)

@@ -31,8 +31,9 @@ var Module = dix.NewModule("container",
 		dockerintegration.Module,
 	),
 	dix.Providers(
-		dix.Provider6[*prefetch.Service, meta.Store, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
-			NewPrefetchService,
+		dix.Provider2[prefetchStores, meta.Store, events.Bus](newPrefetchStores),
+		dix.Provider6[*prefetch.Service, prefetchStores, cache.TagService, cache.ManifestService, cache.BlobService, *slog.Logger, *worker.Pools](
+			newPrefetchServiceWithEvents,
 		),
 		dix.Provider5[*Runtime, config.Config, *upstream.Client, *prefetch.Service, cache.ManifestService, *cache.CleanupService](
 			NewRuntime,
@@ -45,6 +46,11 @@ var Module = dix.NewModule("container",
 		),
 	),
 )
+
+type prefetchStores struct {
+	metadata meta.Store
+	events   events.Bus
+}
 
 func NewPrefetchService(
 	metadata meta.Store,
@@ -62,6 +68,29 @@ func NewPrefetchService(
 		Logger:    logger,
 		Workers:   pools,
 	})
+}
+
+func newPrefetchServiceWithEvents(
+	stores prefetchStores,
+	tags cache.TagService,
+	manifests cache.ManifestService,
+	blobs cache.BlobService,
+	logger *slog.Logger,
+	pools *worker.Pools,
+) *prefetch.Service {
+	return prefetch.NewService(prefetch.ServiceDependencies{
+		Metadata:  stores.metadata,
+		Tags:      tags,
+		Manifests: manifests,
+		Blobs:     blobs,
+		Logger:    logger,
+		Workers:   pools,
+		Events:    stores.events,
+	})
+}
+
+func newPrefetchStores(metadata meta.Store, bus events.Bus) prefetchStores {
+	return prefetchStores{metadata: metadata, events: bus}
 }
 
 func newRegistryEndpointOptions(

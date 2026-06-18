@@ -219,6 +219,7 @@ func (s *Service) prefetchBlob(
 }
 
 func (s *Service) logSkippedManifest(ctx context.Context, candidate Candidate, reference, digest, mediaType, reason string) {
+	s.publishFillSkipped(ctx, candidate.Alias, "manifest", reason)
 	s.logger.DebugContext(ctx, "skipped prefetch manifest artifact",
 		"alias", candidate.Alias,
 		"repository", candidate.Repo,
@@ -230,6 +231,7 @@ func (s *Service) logSkippedManifest(ctx context.Context, candidate Candidate, r
 }
 
 func (s *Service) logSkippedBlob(ctx context.Context, candidate Candidate, manifestDigest string, descriptor blobDescriptor, reason string) {
+	s.publishFillSkipped(ctx, candidate.Alias, "blob", reason)
 	s.logger.DebugContext(ctx, "skipped prefetch blob",
 		"alias", candidate.Alias,
 		"repository", candidate.Repo,

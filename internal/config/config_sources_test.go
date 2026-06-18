@@ -84,6 +84,42 @@ container {
 	}
 }
 
+func TestLoadEnvOverridesMetaStoreInHCLFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	for _, key := range []string{
+		"REGIMUX_STORE__META__DRIVER",
+		"REGIMUX_STORE__META__DSN",
+	} {
+		unsetEnv(t, key)
+	}
+
+	path := "regimux.hcl"
+	if err := os.WriteFile(path, []byte(`
+store {
+  meta {
+    driver = "sqlite"
+    path = "/var/lib/regimux/regimux.db"
+  }
+}
+`), 0o600); err != nil {
+		t.Fatalf("write hcl config: %v", err)
+	}
+
+	t.Setenv("REGIMUX_STORE__META__DRIVER", "postgres")
+	t.Setenv("REGIMUX_STORE__META__DSN", "metadata-dsn")
+
+	cfg, err := config.Load(context.Background(), path)
+	if err != nil {
+		t.Fatalf("load env meta override config: %v", err)
+	}
+	if cfg.Store.Meta.Driver != "postgres" {
+		t.Fatalf("unexpected env store.meta.driver %q", cfg.Store.Meta.Driver)
+	}
+	if cfg.Store.Meta.DSN != "metadata-dsn" {
+		t.Fatalf("unexpected env store.meta.dsn %q", cfg.Store.Meta.DSN)
+	}
+}
+
 func TestLoadDotenvOverridesHCLFile(t *testing.T) {
 	t.Chdir(t.TempDir())
 	unsetEnv(t, "REGIMUX_SERVER__LISTEN")

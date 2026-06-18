@@ -57,6 +57,49 @@ func NewCacheStoreMetricsSubscriber(metrics *Metrics) events.Subscriber {
 	})
 }
 
+func NewContainerPullCacheAccessMetricsSubscriber(metrics *Metrics) events.Subscriber {
+	if metrics == nil {
+		return nil
+	}
+	return events.NewSubscriber(func(ctx context.Context, event events.ContainerPullCacheAccess) error {
+		metrics.ObserveContainerPullCacheAccess(ctx, ContainerPullCacheAccessMetric{
+			Alias:       event.Alias,
+			Kind:        event.Kind,
+			CacheStatus: event.CacheStatus,
+		})
+		return nil
+	})
+}
+
+func NewContainerPullStreamCacheFallbackMetricsSubscriber(metrics *Metrics) events.Subscriber {
+	if metrics == nil {
+		return nil
+	}
+	return events.NewSubscriber(func(ctx context.Context, event events.ContainerPullStreamCacheFallback) error {
+		metrics.ObserveContainerPullStreamCacheFallback(ctx, ContainerPullStreamCacheFallbackMetric{
+			Alias:  event.Alias,
+			Reason: event.Reason,
+		})
+		return nil
+	})
+}
+
+func NewContainerPullFillMetricsSubscriber(metrics *Metrics) events.Subscriber {
+	if metrics == nil {
+		return nil
+	}
+	return events.NewSubscriber(func(ctx context.Context, event events.ContainerPullFill) error {
+		metrics.ObserveContainerPullFill(ctx, ContainerPullFillMetric{
+			Alias:  event.Alias,
+			Source: event.Source,
+			Kind:   event.Kind,
+			Status: event.Status,
+			Reason: event.Reason,
+		})
+		return nil
+	})
+}
+
 func NewDependencyPulledMetricsSubscriber(metrics *Metrics) events.Subscriber {
 	if metrics == nil {
 		return nil

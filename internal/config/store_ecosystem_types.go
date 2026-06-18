@@ -109,15 +109,20 @@ type WorkerConfig struct {
 type ContainerConfig map[string]ContainerRegistryConfig
 
 type ContainerRegistryConfig struct {
-	Registry         string              `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
-	Mirrors          []string            `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
-	MirrorPolicy     string              `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`
-	DefaultNamespace string              `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
-	TagTTL           time.Duration       `json:"tag_ttl"           koanf:"tag_ttl"           mapstructure:"tag_ttl"           validate:"min=0"`
-	Blob             UpstreamBlobConfig  `json:"blob"              koanf:"blob"              mapstructure:"blob"`
-	Probe            UpstreamProbeConfig `json:"probe"             koanf:"probe"             mapstructure:"probe"`
-	Auth             AuthConfig          `json:"auth"              koanf:"auth"              mapstructure:"auth"`
-	HTTP             HTTPConfig          `json:"http"              koanf:"http"              mapstructure:"http"`
+	Registry         string                 `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
+	Mirrors          []string               `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
+	MirrorPolicy     string                 `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`
+	DefaultNamespace string                 `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
+	TagTTL           time.Duration          `json:"tag_ttl"           koanf:"tag_ttl"           mapstructure:"tag_ttl"           validate:"min=0"`
+	Prewarm          ContainerPrewarmConfig `json:"prewarm"           koanf:"prewarm"           mapstructure:"prewarm"`
+	Blob             UpstreamBlobConfig     `json:"blob"              koanf:"blob"              mapstructure:"blob"`
+	Probe            UpstreamProbeConfig    `json:"probe"             koanf:"probe"             mapstructure:"probe"`
+	Auth             AuthConfig             `json:"auth"              koanf:"auth"              mapstructure:"auth"`
+	HTTP             HTTPConfig             `json:"http"              koanf:"http"              mapstructure:"http"`
+}
+
+type ContainerPrewarmConfig struct {
+	Platforms []string `json:"platforms" koanf:"platforms" mapstructure:"platforms"`
 }
 
 type DependencyEcosystemConfig map[string]DependencyUpstreamConfig
@@ -146,17 +151,18 @@ type DistUpstreamConfig struct {
 }
 
 type UpstreamConfig struct {
-	Alias            string              `json:"-"                 koanf:"-"                 mapstructure:"-"`
-	Type             string              `json:"type"              koanf:"type"              mapstructure:"type"              validate:"omitempty,oneof=oci go maven pypi npm dist"`
-	Registry         string              `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
-	Mirrors          []string            `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
-	MirrorPolicy     string              `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`
-	DefaultNamespace string              `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
-	TagTTL           time.Duration       `json:"tag_ttl"           koanf:"tag_ttl"           mapstructure:"tag_ttl"           validate:"min=0"`
-	Blob             UpstreamBlobConfig  `json:"blob"              koanf:"blob"              mapstructure:"blob"`
-	Probe            UpstreamProbeConfig `json:"probe"             koanf:"probe"             mapstructure:"probe"`
-	Auth             AuthConfig          `json:"auth"              koanf:"auth"              mapstructure:"auth"`
-	HTTP             HTTPConfig          `json:"http"              koanf:"http"              mapstructure:"http"`
+	Alias            string                 `json:"-"                 koanf:"-"                 mapstructure:"-"`
+	Type             string                 `json:"type"              koanf:"type"              mapstructure:"type"              validate:"omitempty,oneof=oci go maven pypi npm dist"`
+	Registry         string                 `json:"registry"          koanf:"registry"          mapstructure:"registry"          validate:"omitempty,url"`
+	Mirrors          []string               `json:"mirrors"           koanf:"mirrors"           mapstructure:"mirrors"           validate:"dive,required,url"`
+	MirrorPolicy     string                 `json:"mirror_policy"     koanf:"mirror_policy"     mapstructure:"mirror_policy"     validate:"omitempty,oneof=ordered failover round_robin"`
+	DefaultNamespace string                 `json:"default_namespace" koanf:"default_namespace" mapstructure:"default_namespace"`
+	TagTTL           time.Duration          `json:"tag_ttl"           koanf:"tag_ttl"           mapstructure:"tag_ttl"           validate:"min=0"`
+	Prewarm          ContainerPrewarmConfig `json:"prewarm"           koanf:"prewarm"           mapstructure:"prewarm"`
+	Blob             UpstreamBlobConfig     `json:"blob"              koanf:"blob"              mapstructure:"blob"`
+	Probe            UpstreamProbeConfig    `json:"probe"             koanf:"probe"             mapstructure:"probe"`
+	Auth             AuthConfig             `json:"auth"              koanf:"auth"              mapstructure:"auth"`
+	HTTP             HTTPConfig             `json:"http"              koanf:"http"              mapstructure:"http"`
 }
 
 type UpstreamBlobConfig struct {

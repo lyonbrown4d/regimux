@@ -19,6 +19,7 @@ type Metrics struct {
 	api        apiMetrics
 	cache      cacheMetrics
 	config     configMetrics
+	container  containerPullMetrics
 	db         dbMetrics
 	dependency dependencyMetrics
 	docker     dockerMetrics
@@ -41,6 +42,7 @@ func NewMetricsFromObservability(obs observabilityx.Observability, handler http.
 		api:        newAPIMetrics(obs),
 		cache:      newCacheMetrics(obs),
 		config:     newConfigMetrics(obs),
+		container:  newContainerPullMetrics(obs),
 		db:         newDBMetrics(obs),
 		dependency: newDependencyMetrics(obs),
 		docker:     newDockerMetrics(obs),

@@ -77,6 +77,7 @@ func (s *Service) recordSkippedCandidate(
 	skipReason string,
 ) {
 	state.skipped.Add(1)
+	s.publishFillSkipped(ctx, plan.candidate.Alias, "blob", skipReason)
 	if err := execution.recordSkipped(ctx, plan, skipReason); err != nil {
 		state.failed.Add(1)
 		s.logPrefetchFailure(ctx, plan.candidate, prefetchResult{}, err)
@@ -114,6 +115,7 @@ func (s *Service) finishFailedPrefetchTask(
 	status, skipReason, nextRetryAt := execution.failureOutcome(err, plan.attempt)
 	if status == outcomeStatusSkipped {
 		state.skipped.Add(1)
+		s.publishFillSkipped(ctx, plan.candidate.Alias, "blob", skipReason)
 	} else {
 		state.failed.Add(1)
 	}

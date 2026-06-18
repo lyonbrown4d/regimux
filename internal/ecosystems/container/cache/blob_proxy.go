@@ -80,6 +80,7 @@ func (p blobProxy) fetchStreamAndStore(ctx context.Context, req BlobRequest) (*B
 
 func (p blobProxy) fetchRangeStream(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
 	p.logBlobCacheHit(ctx, req, "stream_and_cache_range_fill")
+	p.publishStreamCacheFallback(ctx, req, "range_request")
 	return p.fetchStored(ctx, req)
 }
 
@@ -108,6 +109,7 @@ func (p blobProxy) waitForStreamedFullBlob(attempt blobFillAttempt) (*BlobReadRe
 			return nil, false, wrapError(ctxErr, "wait for streamed blob cache fill")
 		}
 		p.logBlobStreamCacheError(attempt.ctx, attempt.req, "streamed blob cache fill failed; retrying blob fetch", err)
+		p.publishStreamCacheFallback(attempt.ctx, attempt.req, "stream_fill_failed_retry")
 		return nil, true, nil
 	}
 	if cached, ok, err := p.lookupSmallBlobCache(attempt.ctx, attempt.req); err != nil || ok {
@@ -117,6 +119,7 @@ func (p blobProxy) waitForStreamedFullBlob(attempt blobFillAttempt) (*BlobReadRe
 		return cached, false, err
 	}
 	p.logBlobLookupSkip(attempt.ctx, attempt.req, "streamed_blob_fill_completed_without_object")
+	p.publishStreamCacheFallback(attempt.ctx, attempt.req, "stream_fill_missing_object_retry")
 	return nil, true, nil
 }
 
@@ -230,6 +233,7 @@ func (p blobProxy) waitForOngoingStreamedFill(ctx context.Context, req BlobReque
 			return wrapError(ctxErr, "wait for streamed blob cache fill")
 		}
 		p.logBlobStreamCacheError(ctx, req, "streamed blob cache fill failed; falling back to direct blob storage", err)
+		p.publishStreamCacheFallback(ctx, req, "stream_fill_failed_direct_storage")
 	}
 	return nil
 }

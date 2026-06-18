@@ -55,10 +55,34 @@ func (s *SQLStore) writeTagRow(ctx context.Context, record *TagRecord, row tagRo
 		return nil
 	}
 	if err := s.tags.Create(ctx, &row); err != nil {
+		recovered, recoverErr := s.updateTagAfterCreateRace(ctx, record, row.Key)
+		if recoverErr != nil {
+			return recoverErr
+		}
+		if recovered {
+			return nil
+		}
 		return wrapError(err, "upsert tag metadata")
 	}
 	record.ID = row.ID
 	return nil
+}
+
+func (s *SQLStore) updateTagAfterCreateRace(ctx context.Context, record *TagRecord, key string) (bool, error) {
+	current, ok, err := s.tagByKey(ctx, key)
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	record.ID = current.ID
+	record.CreatedAt = current.CreatedAt
+	row, err := s.mapper.TagRecordToRow(*record)
+	if err != nil {
+		return false, err
+	}
+	return true, s.updateTagRow(ctx, row)
 }
 
 func (s *SQLStore) DeleteTag(ctx context.Context, key TagKey) error {

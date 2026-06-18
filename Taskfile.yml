@@ -51,17 +51,38 @@ tasks:
       - docker compose -f {{.INTEGRATION_COMPOSE}} --profile postgres up -d --wait regimux dind
 
   integration:deps:
-    desc: Run npm, PyPI, and Maven proxy integration checks.
+    desc: Run npm, PyPI, Maven, and Go proxy integration checks.
     cmds:
       - task: integration:up
       - task: integration:deps:run
 
   integration:deps:run:
-    desc: Run npm, PyPI, and Maven proxy client containers.
+    desc: Run npm, PyPI, Maven, and Go proxy client containers.
+    cmds:
+      - task: integration:npm:run
+      - task: integration:pypi:run
+      - task: integration:maven:run
+      - task: integration:go:run
+
+  integration:npm:run:
+    desc: Run the npm proxy integration client.
     cmds:
       - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm npm-client
+
+  integration:pypi:run:
+    desc: Run the PyPI proxy integration client.
+    cmds:
       - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm pypi-client
+
+  integration:maven:run:
+    desc: Run the Maven proxy integration client.
+    cmds:
       - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm maven-client
+
+  integration:go:run:
+    desc: Run the Go module proxy integration client.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm go-client
 
   integration:container:
     desc: Run the DinD container registry integration check.
@@ -70,22 +91,105 @@ tasks:
       - task: integration:container:run
 
   integration:container:run:
-    desc: Pull public container images through RegiMux from DinD.
+    desc: Pull Debian, Ubuntu, and BuildKit images through RegiMux from DinD.
     cmds:
       - docker compose -f {{.INTEGRATION_COMPOSE}} run --rm container-client
+
+  integration:replicas:up:
+    desc: Start two RegiMux replicas sharing Redis, metadata, and object storage.
+    deps:
+      - integration:image
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi up -d --wait redis fake-registry
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi up -d --wait regimux-a
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi up -d --wait regimux-b
+
+  integration:replicas:mysql:up:
+    desc: Start the multi-replica integration environment with MySQL metadata storage.
+    deps:
+      - integration:image
+    env:
+      REGIMUX_META_DRIVER: mysql
+      REGIMUX_META_DSN: "regimux:secret@tcp(mysql:3306)/regimux?parseTime=true&multiStatements=true"
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi --profile mysql up -d --wait redis fake-registry mysql
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi --profile mysql up -d --wait regimux-a
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi --profile mysql up -d --wait regimux-b
+
+  integration:replicas:postgres:up:
+    desc: Start the multi-replica integration environment with Postgres metadata storage.
+    deps:
+      - integration:image
+    env:
+      REGIMUX_META_DRIVER: postgres
+      REGIMUX_META_DSN: "postgres://regimux:secret@postgres:5432/regimux?sslmode=disable"
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi --profile postgres up -d --wait redis fake-registry postgres
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi --profile postgres up -d --wait regimux-a
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi --profile postgres up -d --wait regimux-b
+
+  integration:replicas:run:
+    desc: Verify a concurrent blob pull waits on the peer replica and then hits shared storage.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile multi run --rm multi-replica-client
+
+  integration:replicas:
+    desc: Run the multi-replica shared-cache integration check with sqlite metadata storage.
+    cmds:
+      - task: integration:down
+      - task: integration:replicas:up
+      - defer:
+          task: integration:down
+      - task: integration:replicas:run
+
+  integration:replicas:mysql:
+    desc: Run the multi-replica shared-cache integration check with MySQL metadata storage.
+    cmds:
+      - task: integration:down
+      - task: integration:replicas:mysql:up
+      - defer:
+          task: integration:down
+      - task: integration:replicas:run
+
+  integration:replicas:postgres:
+    desc: Run the multi-replica shared-cache integration check with Postgres metadata storage.
+    cmds:
+      - task: integration:down
+      - task: integration:replicas:postgres:up
+      - defer:
+          task: integration:down
+      - task: integration:replicas:run
+
+  integration:replicas:databases:
+    desc: Run the multi-replica shared-cache check against sqlite, MySQL, and Postgres metadata stores.
+    cmds:
+      - task: integration:replicas
+      - task: integration:replicas:mysql
+      - task: integration:replicas:postgres
+
+  integration:clients:run:
+    desc: Run all integration client containers sequentially against the current RegiMux instance.
+    cmds:
+      - task: integration:deps:run
+      - task: integration:container:run
 
   integration:mixed:run:
     desc: Run all integration clients concurrently against the same RegiMux instance.
     cmds:
-      - docker compose -f {{.INTEGRATION_COMPOSE}} up --no-deps --force-recreate --renew-anon-volumes --abort-on-container-failure npm-client pypi-client maven-client container-client
+      - docker compose -f {{.INTEGRATION_COMPOSE}} up --no-deps --force-recreate --renew-anon-volumes --abort-on-container-failure npm-client pypi-client maven-client go-client container-client
 
-  integration:
-    desc: Run the full Docker Compose integration suite.
+  integration:sqlite:
+    desc: Run the full integration suite with sqlite metadata storage.
     cmds:
       - task: integration:up
       - defer:
           task: integration:down
       - task: integration:mixed:run
+
+  integration:
+    desc: Run the default sqlite Docker Compose integration suite.
+    cmds:
+      - task: integration:sqlite
 
   integration:mysql:
     desc: Run the full integration suite with MySQL metadata storage.
@@ -106,7 +210,7 @@ tasks:
   integration:databases:
     desc: Run the integration suite against sqlite, MySQL, and Postgres metadata stores.
     cmds:
-      - task: integration
+      - task: integration:sqlite
       - task: integration:mysql
       - task: integration:postgres
 
@@ -121,7 +225,7 @@ tasks:
       - task: integration:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=smoke -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-smoke k6 run --quiet /stress/k6/regimux.js
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=smoke -e REGIMUX_STRESS_META_STORE=sqlite -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-smoke k6 run --quiet /stress/k6/regimux.js
 
   stress:
     desc: Run the default k6 load profile against sqlite metadata storage.
@@ -129,7 +233,7 @@ tasks:
       - task: integration:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-load k6 run --quiet /stress/k6/regimux.js
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=sqlite -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-load k6 run --quiet /stress/k6/regimux.js
 
   stress:mysql:
     desc: Run the default k6 load profile against MySQL metadata storage.
@@ -137,7 +241,7 @@ tasks:
       - task: integration:mysql:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_K6_REPORT_NAME=regimux-stress-mysql-load k6 run --quiet /stress/k6/regimux.js
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=mysql -e REGIMUX_K6_REPORT_NAME=regimux-stress-mysql-load k6 run --quiet /stress/k6/regimux.js
 
   stress:postgres:
     desc: Run the default k6 load profile against Postgres metadata storage.
@@ -145,16 +249,22 @@ tasks:
       - task: integration:postgres:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_K6_REPORT_NAME=regimux-stress-postgres-load k6 run --quiet /stress/k6/regimux.js
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=postgres -e REGIMUX_K6_REPORT_NAME=regimux-stress-postgres-load k6 run --quiet /stress/k6/regimux.js
+
+  stress:compare:
+    desc: Generate sqlite, MySQL, and Postgres k6 stress comparison reports.
+    cmds:
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm --no-deps -e REGIMUX_K6_COMPARE_REPORT_NAME=regimux-stress-load-comparison k6 run --quiet /stress/k6/compare.js
 
   stress:databases:
-    desc: Run the k6 load profile against sqlite, MySQL, and Postgres metadata stores.
+    desc: Run the k6 load profile against sqlite, MySQL, and Postgres metadata stores and compare reports.
     cmds:
       - task: stress
       - task: stress:mysql
       - task: stress:postgres
+      - task: stress:compare
 
   integration:down:
     desc: Stop and remove the integration test environment.
     cmds:
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile clients --profile mysql --profile postgres down -v --remove-orphans
+      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile clients --profile mysql --profile postgres --profile multi down -v --remove-orphans

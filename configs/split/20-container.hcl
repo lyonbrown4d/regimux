@@ -19,5 +19,6 @@ container {
   ghcr {
     registry = "https://ghcr.io"
     tag_ttl = "5m"
+
   }
 }

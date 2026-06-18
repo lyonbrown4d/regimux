@@ -127,8 +127,16 @@ func TestServiceRunRespectsByteBudgetAndRecordsHistory(t *testing.T) {
 	blobs := &fakeBlobService{}
 	opts := defaultRunOptions()
 	opts.MaxBytes = 100
+	bus, fills := capturePrefetchFillEvents(t)
+	service := prefetch.NewService(prefetch.ServiceDependencies{
+		Metadata:  store,
+		Tags:      fakeTagService{tags: []string{sourceTag, targetTag}},
+		Manifests: manifests,
+		Blobs:     blobs,
+		Events:    bus,
+	})
 
-	report, err := runPrefetchWithOptions(ctx, t, store, manifests, blobs, opts)
+	report, err := service.Run(ctx, opts)
 	if err != nil {
 		t.Fatalf("run prefetch: %v", err)
 	}
@@ -137,6 +145,11 @@ func TestServiceRunRespectsByteBudgetAndRecordsHistory(t *testing.T) {
 	}
 	assertBlobRequests(t, blobs.requestSnapshot(), nil)
 	assertPrefetchHistory(t, store, "completed", "skipped")
+	fill := receivePrefetchFillEvent(t, fills)
+	if fill.Alias != testAlias || fill.Source != "prefetch" || fill.Kind != "blob" ||
+		fill.Status != "skipped" || fill.Reason != "byte_budget_reached" {
+		t.Fatalf("unexpected prefetch fill event: %#v", fill)
+	}
 }
 
 func TestServiceRunAppliesFailureBackoffAndRetryControl(t *testing.T) {

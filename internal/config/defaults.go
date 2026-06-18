@@ -182,5 +182,6 @@ func DefaultConfig() Config {
 	if err := cfg.normalizeUpstreams(); err != nil {
 		panic(err)
 	}
+	activateContainerPrewarmPlatforms(cfg.Container)
 	return cfg
 }

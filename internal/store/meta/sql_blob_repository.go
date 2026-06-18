@@ -65,10 +65,35 @@ func (s *SQLStore) writeBlobRow(ctx context.Context, record *BlobRecord, row blo
 		return nil
 	}
 	if err := s.blobs.Create(ctx, &row); err != nil {
+		recovered, recoverErr := s.updateBlobAfterCreateRace(ctx, record, row.Digest)
+		if recoverErr != nil {
+			return recoverErr
+		}
+		if recovered {
+			return nil
+		}
 		return wrapError(err, "upsert blob metadata")
 	}
 	record.ID = row.ID
 	return nil
+}
+
+func (s *SQLStore) updateBlobAfterCreateRace(ctx context.Context, record *BlobRecord, digest string) (bool, error) {
+	current, ok, err := s.Blob(ctx, BlobKey{Digest: digest})
+	if err != nil {
+		return false, err
+	}
+	if !ok {
+		return false, nil
+	}
+	record.ID = current.ID
+	record.CreatedAt = current.CreatedAt
+	record.LastAccessAt = maxTime(record.LastAccessAt, current.LastAccessAt)
+	row, err := s.mapper.BlobRecordToRow(*record)
+	if err != nil {
+		return false, err
+	}
+	return true, s.updateBlobRow(ctx, row)
 }
 
 func (s *SQLStore) DeleteBlob(ctx context.Context, key BlobKey) error {

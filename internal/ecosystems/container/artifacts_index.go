@@ -4,9 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"net/http"
-	"runtime"
 	"strings"
 
+	"github.com/containerd/platforms"
+	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -35,9 +36,9 @@ func (e *RegistryEndpoint) fillManifestBlobsForIndex(
 		return
 	}
 
-	selected := currentPlatformManifestDescriptors(children)
+	selected := prewarmPlatformManifestDescriptors(route.Alias, children)
 	if len(selected) == 0 {
-		e.logSkippedManifestBlobFill(ctx, route, manifest, mediaType, "no current platform child manifest")
+		e.logSkippedManifestBlobFill(ctx, route, manifest, mediaType, "no configured platform child manifest")
 		return
 	}
 
@@ -104,11 +105,12 @@ func isIndexManifestMediaType(mediaType string) bool {
 	}
 }
 
-func currentPlatformManifestDescriptors(descriptors []ocispec.Descriptor) []ocispec.Descriptor {
+func prewarmPlatformManifestDescriptors(alias string, descriptors []ocispec.Descriptor) []ocispec.Descriptor {
+	policy := newIndexPrewarmPlatformPolicy(config.ActiveContainerPrewarmPlatforms(alias))
 	out := make([]ocispec.Descriptor, 0, len(descriptors))
 	for i := range descriptors {
 		descriptor := descriptors[i]
-		if !usableManifestDescriptor(descriptor) || !matchesCurrentPlatform(descriptor.Platform) {
+		if !usableManifestDescriptor(descriptor) || !matchesPrewarmPlatform(policy, descriptor.Platform) {
 			continue
 		}
 		out = append(out, descriptor)
@@ -120,12 +122,72 @@ func usableManifestDescriptor(descriptor ocispec.Descriptor) bool {
 	return descriptor.Digest != "" && isImageManifestMediaType(descriptor.MediaType)
 }
 
-func matchesCurrentPlatform(platform *ocispec.Platform) bool {
+type indexPrewarmPlatformPolicy struct {
+	all       bool
+	platforms []ocispec.Platform
+}
+
+func newIndexPrewarmPlatformPolicy(values []string) indexPrewarmPlatformPolicy {
+	policy := indexPrewarmPlatformPolicy{}
+	if len(values) == 0 {
+		values = []string{config.DefaultContainerPrewarmPlatform()}
+	}
+	for _, value := range values {
+		platform, all, ok := parseIndexPrewarmPlatform(value)
+		if all {
+			policy.all = true
+			policy.platforms = nil
+			return policy
+		}
+		if !ok {
+			continue
+		}
+		policy.platforms = append(policy.platforms, platform)
+	}
+	if !policy.all && len(policy.platforms) == 0 {
+		policy.platforms = append(policy.platforms, defaultIndexPrewarmPlatform())
+	}
+	return policy
+}
+
+func parseIndexPrewarmPlatform(value string) (ocispec.Platform, bool, bool) {
+	value = strings.ToLower(strings.TrimSpace(value))
+	if value == "" {
+		return ocispec.Platform{}, false, false
+	}
+	if value == config.ContainerPrewarmAllPlatforms {
+		return ocispec.Platform{}, true, true
+	}
+	if !strings.Contains(value, "/") {
+		return ocispec.Platform{}, false, false
+	}
+	platform, err := platforms.Parse(value)
+	if err != nil {
+		return ocispec.Platform{}, false, false
+	}
+	return platforms.Normalize(platform), false, true
+}
+
+func defaultIndexPrewarmPlatform() ocispec.Platform {
+	platform, err := platforms.Parse(config.DefaultContainerPrewarmPlatform())
+	if err != nil {
+		return ocispec.Platform{OS: "linux", Architecture: "amd64"}
+	}
+	return platforms.Normalize(platform)
+}
+
+func matchesPrewarmPlatform(policy indexPrewarmPlatformPolicy, platform *ocispec.Platform) bool {
+	if policy.all {
+		return true
+	}
 	if platform == nil {
 		return false
 	}
-	if !strings.EqualFold(platform.OS, runtime.GOOS) || !strings.EqualFold(platform.Architecture, runtime.GOARCH) {
-		return false
+	candidate := platforms.Normalize(*platform)
+	for i := range policy.platforms {
+		if platforms.OnlyStrict(policy.platforms[i]).Match(candidate) {
+			return true
+		}
 	}
-	return true
+	return false
 }
