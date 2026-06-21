@@ -38,9 +38,12 @@ func cleanupCapacityTarget(opts CleanupOptions) int64 {
 	return opts.MaxBytes
 }
 
-func cleanupOrderedBlobs(blobs *collectionlist.List[meta.BlobRecord]) *collectionlist.List[meta.BlobRecord] {
+func cleanupOrderedBlobs(blobs *collectionlist.List[meta.BlobRecord], capacityReclaim bool) *collectionlist.List[meta.BlobRecord] {
 	if blobs == nil {
 		return collectionlist.NewList[meta.BlobRecord]()
+	}
+	if capacityReclaim {
+		return blobs.Sort(compareCapacityCleanupBlob)
 	}
 	return blobs.Sort(compareCleanupBlob)
 }
@@ -62,6 +65,41 @@ func compareCleanupBlob(left, right meta.BlobRecord) int {
 		return 1
 	}
 	return 0
+}
+
+func compareCapacityCleanupBlob(left, right meta.BlobRecord) int {
+	if out := compareMissingCleanupAccessTime(left.LastAccessAt, right.LastAccessAt); out != 0 {
+		return out
+	}
+	if left.Size > right.Size {
+		return -1
+	}
+	if left.Size < right.Size {
+		return 1
+	}
+	if out := compareCleanupAccessTime(left.LastAccessAt, right.LastAccessAt); out != 0 {
+		return out
+	}
+	if left.Digest < right.Digest {
+		return -1
+	}
+	if left.Digest > right.Digest {
+		return 1
+	}
+	return 0
+}
+
+func compareMissingCleanupAccessTime(left, right time.Time) int {
+	switch {
+	case left.IsZero() && right.IsZero():
+		return 0
+	case left.IsZero():
+		return -1
+	case right.IsZero():
+		return 1
+	default:
+		return 0
+	}
 }
 
 func compareCleanupAccessTime(left, right time.Time) int {
@@ -101,15 +139,25 @@ func cleanupDeleteLimitReached(opts CleanupOptions, report *CleanupReport) bool 
 	return true
 }
 
+func cleanupCapacityReclaimCandidate(reason cleanupSkipReason, capacityReclaim bool) bool {
+	if !capacityReclaim {
+		return false
+	}
+	return reason == cleanupRecent || reason == cleanupMissingAccessTime
+}
+
 func classifyCleanupBlob(blob *meta.BlobRecord, cutoff time.Time, protected *collectionset.Set[string]) cleanupSkipReason {
-	if blob == nil || blob.LastAccessAt.IsZero() {
+	if blob == nil {
+		return cleanupMissingAccessTime
+	}
+	if protected.Contains(blob.Digest) {
+		return cleanupProtected
+	}
+	if blob.LastAccessAt.IsZero() {
 		return cleanupMissingAccessTime
 	}
 	if !blob.LastAccessAt.Before(cutoff) {
 		return cleanupRecent
-	}
-	if protected.Contains(blob.Digest) {
-		return cleanupProtected
 	}
 	return cleanupEligible
 }

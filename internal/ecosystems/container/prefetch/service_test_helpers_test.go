@@ -259,12 +259,17 @@ type fakeBlobService struct {
 	mu       sync.Mutex
 	entries  []cache.BlobRequest
 	closures []string
+	status   cache.CacheStatus
 }
 
 func (f *fakeBlobService) Get(_ context.Context, req cache.BlobRequest) (*cache.BlobReadResult, error) {
 	f.mu.Lock()
 	f.entries = append(f.entries, req)
 	f.mu.Unlock()
+	status := f.status
+	if status == "" {
+		status = cache.CacheMiss
+	}
 	return &cache.BlobReadResult{
 		Reader: &trackedReader{onClose: func() {
 			f.mu.Lock()
@@ -272,7 +277,7 @@ func (f *fakeBlobService) Get(_ context.Context, req cache.BlobRequest) (*cache.
 			f.closures = append(f.closures, req.Digest)
 		}},
 		Digest: req.Digest,
-		Cache:  cache.CacheMiss,
+		Cache:  status,
 	}, nil
 }
 

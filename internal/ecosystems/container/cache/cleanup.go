@@ -10,7 +10,6 @@ import (
 	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
-	"github.com/samber/lo"
 )
 
 type CleanupService struct {
@@ -167,7 +166,7 @@ func (s *CleanupService) cleanupBlobRecords(
 	protected *collectionset.Set[string],
 	report *CleanupReport,
 ) error {
-	ordered := cleanupOrderedBlobs(blobs)
+	ordered := cleanupOrderedBlobs(blobs, report.needsCapacityReclaim())
 	var stopEarly bool
 	var outErr error
 	ordered.Range(func(_ int, blob meta.BlobRecord) bool {
@@ -211,7 +210,7 @@ func (s *CleanupService) cleanupBlob(
 	report.ScannedBlobs++
 	reason := classifyCleanupBlob(blob, cutoff, protected)
 	capacityReclaim := report.needsCapacityReclaim()
-	if reason != cleanupEligible && (reason != cleanupRecent || !capacityReclaim) {
+	if reason != cleanupEligible && !cleanupCapacityReclaimCandidate(reason, capacityReclaim) {
 		report.recordCleanupSkip(reason)
 		return false, nil
 	}
@@ -224,18 +223,6 @@ func (s *CleanupService) cleanupBlob(
 		return true, nil
 	}
 	return false, s.deleteBlobObject(ctx, blob, report)
-}
-
-func (s *CleanupService) protectedBlobDigests(ctx context.Context) (*collectionset.Set[string], error) {
-	manifests, err := s.metadata.ListManifests(ctx)
-	if err != nil {
-		return nil, wrapError(err, "list manifest metadata for cleanup")
-	}
-
-	protected := lo.FlatMap(manifests, func(manifest meta.ManifestRecord, _ int) []string {
-		return lo.Compact([]string{manifest.Digest, manifest.ObjectKey})
-	})
-	return collectionset.NewSet[string](protected...), nil
 }
 
 func (s *CleanupService) deleteBlobObject(ctx context.Context, blob *meta.BlobRecord, report *CleanupReport) error {

@@ -123,15 +123,37 @@ func nextCandidateAttempt(latest *meta.PrefetchOutcomeRecord, ok bool) int {
 }
 
 func (e *runExecution) backoffSkip(latest *meta.PrefetchOutcomeRecord, ok bool) (time.Time, string, bool) {
-	if !ok || e.retryRequested || latest == nil || !latest.NextRetryAt.After(e.opts.Now) {
+	if !ok || e.retryRequested || latest == nil {
 		return time.Time{}, "", false
 	}
 	switch latest.Status {
 	case outcomeStatusFailed, outcomeStatusSkipped:
-		return latest.NextRetryAt, "failure backoff until " + latest.NextRetryAt.Format(time.RFC3339), true
+		return e.failedBackoffSkip(latest)
+	case outcomeStatusSuccess:
+		return e.successfulBackoffSkip(latest)
 	default:
 		return time.Time{}, "", false
 	}
+}
+
+func (e *runExecution) failedBackoffSkip(latest *meta.PrefetchOutcomeRecord) (time.Time, string, bool) {
+	if !latest.NextRetryAt.After(e.opts.Now) {
+		return time.Time{}, "", false
+	}
+	return latest.NextRetryAt, "failure backoff until " + latest.NextRetryAt.Format(time.RFC3339), true
+}
+
+func (e *runExecution) successfulBackoffSkip(latest *meta.PrefetchOutcomeRecord) (time.Time, string, bool) {
+	if e.opts.RetryWindow <= 0 {
+		return time.Time{}, "", false
+	}
+	if latest.FinishedAt.IsZero() {
+		return time.Time{}, "", false
+	}
+	if !latest.FinishedAt.Add(e.opts.RetryWindow).After(e.opts.Now) {
+		return time.Time{}, "", false
+	}
+	return time.Time{}, "recent success at " + latest.FinishedAt.Format(time.RFC3339), true
 }
 
 func (e *runExecution) latestOutcome(ctx context.Context, candidate Candidate) (*meta.PrefetchOutcomeRecord, bool, error) {

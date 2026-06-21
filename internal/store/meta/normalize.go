@@ -1,9 +1,18 @@
 package meta
 
 import (
-	"slices"
+	"net/http"
 	"strings"
+
+	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
+
+var manifestHeaderAllowlist = map[string]struct{}{
+	http.CanonicalHeaderKey(distribution.HeaderContentLength):       {},
+	http.CanonicalHeaderKey(distribution.HeaderContentType):         {},
+	http.CanonicalHeaderKey(distribution.HeaderDockerContentDigest): {},
+	http.CanonicalHeaderKey(distribution.HeaderETag):                {},
+}
 
 func normalizeEndpointHealthRecord(record EndpointHealthRecord) (EndpointHealthKey, EndpointHealthRecord, error) {
 	key, err := normalizeEndpointHealthKey(EndpointHealthKey{
@@ -77,7 +86,7 @@ func normalizeManifestRecord(record ManifestRecord) (ManifestKey, ManifestRecord
 	record.Repository = key.Repository
 	record.Digest = key.Digest
 	record.Key = key.String()
-	record.Headers = cloneHeaders(record.Headers)
+	record.Headers = NormalizeManifestHeaders(record.Headers)
 	return key, record, nil
 }
 
@@ -260,13 +269,20 @@ func normalizeDigest(value string) (string, error) {
 	return digest, nil
 }
 
-func cloneHeaders(headers map[string][]string) map[string][]string {
+func NormalizeManifestHeaders(headers map[string][]string) map[string][]string {
 	if len(headers) == 0 {
 		return nil
 	}
-	out := make(map[string][]string, len(headers))
+	out := make(map[string][]string, len(manifestHeaderAllowlist))
 	for key, values := range headers {
-		out[key] = slices.Clone(values)
+		canonical := http.CanonicalHeaderKey(strings.TrimSpace(key))
+		if _, ok := manifestHeaderAllowlist[canonical]; !ok || len(values) == 0 {
+			continue
+		}
+		out[canonical] = append(out[canonical], values...)
+	}
+	if len(out) == 0 {
+		return nil
 	}
 	return out
 }

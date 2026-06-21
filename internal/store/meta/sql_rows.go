@@ -82,7 +82,7 @@ func firstRow[T any](rows rowValues[T]) mo.Option[T] {
 }
 
 func encodeHeaders(headers map[string][]string) (string, error) {
-	headers = cloneHeaders(headers)
+	headers = NormalizeManifestHeaders(headers)
 	if len(headers) == 0 {
 		return "", nil
 	}
@@ -101,7 +101,7 @@ func decodeHeaders(value string) (map[string][]string, error) {
 	if err := json.Unmarshal([]byte(value), &headers); err != nil {
 		return nil, wrapError(err, "decode manifest headers")
 	}
-	return cloneHeaders(headers), nil
+	return NormalizeManifestHeaders(headers), nil
 }
 
 func durationFromInt64(value int64) time.Duration {

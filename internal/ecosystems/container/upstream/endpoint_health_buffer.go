@@ -28,7 +28,7 @@ func (c *Client) FlushEndpointHealth(ctx context.Context) error {
 	defer cancel()
 	var flushErr error
 	records.Range(func(_ int, record meta.EndpointHealthRecord) bool {
-		if _, err := c.metadata.UpsertEndpointHealth(persistCtx, record); err != nil {
+		if err := persistEndpointHealth(persistCtx, c.metadata, record); err != nil {
 			c.requeueEndpointHealth(record)
 			flushErr = multierr.Append(flushErr, err)
 		}
@@ -40,6 +40,24 @@ func (c *Client) FlushEndpointHealth(ctx context.Context) error {
 	}
 	if c.logger != nil {
 		c.logger.DebugContext(persistCtx, "flushed upstream endpoint health buffer", "records", records.Len())
+	}
+	return nil
+}
+
+type endpointHealthSnapshotWriter interface {
+	PutEndpointHealthSnapshot(context.Context, meta.EndpointHealthRecord) error
+}
+
+func persistEndpointHealth(ctx context.Context, metadata meta.Store, record meta.EndpointHealthRecord) error {
+	if writer, ok := metadata.(endpointHealthSnapshotWriter); ok {
+		if err := writer.PutEndpointHealthSnapshot(ctx, record); err != nil {
+			return oops.In("upstream").Wrapf(err, "put endpoint health snapshot")
+		}
+		return nil
+	}
+	_, err := metadata.UpsertEndpointHealth(ctx, record)
+	if err != nil {
+		return oops.In("upstream").Wrapf(err, "upsert endpoint health")
 	}
 	return nil
 }

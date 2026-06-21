@@ -153,12 +153,20 @@ func (s *Service) plan(ctx context.Context, opts ecosystem.PrefetchOptions, cand
 }
 
 func backoffSkip(opts ecosystem.PrefetchOptions, latest *meta.PrefetchOutcomeRecord, ok bool) string {
-	if !ok || latest == nil || !latest.NextRetryAt.After(opts.Now) {
+	if !ok || latest == nil {
 		return ""
 	}
 	switch latest.Status {
 	case statusFailed, statusSkipped:
+		if !latest.NextRetryAt.After(opts.Now) {
+			return ""
+		}
 		return "failure backoff until " + latest.NextRetryAt.Format(time.RFC3339)
+	case statusSuccess:
+		if opts.RetryWindow <= 0 || latest.FinishedAt.IsZero() || !latest.FinishedAt.Add(opts.RetryWindow).After(opts.Now) {
+			return ""
+		}
+		return "recent success at " + latest.FinishedAt.Format(time.RFC3339)
 	default:
 		return ""
 	}

@@ -1,8 +1,8 @@
 package depprefetch_test
 
 import (
-	"errors"
 	"context"
+	"errors"
 	"log/slog"
 	"path/filepath"
 	"testing"
@@ -39,6 +39,41 @@ func TestServicePrefetchesRecentScopedPulls(t *testing.T) {
 	assertPrefetchReport(t, report)
 	assertFetchedCandidates(t, fetched)
 	assertPrefetchHistory(ctx, t, store)
+}
+
+func TestServiceSkipsRecentlySuccessfulPrefetch(t *testing.T) {
+	ctx := context.Background()
+	store, err := meta.OpenSQLiteWithOptions(ctx, meta.DBOptions{Path: filepath.Join(t.TempDir(), "regimux.db")})
+	requireNoError(t, "open metadata store", err)
+	t.Cleanup(func() { requireNoError(t, "close metadata store", store.Close()) })
+
+	now := time.Now().UTC().Truncate(time.Second)
+	recordPull(ctx, t, store, "npm/default", "left-pad", "metadata", now)
+
+	var fetched []depprefetch.Candidate
+	service := depprefetch.New(depprefetch.Dependencies{
+		Ecosystem: ecosystem.NPM,
+		Metadata:  store,
+		Logger:    slog.New(slog.DiscardHandler),
+		Fetch: func(_ context.Context, candidate depprefetch.Candidate) (depprefetch.FetchResult, error) {
+			fetched = append(fetched, candidate)
+			return depprefetch.FetchResult{BytesWarmed: 42}, nil
+		},
+	})
+
+	opts := ecosystem.PrefetchOptions{Now: now, MinPullCount: 1, RetryWindow: time.Hour}
+	first, err := service.Prefetch(ctx, opts)
+	requireNoError(t, "first prefetch", err)
+	if first.Prefetched != 1 || len(fetched) != 1 {
+		t.Fatalf("unexpected first prefetch: report=%#v fetched=%#v", first, fetched)
+	}
+
+	opts.Now = now.Add(30 * time.Minute)
+	second, err := service.Prefetch(ctx, opts)
+	requireNoError(t, "second prefetch", err)
+	if second.Prefetched != 0 || second.SkippedCandidates != 1 || len(fetched) != 1 {
+		t.Fatalf("unexpected second prefetch: report=%#v fetched=%#v", second, fetched)
+	}
 }
 
 func TestServiceDoesNotCountSuccessfulPrefetchWhenOutcomeRecordFails(t *testing.T) {

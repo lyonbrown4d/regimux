@@ -51,6 +51,7 @@ func referrersCacheKey(req ReferrerRequest) string {
 }
 
 func manifestEnvelopeFromRecord(record meta.ManifestRecord, body []byte) ([]byte, error) {
+	record.Headers = meta.NormalizeManifestHeaders(record.Headers)
 	data, err := json.Marshal(manifestEnvelope{
 		Record: record,
 		Body:   body,
@@ -71,7 +72,7 @@ func manifestFromEnvelope(data []byte) (*CachedManifest, error) {
 		MediaType: envelope.Record.MediaType,
 		Size:      envelope.Record.Size,
 		Body:      envelope.Body,
-		Headers:   http.Header(envelope.Record.Headers).Clone(),
+		Headers:   http.Header(meta.NormalizeManifestHeaders(envelope.Record.Headers)).Clone(),
 		Cache:     CacheHit,
 	}, nil
 }

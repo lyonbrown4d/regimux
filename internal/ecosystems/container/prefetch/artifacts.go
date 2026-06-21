@@ -211,6 +211,9 @@ func (s *Service) prefetchBlob(
 	if err := closePrefetchBlob(result); err != nil {
 		return 0, err
 	}
+	if result.Cache != cache.CacheMiss {
+		return 0, nil
+	}
 	size := descriptor.size
 	if size <= 0 {
 		size = result.Size

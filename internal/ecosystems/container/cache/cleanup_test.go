@@ -146,6 +146,32 @@ func TestCleanupServiceReclaimsOldestBlobsAboveCapacity(t *testing.T) {
 	assertObjectMissing(ctx, t, objects, middle)
 }
 
+func TestCleanupServiceReclaimsMissingAccessTimeLargeBlobsFirstAboveCapacity(t *testing.T) {
+	ctx := context.Background()
+	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
+	metadata, objects := newTestStores(t)
+
+	recent := putCleanupBlob(ctx, t, metadata, objects, []byte("22"), now.Add(-time.Hour))
+	old := putCleanupBlob(ctx, t, metadata, objects, []byte("3333"), now.Add(-48*time.Hour))
+	neverAccessed := putCleanupBlob(ctx, t, metadata, objects, []byte("11111111"), time.Time{})
+
+	report, err := cache.NewCleanupService(metadata, objects).CleanupBlobs(ctx, cache.CleanupOptions{
+		UnusedFor:   168 * time.Hour,
+		MaxBytes:    10,
+		TargetBytes: 5,
+		MaxDeletes:  1,
+		Now:         now,
+	})
+	if err != nil {
+		t.Fatalf("cleanup blobs: %v", err)
+	}
+	if report.DeletedBlobs != 1 || report.DeletedDigests[0] != neverAccessed {
+		t.Fatalf("unexpected deleted blobs: %#v", report)
+	}
+	assertObjectMissing(ctx, t, objects, neverAccessed)
+	assertObjectsExist(ctx, t, objects, recent, old)
+}
+
 func TestCleanupServiceSkipsCapacityWhenBelowMaxBytes(t *testing.T) {
 	ctx := context.Background()
 	now := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)

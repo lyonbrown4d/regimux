@@ -60,7 +60,7 @@ func (r *Runtime) addPrefetchJob(jobs *collectionlist.List[ecosystem.JobSpec]) {
 		Enabled:     cfg.Enabled && cfg.Interval > 0,
 		Distributed: cfg.Distributed,
 		Run: func(ctx context.Context) (ecosystem.JobRunResult, error) {
-			report, err := r.Prefetch(ctx, ecosystem.PrefetchOptionsFromConfig(cfg, false))
+			report, err := r.Prefetch(ctx, ecosystem.PrefetchOptionsFromConfig(cfg, true))
 			return ecosystem.JobRunResult{PrefetchReport: report}, err
 		},
 	})
