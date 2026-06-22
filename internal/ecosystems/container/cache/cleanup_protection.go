@@ -60,6 +60,9 @@ func (s *CleanupService) readCleanupManifestBody(ctx context.Context, manifest m
 		}
 		return nil, wrapError(err, "read manifest object for cleanup protection")
 	}
+	if reader == nil {
+		return nil, nil
+	}
 	body, readErr := io.ReadAll(io.LimitReader(reader, cleanupManifestProtectionReadLimit+1))
 	closeErr := reader.Close()
 	if readErr != nil {
