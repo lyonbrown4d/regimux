@@ -11,6 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/samber/lo"
 )
 
 const cleanupManifestProtectionReadLimit = 4 << 20
@@ -122,9 +123,9 @@ func cleanupImageManifestDigests(body []byte) []string {
 		out = append(out, string(manifest.Subject.Digest))
 	}
 	out = append(out, string(manifest.Config.Digest))
-	for i := range manifest.Layers {
-		out = append(out, string(manifest.Layers[i].Digest))
-	}
+	out = append(out, lo.Map(manifest.Layers, func(layer ocispec.Descriptor, _ int) string {
+		return string(layer.Digest)
+	})...)
 	return out
 }
 
@@ -137,9 +138,9 @@ func cleanupImageIndexDigests(body []byte) []string {
 	if index.Subject != nil {
 		out = append(out, string(index.Subject.Digest))
 	}
-	for i := range index.Manifests {
-		out = append(out, string(index.Manifests[i].Digest))
-	}
+	out = append(out, lo.Map(index.Manifests, func(manifest ocispec.Descriptor, _ int) string {
+		return string(manifest.Digest)
+	})...)
 	return out
 }
 

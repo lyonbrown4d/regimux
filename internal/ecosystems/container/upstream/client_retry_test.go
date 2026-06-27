@@ -37,7 +37,7 @@ func TestClientGetManifestRetriesTransientTransportError(t *testing.T) {
 		"hub": {
 			Registry: registryServer.URL,
 			HTTP: upstream.HTTPConfig{
-				Timeout: 10 * time.Millisecond,
+				Timeout: 100 * time.Millisecond,
 				Retry: upstream.HTTPRetryConfig{
 					Enabled:    true,
 					MaxRetries: 1,

@@ -12,6 +12,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/samber/lo"
 )
 
 type manifestBlobDescriptor struct {
@@ -179,12 +180,11 @@ func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]manifestBlo
 		return nil, wrapError(err, "decode image manifest")
 	}
 
-	descriptors := make([]manifestBlobDescriptor, 0, len(payload.Layers)+1)
+	descriptors := lo.Map(payload.Layers, func(layer ocispec.Descriptor, _ int) manifestBlobDescriptor {
+		return newManifestBlobDescriptor(layer, "layer")
+	})
 	if payload.Config.Digest != "" {
-		descriptors = append(descriptors, newManifestBlobDescriptor(payload.Config, "config"))
-	}
-	for i := range payload.Layers {
-		descriptors = append(descriptors, newManifestBlobDescriptor(payload.Layers[i], "layer"))
+		descriptors = append([]manifestBlobDescriptor{newManifestBlobDescriptor(payload.Config, "config")}, descriptors...)
 	}
 	return descriptors, nil
 }

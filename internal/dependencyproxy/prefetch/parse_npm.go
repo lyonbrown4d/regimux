@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -34,17 +35,14 @@ func parsePackageLock(source Source, opts ParseOptions) ([]Artifact, error) {
 	if err := json.Unmarshal(source.Body, &payload); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode package-lock.json")
 	}
-	artifacts := make([]Artifact, 0, len(payload.Packages)+len(payload.Dependencies))
-	for _, path := range sortedKeys(payload.Packages) {
+	artifacts := lo.FilterMap(sortedKeys(payload.Packages), func(path string, _ int) (Artifact, bool) {
 		pkg := payload.Packages[path]
 		name, ok := packageNameFromLockPath(path)
 		if !ok {
-			continue
+			return Artifact{}, false
 		}
-		if artifact, ok := npmTarballArtifact(source, opts, alias, name, pkg.Resolved, 0); ok {
-			artifacts = append(artifacts, artifact)
-		}
-	}
+		return npmTarballArtifact(source, opts, alias, name, pkg.Resolved, 0)
+	})
 	walkPackageLockDependencies(source, opts, alias, payload.Dependencies, 0, &artifacts)
 	return dedupeArtifacts(artifacts), nil
 }

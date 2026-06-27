@@ -16,11 +16,21 @@ func (p *upstreamPool) selectHealthyRuntimes(runtimes *collectionlist.List[upstr
 	}
 
 	runtimeCandidates := p.toUpstreamRuntimeCandidates(runtimes, repository, now)
-	if p.health != nil && runtimeCandidates != nil && runtimeCandidates.Len() > 1 {
+	if p.shouldRankHealthyRuntimes(operation) && p.health != nil && runtimeCandidates != nil && runtimeCandidates.Len() > 1 {
 		runtimeCandidates = p.health.rankRuntimeCandidates(runtimes, repository, now)
 	}
 	selectedCandidates := p.selectHealthyRuntimeCandidates(runtimeCandidates, repository, operation)
 	return candidatesToRuntimes(selectedCandidates)
+}
+
+func (p *upstreamPool) shouldRankHealthyRuntimes(operation string) bool {
+	if p == nil {
+		return false
+	}
+	if operation == operationBlob {
+		return p.blobPolicy != mirrorPolicyOrdered
+	}
+	return p.policy != mirrorPolicyOrdered
 }
 
 func (p *upstreamPool) selectHealthyRuntimeCandidates(

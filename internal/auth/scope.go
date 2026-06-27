@@ -6,7 +6,7 @@ import (
 
 	"github.com/arcgolabs/authx"
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 )
 
 type Scope struct {
@@ -19,7 +19,7 @@ func (s Scope) RequiresPull() bool {
 	if s.Type != ScopeTypeRepository {
 		return false
 	}
-	return collectionlist.NewList(s.Actions...).AnyMatch(func(_ int, action string) bool {
+	return lo.ContainsBy(s.Actions, func(action string) bool {
 		return strings.TrimSpace(action) == ActionPull
 	})
 }
@@ -33,15 +33,10 @@ func parseScope(value string) (Scope, error) {
 		Type: strings.TrimSpace(parts[0]),
 		Name: strings.Trim(strings.TrimSpace(parts[1]), "/"),
 	}
-	rawActions := collectionlist.NewList(strings.Split(parts[2], ",")...)
-	scope.Actions = collectionlist.MapList(
-		collectionlist.FilterList(rawActions, func(_ int, action string) bool {
-			return strings.TrimSpace(action) != ""
-		}),
-		func(_ int, action string) string {
-			return strings.TrimSpace(action)
-		},
-	).Values()
+	scope.Actions = lo.FilterMap(strings.Split(parts[2], ","), func(action string, _ int) (string, bool) {
+		action = strings.TrimSpace(action)
+		return action, action != ""
+	})
 	if len(scope.Actions) == 0 {
 		return Scope{}, newAuthError(authx.ErrorCodeInvalidAuthorizationModel, "registry token scope is incomplete")
 	}
@@ -52,17 +47,10 @@ func parseScope(value string) (Scope, error) {
 }
 
 func normalizeScopes(values []string) []string {
-	seen := collectionset.NewSet[string]()
-	out := collectionlist.NewList[string]()
-	for _, value := range values {
+	return lo.Uniq(lo.FilterMap(values, func(value string, _ int) (string, bool) {
 		value = strings.TrimSpace(value)
-		if value == "" || seen.Contains(value) {
-			continue
-		}
-		seen.Add(value)
-		out.Add(value)
-	}
-	return out.Values()
+		return value, value != ""
+	}))
 }
 
 func repositoryPatternMatches(pattern, resource string) bool {
@@ -93,7 +81,7 @@ func listContains(values *collectionlist.List[string], candidate string) bool {
 	if values == nil || candidate == "" {
 		return false
 	}
-	return values.AnyMatch(func(_ int, value string) bool {
+	return lo.ContainsBy(values.Values(), func(value string) bool {
 		return strings.TrimSpace(value) == candidate
 	})
 }

@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -31,14 +32,9 @@ func parsePOM(source Source, opts ParseOptions) ([]Artifact, error) {
 	if err := xml.Unmarshal(source.Body, &project); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode pom.xml")
 	}
-	dependencies := pomDependencies(project)
-	artifacts := make([]Artifact, 0, len(dependencies))
-	for i := range dependencies {
-		artifact, ok := mavenArtifactFromDependency(source, opts, alias, dependencies[i])
-		if ok {
-			artifacts = append(artifacts, artifact)
-		}
-	}
+	artifacts := lo.FilterMap(pomDependencies(project), func(dep pomDependency, _ int) (Artifact, bool) {
+		return mavenArtifactFromDependency(source, opts, alias, dep)
+	})
 	return dedupeArtifacts(artifacts), nil
 }
 

@@ -6,6 +6,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/lo"
 )
 
 const (
@@ -91,7 +92,7 @@ func dependencyRulesFromConfig(rules *collectionlist.List[config.DependencyRuleC
 	if rules == nil || rules.Len() == 0 {
 		return nil
 	}
-	out := collectionlist.MapList(rules, func(_ int, rule config.DependencyRuleConfig) DependencyRule {
+	out := lo.Map(rules.Values(), func(rule config.DependencyRuleConfig, _ int) DependencyRule {
 		return DependencyRule{
 			Ecosystem: rule.Ecosystem,
 			Alias:     rule.Alias,
@@ -99,10 +100,10 @@ func dependencyRulesFromConfig(rules *collectionlist.List[config.DependencyRuleC
 			Reference: rule.Reference,
 		}
 	})
-	if out == nil || out.Len() == 0 {
+	if len(out) == 0 {
 		return nil
 	}
-	return out
+	return collectionlist.NewList(out...)
 }
 
 func dependencyRulesFromConfigValues(rules *collectionlist.List[DependencyRule]) []DependencyRule {

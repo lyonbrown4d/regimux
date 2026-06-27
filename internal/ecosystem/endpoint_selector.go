@@ -10,6 +10,7 @@ import (
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/samber/lo"
 )
 
 const (
@@ -75,12 +76,9 @@ func latestEndpointHealthByEndpoint(ctx context.Context, metadata meta.EndpointH
 
 func endpointHealthCandidates(endpoints []string, recordByEndpoint *collectionmapping.Map[string, meta.EndpointHealthRecord]) *collectionlist.List[endpointHealthCandidate] {
 	now := time.Now()
-	return collectionlist.MapList(
-		collectionlist.NewList(endpoints...),
-		func(index int, endpoint string) endpointHealthCandidate {
-			return buildEndpointHealthCandidate(endpoint, index, now, recordByEndpoint)
-		},
-	)
+	return collectionlist.NewList(lo.Map(endpoints, func(endpoint string, index int) endpointHealthCandidate {
+		return buildEndpointHealthCandidate(endpoint, index, now, recordByEndpoint)
+	})...)
 }
 
 func buildEndpointHealthCandidate(
@@ -117,9 +115,9 @@ func prioritizeEndpointCandidates(candidates *collectionlist.List[endpointHealth
 	}
 
 	candidates = candidates.Sort(compareEndpointHealthCandidate)
-	healthy := collectionlist.FilterList(candidates, func(_ int, candidate endpointHealthCandidate) bool {
+	healthy := collectionlist.NewList(lo.Filter(candidates.Values(), func(candidate endpointHealthCandidate, _ int) bool {
 		return !candidate.inCooldown && !candidate.inDegraded
-	})
+	})...)
 	if healthy.Len() == 0 {
 		return candidates
 	}
@@ -130,12 +128,9 @@ func mapEndpointCandidates(candidates *collectionlist.List[endpointHealthCandida
 	if candidates == nil {
 		return nil
 	}
-	out := collectionlist.NewList[string]()
-	candidates.Range(func(_ int, candidate endpointHealthCandidate) bool {
-		out.Add(candidate.endpoint)
-		return true
+	return lo.Map(candidates.Values(), func(candidate endpointHealthCandidate, _ int) string {
+		return candidate.endpoint
 	})
-	return out.Values()
 }
 
 func compareEndpointHealthCandidate(left, right endpointHealthCandidate) int {
@@ -169,15 +164,10 @@ func compareDurations(left, right time.Duration) int {
 
 func normalizedUpstreamEndpoints(cfg config.UpstreamConfig) []string {
 	ordered := append([]string{cfg.Registry}, cfg.Mirrors...)
-	out := collectionlist.NewList[string]()
-	for _, endpoint := range ordered {
+	return lo.FilterMap(ordered, func(endpoint string, _ int) (string, bool) {
 		endpoint = normalizeEndpoint(endpoint)
-		if endpoint == "" {
-			continue
-		}
-		out.Add(endpoint)
-	}
-	return out.Values()
+		return endpoint, endpoint != ""
+	})
 }
 
 func normalizeEndpoint(endpoint string) string {

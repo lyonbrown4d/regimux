@@ -9,6 +9,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/build"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 )
 
 type configMetrics struct {
@@ -124,37 +125,24 @@ type configuredEndpoint struct {
 }
 
 func configuredUpstreamEndpoints(mirrors *collectionlist.List[string], primaryRegistry string) *collectionlist.List[configuredEndpoint] {
-	mirrorCount := 0
+	mirrorValues := []string(nil)
 	if mirrors != nil {
-		mirrorCount = mirrors.Len()
+		mirrorValues = mirrors.Values()
 	}
-	all := collectionlist.NewList[string]()
-	if mirrors != nil {
-		mirrors.Range(func(_ int, mirror string) bool {
-			all.Add(mirror)
-			return true
-		})
-	}
-	all.Add(primaryRegistry)
-	endpoints := collectionlist.FilterList(
-		collectionlist.MapList(all, func(index int, endpoint string) configuredEndpoint {
-			role := "primary"
-			if index < mirrorCount {
-				role = "mirror"
-			}
-			return configuredEndpoint{
-				registry: cleanMetricRegistry(endpoint),
-				role:     role,
-			}
-		}),
-		func(_ int, endpoint configuredEndpoint) bool {
-			return endpoint.registry != ""
-		},
-	)
-	if endpoints == nil || endpoints.Len() == 0 {
+	mirrorCount := len(mirrorValues)
+	all := append(append([]string(nil), mirrorValues...), primaryRegistry)
+	endpoints := lo.FilterMap(all, func(endpoint string, index int) (configuredEndpoint, bool) {
+		registry := cleanMetricRegistry(endpoint)
+		role := "primary"
+		if index < mirrorCount {
+			role = "mirror"
+		}
+		return configuredEndpoint{registry: registry, role: role}, registry != ""
+	})
+	if len(endpoints) == 0 {
 		return nil
 	}
-	return endpoints
+	return collectionlist.NewList(endpoints...)
 }
 
 func cleanMetricRegistry(registry string) string {

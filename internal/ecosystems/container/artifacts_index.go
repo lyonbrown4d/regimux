@@ -12,6 +12,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/samber/lo"
 )
 
 func (e *RegistryEndpoint) fillManifestBlobsForIndex(
@@ -107,15 +108,9 @@ func isIndexManifestMediaType(mediaType string) bool {
 
 func prewarmPlatformManifestDescriptors(alias string, descriptors []ocispec.Descriptor) []ocispec.Descriptor {
 	policy := newIndexPrewarmPlatformPolicy(config.ActiveContainerPrewarmPlatforms(alias))
-	out := make([]ocispec.Descriptor, 0, len(descriptors))
-	for i := range descriptors {
-		descriptor := descriptors[i]
-		if !usableManifestDescriptor(descriptor) || !matchesPrewarmPlatform(policy, descriptor.Platform) {
-			continue
-		}
-		out = append(out, descriptor)
-	}
-	return out
+	return lo.Filter(descriptors, func(descriptor ocispec.Descriptor, _ int) bool {
+		return usableManifestDescriptor(descriptor) && matchesPrewarmPlatform(policy, descriptor.Platform)
+	})
 }
 
 func usableManifestDescriptor(descriptor ocispec.Descriptor) bool {
@@ -184,10 +179,7 @@ func matchesPrewarmPlatform(policy indexPrewarmPlatformPolicy, platform *ocispec
 		return false
 	}
 	candidate := platforms.Normalize(*platform)
-	for i := range policy.platforms {
-		if platforms.OnlyStrict(policy.platforms[i]).Match(candidate) {
-			return true
-		}
-	}
-	return false
+	return lo.SomeBy(policy.platforms, func(platform ocispec.Platform) bool {
+		return platforms.OnlyStrict(platform).Match(candidate)
+	})
 }

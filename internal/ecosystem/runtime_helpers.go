@@ -6,6 +6,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/lo"
 )
 
 // PrefetchReport summarizes a prefetch run for any ecosystem.
@@ -74,16 +75,11 @@ func ProbeTargets(upstreams *collectionlist.List[Upstream]) *collectionlist.List
 	if upstreams == nil {
 		return collectionlist.NewList[ProbeTarget]()
 	}
-	out := collectionlist.NewList[ProbeTarget]()
-	upstreams.Range(func(_ int, upstream Upstream) bool {
+	targets := lo.FilterMap(upstreams.Values(), func(upstream Upstream, _ int) (ProbeTarget, bool) {
 		probeCfg := upstream.Config.Probe
-		if !probeCfg.Enabled || probeCfg.Interval <= 0 {
-			return true
-		}
-		out.Add(ProbeTarget(upstream))
-		return true
+		return ProbeTarget(upstream), probeCfg.Enabled && probeCfg.Interval > 0
 	})
-	return out
+	return collectionlist.NewList(targets...)
 }
 
 // CapabilityTargets converts upstream snapshots to capability targets.
@@ -91,9 +87,9 @@ func CapabilityTargets(upstreams *collectionlist.List[Upstream]) *collectionlist
 	if upstreams == nil {
 		return collectionlist.NewList[CapabilityTarget]()
 	}
-	return collectionlist.MapList(upstreams, func(_ int, upstream Upstream) CapabilityTarget {
+	return collectionlist.NewList(lo.Map(upstreams.Values(), func(upstream Upstream, _ int) CapabilityTarget {
 		return CapabilityTarget(upstream)
-	})
+	})...)
 }
 
 // CapabilityTargetsFromProbeTargets converts probe targets to capability metadata.
@@ -101,9 +97,9 @@ func CapabilityTargetsFromProbeTargets(probes *collectionlist.List[ProbeTarget])
 	if probes == nil {
 		return collectionlist.NewList[CapabilityTarget]()
 	}
-	return collectionlist.MapList(probes, func(_ int, target ProbeTarget) CapabilityTarget {
+	return collectionlist.NewList(lo.Map(probes.Values(), func(target ProbeTarget, _ int) CapabilityTarget {
 		return CapabilityTarget(target)
-	})
+	})...)
 }
 
 // UpstreamAliases returns aliases from upstream snapshots in their configured order.
@@ -111,9 +107,9 @@ func UpstreamAliases(upstreams *collectionlist.List[Upstream]) *collectionlist.L
 	if upstreams == nil {
 		return collectionlist.NewList[string]()
 	}
-	return collectionlist.MapList(upstreams, func(_ int, upstream Upstream) string {
+	return collectionlist.NewList(lo.Map(upstreams.Values(), func(upstream Upstream, _ int) string {
 		return upstream.Alias
-	})
+	})...)
 }
 
 // ConfiguredUpstreams returns all upstreams exposed by runtime providers.
@@ -121,28 +117,26 @@ func ConfiguredUpstreams(runtimes *collectionlist.List[Runtime]) *collectionlist
 	if runtimes == nil {
 		return collectionlist.NewList[Upstream]()
 	}
-	out := collectionlist.NewList[Upstream]()
-	runtimes.Range(func(_ int, runtime Runtime) bool {
-		provider, ok := runtime.(UpstreamProvider)
-		if !ok || provider == nil {
-			return true
-		}
-		name := strings.TrimSpace(runtime.Name())
-		upstreams := provider.Upstreams()
-		if upstreams == nil {
-			return true
-		}
-		upstreams.Range(func(_ int, upstream Upstream) bool {
-			upstream.Ecosystem = upstreamEcosystem(name, upstream.Ecosystem)
-			if upstream.Ecosystem == "" || strings.TrimSpace(upstream.Alias) == "" {
-				return true
-			}
-			out.Add(upstream)
-			return true
-		})
-		return true
+	return collectionlist.NewList(lo.FlatMap(runtimes.Values(), configuredRuntimeUpstreams)...)
+}
+
+func configuredRuntimeUpstreams(runtime Runtime, _ int) []Upstream {
+	if runtime == nil {
+		return nil
+	}
+	provider, ok := runtime.(UpstreamProvider)
+	if !ok || provider == nil {
+		return nil
+	}
+	name := strings.TrimSpace(runtime.Name())
+	upstreams := provider.Upstreams()
+	if upstreams == nil {
+		return nil
+	}
+	return lo.FilterMap(upstreams.Values(), func(upstream Upstream, _ int) (Upstream, bool) {
+		upstream.Ecosystem = upstreamEcosystem(name, upstream.Ecosystem)
+		return upstream, upstream.Ecosystem != "" && strings.TrimSpace(upstream.Alias) != ""
 	})
-	return out
 }
 
 func upstreamEcosystem(runtimeName, upstreamName string) string {

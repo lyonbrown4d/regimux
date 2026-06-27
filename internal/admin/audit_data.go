@@ -6,6 +6,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/samber/lo"
 )
 
 func auditSummary(cfg config.Config) AuditSummary {
@@ -23,8 +24,7 @@ func auditUserRows(users *collectionmapping.Map[string, config.AuthUserConfig]) 
 	if users == nil {
 		return collectionlist.NewList[AuditUserRow]()
 	}
-	usernames := collectionlist.NewList(users.Keys()...).
-		Sort(strings.Compare)
+	usernames := collectionlist.NewList(users.Keys()...).Sort(strings.Compare)
 
 	return collectionlist.MapList(usernames, func(_ int, username string) AuditUserRow {
 		user, _ := users.Get(username)
@@ -38,20 +38,14 @@ func auditUserRows(users *collectionmapping.Map[string, config.AuthUserConfig]) 
 }
 
 func listString(values []string) string {
-	if len(values) == 0 {
-		return "-"
-	}
-	clean := collectionlist.NewList[string]()
-	for _, value := range values {
+	clean := lo.FilterMap(values, func(value string, _ int) (string, bool) {
 		value = strings.TrimSpace(value)
-		if value != "" {
-			clean.Add(value)
-		}
-	}
-	if clean.Len() == 0 {
+		return value, value != ""
+	})
+	if len(clean) == 0 {
 		return "-"
 	}
-	return strings.Join(clean.Values(), ", ")
+	return strings.Join(clean, ", ")
 }
 
 func credentialKind(user config.AuthUserConfig) string {

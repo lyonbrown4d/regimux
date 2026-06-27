@@ -10,9 +10,9 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 )
 
 const (
@@ -107,38 +107,31 @@ func startupServiceEndpoints(cfg config.Config, runtimes *collectionlist.List[ec
 }
 
 func dependencyStartupEndpoints(base string, upstreams *collectionlist.List[ecosystem.Upstream]) *collectionlist.List[startupEndpoint] {
-	groups := collectionmapping.NewMap[string, *collectionlist.List[string]]()
+	groups := collectionmapping.NewMultiMap[string, string]()
 	if upstreams != nil {
 		upstreams.Range(func(_ int, upstream ecosystem.Upstream) bool {
-			if upstream.Ecosystem == "" || upstream.Ecosystem == ecosystem.Container {
-				return true
+			if upstream.Ecosystem != "" && upstream.Ecosystem != ecosystem.Container {
+				groups.Put(upstream.Ecosystem, upstream.Alias)
 			}
-			aliases, ok := groups.Get(upstream.Ecosystem)
-			if !ok {
-				aliases = collectionlist.NewList[string]()
-				groups.Set(upstream.Ecosystem, aliases)
-			}
-			aliases.Add(upstream.Alias)
 			return true
 		})
 	}
 
 	names := collectionlist.NewList(groups.Keys()...).Sort(strings.Compare)
 	return collectionlist.MapList(names, func(_ int, name string) startupEndpoint {
-		aliases, _ := groups.Get(name)
 		return startupEndpoint{
 			name:    name,
 			url:     joinStartupURL(base, "/"+name),
-			aliases: sortedStartupAliases(aliases),
+			aliases: sortedStartupAliases(groups.Get(name)),
 		}
 	})
 }
 
-func sortedStartupAliases(aliases *collectionlist.List[string]) []string {
-	if aliases == nil {
+func sortedStartupAliases(aliases []string) []string {
+	if len(aliases) == 0 {
 		return nil
 	}
-	return aliases.Sort(strings.Compare).Values()
+	return collectionlist.NewList(aliases...).Sort(strings.Compare).Values()
 }
 
 func startupUpstreamLabels(upstreams *collectionlist.List[ecosystem.Upstream]) *collectionlist.List[string] {
@@ -158,21 +151,12 @@ func upstreamDisplayName(upstream ecosystem.Upstream) string {
 }
 
 func upstreamEndpointRegistries(cfg config.UpstreamConfig) *collectionlist.List[string] {
-	endpoints := collectionlist.NewList[string]()
-	seen := collectionset.NewSet[string]()
-	for _, registry := range cfg.Mirrors {
+	registries := append(append([]string(nil), cfg.Mirrors...), cfg.Registry)
+	endpoints := lo.Uniq(lo.FilterMap(registries, func(registry string, _ int) (string, bool) {
 		endpoint := cleanRegistry(registry)
-		if endpoint == "" || seen.Contains(endpoint) {
-			continue
-		}
-		seen.Add(endpoint)
-		endpoints.Add(endpoint)
-	}
-	registryEndpoint := cleanRegistry(cfg.Registry)
-	if registryEndpoint != "" && !seen.Contains(registryEndpoint) {
-		endpoints.Add(registryEndpoint)
-	}
-	return endpoints
+		return endpoint, endpoint != ""
+	}))
+	return collectionlist.NewList(endpoints...)
 }
 
 func serviceBaseURL(cfg config.ServerConfig) string {

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	ocidigest "github.com/opencontainers/go-digest"
+	"github.com/samber/lo"
 	"github.com/spf13/afero"
 )
 
@@ -138,12 +139,9 @@ func readSortedDirs(fs afero.Fs, name string) ([]string, error) {
 	if err != nil {
 		return nil, wrapError(err, "read sorted directories")
 	}
-	dirs := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() {
-			dirs = append(dirs, entry.Name())
-		}
-	}
+	dirs := lo.FilterMap(entries, func(entry os.FileInfo, _ int) (string, bool) {
+		return entry.Name(), entry.IsDir()
+	})
 	slices.Sort(dirs)
 	return dirs, nil
 }

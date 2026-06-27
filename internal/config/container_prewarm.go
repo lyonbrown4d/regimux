@@ -2,12 +2,12 @@ package config
 
 import (
 	"runtime"
-	"slices"
 	"strings"
 	"sync/atomic"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/containerd/platforms"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -43,7 +43,7 @@ func normalizeContainerPrewarmPlatforms(values []string) ([]string, error) {
 	if len(out) == 0 {
 		return []string{DefaultContainerPrewarmPlatform()}, nil
 	}
-	if slices.Contains(out, ContainerPrewarmAllPlatforms) && len(out) > 1 {
+	if lo.Contains(out, ContainerPrewarmAllPlatforms) && len(out) > 1 {
 		return nil, oops.In("config").
 			With("platforms", out).
 			Errorf("container.prewarm.platforms must use all by itself")

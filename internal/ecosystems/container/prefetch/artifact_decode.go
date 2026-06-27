@@ -19,16 +19,15 @@ func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]blobDescrip
 		return nil, 0, cacheWrap(err, "decode image manifest for prefetch")
 	}
 
-	descriptors := make([]blobDescriptor, 0, len(payload.Layers)+1)
-	if payload.Config.Digest != "" {
-		descriptors = append(descriptors, newBlobDescriptor(payload.Config, "config"))
-	}
-	descriptors = append(descriptors, lo.Map(payload.Layers, func(layer ocispec.Descriptor, _ int) blobDescriptor {
+	descriptors := lo.Map(payload.Layers, func(layer ocispec.Descriptor, _ int) blobDescriptor {
 		if layer.Digest == "" {
 			return blobDescriptor{kind: "layer"}
 		}
 		return newBlobDescriptor(layer, "layer")
-	})...)
+	})
+	if payload.Config.Digest != "" {
+		descriptors = append([]blobDescriptor{newBlobDescriptor(payload.Config, "config")}, descriptors...)
+	}
 	return descriptors, len(payload.Layers), nil
 }
 

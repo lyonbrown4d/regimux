@@ -2,12 +2,12 @@ package admin
 
 import (
 	"fmt"
-	"maps"
-	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
@@ -145,7 +145,8 @@ func addManifestRefreshEcosystemRows(rows *collectionlist.List[ConfigRow], cfg c
 	if len(cfg.Ecosystems) == 0 {
 		return
 	}
-	collectionlist.NewList(slices.Sorted(maps.Keys(cfg.Ecosystems))...).Range(func(_ int, ecosystemName string) bool {
+	ecosystemNames := collectionlist.NewList(collectionmapping.NewMapFrom(cfg.Ecosystems).Keys()...).Sort(strings.Compare)
+	ecosystemNames.Range(func(_ int, ecosystemName string) bool {
 		prefix := "scheduler.manifest_refresh.ecosystems." + ecosystemName
 		effective := cfg.EffectiveFor(ecosystemName)
 		addRow(rows, prefix+".enabled", boolString(effective.Enabled))

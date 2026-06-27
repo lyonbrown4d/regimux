@@ -5,8 +5,7 @@ import (
 	"strings"
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
-	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
@@ -22,25 +21,14 @@ func (c *Config) normalizeDocker() error {
 		c.Docker.Prewarm.Timeout = defaultDockerPrewarmTimeout
 	}
 	c.Docker.Prewarm.Platform = strings.TrimSpace(c.Docker.Prewarm.Platform)
-	out := collectionlist.FilterList(
-		collectionlist.MapList(collectionlist.NewList(c.Docker.Prewarm.Images...), func(_ int, image string) string {
+	c.Docker.Prewarm.Images = lo.Uniq(lo.Filter(
+		lo.Map(c.Docker.Prewarm.Images, func(image string, _ int) string {
 			return strings.TrimSpace(image)
 		}),
-		func(_ int, image string) bool {
+		func(image string, _ int) bool {
 			return image != ""
 		},
-	)
-	seen := collectionset.NewSetWithCapacity[string](out.Len())
-	images := make([]string, 0, out.Len())
-	out.Range(func(_ int, image string) bool {
-		if seen.Contains(image) {
-			return true
-		}
-		seen.Add(image)
-		images = append(images, image)
-		return true
-	})
-	c.Docker.Prewarm.Images = images
+	))
 
 	registry, err := normalizeDockerRegistry(c.Docker.Prewarm.Registry, c.Server.PublicURL)
 	if err != nil {
