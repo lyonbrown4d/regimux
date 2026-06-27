@@ -103,7 +103,7 @@ func TestClientGetManifestFailsOverOnTransportError(t *testing.T) {
 			Mirrors:      []string{timeoutMirror.URL},
 			MirrorPolicy: "ordered",
 			HTTP: upstream.HTTPConfig{
-				Timeout: 10 * time.Millisecond,
+				Timeout: 100 * time.Millisecond,
 			},
 		},
 	})

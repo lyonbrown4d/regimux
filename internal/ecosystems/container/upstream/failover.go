@@ -8,6 +8,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
+	"github.com/samber/lo"
 )
 
 type failoverRequest struct {
@@ -76,7 +77,7 @@ func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPoo
 		}
 	}
 
-	entries := collectionlist.MapList(runtimes, func(_ int, runtime upstreamRuntime) string {
+	entries := lo.Map(runtimes.Values(), func(runtime upstreamRuntime, _ int) string {
 		snapshot := pool.health.runtimeSnapshot(runtime.config.Registry, req.repository, now)
 		status := "healthy"
 		if snapshot.InCooldown {
@@ -97,7 +98,7 @@ func (c *Client) upstreamSelectionLogArgs(req failoverRequest, pool *upstreamPoo
 			entry = fmt.Sprintf("%s success_rate=%.3f", entry, snapshot.SuccessRate)
 		}
 		return entry
-	}).Values()
+	})
 
 	args := []any{
 		"alias", req.alias,

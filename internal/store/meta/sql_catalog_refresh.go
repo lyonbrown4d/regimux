@@ -5,8 +5,8 @@ import (
 	"errors"
 	"time"
 
-	collectionset "github.com/arcgolabs/collectionx/set"
 	"github.com/arcgolabs/dbx/repository"
+	"github.com/samber/lo"
 )
 
 func (s *SQLStore) ensureRepositoryMetadata(ctx context.Context, alias, name string, at time.Time) (*Repository, error) {
@@ -186,21 +186,16 @@ func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string
 	if err != nil {
 		return wrapError(err, "list repository blob metadata for refresh")
 	}
-	var refreshErr error
-	seen := collectionset.NewSetWithCapacity[string](rows.Len())
-	rows.Range(func(_ int, row repoBlobRow) bool {
-		key := repositoryMetadataKey(row.Alias, row.Repository)
-		if seen.Contains(key) {
-			return true
-		}
-		seen.Add(key)
-		if err := s.refreshRepositoryMetadata(ctx, row.Alias, row.Repository, at); err != nil {
-			refreshErr = err
-			return false
-		}
-		return true
+	uniqueRows := lo.UniqBy(rows.Values(), func(row repoBlobRow) string {
+		return repositoryMetadataKey(row.Alias, row.Repository)
 	})
-	return refreshErr
+	for i := range uniqueRows {
+		row := uniqueRows[i]
+		if err := s.refreshRepositoryMetadata(ctx, row.Alias, row.Repository, at); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64, at time.Time) error {
