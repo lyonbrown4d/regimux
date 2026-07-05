@@ -175,6 +175,18 @@ func (r *CleanupReport) recordCleanupSkip(reason cleanupSkipReason) {
 	}
 }
 
+func (r *CleanupReport) planBlobDelete(blob *meta.BlobRecord) {
+	if r == nil || blob == nil {
+		return
+	}
+	r.DeletedBlobs++
+	r.DeletedDigests = append(r.DeletedDigests, blob.Digest)
+	if blob.Size <= 0 {
+		return
+	}
+	r.BytesDeleted += blob.Size
+	r.BytesAfter = cleanupRemainingBytes(r.BytesAfter, blob.Size)
+}
 func cleanupRemainingBytes(current, deleted int64) int64 {
 	if deleted <= 0 {
 		return current

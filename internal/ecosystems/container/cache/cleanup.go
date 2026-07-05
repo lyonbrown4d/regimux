@@ -216,11 +216,12 @@ func (s *CleanupService) cleanupBlob(
 	}
 
 	report.EligibleBlobs++
-	if opts.DryRun {
-		return false, nil
-	}
 	if cleanupDeleteLimitReached(opts, report) {
 		return true, nil
+	}
+	if opts.DryRun {
+		report.planBlobDelete(blob)
+		return false, nil
 	}
 	return false, s.deleteBlobObject(ctx, blob, report)
 }

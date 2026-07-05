@@ -118,15 +118,8 @@ func cleanupImageManifestDigests(body []byte) []string {
 	if err := json.Unmarshal(body, &manifest); err != nil {
 		return nil
 	}
-	out := make([]string, 0, len(manifest.Layers)+2)
-	if manifest.Subject != nil {
-		out = append(out, string(manifest.Subject.Digest))
-	}
-	out = append(out, string(manifest.Config.Digest))
-	out = append(out, lo.Map(manifest.Layers, func(layer ocispec.Descriptor, _ int) string {
-		return string(layer.Digest)
-	})...)
-	return out
+	descriptors := cleanupDescriptors(manifest.Subject, manifest.Config, manifest.Layers)
+	return cleanupDescriptorDigests(descriptors)
 }
 
 func cleanupImageIndexDigests(body []byte) []string {
@@ -134,14 +127,25 @@ func cleanupImageIndexDigests(body []byte) []string {
 	if err := json.Unmarshal(body, &index); err != nil {
 		return nil
 	}
-	out := make([]string, 0, len(index.Manifests)+1)
-	if index.Subject != nil {
-		out = append(out, string(index.Subject.Digest))
+	descriptors := cleanupDescriptors(index.Subject, ocispec.Descriptor{}, index.Manifests)
+	return cleanupDescriptorDigests(descriptors)
+}
+
+func cleanupDescriptors(subject *ocispec.Descriptor, config ocispec.Descriptor, children []ocispec.Descriptor) []ocispec.Descriptor {
+	out := make([]ocispec.Descriptor, 0, len(children)+2)
+	if subject != nil {
+		out = append(out, *subject)
 	}
-	out = append(out, lo.Map(index.Manifests, func(manifest ocispec.Descriptor, _ int) string {
-		return string(manifest.Digest)
-	})...)
+	out = append(out, config)
+	out = append(out, children...)
 	return out
+}
+
+func cleanupDescriptorDigests(descriptors []ocispec.Descriptor) []string {
+	return lo.FilterMap(descriptors, func(descriptor ocispec.Descriptor, _ int) (string, bool) {
+		digest := string(descriptor.Digest)
+		return digest, digest != ""
+	})
 }
 
 func addCleanupProtectedDigest(protected *collectionset.Set[string], digest string) {

@@ -82,6 +82,34 @@ func TestClientGetManifestDoesNotFailOverUnauthorizedMirror(t *testing.T) {
 	requireEqual(t, primaryRequests.Load(), int32(0), "primary requests")
 }
 
+func TestClientGetManifestDoesNotFallBackToPrimaryOnForbiddenMirror(t *testing.T) {
+	t.Parallel()
+
+	var forbiddenMirrorRequests atomic.Int32
+	forbiddenMirror := httptest.NewServer(statusHandler(http.StatusForbidden, &forbiddenMirrorRequests))
+	defer forbiddenMirror.Close()
+
+	var primaryRequests atomic.Int32
+	primary := httptest.NewServer(healthyManifestHandler(t, &primaryRequests))
+	defer primary.Close()
+
+	client := newTestClient(map[string]upstream.Config{
+		"hub": {
+			Registry:     primary.URL,
+			Mirrors:      []string{forbiddenMirror.URL},
+			MirrorPolicy: "ordered",
+		},
+	})
+
+	_, err := client.GetManifest(context.Background(), upstream.GetManifestRequest{
+		UpstreamAlias: "hub",
+		Repo:          "library/nginx",
+		Reference:     "latest",
+	})
+	requireErrorStatus(t, err, http.StatusForbidden)
+	requireEqual(t, forbiddenMirrorRequests.Load(), int32(1), "forbidden mirror requests")
+	requireEqual(t, primaryRequests.Load(), int32(0), "primary requests")
+}
 func TestClientGetManifestFailsOverOnTransportError(t *testing.T) {
 	t.Parallel()
 
