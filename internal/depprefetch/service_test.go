@@ -100,6 +100,7 @@ func TestServiceDoesNotCountSuccessfulPrefetchWhenOutcomeRecordFails(t *testing.
 	}
 	if report == nil {
 		t.Fatal("expected prefetch report")
+		return
 	}
 	if report.Prefetched != 0 || report.BytesWarmed != 0 || report.Failed != 0 {
 		t.Fatalf("unexpected report: %#v", report)
