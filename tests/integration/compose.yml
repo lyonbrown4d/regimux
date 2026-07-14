@@ -174,7 +174,7 @@ services:
     entrypoint: ["/bin/sh", "/scripts/maven-client.sh"]
 
   go-client:
-    image: ${REGIMUX_INTEGRATION_GO_IMAGE:-golang:1.25-alpine}
+    image: ${REGIMUX_INTEGRATION_GO_IMAGE:-golang:1.26-alpine}
     profiles: ["clients"]
     environment:
       REGIMUX_INTEGRATION_CONCURRENCY: ${REGIMUX_INTEGRATION_CONCURRENCY:-4}
