@@ -470,7 +470,7 @@ maven {
 }
 
 # Maven groups aggregate independent repositories under one logical alias.
-# Requests use /maven-group/{group}/...; /maven/{alias}/... remains physical-only.
+# Requests use /maven/{name}/...; group and upstream aliases share one namespace and must be unique.
 # Members are searched in order; mirrors remain same-content failover endpoints.
 #
 # maven_groups {

@@ -49,8 +49,6 @@ func (e *Endpoint) Register(registrar httpx.Registrar) {
 	group := registrar.Scope()
 	httpx.MustGroupGet(group, "maven/{alias}/{tail...}", e.get)
 	httpx.MustGroupRoute(group, http.MethodHead, "maven/{alias}/{tail...}", e.head)
-	httpx.MustGroupGet(group, "maven-group/{alias}/{tail...}", e.getGroup)
-	httpx.MustGroupRoute(group, http.MethodHead, "maven-group/{alias}/{tail...}", e.headGroup)
 }
 
 func (e *Endpoint) get(ctx context.Context, input *input) (*output, error) {
@@ -59,14 +57,6 @@ func (e *Endpoint) get(ctx context.Context, input *input) (*output, error) {
 
 func (e *Endpoint) head(ctx context.Context, input *input) (*output, error) {
 	return e.dispatch(ctx, input, http.MethodHead, e.service.Get)
-}
-
-func (e *Endpoint) getGroup(ctx context.Context, input *input) (*output, error) {
-	return e.dispatch(ctx, input, http.MethodGet, e.service.GetGroup)
-}
-
-func (e *Endpoint) headGroup(ctx context.Context, input *input) (*output, error) {
-	return e.dispatch(ctx, input, http.MethodHead, e.service.GetGroup)
 }
 
 func (e *Endpoint) dispatch(

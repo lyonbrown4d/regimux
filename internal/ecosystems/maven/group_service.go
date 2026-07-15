@@ -3,8 +3,6 @@ package maven
 import (
 	"context"
 	"fmt"
-
-	"github.com/lyonbrown4d/regimux/internal/config"
 )
 
 // GetGroup resolves a request through a logical Maven group.
@@ -20,8 +18,4 @@ func (s *Service) GetGroup(ctx context.Context, req Request) (*Response, error) 
 	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstream, requestModeClient)
 	s.recordPull(ctx, req, requestRoute, resp, err)
 	return resp, err
-}
-
-func (s *Service) physicalUpstream(alias string) (config.UpstreamConfig, bool) {
-	return s.cfg.MavenUpstream(alias)
 }

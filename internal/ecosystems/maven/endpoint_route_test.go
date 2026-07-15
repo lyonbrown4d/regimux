@@ -9,22 +9,21 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
 )
 
-func TestEndpointRegistersSeparatePhysicalAndGroupRoutes(t *testing.T) {
+func TestEndpointRegistersUnifiedMavenRoutes(t *testing.T) {
 	server := httpx.New()
 	server.RegisterOnly(maven.NewEndpoint(nil))
 
-	routes := []struct {
-		method string
-		path   string
-	}{
-		{method: http.MethodGet, path: "/maven/{alias}/{tail...}"},
-		{method: http.MethodHead, path: "/maven/{alias}/{tail...}"},
-		{method: http.MethodGet, path: "/maven-group/{alias}/{tail...}"},
-		{method: http.MethodHead, path: "/maven-group/{alias}/{tail...}"},
+	const route = "/maven/{alias}/{tail...}"
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		if !server.HasRoute(method, route) {
+			t.Fatalf("route %s %s is not registered", method, route)
+		}
 	}
-	for _, route := range routes {
-		if !server.HasRoute(route.method, route.path) {
-			t.Fatalf("route %s %s is not registered", route.method, route.path)
+
+	const legacyRoute = "/maven-group/{alias}/{tail...}"
+	for _, method := range []string{http.MethodGet, http.MethodHead} {
+		if server.HasRoute(method, legacyRoute) {
+			t.Fatalf("legacy route %s %s is still registered", method, legacyRoute)
 		}
 	}
 }

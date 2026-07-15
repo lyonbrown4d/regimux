@@ -47,11 +47,8 @@ func TestMavenGroupFallsThroughMissAndCachesResolvedMember(t *testing.T) {
 		Tail:  "com/acme/demo/1.0/demo-1.0.jar",
 	}
 
-	if _, err := service.Get(ctx, request); err == nil {
-		t.Fatal("physical Maven route unexpectedly resolved a Maven group")
-	}
-	first, err := service.GetGroup(ctx, request)
-	requireNoError(t, "first group get", err)
+	first, err := service.Get(ctx, request)
+	requireNoError(t, "first unified group get", err)
 	if first.Headers.Get(resolvedUpstreamHeaderName) != "central" {
 		t.Fatalf(
 			"resolved upstream = %q, want central",
@@ -60,8 +57,8 @@ func TestMavenGroupFallsThroughMissAndCachesResolvedMember(t *testing.T) {
 	}
 	assertBody(t, first, "group jar")
 
-	second, err := service.GetGroup(ctx, request)
-	requireNoError(t, "cached group get", err)
+	second, err := service.Get(ctx, request)
+	requireNoError(t, "cached unified group get", err)
 	if second.Cache != cacheHit {
 		t.Fatalf("cache = %q, want hit", second.Cache)
 	}

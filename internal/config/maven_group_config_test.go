@@ -63,9 +63,9 @@ func TestNormalizeMavenGroupsRejectsInvalidDefinitions(t *testing.T) {
 			wantError: "unknown member",
 		},
 		{
-			name: "alias collision",
+			name: "normalized route alias collision",
 			groups: config.MavenGroupsConfig{
-				"central": {Members: []string{"central"}},
+				" central ": {Members: []string{"central"}},
 			},
 			wantError: "alias conflicts",
 		},

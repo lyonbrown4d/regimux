@@ -65,7 +65,7 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if err != nil {
 		return nil, err
 	}
-	upstreamCfg, ok := s.physicalUpstream(requestRoute.Alias)
+	upstreamCfg, ok := s.upstream(requestRoute.Alias)
 	if !ok {
 		return nil, oops.In("maven").With("alias", requestRoute.Alias).Errorf("maven upstream is not configured")
 	}
