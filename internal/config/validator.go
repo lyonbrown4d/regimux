@@ -96,7 +96,6 @@ func validateStoreObjectStruct(sl validator.StructLevel) {
 		return
 	}
 	validateStoreObjectS3(sl, object)
-	validateStoreObjectSFTP(sl, object)
 }
 
 func validateStoreObjectS3(sl validator.StructLevel, object StoreObjectConfig) {
@@ -110,20 +109,6 @@ func validateStoreObjectS3(sl validator.StructLevel, object StoreObjectConfig) {
 	}
 	if strings.TrimSpace(object.S3.SecretAccessKey) == "" && strings.TrimSpace(object.S3.AccessKeyID) != "" {
 		sl.ReportError(object.S3.SecretAccessKey, "s3.secret_access_key", "S3.SecretAccessKey", "required_with_access_key_id", "")
-	}
-}
-
-func validateStoreObjectSFTP(sl validator.StructLevel, object StoreObjectConfig) {
-	if object.Driver != "sftp" {
-		return
-	}
-	reportBlankConfigValue(sl, object.SFTP.Addr, "sftp.addr", "SFTP.Addr", "required_with_sftp_object_store")
-	reportBlankConfigValue(sl, object.SFTP.Username, "sftp.username", "SFTP.Username", "required_with_sftp_object_store")
-	if strings.TrimSpace(object.SFTP.Password) == "" && strings.TrimSpace(object.SFTP.PrivateKey) == "" {
-		sl.ReportError(object.SFTP.Password, "sftp.password", "SFTP.Password", "password_or_private_key", "")
-	}
-	if strings.TrimSpace(object.SFTP.KnownHostsPath) == "" && strings.TrimSpace(object.SFTP.HostKey) == "" {
-		sl.ReportError(object.SFTP.KnownHostsPath, "sftp.known_hosts_path", "SFTP.KnownHostsPath", "known_hosts_or_host_key", "")
 	}
 }
 

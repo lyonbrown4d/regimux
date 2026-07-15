@@ -3,17 +3,17 @@ package object
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"strings"
-	"time"
 )
 
 var (
 	ErrNotFound       = errors.New("object not found")
 	ErrDigestMismatch = errors.New("object digest mismatch")
-	ErrUnsupported    = errors.New("object store operation unsupported")
 )
 
+// Store is the backend-independent content-addressable object storage contract.
 type Store interface {
 	Stat(ctx context.Context, digest string) (*Info, error)
 	Exists(ctx context.Context, digest string) (bool, error)
@@ -22,12 +22,12 @@ type Store interface {
 	Delete(ctx context.Context, digest string) error
 }
 
-type ObjectWalkFunc func(info Info) error
-
+// ObjectWalker is implemented by stores that can enumerate CAS objects.
 type ObjectWalker interface {
-	WalkObjects(ctx context.Context, fn ObjectWalkFunc) error
+	WalkObjects(ctx context.Context, fn func(Info) error) error
 }
 
+// ObjectLister is implemented by stores that can return all CAS objects.
 type ObjectLister interface {
 	ListObjects(ctx context.Context) ([]Info, error)
 }
@@ -40,44 +40,30 @@ type Options struct {
 	Driver string
 	Path   string
 	S3     S3Options
-	SFTP   SFTPOptions
 }
 
 type S3Options struct {
-	Bucket          string
-	Prefix          string
-	Region          string
-	Endpoint        string
-	AccessKeyID     string
-	SecretAccessKey string
-	SessionToken    string
-	Profile         string
-	ForcePathStyle  bool
-}
-
-type SFTPOptions struct {
-	Addr                 string
-	Username             string
-	Password             string
-	PrivateKey           string
-	PrivateKeyPassphrase string
-	KnownHostsPath       string
-	HostKey              string
-	Timeout              time.Duration
+	Bucket            string
+	Prefix            string
+	Region            string
+	Endpoint          string
+	AccessKeyID       string
+	SecretAccessKey   string
+	SessionToken      string
+	Profile           string
+	ForcePathStyle    bool
+	PartSize          int64
+	UploadConcurrency int
 }
 
 func NewWithOptions(ctx context.Context, opts Options) (Store, error) {
 	switch strings.ToLower(strings.TrimSpace(opts.Driver)) {
 	case "", "local":
 		return NewLocal(opts.Path)
-	case "memory":
-		return NewMemory(opts.Path)
 	case "s3":
 		return NewS3(ctx, opts.S3)
-	case "sftp":
-		return NewSFTP(ctx, opts.Path, opts.SFTP)
 	default:
-		return nil, errorf("unsupported object store driver: %s", opts.Driver)
+		return nil, fmt.Errorf("unsupported object store driver %q", opts.Driver)
 	}
 }
 

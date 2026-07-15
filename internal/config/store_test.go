@@ -2,7 +2,6 @@ package config_test
 
 import (
 	"testing"
-	"time"
 )
 
 func TestValidateStoreRejectsUnsupportedDrivers(t *testing.T) {
@@ -56,33 +55,6 @@ func TestValidateStoreRejectsPartialS3Credentials(t *testing.T) {
 	}
 }
 
-func TestValidateStoreAcceptsSFTPObjectDriver(t *testing.T) {
-	cfg := loadDefaultConfig(t)
-	cfg.Store.Object.Driver = "SFTP"
-	cfg.Store.Object.Path = "/srv/regimux/objects"
-	cfg.Store.Object.SFTP.Addr = "sftp.example.com:22"
-	cfg.Store.Object.SFTP.Username = "regimux"
-	cfg.Store.Object.SFTP.Password = "secret"
-	cfg.Store.Object.SFTP.HostKey = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFakeHostKeyForConfigValidationOnly"
-	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr != nil {
-		t.Fatalf("normalize sftp object store: %v", normalizeErr)
-	}
-	if cfg.Store.Object.Driver != "sftp" || cfg.Store.Object.Path != "/srv/regimux/objects" || cfg.Store.Object.SFTP.Timeout != 10*time.Second {
-		t.Fatalf("unexpected object store config: %#v", cfg.Store.Object)
-	}
-}
-
-func TestValidateStoreRejectsSFTPObjectWithoutHostKeyVerification(t *testing.T) {
-	cfg := loadDefaultConfig(t)
-	cfg.Store.Object.Driver = "sftp"
-	cfg.Store.Object.SFTP.Addr = "sftp.example.com:22"
-	cfg.Store.Object.SFTP.Username = "regimux"
-	cfg.Store.Object.SFTP.Password = "secret"
-	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
-		t.Fatal("expected sftp host key validation error")
-	}
-}
-
 func TestValidateStoreAcceptsExternalMetaDrivers(t *testing.T) {
 	for _, driver := range []string{"mysql", "postgres", "pg", "postgresql"} {
 		assertExternalMetaDriverAccepted(t, driver)
@@ -110,17 +82,5 @@ func TestValidateStoreRejectsExternalMetaWithoutDSN(t *testing.T) {
 	cfg.Store.Meta.DSN = ""
 	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr == nil {
 		t.Fatal("expected external meta dsn validation error")
-	}
-}
-
-func TestValidateStoreAcceptsMemoryObjectDriver(t *testing.T) {
-	cfg := loadDefaultConfig(t)
-	cfg.Store.Object.Driver = "MEMORY"
-	cfg.Store.Object.Path = ""
-	if normalizeErr := cfg.NormalizeAndValidate(); normalizeErr != nil {
-		t.Fatalf("normalize memory object store: %v", normalizeErr)
-	}
-	if cfg.Store.Object.Driver != "memory" || cfg.Store.Object.Path != "data/objects" {
-		t.Fatalf("unexpected object store config: %#v", cfg.Store.Object)
 	}
 }

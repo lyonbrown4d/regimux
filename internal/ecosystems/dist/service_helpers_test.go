@@ -28,7 +28,7 @@ func newTestServiceWithMirrors(ctx context.Context, t *testing.T, upstreamURL st
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	objects, err := object.NewMemory("dist-test")
+	objects, err := object.NewLocal(t.TempDir())
 	requireNoError(t, "open objects", err)
 	return dist.NewService(dist.ServiceDependencies{
 		Config: config.Config{

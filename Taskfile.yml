@@ -17,7 +17,7 @@ tasks:
   release:local:
     desc: Run the cross-platform local release helper.
     cmds:
-      - go run -tags release ./cmd/regimux-release {{.CLI_ARGS}}
+      - go run ./build release {{.CLI_ARGS}}
 
   integration:image:
     desc: Build the local RegiMux container image with GoReleaser.

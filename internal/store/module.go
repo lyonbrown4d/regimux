@@ -107,30 +107,21 @@ func metadataDBHooks(metrics *observability.Metrics, driver string) []dbx.Hook {
 func NewObjectStore(deps ObjectStoreDependencies) (object.Store, error) {
 	cfg := deps.Config
 	logger := storeLogger(deps.Logger, "store.object")
-	logger.Info("opening object store", "driver", cfg.Driver, "path", cfg.Path, "s3_bucket", cfg.S3.Bucket, "sftp_addr_configured", cfg.SFTP.Addr != "")
 	store, err := object.NewWithOptions(context.Background(), object.Options{
 		Driver: cfg.Driver,
 		Path:   cfg.Path,
 		S3: object.S3Options{
-			Bucket:          cfg.S3.Bucket,
-			Prefix:          cfg.S3.Prefix,
-			Region:          cfg.S3.Region,
-			Endpoint:        cfg.S3.Endpoint,
-			AccessKeyID:     cfg.S3.AccessKeyID,
-			SecretAccessKey: cfg.S3.SecretAccessKey,
-			SessionToken:    cfg.S3.SessionToken,
-			Profile:         cfg.S3.Profile,
-			ForcePathStyle:  cfg.S3.ForcePathStyle,
-		},
-		SFTP: object.SFTPOptions{
-			Addr:                 cfg.SFTP.Addr,
-			Username:             cfg.SFTP.Username,
-			Password:             cfg.SFTP.Password,
-			PrivateKey:           cfg.SFTP.PrivateKey,
-			PrivateKeyPassphrase: cfg.SFTP.PrivateKeyPassphrase,
-			KnownHostsPath:       cfg.SFTP.KnownHostsPath,
-			HostKey:              cfg.SFTP.HostKey,
-			Timeout:              cfg.SFTP.Timeout,
+			Bucket:            cfg.S3.Bucket,
+			Prefix:            cfg.S3.Prefix,
+			Region:            cfg.S3.Region,
+			Endpoint:          cfg.S3.Endpoint,
+			AccessKeyID:       cfg.S3.AccessKeyID,
+			SecretAccessKey:   cfg.S3.SecretAccessKey,
+			SessionToken:      cfg.S3.SessionToken,
+			Profile:           cfg.S3.Profile,
+			ForcePathStyle:    cfg.S3.ForcePathStyle,
+			PartSize:          cfg.S3.PartSize,
+			UploadConcurrency: cfg.S3.UploadConcurrency,
 		},
 	})
 	if err != nil {

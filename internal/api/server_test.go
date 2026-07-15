@@ -56,7 +56,7 @@ func TestGoRootEndpointDoesNotShadowScopedDependencyRoutes(t *testing.T) {
 			t.Fatalf("close metadata: %v", closeErr)
 		}
 	})
-	objects, err := object.NewMemory("api-route-test")
+	objects, err := object.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatalf("open objects: %v", err)
 	}

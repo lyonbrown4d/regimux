@@ -1,175 +1,98 @@
 package object
 
 import (
-	"cmp"
 	"context"
 	"errors"
-	"hash"
+	"fmt"
+	"io/fs"
 	"os"
-	pathpkg "path"
-	"slices"
-	"strings"
-
-	ocidigest "github.com/opencontainers/go-digest"
-	"github.com/samber/lo"
-	"github.com/spf13/afero"
+	"path/filepath"
 )
 
-func (s *LocalStore) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
-	if s == nil || s.aferoStore == nil {
-		return errorf("object store is not configured")
-	}
-	return s.walkObjects(ctx, fn)
-}
-
-func (s *LocalStore) ListObjects(ctx context.Context) ([]Info, error) {
-	if s == nil || s.aferoStore == nil {
-		return nil, errorf("object store is not configured")
-	}
-	return s.listObjects(ctx)
-}
-
-func (s *MemoryStore) WalkObjects(ctx context.Context, fn ObjectWalkFunc) error {
-	if s == nil || s.aferoStore == nil {
-		return errorf("object store is not configured")
-	}
-	return s.walkObjects(ctx, fn)
-}
-
-func (s *MemoryStore) ListObjects(ctx context.Context) ([]Info, error) {
-	if s == nil || s.aferoStore == nil {
-		return nil, errorf("object store is not configured")
-	}
-	return s.listObjects(ctx)
-}
-
-func (s *aferoStore) listObjects(ctx context.Context) ([]Info, error) {
-	objects := make([]Info, 0)
-	if err := s.walkObjects(ctx, func(info Info) error {
-		objects = append(objects, info)
-		return nil
-	}); err != nil {
-		return nil, err
-	}
-	return objects, nil
-}
-
-func (s *aferoStore) walkObjects(ctx context.Context, fn ObjectWalkFunc) error {
-	ctx = normalizeContext(ctx)
-	if err := checkContext(ctx, "walk objects"); err != nil {
-		return err
-	}
-	if fn == nil {
-		return errorf("object walk callback is required")
-	}
-	if s == nil || s.fs == nil || s.root == "" {
-		return errorf("object store is not configured")
-	}
-	return s.walkBlobRoot(ctx, pathpkg.Join(s.root, "blobs"), fn)
-}
-
-func (s *aferoStore) walkBlobRoot(ctx context.Context, root string, fn ObjectWalkFunc) error {
-	algorithms, err := readSortedDirs(s.fs, root)
+func (s *LocalStore) WalkObjects(ctx context.Context, fn func(Info) error) error {
+	objectsRoot := filepath.Join(s.root, casRootDirectory)
+	_, err := os.Stat(objectsRoot)
 	if errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
 	if err != nil {
-		return wrapError(err, "list object blob algorithms")
+		return fmt.Errorf("stat local CAS root %q: %w", objectsRoot, err)
 	}
-	for _, algorithm := range algorithms {
-		if err := checkContext(ctx, "walk objects"); err != nil {
-			return err
-		}
-		if _, err := newDigestHash(algorithm); err != nil {
-			continue
-		}
-		if err := s.walkBlobAlgorithm(ctx, root, algorithm, fn); err != nil {
-			return err
-		}
+
+	walkErr := filepath.WalkDir(
+		objectsRoot,
+		func(objectPath string, entry fs.DirEntry, entryErr error) error {
+			return s.visitObject(ctx, objectPath, entry, entryErr, fn)
+		},
+	)
+	if walkErr != nil {
+		return fmt.Errorf("walk local CAS root %q: %w", objectsRoot, walkErr)
 	}
+
 	return nil
 }
 
-func (s *aferoStore) walkBlobAlgorithm(ctx context.Context, root, algorithm string, fn ObjectWalkFunc) error {
-	algorithmPath := pathpkg.Join(root, algorithm)
-	prefixes, err := readSortedDirs(s.fs, algorithmPath)
-	if err != nil {
-		return wrapError(err, "list object blob prefixes")
+func (s *LocalStore) visitObject(
+	ctx context.Context,
+	objectPath string,
+	entry fs.DirEntry,
+	entryErr error,
+	fn func(Info) error,
+) error {
+	if entryErr != nil {
+		return fmt.Errorf("visit local CAS path %q: %w", objectPath, entryErr)
 	}
-	for _, prefix := range prefixes {
-		if err := checkContext(ctx, "walk objects"); err != nil {
-			return err
-		}
-		if len(prefix) != 2 {
-			continue
-		}
-		if err := s.walkBlobPrefix(ctx, algorithmPath, algorithm, prefix, fn); err != nil {
-			return err
-		}
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("walk local CAS objects: %w", err)
 	}
+	if entry.IsDir() || !entry.Type().IsRegular() {
+		return nil
+	}
+
+	info, valid, err := s.objectInfo(objectPath, entry)
+	if err != nil || !valid {
+		return err
+	}
+	if err = fn(info); err != nil {
+		return fmt.Errorf("visit local CAS object %q: %w", info.Digest, err)
+	}
+
 	return nil
 }
 
-func (s *aferoStore) walkBlobPrefix(ctx context.Context, algorithmPath, algorithm, prefix string, fn ObjectWalkFunc) error {
-	prefixPath := pathpkg.Join(algorithmPath, prefix)
-	files, err := afero.ReadDir(s.fs, prefixPath)
+func (s *LocalStore) objectInfo(objectPath string, entry fs.DirEntry) (Info, bool, error) {
+	relative, err := filepath.Rel(s.root, objectPath)
 	if err != nil {
-		return wrapError(err, "list object blob prefix")
+		return Info{}, false, fmt.Errorf("resolve local CAS path %q: %w", objectPath, err)
 	}
-	slices.SortFunc(files, func(left, right os.FileInfo) int {
-		return cmp.Compare(left.Name(), right.Name())
-	})
-	for _, file := range files {
-		if err := checkContext(ctx, "walk objects"); err != nil {
-			return err
-		}
-		info, ok := infoFromCASFile(algorithm, prefix, prefixPath, file)
-		if !ok {
-			continue
-		}
-		if err := fn(info); err != nil {
-			return err
-		}
-	}
-	return nil
-}
 
-func readSortedDirs(fs afero.Fs, name string) ([]string, error) {
-	entries, err := afero.ReadDir(fs, name)
-	if err != nil {
-		return nil, wrapError(err, "read sorted directories")
+	digest, valid := casDigestFromRelativePath(filepath.ToSlash(relative))
+	if !valid {
+		return Info{}, false, nil
 	}
-	dirs := lo.FilterMap(entries, func(entry os.FileInfo, _ int) (string, bool) {
-		return entry.Name(), entry.IsDir()
-	})
-	slices.Sort(dirs)
-	return dirs, nil
-}
 
-func infoFromCASFile(algorithm, prefix, parent string, file os.FileInfo) (Info, bool) {
-	if file == nil || file.IsDir() {
-		return Info{}, false
-	}
-	encoded := file.Name()
-	if strings.HasPrefix(encoded, ".") || !strings.HasPrefix(encoded, prefix) {
-		return Info{}, false
-	}
-	digest, err := normalizeDigest(algorithm + ":" + encoded)
+	fileInfo, err := entry.Info()
 	if err != nil {
-		return Info{}, false
+		return Info{}, false, fmt.Errorf("stat local CAS object %q: %w", objectPath, err)
 	}
+
 	return Info{
 		Digest: digest,
-		Size:   file.Size(),
+		Size:   fileInfo.Size(),
 		ETag:   digest,
-		Path:   pathpkg.Join(parent, encoded),
-	}, true
+		Path:   objectPath,
+	}, true, nil
 }
 
-func newDigestHash(algorithm string) (hash.Hash, error) {
-	alg := ocidigest.Algorithm(algorithm)
-	if !alg.Available() {
-		return nil, errorf("unsupported digest hash: %s", algorithm)
+func (s *LocalStore) ListObjects(ctx context.Context) ([]Info, error) {
+	objects := make([]Info, 0)
+	err := s.WalkObjects(ctx, func(info Info) error {
+		objects = append(objects, info)
+		return nil
+	})
+	if err != nil {
+		return nil, err
 	}
-	return alg.Hash(), nil
+
+	return objects, nil
 }

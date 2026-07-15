@@ -128,20 +128,8 @@ store {
     #   session_token = ""
     #   profile = ""
     #   force_path_style = true
-    # }
-
-    # SFTP object storage example:
-    #
-    # driver = "sftp"
-    # path = "/srv/regimux/objects"
-    #
-    # sftp {
-    #   addr = "sftp.example.com:22"
-    #   username = "regimux"
-    #   password = "change-me"
-    #   known_hosts_path = "/etc/regimux/known_hosts"
-    #   host_key = ""
-    #   timeout = "10s"
+    #   part_size = 16777216
+    #   upload_concurrency = 4
     # }
   }
 }

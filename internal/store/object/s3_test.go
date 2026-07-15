@@ -3,253 +3,190 @@ package object_test
 import (
 	"bytes"
 	"context"
-	"encoding/xml"
-	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
-	"net/url"
-	"strconv"
 	"strings"
-	"sync"
 	"testing"
-	"time"
+
+	godigest "github.com/opencontainers/go-digest"
+	"github.com/stretchr/testify/require"
 
 	"github.com/lyonbrown4d/regimux/internal/store/object"
-	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
-func TestS3StorePutGetRangeDelete(t *testing.T) {
-	ctx := context.Background()
-	s3Server := newFakeS3Server(t, "regimux-objects")
-	store, err := object.NewWithOptions(ctx, object.Options{
-		Driver: "s3",
-		S3: object.S3Options{
-			Bucket:          "regimux-objects",
-			Prefix:          "cache",
-			Region:          "us-east-1",
-			Endpoint:        s3Server.URL,
-			AccessKeyID:     "access-key",
-			SecretAccessKey: fakeS3Secret(),
-			ForcePathStyle:  true,
-		},
-	})
-	requireNoError(t, "new s3 store", err)
+const testS3PartSize int64 = 5 * 1024 * 1024
 
-	body := []byte("registry s3 object body")
-	digest := digestFor(body)
-	info, err := store.Put(ctx, digest, bytes.NewReader(body), object.PutOptions{
-		ContentType: distribution.MediaTypeOctetStream,
-	})
-	requireNoError(t, "put s3 object", err)
-	if info.Digest != digest || info.Size != int64(len(body)) || info.Path == "" {
-		t.Fatalf("unexpected s3 object info: %#v", info)
-	}
-
-	reader, ranged, err := store.Get(ctx, digest, object.GetOptions{
-		Range: &object.HTTPRange{Start: 9, End: 10},
-	})
-	requireNoError(t, "get s3 range", err)
-	data := readAllAndClose(t, reader)
-	if string(data) != "s3" || ranged.Size != 2 {
-		t.Fatalf("unexpected s3 range read: body=%q info=%#v", data, ranged)
-	}
-
-	err = store.Delete(ctx, digest)
-	requireNoError(t, "delete s3 object", err)
-	ok, err := store.Exists(ctx, digest)
-	requireNoError(t, "exists after s3 delete", err)
-	if ok {
-		t.Fatal("expected s3 object to be deleted")
-	}
+type s3Fixture struct {
+	store   *object.S3Store
+	client  *fakeS3Client
+	payload []byte
+	digest  string
+	key     string
 }
 
-func fakeS3Secret() string {
-	return "fake-" + "credential"
+func TestS3StoreContract(t *testing.T) {
+	fixture := newS3Fixture(t)
+
+	t.Run("put and stat", fixture.testPutAndStat)
+	t.Run("get and range", fixture.testGet)
+	t.Run("walk and list", fixture.testWalkAndList)
+	t.Run("delete", fixture.testDelete)
 }
 
-type fakeS3Server struct {
-	*httptest.Server
-	t       *testing.T
-	bucket  string
-	mu      sync.Mutex
-	objects map[string]fakeS3Object
-}
-
-type fakeS3Object struct {
-	body        []byte
-	contentType string
-}
-
-type fakeS3ListBucketResult struct {
-	XMLName     xml.Name `xml:"ListBucketResult"`
-	Name        string   `xml:"Name"`
-	Prefix      string   `xml:"Prefix"`
-	KeyCount    int      `xml:"KeyCount"`
-	MaxKeys     int      `xml:"MaxKeys"`
-	IsTruncated bool     `xml:"IsTruncated"`
-}
-
-func newFakeS3Server(t *testing.T, bucket string) *fakeS3Server {
+func newS3Fixture(t *testing.T) *s3Fixture {
 	t.Helper()
-	server := &fakeS3Server{
-		t:       t,
-		bucket:  bucket,
-		objects: map[string]fakeS3Object{},
-	}
-	server.Server = httptest.NewServer(http.HandlerFunc(server.handle))
-	t.Cleanup(server.Close)
-	return server
-}
 
-func (s *fakeS3Server) handle(w http.ResponseWriter, r *http.Request) {
-	if r.Method == http.MethodGet && r.URL.Query().Get("list-type") == "2" {
-		s.list(w, r)
-		return
-	}
-	key, ok := s.key(r.URL.Path)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	switch r.Method {
-	case http.MethodPut:
-		s.put(w, r, key)
-	case http.MethodHead:
-		s.head(w, key)
-	case http.MethodGet:
-		s.get(w, r, key)
-	case http.MethodDelete:
-		s.delete(w, key)
-	default:
-		w.WriteHeader(http.StatusMethodNotAllowed)
-	}
-}
-
-func (s *fakeS3Server) list(w http.ResponseWriter, r *http.Request) {
-	prefix := r.URL.Query().Get("prefix")
-	keyCount := 0
-	s.mu.Lock()
-	for key := range s.objects {
-		if strings.HasPrefix(key, prefix) {
-			keyCount = 1
-			break
-		}
-	}
-	s.mu.Unlock()
-	data, err := xml.Marshal(fakeS3ListBucketResult{
-		Name:        s.bucket,
-		Prefix:      prefix,
-		KeyCount:    keyCount,
-		MaxKeys:     1,
-		IsTruncated: false,
+	client := newFakeS3Client()
+	store, err := object.NewS3WithClient(client, object.S3Options{
+		Bucket: "bucket",
+		Prefix: "tenant/cache",
 	})
-	if err != nil {
-		s.t.Errorf("marshal list bucket result: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
+	require.NoError(t, err)
+
+	payload := []byte("0123456789")
+	digest := godigest.FromBytes(payload).String()
+
+	return &s3Fixture{
+		store:   store,
+		client:  client,
+		payload: payload,
+		digest:  digest,
+		key:     testS3Key("tenant/cache", digest),
 	}
-	w.Header().Set(distribution.HeaderContentType, "application/xml")
-	s.write(w, data)
 }
 
-func (s *fakeS3Server) key(rawPath string) (string, bool) {
-	prefix := "/" + s.bucket + "/"
-	if !strings.HasPrefix(rawPath, prefix) {
-		return "", false
-	}
-	key := strings.TrimPrefix(rawPath, prefix)
-	return key, key != ""
+func (f *s3Fixture) testPutAndStat(t *testing.T) {
+	info, err := f.store.Put(
+		t.Context(),
+		f.digest,
+		bytes.NewReader(f.payload),
+		object.PutOptions{
+			ContentType: "application/octet-stream",
+			Metadata:    map[string]string{"source": "contract-test"},
+		},
+	)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(f.payload)), info.Size)
+	require.Equal(t, "application/octet-stream", info.ContentType)
+
+	stored, found := f.client.object(f.key)
+	require.True(t, found)
+	require.Equal(t, f.payload, stored.body)
+	require.Equal(t, "application/octet-stream", stored.contentType)
+	require.Equal(t, "contract-test", stored.metadata["source"])
+
+	stat, err := f.store.Stat(t.Context(), f.digest)
+	require.NoError(t, err)
+	require.Equal(t, int64(len(f.payload)), stat.Size)
+	require.Equal(t, "application/octet-stream", stat.ContentType)
+
+	exists, err := f.store.Exists(t.Context(), f.digest)
+	require.NoError(t, err)
+	require.True(t, exists)
 }
 
-func (s *fakeS3Server) put(w http.ResponseWriter, r *http.Request, key string) {
-	if source := r.Header.Get("X-Amz-Copy-Source"); source != "" {
-		s.copy(w, source, key)
-		return
-	}
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		s.t.Errorf("read put body: %v", err)
-		w.WriteHeader(http.StatusInternalServerError)
-		return
-	}
-	s.mu.Lock()
-	s.objects[key] = fakeS3Object{body: body, contentType: r.Header.Get(distribution.HeaderContentType)}
-	s.mu.Unlock()
-	w.Header().Set(distribution.HeaderETag, `"fake-etag"`)
-	w.WriteHeader(http.StatusOK)
+func (f *s3Fixture) testGet(t *testing.T) {
+	body, fullInfo, err := f.store.Get(t.Context(), f.digest, object.GetOptions{})
+	require.NoError(t, err)
+	fullPayload, err := io.ReadAll(body)
+	require.NoError(t, err)
+	require.NoError(t, body.Close())
+	require.Equal(t, f.payload, fullPayload)
+	require.Equal(t, int64(len(f.payload)), fullInfo.Size)
+
+	body, rangeInfo, err := f.store.Get(t.Context(), f.digest, object.GetOptions{
+		Range: &object.HTTPRange{Start: 2, End: 5},
+	})
+	require.NoError(t, err)
+	rangePayload, err := io.ReadAll(body)
+	require.NoError(t, err)
+	require.NoError(t, body.Close())
+	require.Equal(t, []byte("2345"), rangePayload)
+	require.Equal(t, int64(4), rangeInfo.Size)
 }
 
-func (s *fakeS3Server) copy(w http.ResponseWriter, source, key string) {
-	source, err := url.QueryUnescape(source)
-	if err != nil {
-		s.t.Errorf("unescape copy source: %v", err)
-		w.WriteHeader(http.StatusBadRequest)
-		return
-	}
-	source = strings.TrimPrefix(source, "/")
-	sourceKey := strings.TrimPrefix(source, s.bucket+"/")
-	item, ok := s.lookup(sourceKey)
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	s.mu.Lock()
-	s.objects[key] = item
-	s.mu.Unlock()
-	w.Header().Set(distribution.HeaderContentType, "application/xml")
-	s.write(w, []byte(`<CopyObjectResult><ETag>"fake-etag"</ETag></CopyObjectResult>`))
+func (f *s3Fixture) testWalkAndList(t *testing.T) {
+	walked := make([]object.Info, 0)
+	err := f.store.WalkObjects(t.Context(), func(info object.Info) error {
+		walked = append(walked, info)
+		return nil
+	})
+	require.NoError(t, err)
+	require.Len(t, walked, 1)
+	require.Equal(t, f.digest, walked[0].Digest)
+
+	listed, err := f.store.ListObjects(t.Context())
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, f.digest, listed[0].Digest)
 }
 
-func (s *fakeS3Server) head(w http.ResponseWriter, key string) {
-	item, ok := s.lookup(key)
-	if !ok {
-		w.WriteHeader(http.StatusNotFound)
-		return
-	}
-	w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(item.body)))
-	w.Header().Set(distribution.HeaderContentType, item.contentType)
-	w.Header().Set(distribution.HeaderETag, `"fake-etag"`)
-	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-	w.WriteHeader(http.StatusOK)
+func (f *s3Fixture) testDelete(t *testing.T) {
+	require.NoError(t, f.store.Delete(t.Context(), f.digest))
+
+	exists, err := f.store.Exists(t.Context(), f.digest)
+	require.NoError(t, err)
+	require.False(t, exists)
+	require.NoError(t, f.store.Delete(t.Context(), f.digest))
 }
 
-func (s *fakeS3Server) get(w http.ResponseWriter, r *http.Request, key string) {
-	item, ok := s.lookup(key)
-	if !ok {
-		http.NotFound(w, r)
-		return
-	}
-	body := item.body
-	status := http.StatusOK
-	if r.Header.Get(distribution.HeaderRange) != "" {
-		body = body[9:11]
-		status = http.StatusPartialContent
-		w.Header().Set(distribution.HeaderContentRange, fmt.Sprintf("bytes 9-10/%d", len(item.body)))
-	}
-	w.Header().Set(distribution.HeaderContentLength, strconv.Itoa(len(body)))
-	w.Header().Set(distribution.HeaderContentType, item.contentType)
-	w.Header().Set("Last-Modified", time.Now().UTC().Format(http.TimeFormat))
-	w.WriteHeader(status)
-	s.write(w, body)
+func TestS3StoreMultipartUploadIsDigestAtomic(t *testing.T) {
+	client := newFakeS3Client()
+	store, err := object.NewS3WithClient(client, object.S3Options{
+		Bucket:            "bucket",
+		Prefix:            "multipart",
+		PartSize:          testS3PartSize,
+		UploadConcurrency: 2,
+	})
+	require.NoError(t, err)
+
+	payload := bytes.Repeat([]byte("x"), int(testS3PartSize)+257)
+	digest := godigest.FromBytes(payload).String()
+	_, err = store.Put(t.Context(), digest, bytes.NewReader(payload), object.PutOptions{})
+	require.NoError(t, err)
+
+	stored, found := client.object(testS3Key("multipart", digest))
+	require.True(t, found)
+	require.Equal(t, payload, stored.body)
+	require.Zero(t, client.uploadCount())
+
+	wrongDigest := godigest.FromString("different payload").String()
+	_, err = store.Put(t.Context(), wrongDigest, bytes.NewReader(payload), object.PutOptions{})
+	require.ErrorIs(t, err, object.ErrDigestMismatch)
+
+	_, found = client.object(testS3Key("multipart", wrongDigest))
+	require.False(t, found)
+	require.Zero(t, client.uploadCount())
 }
 
-func (s *fakeS3Server) delete(w http.ResponseWriter, key string) {
-	s.mu.Lock()
-	delete(s.objects, key)
-	s.mu.Unlock()
-	w.WriteHeader(http.StatusNoContent)
+func TestS3StorePropagatesContextCancellation(t *testing.T) {
+	client := newFakeS3Client()
+	store, err := object.NewS3WithClient(client, object.S3Options{Bucket: "bucket"})
+	require.NoError(t, err)
+
+	ctx, cancel := context.WithCancel(t.Context())
+	cancel()
+
+	_, err = store.Stat(ctx, godigest.FromString("missing").String())
+	require.ErrorIs(t, err, context.Canceled)
 }
 
-func (s *fakeS3Server) lookup(key string) (fakeS3Object, bool) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	item, ok := s.objects[key]
-	return item, ok
+func TestNewS3StoreRejectsInvalidUploadTuning(t *testing.T) {
+	client := newFakeS3Client()
+
+	_, err := object.NewS3WithClient(client, object.S3Options{
+		Bucket:   "bucket",
+		PartSize: testS3PartSize - 1,
+	})
+	require.Error(t, err)
+
+	_, err = object.NewS3WithClient(client, object.S3Options{
+		Bucket:            "bucket",
+		UploadConcurrency: -1,
+	})
+	require.Error(t, err)
 }
 
-func (s *fakeS3Server) write(w http.ResponseWriter, data []byte) {
-	if _, err := w.Write(data); err != nil {
-		s.t.Errorf("write fake s3 response: %v", err)
-	}
+func testS3Key(prefix, digest string) string {
+	algorithm, encoded, _ := strings.Cut(digest, ":")
+	return prefix + "/blobs/" + algorithm + "/" + encoded[:2] + "/" + encoded
 }

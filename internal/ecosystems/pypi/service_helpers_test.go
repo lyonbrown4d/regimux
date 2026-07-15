@@ -29,7 +29,7 @@ func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreamURL str
 	t.Cleanup(func() {
 		requireNoError(t, "close metadata", db.Close())
 	})
-	objects, err := object.NewMemory("pypi-test")
+	objects, err := object.NewLocal(t.TempDir())
 	requireNoError(t, "open objects", err)
 	return pypi.NewService(pypi.ServiceDependencies{
 		Config: config.Config{

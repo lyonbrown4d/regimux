@@ -137,7 +137,7 @@ func newMetadataStore(t *testing.T) *meta.SQLStore {
 
 func newAdminObjectStore(ctx context.Context, t *testing.T) object.Store {
 	t.Helper()
-	store, err := object.NewMemory("admin-test-objects")
+	store, err := object.NewLocal(t.TempDir())
 	if err != nil {
 		t.Fatalf("new object store: %v", err)
 	}

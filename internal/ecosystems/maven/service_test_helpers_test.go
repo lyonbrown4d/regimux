@@ -23,7 +23,7 @@ func newTestService(ctx context.Context, t *testing.T, upstreams map[string]conf
 func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*maven.Service, meta.Store, object.Store) {
 	t.Helper()
 	db := newTestMetadata(ctx, t)
-	objects, err := object.NewMemory("maven-test")
+	objects, err := object.NewLocal(t.TempDir())
 	requireNoError(t, "open objects", err)
 	return maven.NewService(maven.ServiceDependencies{
 		Config:   config.Config{Maven: upstreams},

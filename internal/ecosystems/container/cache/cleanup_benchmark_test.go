@@ -49,7 +49,7 @@ func newBenchmarkStores(b *testing.B) (meta.Store, object.Store) {
 			b.Fatalf("close metadata store: %v", closeErr)
 		}
 	})
-	objects, err := object.NewMemory("benchmark-objects")
+	objects, err := object.NewLocal(b.TempDir())
 	if err != nil {
 		b.Fatalf("open object store: %v", err)
 	}

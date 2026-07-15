@@ -3,15 +3,12 @@ package config
 import (
 	"net/url"
 	"strings"
-	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
-
-const defaultSFTPObjectTimeout = 10 * time.Second
 
 func (c *Config) normalizeStore() {
 	c.normalizeMetaStore()
@@ -49,16 +46,6 @@ func (c *Config) normalizeObjectStore() {
 	c.Store.Object.S3.SecretAccessKey = strings.TrimSpace(c.Store.Object.S3.SecretAccessKey)
 	c.Store.Object.S3.SessionToken = strings.TrimSpace(c.Store.Object.S3.SessionToken)
 	c.Store.Object.S3.Profile = strings.TrimSpace(c.Store.Object.S3.Profile)
-	c.Store.Object.SFTP.Addr = strings.TrimSpace(c.Store.Object.SFTP.Addr)
-	c.Store.Object.SFTP.Username = strings.TrimSpace(c.Store.Object.SFTP.Username)
-	c.Store.Object.SFTP.Password = strings.TrimSpace(c.Store.Object.SFTP.Password)
-	c.Store.Object.SFTP.PrivateKey = strings.TrimSpace(c.Store.Object.SFTP.PrivateKey)
-	c.Store.Object.SFTP.PrivateKeyPassphrase = strings.TrimSpace(c.Store.Object.SFTP.PrivateKeyPassphrase)
-	c.Store.Object.SFTP.KnownHostsPath = strings.TrimSpace(c.Store.Object.SFTP.KnownHostsPath)
-	c.Store.Object.SFTP.HostKey = strings.TrimSpace(c.Store.Object.SFTP.HostKey)
-	if objectDriver == "sftp" && c.Store.Object.SFTP.Timeout == 0 {
-		c.Store.Object.SFTP.Timeout = defaultSFTPObjectTimeout
-	}
 }
 
 func (c Config) OrderedContainerUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {

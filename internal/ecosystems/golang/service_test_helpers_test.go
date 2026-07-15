@@ -36,7 +36,7 @@ func newTestServiceWithMetadata(ctx context.Context, t *testing.T, upstreams map
 func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*golang.Service, meta.Store, object.Store) {
 	t.Helper()
 	db := newTestMetadata(ctx, t)
-	objects, err := object.NewMemory("go-test")
+	objects, err := object.NewLocal(t.TempDir())
 	requireNoError(t, "open objects", err)
 	return golang.NewService(golang.ServiceDependencies{
 		Config:   config.Config{Go: upstreams},

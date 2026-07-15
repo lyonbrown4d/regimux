@@ -1,259 +1,150 @@
-// Package object stores registry object blobs.
 package object
 
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
-	"net/http"
 	"os"
-	pathpkg "path"
 	"path/filepath"
-	"strings"
-
-	"github.com/spf13/afero"
 )
 
-type aferoStore struct {
-	fs        afero.Fs
-	root      string
-	directPut bool
-	close     func() error
-}
-
+// LocalStore stores CAS objects on the host filesystem.
 type LocalStore struct {
-	*aferoStore
-}
-
-type MemoryStore struct {
-	*aferoStore
+	root string
 }
 
 func NewLocal(root string) (*LocalStore, error) {
-	root = strings.TrimSpace(root)
 	if root == "" {
-		root = filepath.Join("data", "objects")
+		root = "."
 	}
-	abs, err := filepath.Abs(root)
-	if err != nil {
-		return nil, wrapError(err, "resolve object store root")
-	}
-	store, err := newLocalWithFS(afero.NewOsFs(), abs)
-	if err != nil {
-		return nil, err
-	}
-	return &LocalStore{aferoStore: store}, nil
+
+	return &LocalStore{root: filepath.Clean(root)}, nil
 }
 
-func NewMemory(root string) (*MemoryStore, error) {
-	root = strings.TrimSpace(root)
-	if root == "" {
-		root = filepath.Join("data", "objects")
+func (s *LocalStore) Stat(ctx context.Context, rawDigest string) (*Info, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, fmt.Errorf("stat local object: %w", err)
 	}
-	store, err := newLocalWithFS(afero.NewMemMapFs(), root)
+
+	normalized, objectPath, err := s.objectPath(rawDigest)
 	if err != nil {
 		return nil, err
 	}
-	return &MemoryStore{aferoStore: store}, nil
-}
 
-func newLocalWithFS(fs afero.Fs, root string) (*aferoStore, error) {
-	return newAferoStore(fs, root, false, true)
-}
-
-func newAferoStore(fs afero.Fs, root string, directPut, ensureRoot bool) (*aferoStore, error) {
-	if fs == nil {
-		return nil, errorf("object store filesystem is not configured")
-	}
-	root = filepath.Clean(root)
-	base := afero.NewBasePathFs(fs, root)
-	if ensureRoot {
-		if err := base.MkdirAll(".", 0o750); err != nil {
-			return nil, wrapError(err, "create object store root")
-		}
-	}
-	return &aferoStore{fs: base, root: ".", directPut: directPut}, nil
-}
-
-func (s *aferoStore) Stat(ctx context.Context, digest string) (*Info, error) {
-	ctx = normalizeContext(ctx)
-	if err := checkContext(ctx, "stat object"); err != nil {
-		return nil, err
-	}
-	normalized, target, err := s.path(digest)
+	fileInfo, err := os.Stat(objectPath)
 	if err != nil {
-		return nil, err
+		return nil, localOperationError("stat", normalized, objectPath, err)
 	}
-	stat, err := s.fs.Stat(target)
-	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, ErrNotFound
-		}
-		return nil, wrapError(err, "stat object %s", normalized)
+	if !fileInfo.Mode().IsRegular() {
+		return nil, fmt.Errorf("stat local object %q at %q: not a regular file", normalized, objectPath)
 	}
-	return &Info{Digest: normalized, Size: stat.Size(), ETag: normalized, Path: target}, nil
+
+	return &Info{
+		Digest: normalized,
+		Size:   fileInfo.Size(),
+		ETag:   normalized,
+		Path:   objectPath,
+	}, nil
 }
 
-func (s *aferoStore) Exists(ctx context.Context, digest string) (bool, error) {
-	_, err := s.Stat(ctx, digest)
+func (s *LocalStore) Exists(ctx context.Context, rawDigest string) (bool, error) {
+	_, err := s.Stat(ctx, rawDigest)
 	if err == nil {
 		return true, nil
 	}
 	if errors.Is(err, ErrNotFound) {
 		return false, nil
 	}
+
 	return false, err
 }
 
-func (s *aferoStore) Get(ctx context.Context, digest string, opts GetOptions) (io.ReadCloser, *Info, error) {
-	ctx = normalizeContext(ctx)
-	if err := checkContext(ctx, "get object"); err != nil {
-		return nil, nil, err
-	}
-	info, err := s.Stat(ctx, digest)
+func (s *LocalStore) Get(
+	ctx context.Context,
+	rawDigest string,
+	opts GetOptions,
+) (io.ReadCloser, *Info, error) {
+	info, err := s.Stat(ctx, rawDigest)
 	if err != nil {
 		return nil, nil, err
 	}
-	file, err := s.fs.Open(info.Path)
+
+	file, err := os.Open(info.Path)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			return nil, nil, ErrNotFound
-		}
-		return nil, nil, wrapError(err, "open object %s", info.Digest)
+		return nil, nil, localOperationError("open", info.Digest, info.Path, err)
 	}
-	if opts.Range == nil {
-		return file, info, nil
-	}
-	resolved, err := opts.Range.Resolve(info.Size)
+
+	reader, resultInfo, err := localRangeReader(file, info, opts.Range)
 	if err != nil {
-		return nil, nil, closeFileAfterError(file, wrapError(err, "resolve object range"))
+		return nil, nil, errors.Join(err, closeLocalObject(file, info.Digest))
 	}
-	if _, err := file.Seek(resolved.Start, io.SeekStart); err != nil {
-		return nil, nil, closeFileAfterError(file, wrapError(err, "seek object range"))
-	}
-	ranged := *info
-	ranged.Size = resolved.Length()
-	return readCloser{Reader: io.LimitReader(file, resolved.Length()), closer: file}, &ranged, nil
+
+	return &contextReadCloser{ctx: ctx, reader: reader, closer: file}, resultInfo, nil
 }
 
-func (s *aferoStore) Put(ctx context.Context, digest string, r io.Reader, opts PutOptions) (*Info, error) {
-	ctx = normalizeContext(ctx)
-	if err := checkContext(ctx, "put object"); err != nil {
-		return nil, err
-	}
-	if r == nil {
-		r = http.NoBody
-	}
-
-	normalized, target, err := s.path(digest)
-	if err != nil {
-		return nil, err
-	}
-	existing, found, err := s.findExisting(ctx, normalized, opts)
-	if err != nil || found {
-		return existing, err
+func localRangeReader(
+	file *os.File,
+	info *Info,
+	requested *HTTPRange,
+) (io.Reader, *Info, error) {
+	resultInfo := *info
+	if requested == nil {
+		return file, &resultInfo, nil
 	}
 
-	if s.directPut {
-		return s.putDirect(ctx, normalized, target, r, opts)
-	}
-	session, err := newPutSession(s, normalized, target)
+	resolved, err := requested.Resolve(info.Size)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
-	return session.commit(ctx, r, opts)
+	if _, err = file.Seek(resolved.Start, io.SeekStart); err != nil {
+		return nil, nil, fmt.Errorf("seek local object %q: %w", info.Digest, err)
+	}
+
+	resultInfo.Size = resolved.Length()
+
+	return io.LimitReader(file, resolved.Length()), &resultInfo, nil
 }
 
-func (s *aferoStore) Delete(ctx context.Context, digest string) error {
-	ctx = normalizeContext(ctx)
-	if err := checkContext(ctx, "delete object"); err != nil {
-		return err
+func closeLocalObject(file *os.File, digest string) error {
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close local object %q: %w", digest, err)
 	}
-	_, target, err := s.path(digest)
-	if err != nil {
-		return err
-	}
-	if err := s.fs.Remove(target); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return wrapError(err, "delete object")
-	}
+
 	return nil
 }
 
-func (s *aferoStore) Close() error {
-	if s == nil || s.close == nil {
+func (s *LocalStore) Delete(ctx context.Context, rawDigest string) error {
+	if err := ctx.Err(); err != nil {
+		return fmt.Errorf("delete local object: %w", err)
+	}
+
+	normalized, objectPath, err := s.objectPath(rawDigest)
+	if err != nil {
+		return err
+	}
+
+	err = os.Remove(objectPath)
+	if err == nil || errors.Is(err, os.ErrNotExist) {
 		return nil
 	}
-	return s.close()
+
+	return localOperationError("delete", normalized, objectPath, err)
 }
 
-func (s *aferoStore) findExisting(ctx context.Context, digest string, opts PutOptions) (*Info, bool, error) {
-	existing, err := s.Stat(ctx, digest)
-	if err == nil {
-		existing.ContentType = opts.ContentType
-		return existing, true, nil
-	}
-	if errors.Is(err, ErrNotFound) {
-		return nil, false, nil
-	}
-	return nil, false, err
-}
-
-func (s *aferoStore) path(digest string) (string, string, error) {
-	if s == nil || s.fs == nil || s.root == "" {
-		return "", "", errorf("object store is not configured")
-	}
-	normalized, err := normalizeDigest(digest)
+func (s *LocalStore) objectPath(rawDigest string) (string, string, error) {
+	normalized, relative, err := casRelativePath(rawDigest)
 	if err != nil {
-		return "", "", wrapError(err, "normalize object digest")
+		return "", "", err
 	}
-	algorithm, encoded, _ := strings.Cut(normalized, ":")
-	target := pathpkg.Join(s.root, "blobs", algorithm, encoded[:2], encoded)
-	if strings.HasPrefix(target, "../") || pathpkg.IsAbs(target) {
-		return "", "", errorf("object digest escapes root: %s", digest)
-	}
-	return normalized, target, nil
+
+	return normalized, filepath.Join(s.root, filepath.FromSlash(relative)), nil
 }
 
-func normalizeContext(ctx context.Context) context.Context {
-	if ctx == nil {
-		return context.Background()
+func localOperationError(operation, digest, objectPath string, err error) error {
+	if errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("%s local object %q: %w", operation, digest, ErrNotFound)
 	}
-	return ctx
+
+	return fmt.Errorf("%s local object %q at %q: %w", operation, digest, objectPath, err)
 }
-
-func checkContext(ctx context.Context, operation string) error {
-	if err := ctx.Err(); err != nil {
-		return wrapError(err, "%s context", operation)
-	}
-	return nil
-}
-
-func closeFileAfterError(file afero.File, err error) error {
-	if closeErr := file.Close(); closeErr != nil {
-		return joinError("close object file after error", err, wrapError(closeErr, "close object file"))
-	}
-	return err
-}
-
-type readCloser struct {
-	io.Reader
-	closer io.Closer
-}
-
-func (r readCloser) Close() error {
-	if err := r.closer.Close(); err != nil {
-		return wrapError(err, "close object reader")
-	}
-	return nil
-}
-
-var (
-	_ Store = (*LocalStore)(nil)
-	_ Store = (*MemoryStore)(nil)
-	_ Store = (*aferoStore)(nil)
-
-	_ ObjectWalker = (*LocalStore)(nil)
-	_ ObjectWalker = (*MemoryStore)(nil)
-	_ ObjectLister = (*LocalStore)(nil)
-	_ ObjectLister = (*MemoryStore)(nil)
-)
