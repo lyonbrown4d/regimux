@@ -61,15 +61,11 @@ func NewService(deps ServiceDependencies) *Service {
 }
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
-	if s == nil {
-		return nil, oops.In("maven").Errorf("service is nil")
-	}
 	requestRoute, err := ParseTail(req.Alias, req.Tail)
 	if err != nil {
 		return nil, err
 	}
-	requestRoute.Query = strings.TrimSpace(req.Query)
-	upstreamCfg, ok := s.upstream(requestRoute.Alias)
+	upstreamCfg, ok := s.physicalUpstream(requestRoute.Alias)
 	if !ok {
 		return nil, oops.In("maven").With("alias", requestRoute.Alias).Errorf("maven upstream is not configured")
 	}
@@ -312,7 +308,10 @@ func (s *Service) publishArtifactPulled(ctx context.Context, requestRoute Route,
 }
 
 func (s *Service) upstream(alias string) (config.UpstreamConfig, bool) {
-	return s.cfg.MavenUpstream(alias)
+	if upstream, ok := s.cfg.MavenUpstream(alias); ok {
+		return upstream, true
+	}
+	return s.groupUpstream(alias)
 }
 
 func (s *Service) Upstreams() *collectionlist.List[Upstream] {

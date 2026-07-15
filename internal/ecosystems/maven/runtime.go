@@ -56,7 +56,7 @@ func (r *runtimeAdapter) Upstreams() *collectionlist.List[ecosystem.Upstream] {
 }
 
 func (r *runtimeAdapter) UpstreamAliases() *collectionlist.List[string] {
-	return ecosystem.UpstreamAliases(r.Upstreams())
+	return ecosystem.UpstreamAliases(r.service.Targets())
 }
 
 func (r *runtimeAdapter) Jobs() *collectionlist.List[ecosystem.JobSpec] {
@@ -71,14 +71,17 @@ func (r *runtimeAdapter) ProbeCapability() ecosystem.Capability {
 }
 
 func (r *runtimeAdapter) PrefetchCapability() ecosystem.Capability {
-	return depprefetch.Capability(r.Name(), r.Upstreams())
+	if r == nil {
+		return depprefetch.Capability("maven", r.Upstreams())
+	}
+	return depprefetch.Capability(r.Name(), r.service.Targets())
 }
 
 func (r *runtimeAdapter) ManualSyncCapability() ecosystem.Capability {
 	if r == nil {
 		return ecosystem.DisabledCapability("maven proxy manual sync service is not configured", r.Upstreams())
 	}
-	return depruntime.ManualSyncCapability(r.Name(), "maven", r.manualSync != nil, r.Upstreams())
+	return depruntime.ManualSyncCapability(r.Name(), "maven", r.manualSync != nil, r.service.Targets())
 }
 
 func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {

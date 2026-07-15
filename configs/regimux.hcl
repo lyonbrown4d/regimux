@@ -424,6 +424,18 @@ maven {
   }
 }
 
+# Maven groups aggregate independent repositories under one logical alias.
+# Requests use /maven-group/{group}/...; /maven/{alias}/... remains physical-only.
+# Members are searched in order; mirrors remain same-content failover endpoints.
+#
+# maven_groups {
+#   public {
+#     members = ["central", "gradle_plugins", "spring"]
+#     fallback_on_error = false
+#     metadata_policy = "merge"
+#   }
+# }
+#
 dist {
   gradle {
     registry = "https://services.gradle.org/distributions"

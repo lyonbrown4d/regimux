@@ -30,6 +30,9 @@ func (c *Config) normalizeUpstreams() error {
 	if err := c.normalizeDependencyUpstreams(ecosystemMaven, c.ensureMavenConfig()); err != nil {
 		return err
 	}
+	if err := c.normalizeMavenGroups(); err != nil {
+		return err
+	}
 	if err := c.normalizeDependencyUpstreams(ecosystemNPM, c.ensureNPMConfig()); err != nil {
 		return err
 	}

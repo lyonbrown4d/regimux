@@ -20,13 +20,21 @@ func newTestService(ctx context.Context, t *testing.T, upstreams map[string]conf
 	return service, metadata
 }
 
-func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig) (*maven.Service, meta.Store, object.Store) {
+func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[string]config.DependencyUpstreamConfig, groups ...config.MavenGroupsConfig) (*maven.Service, meta.Store, object.Store) {
 	t.Helper()
 	db := newTestMetadata(ctx, t)
 	objects, err := object.NewLocal(t.TempDir())
 	requireNoError(t, "open objects", err)
+	var mavenGroups config.MavenGroupsConfig
+	if len(groups) > 0 {
+		mavenGroups = groups[0]
+	}
+
 	return maven.NewService(maven.ServiceDependencies{
-		Config:   config.Config{Maven: upstreams},
+		Config: config.Config{
+			Maven:       upstreams,
+			MavenGroups: mavenGroups,
+		},
 		Metadata: db,
 		Objects:  objects,
 	}), db, objects

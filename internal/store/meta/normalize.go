@@ -12,6 +12,7 @@ var manifestHeaderAllowlist = map[string]struct{}{
 	http.CanonicalHeaderKey(distribution.HeaderContentType):         {},
 	http.CanonicalHeaderKey(distribution.HeaderDockerContentDigest): {},
 	http.CanonicalHeaderKey(distribution.HeaderETag):                {},
+	http.CanonicalHeaderKey("X-Regimux-Upstream"):                   {},
 }
 
 func normalizeEndpointHealthRecord(record EndpointHealthRecord) (EndpointHealthKey, EndpointHealthRecord, error) {

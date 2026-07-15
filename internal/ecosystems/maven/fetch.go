@@ -14,7 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
-func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
+func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Maven, upstreamAlias, cfg)
 	var lastErr error
 	for _, endpoint := range endpoints {

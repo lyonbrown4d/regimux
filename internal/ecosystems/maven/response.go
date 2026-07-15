@@ -71,6 +71,7 @@ func cacheHeaderKeys() []string {
 		distribution.HeaderContentType,
 		distribution.HeaderETag,
 		"Last-Modified",
+		resolvedUpstreamHeader,
 	}
 }
 
