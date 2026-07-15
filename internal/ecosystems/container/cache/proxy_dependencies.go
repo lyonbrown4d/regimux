@@ -1,6 +1,7 @@
 package cache
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
@@ -21,6 +22,31 @@ type blobStreamScheduler interface {
 
 type schedulerCapacity interface {
 	Free() int
+}
+
+type manifestClient interface {
+	GetManifest(context.Context, upstream.GetManifestRequest) (*upstream.ManifestResponse, error)
+}
+
+type blobClient interface {
+	GetBlob(context.Context, upstream.GetBlobRequest) (*upstream.BlobResponse, error)
+	ConsumeBlob(context.Context, upstream.GetBlobRequest, upstream.BlobConsumeFunc) error
+}
+
+type tagClient interface {
+	ListTags(context.Context, upstream.ListTagsRequest) (*upstream.TagsResponse, error)
+}
+
+type referrerClient interface {
+	GetReferrers(context.Context, upstream.ReferrersRequest) (*upstream.ReferrersResponse, error)
+	GetManifest(context.Context, upstream.GetManifestRequest) (*upstream.ManifestResponse, error)
+}
+
+type registryClient interface {
+	manifestClient
+	blobClient
+	tagClient
+	referrerClient
 }
 
 type ProxyDependencies struct {

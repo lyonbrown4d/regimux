@@ -29,7 +29,13 @@ func (c *Client) fetchBlob(ctx context.Context, runtime upstreamRuntime, req Get
 	method := methodOr(req.Method, http.MethodGet)
 	requestURL := registryURL(runtime.config.Registry, req.Repo, endpointBlob, req.Digest)
 	opts := blobRequestOptions(req)
-	resp, err := c.do(ctx, runtime, operationBlob, method, requestURL, pullRepositoryScope(req.Repo), opts...)
+	resp, err := c.do(ctx, runtime, requestSpec{
+		operation: operationBlob,
+		method:    method,
+		endpoint:  requestURL,
+		scope:     pullRepositoryScope(req.Repo),
+		options:   opts,
+	})
 	if err != nil {
 		return nil, err
 	}

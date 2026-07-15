@@ -61,7 +61,20 @@ func (m *Metrics) ObserveUpstreamRequest(ctx context.Context, req UpstreamReques
 	}
 }
 
-func (m *Metrics) ObserveUpstreamFailover(ctx context.Context, alias, operation, registry string, hasNext bool, err error) {
+type UpstreamFailoverMetric struct {
+	Alias     string
+	Operation string
+	Registry  string
+	HasNext   bool
+	Err       error
+}
+
+func (m *Metrics) ObserveUpstreamFailover(ctx context.Context, metric UpstreamFailoverMetric) {
+	alias := metric.Alias
+	operation := metric.Operation
+	registry := metric.Registry
+	hasNext := metric.HasNext
+	err := metric.Err
 	if m == nil {
 		return
 	}

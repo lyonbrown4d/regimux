@@ -46,7 +46,14 @@ func (e *RegistryEndpoint) observeAPI(
 		responseSize: responseSize,
 	}, err)
 	if e.metrics != nil {
-		e.metrics.ObserveAPIRequest(ctx, routeName, method, status, duration, responseSize, err)
+		e.metrics.ObserveAPIRequest(ctx, observability.APIRequestMetric{
+			Route:    routeName,
+			Method:   method,
+			Status:   status,
+			Duration: duration,
+			Size:     responseSize,
+			Err:      err,
+		})
 	}
 }
 

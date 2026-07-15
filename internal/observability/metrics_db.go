@@ -27,7 +27,20 @@ func newDBMetrics(obs observabilityx.Observability) dbMetrics {
 	}
 }
 
-func (m *Metrics) ObserveDBOperation(ctx context.Context, driver, operation, table string, duration time.Duration, err error) {
+type DBOperationMetric struct {
+	Driver    string
+	Operation string
+	Table     string
+	Duration  time.Duration
+	Err       error
+}
+
+func (m *Metrics) ObserveDBOperation(ctx context.Context, metric DBOperationMetric) {
+	driver := metric.Driver
+	operation := metric.Operation
+	table := metric.Table
+	duration := metric.Duration
+	err := metric.Err
 	if m == nil {
 		return
 	}

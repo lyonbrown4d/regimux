@@ -3,13 +3,10 @@ package upstream
 import (
 	"context"
 	"net/http"
-	"net/url"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/arcgolabs/clientx"
-	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	retry "github.com/sethvargo/go-retry"
 	"resty.dev/v3"
@@ -17,8 +14,29 @@ import (
 
 type requestOption func(*resty.Request)
 
-func (c *Client) do(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint, scope string, opts ...requestOption) (upstreamResponse, error) {
-	resp, err := c.execute(ctx, runtime, operation, method, endpoint, opts...)
+type requestSpec struct {
+	operation string
+	method    string
+	endpoint  string
+	scope     string
+	options   []requestOption
+}
+
+type requestAttempt struct {
+	runtime upstreamRuntime
+	spec    requestSpec
+	state   requestAttemptState
+	backoff retry.Backoff
+	number  int
+	total   int
+}
+
+func (c *Client) do(
+	ctx context.Context,
+	runtime upstreamRuntime,
+	spec requestSpec,
+) (upstreamResponse, error) {
+	resp, err := c.execute(ctx, runtime, spec)
 	if err != nil {
 		return upstreamResponse{}, err
 	}
@@ -34,31 +52,40 @@ func (c *Client) do(ctx context.Context, runtime upstreamRuntime, operation, met
 		return upstreamResponse{}, drainErr
 	}
 
-	token, err := c.fetchToken(ctx, runtime, challenge, scope)
+	token, err := c.fetchToken(ctx, runtime, challenge, spec.scope)
 	if err != nil {
 		return upstreamResponse{}, err
 	}
 	retryRuntime := runtime
 	retryRuntime.config.Auth = AuthConfig{Type: distribution.AuthSchemeBearer, Token: token}
-	return c.execute(ctx, retryRuntime, operation, method, endpoint, opts...)
+	return c.execute(ctx, retryRuntime, spec)
 }
 
-func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, operation, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
+func (c *Client) execute(
+	ctx context.Context,
+	runtime upstreamRuntime,
+	spec requestSpec,
+) (upstreamResponse, error) {
 	if runtime.client == nil {
 		return upstreamResponse{}, newError("upstream http client is not configured")
 	}
 	maxAttempts := maxUpstreamAttempts(runtime.config.HTTP.Retry)
 	state := requestAttemptState{
 		startedAt: time.Now(),
-		operation: operation,
-		method:    method,
-		endpoint:  endpoint,
 		size:      -1,
 	}
 	backoff := upstreamRetryBackoff(runtime.config.HTTP.Retry)
 
-	for attempt := range maxAttempts {
-		resp, shouldRetry, err := c.executeAttempt(ctx, runtime, state, backoff, attempt+1, maxAttempts, opts...)
+	for number := range maxAttempts {
+		attempt := requestAttempt{
+			runtime: runtime,
+			spec:    spec,
+			state:   state,
+			backoff: backoff,
+			number:  number + 1,
+			total:   maxAttempts,
+		}
+		resp, shouldRetry, err := c.executeAttempt(ctx, attempt)
 		if err != nil {
 			return upstreamResponse{}, err
 		}
@@ -73,35 +100,27 @@ func (c *Client) execute(ctx context.Context, runtime upstreamRuntime, operation
 
 type requestAttemptState struct {
 	startedAt time.Time
-	operation string
-	method    string
-	endpoint  string
 	status    int
 	size      int64
 }
 
 func (c *Client) executeAttempt(
 	ctx context.Context,
-	runtime upstreamRuntime,
-	state requestAttemptState,
-	backoff retry.Backoff,
-	attempt int,
-	maxAttempts int,
-	opts ...requestOption,
+	attempt requestAttempt,
 ) (upstreamResponse, bool, error) {
-	resp, err := c.executeOnce(ctx, runtime, state.method, state.endpoint, opts...)
+	resp, err := c.executeOnce(ctx, attempt)
 	if err != nil {
-		return c.handleAttemptError(ctx, runtime, state, backoff, attempt, maxAttempts, err)
+		return c.handleAttemptError(ctx, attempt, err)
 	}
 
-	state.status = resp.StatusCode
-	state.size = contentLength(resp.Header)
-	if !shouldRetryUpstreamStatus(resp.StatusCode) || attempt >= maxAttempts {
-		c.publishAttempt(ctx, runtime, state, attempt, nil)
+	attempt.state.status = resp.StatusCode
+	attempt.state.size = contentLength(resp.Header)
+	if !shouldRetryUpstreamStatus(resp.StatusCode) || attempt.number >= attempt.total {
+		c.publishAttempt(ctx, attempt, nil)
 		return resp, false, nil
 	}
-	if err := c.prepareRetry(ctx, runtime, state, backoff, &resp, nil, attempt, maxAttempts); err != nil {
-		c.publishAttempt(ctx, runtime, state, attempt, err)
+	if err := c.prepareRetry(ctx, attempt, &resp, nil); err != nil {
+		c.publishAttempt(ctx, attempt, err)
 		return upstreamResponse{}, false, err
 	}
 	return upstreamResponse{}, true, nil
@@ -109,19 +128,15 @@ func (c *Client) executeAttempt(
 
 func (c *Client) handleAttemptError(
 	ctx context.Context,
-	runtime upstreamRuntime,
-	state requestAttemptState,
-	backoff retry.Backoff,
-	attempt int,
-	maxAttempts int,
+	attempt requestAttempt,
 	err error,
 ) (upstreamResponse, bool, error) {
-	if !shouldRetryUpstreamError(err) || attempt >= maxAttempts {
-		c.publishAttempt(ctx, runtime, state, attempt, err)
+	if !shouldRetryUpstreamError(err) || attempt.number >= attempt.total {
+		c.publishAttempt(ctx, attempt, err)
 		return upstreamResponse{}, false, err
 	}
-	if retryErr := c.prepareRetry(ctx, runtime, state, backoff, nil, err, attempt, maxAttempts); retryErr != nil {
-		c.publishAttempt(ctx, runtime, state, attempt, retryErr)
+	if retryErr := c.prepareRetry(ctx, attempt, nil, err); retryErr != nil {
+		c.publishAttempt(ctx, attempt, retryErr)
 		return upstreamResponse{}, false, retryErr
 	}
 	return upstreamResponse{}, true, nil
@@ -129,42 +144,60 @@ func (c *Client) handleAttemptError(
 
 func (c *Client) prepareRetry(
 	ctx context.Context,
-	runtime upstreamRuntime,
-	state requestAttemptState,
-	backoff retry.Backoff,
+	attempt requestAttempt,
 	resp *upstreamResponse,
 	cause error,
-	attempt int,
-	maxAttempts int,
 ) error {
 	if resp != nil {
 		if err := drainAndClose(resp.Body); err != nil {
 			return err
 		}
 	}
-	wait, stop := backoff.Next()
+	wait, stop := attempt.backoff.Next()
 	if stop {
 		return nil
 	}
-	c.logUpstreamRetry(ctx, runtime, state, cause, attempt, maxAttempts, wait)
+	c.logUpstreamRetry(ctx, attempt, cause, wait)
 	return waitRetry(ctx, wait)
 }
 
-func (c *Client) publishAttempt(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, attempts int, err error) {
-	c.publishUpstreamRequest(ctx, runtime, state, attempts, time.Since(state.startedAt), err)
+func (c *Client) publishAttempt(
+	ctx context.Context,
+	attempt requestAttempt,
+	err error,
+) {
+	c.publishUpstreamRequest(
+		ctx,
+		attempt,
+		time.Since(attempt.state.startedAt),
+		err,
+	)
 }
 
-func (c *Client) executeOnce(ctx context.Context, runtime upstreamRuntime, method, endpoint string, opts ...requestOption) (upstreamResponse, error) {
-	req := runtime.client.R().SetResponseDoNotParse(true)
-	prepareRequest(req, runtime.config)
-	for _, opt := range opts {
-		if opt != nil {
-			opt(req)
+func (c *Client) executeOnce(
+	ctx context.Context,
+	attempt requestAttempt,
+) (upstreamResponse, error) {
+	req := attempt.runtime.client.R().SetResponseDoNotParse(true)
+	prepareRequest(req, attempt.runtime.config)
+	for _, option := range attempt.spec.options {
+		if option != nil {
+			option(req)
 		}
 	}
-	resp, err := runtime.client.Execute(ctx, req, method, endpoint)
+	resp, err := attempt.runtime.client.Execute(
+		ctx,
+		req,
+		attempt.spec.method,
+		attempt.spec.endpoint,
+	)
 	if err != nil {
-		return upstreamResponse{}, wrapError(err, "execute upstream request %s %s", method, endpoint)
+		return upstreamResponse{}, wrapError(
+			err,
+			"execute upstream request %s %s",
+			attempt.spec.method,
+			attempt.spec.endpoint,
+		)
 	}
 	return rawUpstreamResponse(resp)
 }
@@ -226,62 +259,4 @@ func waitRetry(ctx context.Context, wait time.Duration) error {
 	case <-ctx.Done():
 		return wrapError(ctx.Err(), "wait upstream retry")
 	}
-}
-
-func (c *Client) publishUpstreamRequest(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, attempts int, duration time.Duration, err error) {
-	if c == nil || c.events == nil {
-		return
-	}
-	message := ""
-	if err != nil {
-		message = err.Error()
-	}
-	if publishErr := events.Publish(ctx, c.events, events.UpstreamRequest{
-		Alias:     runtime.config.Alias,
-		Operation: state.operation,
-		Registry:  runtime.config.Registry,
-		Method:    strings.ToUpper(state.method),
-		Path:      requestPath(state.endpoint),
-		Status:    state.status,
-		Attempts:  attempts,
-		Duration:  duration,
-		Size:      state.size,
-		Error:     message,
-	}); publishErr != nil && c.logger != nil {
-		c.logger.DebugContext(ctx, "publish upstream request event failed", "error", publishErr)
-	}
-}
-
-func (c *Client) logUpstreamRetry(ctx context.Context, runtime upstreamRuntime, state requestAttemptState, err error, attempt, maxAttempts int, wait time.Duration) {
-	if c == nil || c.logger == nil {
-		return
-	}
-	attrs := []any{
-		"alias", runtime.config.Alias,
-		"operation", state.operation,
-		"method", state.method,
-		"registry", runtime.config.Registry,
-		"path", requestPath(state.endpoint),
-		"attempt", attempt,
-		"max_attempts", maxAttempts,
-		"wait", wait,
-	}
-	if state.status > 0 {
-		attrs = append(attrs, "status", state.status)
-	}
-	if err != nil {
-		attrs = append(attrs, "error", err, "error_kind", clientx.KindOf(err))
-	}
-	c.logger.WarnContext(ctx, "retrying upstream request", attrs...)
-}
-
-func requestPath(endpoint string) string {
-	parsed, err := url.Parse(endpoint)
-	if err != nil || parsed == nil || parsed.Path == "" {
-		return endpoint
-	}
-	if parsed.RawQuery == "" {
-		return parsed.Path
-	}
-	return parsed.Path + "?" + parsed.RawQuery
 }

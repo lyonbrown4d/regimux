@@ -94,24 +94,31 @@ func (s *Service) prefetchTask(
 		startedAt := time.Now().UTC()
 		candidate := plan.candidate
 		result, err := s.prefetchCandidate(taskCtx, opts, execution, candidate)
-		finishedAt := time.Now().UTC()
-		if err != nil {
-			return s.finishFailedPrefetchTask(taskCtx, execution, plan, state, result, err, startedAt, finishedAt)
+		outcome := prefetchTaskOutcome{
+			plan:       plan,
+			result:     result,
+			err:        err,
+			startedAt:  startedAt,
+			finishedAt: time.Now().UTC(),
 		}
-		return s.finishSuccessfulPrefetchTask(taskCtx, execution, plan, state, result, startedAt, finishedAt)
+		if err != nil {
+			return s.finishFailedPrefetchTask(taskCtx, execution, state, outcome)
+		}
+		return s.finishSuccessfulPrefetchTask(taskCtx, execution, state, outcome)
 	}
 }
 
 func (s *Service) finishFailedPrefetchTask(
 	ctx context.Context,
 	execution *runExecution,
-	plan candidatePlan,
 	state *prefetchTaskState,
-	result prefetchResult,
-	err error,
-	startedAt time.Time,
-	finishedAt time.Time,
+	outcome prefetchTaskOutcome,
 ) error {
+	plan := outcome.plan
+	result := outcome.result
+	err := outcome.err
+	startedAt := outcome.startedAt
+	finishedAt := outcome.finishedAt
 	status, skipReason, nextRetryAt := execution.failureOutcome(err, plan.attempt)
 	if status == outcomeStatusSkipped {
 		state.skipped.Add(1)
@@ -144,12 +151,13 @@ func (s *Service) finishFailedPrefetchTask(
 func (s *Service) finishSuccessfulPrefetchTask(
 	ctx context.Context,
 	execution *runExecution,
-	plan candidatePlan,
 	state *prefetchTaskState,
-	result prefetchResult,
-	startedAt time.Time,
-	finishedAt time.Time,
+	outcome prefetchTaskOutcome,
 ) error {
+	plan := outcome.plan
+	result := outcome.result
+	startedAt := outcome.startedAt
+	finishedAt := outcome.finishedAt
 	execution.addBytesWarmed(result.bytesWarmed)
 	if err := execution.recordOutcome(ctx, candidateOutcome{
 		candidate:  plan.candidate,

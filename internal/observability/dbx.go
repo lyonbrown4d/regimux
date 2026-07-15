@@ -15,7 +15,13 @@ func NewDBMetricsHook(metrics *Metrics, driver string) dbx.Hook {
 			if event == nil {
 				return
 			}
-			metrics.ObserveDBOperation(ctx, driver, string(event.Operation), event.Table, event.Duration, event.Err)
+			metrics.ObserveDBOperation(ctx, DBOperationMetric{
+				Driver:    driver,
+				Operation: string(event.Operation),
+				Table:     event.Table,
+				Duration:  event.Duration,
+				Err:       event.Err,
+			})
 		},
 	}
 }

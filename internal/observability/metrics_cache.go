@@ -38,7 +38,25 @@ func newCacheMetrics(obs observabilityx.Observability) cacheMetrics {
 	}
 }
 
-func (m *Metrics) ObserveCacheAccess(ctx context.Context, kind, alias, repository, status string) {
+type CacheAccessMetric struct {
+	Kind       string
+	Alias      string
+	Repository string
+	Status     string
+}
+
+type CacheStoreMetric struct {
+	Kind       string
+	Alias      string
+	Repository string
+	Size       int64
+}
+
+func (m *Metrics) ObserveCacheAccess(ctx context.Context, metric CacheAccessMetric) {
+	kind := metric.Kind
+	alias := metric.Alias
+	repository := metric.Repository
+	status := metric.Status
 	if m == nil {
 		return
 	}
@@ -50,7 +68,11 @@ func (m *Metrics) ObserveCacheAccess(ctx context.Context, kind, alias, repositor
 	)
 }
 
-func (m *Metrics) ObserveCacheStore(ctx context.Context, kind, alias, repository string, size int64) {
+func (m *Metrics) ObserveCacheStore(ctx context.Context, metric CacheStoreMetric) {
+	kind := metric.Kind
+	alias := metric.Alias
+	repository := metric.Repository
+	size := metric.Size
 	if m == nil {
 		return
 	}

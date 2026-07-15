@@ -21,6 +21,24 @@ type runState struct {
 	bytesWarmed       atomic.Int64
 }
 
+type candidateExecution struct {
+	runID     int64
+	candidate Candidate
+	attempt   int
+	opts      ecosystem.PrefetchOptions
+	state     *runState
+}
+
+type candidateOutcome struct {
+	status      string
+	result      FetchResult
+	err         error
+	skipReason  string
+	nextRetryAt time.Time
+	startedAt   time.Time
+	finishedAt  time.Time
+}
+
 func (s *runState) addPrefetched(bytes int64) {
 	s.prefetched.Add(1)
 	s.bytesWarmed.Add(bytes)
@@ -54,7 +72,12 @@ func (s *Service) prefetchCandidates(
 	report.Repositories = s.repositories(candidates)
 	state := &runState{}
 	tasks := collectionlist.MapList(candidates, func(_ int, candidate Candidate) func(context.Context) error {
-		return s.prefetchTask(opts, runID, candidate, state)
+		return s.prefetchTask(candidateExecution{
+			runID:     runID,
+			candidate: candidate,
+			opts:      opts,
+			state:     state,
+		})
 	})
 	err := worker.RunAllSettled(ctx, s.prefetchPool(), tasks)
 	state.apply(report)
@@ -68,68 +91,87 @@ func (s *Service) prefetchCandidates(
 	return nil
 }
 
-func (s *Service) prefetchTask(
-	opts ecosystem.PrefetchOptions,
-	runID int64,
-	candidate Candidate,
-	state *runState,
-) func(context.Context) error {
+func (s *Service) prefetchTask(execution candidateExecution) func(context.Context) error {
 	return func(ctx context.Context) error {
-		return s.prefetchTaskResult(ctx, opts, runID, candidate, state)
+		return s.prefetchTaskResult(ctx, execution)
 	}
 }
 
 func (s *Service) prefetchTaskResult(
 	ctx context.Context,
-	opts ecosystem.PrefetchOptions,
-	runID int64,
-	candidate Candidate,
-	state *runState,
+	execution candidateExecution,
 ) error {
-	attempt, skip, err := s.plan(ctx, opts, candidate)
+	attempt, skip, err := s.plan(ctx, execution.opts, execution.candidate)
 	if err != nil {
-		state.addFailed()
+		execution.state.addFailed()
 		return err
 	}
+	execution.attempt = attempt
 	if skip != "" {
-		return s.recordSkippedCandidate(ctx, runID, candidate, attempt, skip, state)
+		return s.recordSkippedCandidate(ctx, execution, skip)
 	}
-	return s.fetchAndRecordCandidate(ctx, runID, candidate, opts, attempt, state)
+	return s.fetchAndRecordCandidate(ctx, execution)
 }
 
-func (s *Service) recordSkippedCandidate(ctx context.Context, runID int64, candidate Candidate, attempt int, skip string, state *runState) error {
+func (s *Service) recordSkippedCandidate(
+	ctx context.Context,
+	execution candidateExecution,
+	skip string,
+) error {
 	startedAt := time.Now().UTC()
-	recordErr := s.recordOutcome(ctx, runID, candidate, statusSkipped, attempt, FetchResult{}, nil, skip, time.Time{}, startedAt, time.Now().UTC())
+	recordErr := s.recordOutcome(ctx, execution, candidateOutcome{
+		status:     statusSkipped,
+		skipReason: skip,
+		startedAt:  startedAt,
+		finishedAt: time.Now().UTC(),
+	})
 	if recordErr != nil {
 		return oops.Wrapf(recordErr, "record skipped dependency prefetch outcome")
 	}
-	state.addSkipped()
+	execution.state.addSkipped()
 	return nil
 }
 
-func (s *Service) fetchAndRecordCandidate(ctx context.Context, runID int64, candidate Candidate, opts ecosystem.PrefetchOptions, attempt int, state *runState) error {
+func (s *Service) fetchAndRecordCandidate(
+	ctx context.Context,
+	execution candidateExecution,
+) error {
 	startedAt := time.Now().UTC()
-	result, err := s.fetch(ctx, candidate)
-	finishedAt := time.Now().UTC()
+	result, err := s.fetch(ctx, execution.candidate)
+	outcome := candidateOutcome{
+		result:     result,
+		err:        err,
+		startedAt:  startedAt,
+		finishedAt: time.Now().UTC(),
+	}
 	if err != nil {
-		return s.recordFailedCandidate(ctx, runID, candidate, attempt, opts, state, result, err, startedAt, finishedAt)
+		return s.recordFailedCandidate(ctx, execution, outcome)
 	}
-	return s.recordSuccessCandidate(ctx, runID, candidate, attempt, state, result, startedAt, finishedAt)
+	return s.recordSuccessCandidate(ctx, execution, outcome)
 }
 
-func (s *Service) recordFailedCandidate(ctx context.Context, runID int64, candidate Candidate, attempt int, opts ecosystem.PrefetchOptions, state *runState, result FetchResult, candidateErr error, startedAt, finishedAt time.Time) error {
-	state.addFailed()
-	nextRetryAt := nextRetryAt(opts, attempt)
-	recordErr := s.recordOutcome(ctx, runID, candidate, statusFailed, attempt, result, candidateErr, "", nextRetryAt, startedAt, finishedAt)
-	return oops.Wrapf(multierr.Combine(candidateErr, recordErr), "prefetch dependency candidate")
+func (s *Service) recordFailedCandidate(
+	ctx context.Context,
+	execution candidateExecution,
+	outcome candidateOutcome,
+) error {
+	execution.state.addFailed()
+	outcome.status = statusFailed
+	outcome.nextRetryAt = nextRetryAt(execution.opts, execution.attempt)
+	recordErr := s.recordOutcome(ctx, execution, outcome)
+	return oops.Wrapf(multierr.Combine(outcome.err, recordErr), "prefetch dependency candidate")
 }
 
-func (s *Service) recordSuccessCandidate(ctx context.Context, runID int64, candidate Candidate, attempt int, state *runState, result FetchResult, startedAt, finishedAt time.Time) error {
-	recordErr := s.recordOutcome(ctx, runID, candidate, statusSuccess, attempt, result, nil, "", time.Time{}, startedAt, finishedAt)
-	if recordErr != nil {
-		return recordErr
+func (s *Service) recordSuccessCandidate(
+	ctx context.Context,
+	execution candidateExecution,
+	outcome candidateOutcome,
+) error {
+	outcome.status = statusSuccess
+	if err := s.recordOutcome(ctx, execution, outcome); err != nil {
+		return err
 	}
-	state.addPrefetched(result.BytesWarmed)
+	execution.state.addPrefetched(outcome.result.BytesWarmed)
 	return nil
 }
 

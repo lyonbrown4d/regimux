@@ -47,8 +47,19 @@ func TestAdditionalMetricsRecordBytesAndReports(t *testing.T) {
 	recorder := &metricsRecorder{}
 	metrics := observability.NewMetricsFromObservability(recorder, nil)
 
-	metrics.ObserveAPIRequest(context.Background(), "registry.manifest", http.MethodGet, http.StatusOK, time.Millisecond, 128, nil)
-	metrics.ObserveCacheStore(context.Background(), "blob", "hub", "library/alpine", 256)
+	metrics.ObserveAPIRequest(context.Background(), observability.APIRequestMetric{
+		Route:    "registry.manifest",
+		Method:   http.MethodGet,
+		Status:   http.StatusOK,
+		Duration: time.Millisecond,
+		Size:     128,
+	})
+	metrics.ObserveCacheStore(context.Background(), observability.CacheStoreMetric{
+		Kind:       "blob",
+		Alias:      "hub",
+		Repository: "library/alpine",
+		Size:       256,
+	})
 	metrics.ObserveDependencyPull(context.Background(), observability.DependencyPullMetric{
 		Ecosystem:  "container",
 		Kind:       "manifest",

@@ -8,16 +8,25 @@ import (
 	"github.com/arcgolabs/dbx/querydsl"
 )
 
+type repositoryUpdateQuery struct {
+	source           querydsl.TableSource
+	aliasColumn      querydsl.TypedOperand[string]
+	repositoryColumn querydsl.TypedOperand[string]
+	updatedColumn    querydsl.TypedOperand[int64]
+	label            string
+}
+
 func (s *SQLStore) repositoryMaxUpdatedAt(
 	ctx context.Context,
-	source querydsl.TableSource,
-	aliasColumn querydsl.TypedOperand[string],
-	repositoryColumn querydsl.TypedOperand[string],
-	updatedColumn querydsl.TypedOperand[int64],
+	query repositoryUpdateQuery,
 	alias string,
 	name string,
-	label string,
 ) (time.Time, error) {
+	source := query.source
+	aliasColumn := query.aliasColumn
+	repositoryColumn := query.repositoryColumn
+	updatedColumn := query.updatedColumn
+	label := query.label
 	row, err := dbx.GetTyped[sumInt64Row](ctx, s.db, querydsl.SelectInto[sumInt64Row](
 		querydsl.Max(updatedColumn).As("value"),
 	).From(source).Where(querydsl.And(

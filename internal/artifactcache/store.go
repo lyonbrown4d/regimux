@@ -34,7 +34,7 @@ func New(deps Dependencies) *Store {
 	}
 }
 
-func (s *Store) Metadata() meta.Store {
+func (s *Store) Metadata() MetadataStore {
 	if s == nil {
 		return nil
 	}

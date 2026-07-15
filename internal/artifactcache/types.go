@@ -18,8 +18,17 @@ const (
 	CacheStale        = "stale"
 )
 
+type MetadataStore interface {
+	meta.ManifestRepository
+	meta.TagRepository
+	meta.BlobRepository
+	meta.RepoBlobRepository
+	meta.PullRepository
+	meta.EndpointHealthRepository
+}
+
 type Dependencies struct {
-	Metadata meta.Store
+	Metadata MetadataStore
 	Objects  object.Store
 	Fills    *FillTracker
 	Logger   *slog.Logger
@@ -27,7 +36,7 @@ type Dependencies struct {
 }
 
 type Store struct {
-	metadata meta.Store
+	metadata MetadataStore
 	objects  object.Store
 	fills    *FillTracker
 	logger   *slog.Logger

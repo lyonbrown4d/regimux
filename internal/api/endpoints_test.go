@@ -13,7 +13,14 @@ import (
 
 func TestServerExposesPrometheusText(t *testing.T) {
 	metrics := observability.NewMetrics(nil)
-	metrics.ObserveAPIRequest(context.Background(), "registry.manifest", http.MethodGet, http.StatusOK, time.Millisecond, 2, nil)
+	metrics.ObserveAPIRequest(context.Background(), observability.APIRequestMetric{
+		Route:    "registry.manifest",
+		Method:   http.MethodGet,
+		Status:   http.StatusOK,
+		Duration: time.Millisecond,
+		Size:     2,
+		Err:      nil,
+	})
 	metrics.ObserveDependencyPull(context.Background(), observability.DependencyPullMetric{
 		Ecosystem:  "container",
 		Kind:       "manifest",

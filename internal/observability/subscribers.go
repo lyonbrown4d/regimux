@@ -32,7 +32,13 @@ func NewFailoverMetricsSubscriber(metrics *Metrics) events.Subscriber {
 		return nil
 	}
 	return events.NewSubscriber(func(ctx context.Context, event events.UpstreamFailover) error {
-		metrics.ObserveUpstreamFailover(ctx, event.Alias, event.Operation, event.Registry, event.HasNext, errorFromMessage(event.Error))
+		metrics.ObserveUpstreamFailover(ctx, UpstreamFailoverMetric{
+			Alias:     event.Alias,
+			Operation: event.Operation,
+			Registry:  event.Registry,
+			HasNext:   event.HasNext,
+			Err:       errorFromMessage(event.Error),
+		})
 		return nil
 	})
 }
@@ -42,7 +48,12 @@ func NewCacheAccessMetricsSubscriber(metrics *Metrics) events.Subscriber {
 		return nil
 	}
 	return events.NewSubscriber(func(ctx context.Context, event events.CacheAccess) error {
-		metrics.ObserveCacheAccess(ctx, event.Kind, event.Alias, event.Repository, event.Status)
+		metrics.ObserveCacheAccess(ctx, CacheAccessMetric{
+			Kind:       event.Kind,
+			Alias:      event.Alias,
+			Repository: event.Repository,
+			Status:     event.Status,
+		})
 		return nil
 	})
 }
@@ -52,7 +63,12 @@ func NewCacheStoreMetricsSubscriber(metrics *Metrics) events.Subscriber {
 		return nil
 	}
 	return events.NewSubscriber(func(ctx context.Context, event events.CacheStore) error {
-		metrics.ObserveCacheStore(ctx, event.Kind, event.Alias, event.Repository, event.Size)
+		metrics.ObserveCacheStore(ctx, CacheStoreMetric{
+			Kind:       event.Kind,
+			Alias:      event.Alias,
+			Repository: event.Repository,
+			Size:       event.Size,
+		})
 		return nil
 	})
 }

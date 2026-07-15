@@ -16,7 +16,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	accesspolicy "github.com/lyonbrown4d/regimux/internal/policy"
-	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
 )
@@ -33,7 +32,7 @@ const (
 type ServiceDependencies struct {
 	Config   config.Config
 	Cache    *artifactcache.Store
-	Metadata meta.Store
+	Metadata artifactcache.MetadataStore
 	Objects  object.Store
 	Factory  *clientfactory.Factory
 	Logger   *slog.Logger
@@ -42,7 +41,7 @@ type ServiceDependencies struct {
 
 type Service struct {
 	cfg      config.Config
-	metadata meta.Store
+	metadata artifactcache.MetadataStore
 	objects  object.Store
 	factory  *clientfactory.Factory
 	logger   *slog.Logger

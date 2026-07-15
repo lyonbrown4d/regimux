@@ -34,7 +34,22 @@ func newAPIMetrics(obs observabilityx.Observability) apiMetrics {
 	}
 }
 
-func (m *Metrics) ObserveAPIRequest(ctx context.Context, route, method string, status int, duration time.Duration, size int64, err error) {
+type APIRequestMetric struct {
+	Route    string
+	Method   string
+	Status   int
+	Duration time.Duration
+	Size     int64
+	Err      error
+}
+
+func (m *Metrics) ObserveAPIRequest(ctx context.Context, metric APIRequestMetric) {
+	route := metric.Route
+	method := metric.Method
+	status := metric.Status
+	duration := metric.Duration
+	size := metric.Size
+	err := metric.Err
 	if m == nil {
 		return
 	}

@@ -13,7 +13,6 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/coalescer"
-	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -23,7 +22,7 @@ import (
 )
 
 type Proxy struct {
-	client               upstream.RegistryClient
+	client               registryClient
 	cache                backend.Backend
 	metadata             meta.Store
 	objects              object.Store
@@ -156,7 +155,7 @@ func (p *Proxy) Referrers() ReferrerService {
 }
 
 type manifestProxy struct {
-	client       upstream.RegistryClient
+	client       manifestClient
 	cache        backend.Backend
 	metadata     meta.Store
 	objects      object.Store
@@ -168,7 +167,7 @@ type manifestProxy struct {
 }
 
 type blobProxy struct {
-	client           upstream.RegistryClient
+	client           blobClient
 	cache            backend.Backend
 	metadata         meta.Store
 	objects          object.Store
@@ -184,14 +183,14 @@ type blobProxy struct {
 }
 
 type tagProxy struct {
-	client upstream.RegistryClient
+	client tagClient
 	cache  backend.Backend
 	events events.Bus
 	ttl    time.Duration
 }
 
 type referrerProxy struct {
-	client      upstream.RegistryClient
+	client      referrerClient
 	cache       backend.Backend
 	events      events.Bus
 	ttl         time.Duration

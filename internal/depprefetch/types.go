@@ -23,9 +23,14 @@ const (
 
 type FetchFunc func(context.Context, Candidate) (FetchResult, error)
 
+type MetadataStore interface {
+	meta.PullRepository
+	meta.PrefetchRepository
+}
+
 type Dependencies struct {
 	Ecosystem string
-	Metadata  meta.Store
+	Metadata  MetadataStore
 	Workers   *worker.Pools
 	Logger    *slog.Logger
 	Fetch     FetchFunc
@@ -33,7 +38,7 @@ type Dependencies struct {
 
 type Service struct {
 	ecosystem string
-	metadata  meta.Store
+	metadata  MetadataStore
 	workers   *worker.Pools
 	logger    *slog.Logger
 	fetch     FetchFunc

@@ -2,10 +2,6 @@ package maven
 
 import (
 	"context"
-	"log/slog"
-	"net/http"
-
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/depprefetch"
 	"github.com/lyonbrown4d/regimux/internal/depruntime"
@@ -14,91 +10,39 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/samber/oops"
+	"log/slog"
+	"net/http"
 )
 
 type runtimeAdapter struct {
-	service    *Service
-	prober     *ecosystem.EndpointProber
-	prefetcher *depprefetch.Service
-	manualSync *manualsync.Service
+	*depruntime.Adapter
+	service *Service
 }
 
 func newRuntimeAdapter(service *Service, prober *ecosystem.EndpointProber, metadata meta.Store, pools *worker.Pools, logger *slog.Logger) *runtimeAdapter {
-	adapter := &runtimeAdapter{service: service, prober: prober}
-	adapter.manualSync = manualsync.NewService(manualsync.ServiceDependencies{
-		Execute: func(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
-			return adapter.syncDependency(ctx, opts)
-		},
-	})
-	adapter.prefetcher = depprefetch.New(depprefetch.Dependencies{
-		Ecosystem: ecosystem.Maven,
-		Metadata:  metadata,
-		Workers:   pools,
-		Logger:    logger,
-		Fetch:     adapter.prefetch,
-	})
+	adapter := &runtimeAdapter{service: service}
+	options := depruntime.AdapterOptions[Upstream]{
+		Name:              ecosystemMaven,
+		Label:             "maven",
+		UpstreamAlias:     func(upstream Upstream) string { return upstream.Alias },
+		UpstreamConfig:    func(upstream Upstream) config.UpstreamConfig { return upstream.Config },
+		ServiceConfigured: service != nil,
+		Prober:            prober,
+		Metadata:          metadata,
+		Workers:           pools,
+		Logger:            logger,
+		Fetch:             adapter.prefetch,
+		Sync:              adapter.syncDependency,
+	}
+	if service != nil {
+		options.Upstreams = service.Upstreams
+		options.PrefetchSchedule = service.cfg.Scheduler.Prefetch
+		options.RefreshSchedule = service.cfg.Scheduler.ManifestRefresh
+		options.CapabilityUpstreams = service.Targets
+	}
+	adapter.Adapter = depruntime.NewAdapter(options)
 	return adapter
 }
-
-func (r *runtimeAdapter) Name() string {
-	return ecosystemMaven
-}
-
-func (r *runtimeAdapter) Upstreams() *collectionlist.List[ecosystem.Upstream] {
-	if r == nil || r.service == nil {
-		return collectionlist.NewList[ecosystem.Upstream]()
-	}
-	return depruntime.Upstreams(r.Name(), r.service.Upstreams(), func(upstream Upstream) string {
-		return upstream.Alias
-	}, func(upstream Upstream) config.UpstreamConfig {
-		return upstream.Config
-	})
-}
-
-func (r *runtimeAdapter) UpstreamAliases() *collectionlist.List[string] {
-	return ecosystem.UpstreamAliases(r.service.Targets())
-}
-
-func (r *runtimeAdapter) Jobs() *collectionlist.List[ecosystem.JobSpec] {
-	if r == nil || r.service == nil {
-		return ecosystem.ProbeJobSpecs(r)
-	}
-	return depruntime.Jobs(r, true, r.service.cfg.Scheduler.Prefetch, r.service.cfg.Scheduler.ManifestRefresh)
-}
-
-func (r *runtimeAdapter) ProbeCapability() ecosystem.Capability {
-	return ecosystem.ProbeCapability(r.Upstreams())
-}
-
-func (r *runtimeAdapter) PrefetchCapability() ecosystem.Capability {
-	if r == nil {
-		return depprefetch.Capability("maven", r.Upstreams())
-	}
-	return depprefetch.Capability(r.Name(), r.service.Targets())
-}
-
-func (r *runtimeAdapter) ManualSyncCapability() ecosystem.Capability {
-	if r == nil {
-		return ecosystem.DisabledCapability("maven proxy manual sync service is not configured", r.Upstreams())
-	}
-	return depruntime.ManualSyncCapability(r.Name(), "maven", r.manualSync != nil, r.service.Targets())
-}
-
-func (r *runtimeAdapter) ProbeTargets() *collectionlist.List[ecosystem.ProbeTarget] {
-	return ecosystem.ProbeTargets(r.Upstreams())
-}
-
-func (r *runtimeAdapter) Prefetch(ctx context.Context, opts ecosystem.PrefetchOptions) (*ecosystem.PrefetchReport, error) {
-	if r == nil {
-		return nil, oops.In("maven").Errorf("maven proxy prefetcher is not configured")
-	}
-	report, err := depruntime.RunPrefetch(ctx, r.Name(), "maven", r.prefetcher, opts)
-	if err != nil {
-		return report, oops.Wrapf(err, "prefetch maven proxy artifacts")
-	}
-	return report, nil
-}
-
 func (r *runtimeAdapter) prefetch(ctx context.Context, candidate depprefetch.Candidate) (depprefetch.FetchResult, error) {
 	resp, err := r.service.refresh(ctx, Request{
 		Alias:          candidate.Alias,
@@ -125,51 +69,6 @@ func mavenTail(candidate depprefetch.Candidate) string {
 		return candidate.Reference
 	}
 	return candidate.Repository + "/" + candidate.Reference
-}
-
-func (r *runtimeAdapter) Probe(ctx context.Context, target ecosystem.ProbeTarget) error {
-	if r == nil || r.prober == nil {
-		return oops.In("maven").Errorf("maven proxy endpoint prober is not configured")
-	}
-	if err := r.prober.Probe(ctx, target); err != nil {
-		return oops.Wrapf(err, "probe maven proxy upstream")
-	}
-	return nil
-}
-
-func (r *runtimeAdapter) CreateSyncJob(ctx context.Context, opts manualsync.SyncOptions) (manualsync.SyncJob, error) {
-	if r == nil {
-		return manualsync.SyncJob{}, oops.In("maven").Errorf("maven proxy manual sync service is not configured")
-	}
-	job, err := depruntime.CreateSyncJob(ctx, r.Name(), "maven", r.manualSync, opts)
-	if err != nil {
-		return manualsync.SyncJob{}, oops.Wrapf(err, "create maven proxy manual sync job")
-	}
-	return job, nil
-}
-
-func (r *runtimeAdapter) RunSyncJob(ctx context.Context, id string) error {
-	if r == nil {
-		return oops.In("maven").Errorf("maven proxy manual sync service is not configured")
-	}
-	if err := depruntime.RunSyncJob(ctx, r.Name(), "maven", r.manualSync, id); err != nil {
-		return oops.Wrapf(err, "run maven proxy manual sync job")
-	}
-	return nil
-}
-
-func (r *runtimeAdapter) MarkSyncJobFailed(id string, err error) {
-	if r == nil {
-		return
-	}
-	depruntime.MarkSyncJobFailed(r.manualSync, id, err)
-}
-
-func (r *runtimeAdapter) SyncJob(id string) (manualsync.SyncJob, bool) {
-	if r == nil {
-		return manualsync.SyncJob{}, false
-	}
-	return depruntime.SyncJob(r.manualSync, id)
 }
 
 func (r *runtimeAdapter) syncDependency(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {

@@ -55,11 +55,23 @@ func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) 
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	manifestAt, err := s.repositoryMaxUpdatedAt(ctx, sqlManifestRows, sqlManifestRows.Alias, sqlManifestRows.Repository, sqlManifestRows.UpdatedAt, alias, name, "manifest")
+	manifestAt, err := s.repositoryMaxUpdatedAt(ctx, repositoryUpdateQuery{
+		source:           sqlManifestRows,
+		aliasColumn:      sqlManifestRows.Alias,
+		repositoryColumn: sqlManifestRows.Repository,
+		updatedColumn:    sqlManifestRows.UpdatedAt,
+		label:            "manifest",
+	}, alias, name)
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	tagAt, err := s.repositoryMaxUpdatedAt(ctx, sqlTagRows, sqlTagRows.Alias, sqlTagRows.Repository, sqlTagRows.UpdatedAt, alias, name, "tag")
+	tagAt, err := s.repositoryMaxUpdatedAt(ctx, repositoryUpdateQuery{
+		source:           sqlTagRows,
+		aliasColumn:      sqlTagRows.Alias,
+		repositoryColumn: sqlTagRows.Repository,
+		updatedColumn:    sqlTagRows.UpdatedAt,
+		label:            "tag",
+	}, alias, name)
 	if err != nil {
 		return repositoryAggregate{}, err
 	}

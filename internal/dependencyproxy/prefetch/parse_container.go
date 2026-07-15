@@ -9,6 +9,12 @@ import (
 	"github.com/samber/oops"
 )
 
+type ociCollector struct {
+	source    Source
+	opts      ParseOptions
+	artifacts []Artifact
+}
+
 type containerTarget struct {
 	Alias      string
 	Repository string
@@ -38,69 +44,57 @@ func parseOCIManifest(source Source, opts ParseOptions) ([]Artifact, error) {
 	if err := json.Unmarshal(source.Body, &payload); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode OCI manifest descriptors")
 	}
-	artifacts := make([]Artifact, 0)
-	if err := collectOCIArtifacts(source, opts, payload, containerTarget{}, &artifacts); err != nil {
+	collector := ociCollector{source: source, opts: opts}
+	if err := collector.collect(payload, containerTarget{}); err != nil {
 		return nil, err
 	}
-	return dedupeArtifacts(artifacts), nil
+	return dedupeArtifacts(collector.artifacts), nil
 }
 
-func collectOCIArtifacts(source Source, opts ParseOptions, value any, inherited containerTarget, artifacts *[]Artifact) error {
+func (c *ociCollector) collect(value any, inherited containerTarget) error {
 	switch typed := value.(type) {
 	case []any:
-		return collectOCIArtifactList(source, opts, typed, inherited, artifacts)
+		return c.collectList(typed, inherited)
 	case map[string]any:
-		return collectOCIArtifactMap(source, opts, typed, inherited, artifacts)
+		return c.collectMap(typed, inherited)
 	}
 	return nil
 }
 
-func collectOCIArtifactList(source Source, opts ParseOptions, values []any, inherited containerTarget, artifacts *[]Artifact) error {
+func (c *ociCollector) collectList(values []any, inherited containerTarget) error {
 	for i := range values {
-		if err := collectOCIArtifacts(source, opts, values[i], inherited, artifacts); err != nil {
+		if err := c.collect(values[i], inherited); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func collectOCIArtifactMap(
-	source Source,
-	opts ParseOptions,
-	values map[string]any,
-	inherited containerTarget,
-	artifacts *[]Artifact,
-) error {
-	target := inheritedContainerTarget(opts, inherited, values)
-	if err := collectOCIImageRef(source, opts, values, artifacts); err != nil {
+func (c *ociCollector) collectMap(values map[string]any, inherited containerTarget) error {
+	target := inheritedContainerTarget(c.opts, inherited, values)
+	if err := c.collectImageRef(values); err != nil {
 		return err
 	}
-	if err := collectOCIDescriptor(source, opts, values, target, artifacts); err != nil {
+	if err := c.collectDescriptor(values, target); err != nil {
 		return err
 	}
-	return collectOCIChildren(source, opts, values, target, artifacts)
+	return c.collectChildren(values, target)
 }
 
-func collectOCIImageRef(source Source, opts ParseOptions, values map[string]any, artifacts *[]Artifact) error {
+func (c *ociCollector) collectImageRef(values map[string]any) error {
 	imageRef := firstString(values, "image", "imageRef", "container", "containerRef")
 	if imageRef == "" {
 		return nil
 	}
-	parsed, err := parseContainerRefString(imageRef, opts)
+	parsed, err := parseContainerRefString(imageRef, c.opts)
 	if err != nil {
 		return err
 	}
-	*artifacts = append(*artifacts, containerArtifact(source, opts, parsed, 0))
+	c.artifacts = append(c.artifacts, containerArtifact(c.source, c.opts, parsed, 0))
 	return nil
 }
 
-func collectOCIDescriptor(
-	source Source,
-	opts ParseOptions,
-	values map[string]any,
-	target containerTarget,
-	artifacts *[]Artifact,
-) error {
+func (c *ociCollector) collectDescriptor(values map[string]any, target containerTarget) error {
 	if target.Repository == "" {
 		return nil
 	}
@@ -113,17 +107,17 @@ func collectOCIDescriptor(
 	if target.Alias == "" {
 		return oops.In("dependency-prefetch").With("repository", target.Repository).Errorf("container descriptor upstream alias is required")
 	}
-	*artifacts = append(*artifacts, containerArtifact(source, opts, target, 0))
+	c.artifacts = append(c.artifacts, containerArtifact(c.source, c.opts, target, 0))
 	return nil
 }
 
-func collectOCIChildren(source Source, opts ParseOptions, values map[string]any, target containerTarget, artifacts *[]Artifact) error {
+func (c *ociCollector) collectChildren(values map[string]any, target containerTarget) error {
 	for _, key := range []string{"manifests", "descriptors", "children"} {
 		child, ok := values[key]
 		if !ok {
 			continue
 		}
-		if err := collectOCIArtifacts(source, opts, child, target, artifacts); err != nil {
+		if err := c.collect(child, target); err != nil {
 			return err
 		}
 	}
