@@ -48,7 +48,7 @@ func TestSQLStoreRecordPullConcurrent(t *testing.T) {
 	}
 	repositories, err := store.ListRepositories(ctx)
 	requireNoError(t, "list repositories after concurrent pull", err)
-	if len(repositories) != 1 || repositories[0].PullCount != workers {
+	if repositories.Len() != 1 || repositories.Values()[0].PullCount != workers {
 		t.Fatalf("unexpected repository aggregate after concurrent pull: %#v", repositories)
 	}
 }

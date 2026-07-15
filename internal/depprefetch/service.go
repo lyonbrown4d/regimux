@@ -63,11 +63,11 @@ func (s *Service) run(ctx context.Context, opts ecosystem.PrefetchOptions, runID
 	if err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "list dependency pull records")
 	}
-	candidates := s.candidates(collectionlist.NewList(records...), opts)
+	candidates := s.candidates(records, opts)
 	report := &ecosystem.PrefetchReport{
 		Ecosystem:      s.ecosystem,
-		ScannedRecords: len(records),
-		SkippedRecords: len(records) - candidates.Len(),
+		ScannedRecords: records.Len(),
+		SkippedRecords: records.Len() - candidates.Len(),
 		Candidates:     candidates.Len(),
 	}
 	return report, s.prefetchCandidates(ctx, opts, runID, candidates, report)

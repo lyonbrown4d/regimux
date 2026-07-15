@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
@@ -115,16 +116,19 @@ func (r *Runtime) runRefreshDrain(ctx context.Context) error {
 	if err != nil {
 		return oops.Wrapf(err, "consume due refresh intents")
 	}
-	if len(intents) == 0 {
+	if intents.Len() == 0 {
 		return nil
 	}
 
 	startedAt := time.Now()
-	var refreshErr error
-	for i := range intents {
-		if err := r.refreshArtifact(ctx, intents[i]); err != nil {
-			refreshErr = join(refreshErr, err)
+	tasks := collectionlist.MapList(intents, func(_ int, intent meta.RefreshIntentRecord) func(context.Context) error {
+		return func(taskCtx context.Context) error {
+			return r.refreshArtifact(taskCtx, intent)
 		}
+	})
+	refreshErr := r.workers.RunIOAllSettled(ctx, tasks)
+	if refreshErr != nil {
+		refreshErr = oops.Wrapf(refreshErr, "run refresh tasks")
 	}
 	r.observeJob(ctx, "refresh", "", startedAt, refreshErr)
 	return refreshErr

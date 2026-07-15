@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -122,7 +123,7 @@ func (s *SQLStore) PutBlob(ctx context.Context, record BlobRecord) error {
 	return nil
 }
 
-func (s *SQLStore) ListBlobs(ctx context.Context, opts ...BlobListOption) ([]BlobRecord, error) {
+func (s *SQLStore) ListBlobs(ctx context.Context, opts ...BlobListOption) (*collectionlist.List[BlobRecord], error) {
 	options := blobListOptions(opts...)
 	query := repository.Query(s.blobs)
 	switch options.Order {
@@ -155,7 +156,7 @@ func (s *SQLStore) ListBlobs(ctx context.Context, opts ...BlobListOption) ([]Blo
 
 func (s *SQLStore) blobRowsToRecords(rows interface {
 	Values() []blobRow
-}) ([]BlobRecord, error) {
+}) (*collectionlist.List[BlobRecord], error) {
 	return mapRows(rows, s.mapper.BlobRowToRecord)
 }
 

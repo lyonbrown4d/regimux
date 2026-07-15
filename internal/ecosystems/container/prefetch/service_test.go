@@ -248,7 +248,7 @@ func assertPrefetchHistory(t *testing.T, store meta.Store, runStatus, outcomeSta
 	if err != nil {
 		t.Fatalf("list prefetch outcomes: %v", err)
 	}
-	if len(outcomes) != 1 || outcomes[0].Status != outcomeStatus {
+	if outcomes.Len() != 1 || outcomes.Values()[0].Status != outcomeStatus {
 		t.Fatalf("unexpected prefetch outcomes: %#v", outcomes)
 	}
 }
@@ -259,7 +259,7 @@ func assertPrefetchRunStatus(t *testing.T, store meta.Store, status string) {
 	if err != nil {
 		t.Fatalf("list prefetch runs: %v", err)
 	}
-	if len(runs) != 1 || runs[0].Status != status {
+	if runs.Len() != 1 || runs.Values()[0].Status != status {
 		t.Fatalf("unexpected prefetch runs: %#v", runs)
 	}
 }

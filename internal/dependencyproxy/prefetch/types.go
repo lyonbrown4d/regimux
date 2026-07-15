@@ -5,6 +5,7 @@ import (
 	"context"
 	"log/slog"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
 )
 
@@ -56,7 +57,7 @@ type Artifact struct {
 }
 
 type WarmRequest struct {
-	Sources []Source
+	Sources *collectionlist.List[Source]
 	Options ParseOptions
 }
 
@@ -64,9 +65,9 @@ type WarmReport struct {
 	Parsed    int
 	Submitted int
 	Failed    int
-	Artifacts []Artifact
-	Jobs      []manualsync.SyncJob
-	Failures  []WarmFailure
+	Artifacts *collectionlist.List[Artifact]
+	Jobs      *collectionlist.List[manualsync.SyncJob]
+	Failures  *collectionlist.List[WarmFailure]
 }
 
 type WarmFailure struct {

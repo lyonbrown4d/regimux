@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -70,7 +71,7 @@ func (s *SQLStore) UpdatePrefetchRun(ctx context.Context, record PrefetchRunReco
 	return &record, nil
 }
 
-func (s *SQLStore) ListPrefetchRuns(ctx context.Context, opts ...PrefetchRunListOption) ([]PrefetchRunRecord, error) {
+func (s *SQLStore) ListPrefetchRuns(ctx context.Context, opts ...PrefetchRunListOption) (*collectionlist.List[PrefetchRunRecord], error) {
 	options := prefetchRunListOptions(opts...)
 	query := repository.Query(s.prefetchRuns)
 	if options.RecentFirst {
@@ -133,7 +134,7 @@ func (s *SQLStore) LatestPrefetchOutcome(ctx context.Context, key PrefetchCandid
 	if err != nil {
 		return nil, false, wrapError(err, "get latest prefetch outcome metadata")
 	}
-	row, ok := firstRow[prefetchOutcomeRow](rows).Get()
+	row, ok := rows.GetFirstOption().Get()
 	if !ok {
 		return nil, false, nil
 	}
@@ -144,7 +145,7 @@ func (s *SQLStore) LatestPrefetchOutcome(ctx context.Context, key PrefetchCandid
 	return record, true, nil
 }
 
-func (s *SQLStore) ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOutcomeListOption) ([]PrefetchOutcomeRecord, error) {
+func (s *SQLStore) ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOutcomeListOption) (*collectionlist.List[PrefetchOutcomeRecord], error) {
 	options := prefetchOutcomeListOptions(opts...)
 	query := repository.Query(s.prefetchOutcomes)
 	if options.RunID > 0 {
@@ -169,12 +170,12 @@ func (s *SQLStore) ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOut
 
 func (s *SQLStore) prefetchRunRowsToRecords(rows interface {
 	Values() []prefetchRunRow
-}) ([]PrefetchRunRecord, error) {
+}) (*collectionlist.List[PrefetchRunRecord], error) {
 	return mapRows(rows, s.mapper.PrefetchRunRowToRecord)
 }
 
 func (s *SQLStore) prefetchOutcomeRowsToRecords(rows interface {
 	Values() []prefetchOutcomeRow
-}) ([]PrefetchOutcomeRecord, error) {
+}) (*collectionlist.List[PrefetchOutcomeRecord], error) {
 	return mapRows(rows, s.mapper.PrefetchOutcomeRowToRecord)
 }

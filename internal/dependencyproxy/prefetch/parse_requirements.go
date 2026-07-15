@@ -4,17 +4,18 @@ import (
 	"regexp"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
 var requirementsNameSeparatorRE = regexp.MustCompile(`[-_.]+`)
 
-func parseRequirements(source Source, opts ParseOptions) ([]Artifact, error) {
+func parseRequirements(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	alias, err := aliasFor(opts, ecosystem.PyPI)
 	if err != nil {
 		return nil, err
 	}
-	artifacts := make([]Artifact, 0)
+	artifacts := collectionlist.NewList[Artifact]()
 	lineNo := 0
 	for line := range strings.SplitSeq(string(source.Body), "\n") {
 		lineNo++
@@ -22,7 +23,7 @@ func parseRequirements(source Source, opts ParseOptions) ([]Artifact, error) {
 		if !ok {
 			continue
 		}
-		artifacts = append(artifacts, withDefaults(Artifact{
+		artifacts.Add(withDefaults(Artifact{
 			Ecosystem: ecosystem.PyPI,
 			Alias:     alias,
 			Artifact:  "pypi/simple/" + normalizeRequirementProjectName(name),

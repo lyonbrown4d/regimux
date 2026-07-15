@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/idgen"
 	"github.com/arcgolabs/dbx/paging"
 	"github.com/arcgolabs/dbx/repository"
@@ -87,7 +88,7 @@ func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, ki
 	return updated, nil
 }
 
-func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error) {
+func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) (*collectionlist.List[PullRecord], error) {
 	options := pullListOptions(opts...)
 	query := repository.Query(s.pulls)
 	if options.RecentFirst {
@@ -114,7 +115,7 @@ func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) ([]Pul
 
 func (s *SQLStore) pullRowsToRecords(rows interface {
 	Values() []pullRow
-}) ([]PullRecord, error) {
+}) (*collectionlist.List[PullRecord], error) {
 	return mapRows(rows, s.mapper.PullRowToRecord)
 }
 

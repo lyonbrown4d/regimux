@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -115,7 +116,7 @@ func (s *SQLStore) PutTag(ctx context.Context, record TagRecord) error {
 	return nil
 }
 
-func (s *SQLStore) ListTags(ctx context.Context) ([]TagRecord, error) {
+func (s *SQLStore) ListTags(ctx context.Context) (*collectionlist.List[TagRecord], error) {
 	rows, err := s.tags.List(ctx, nil)
 	if err != nil {
 		return nil, wrapError(err, "list tag metadata")

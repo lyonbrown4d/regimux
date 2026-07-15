@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
 type RuntimeDependencies struct {
@@ -22,18 +23,20 @@ type RuntimeDependencies struct {
 	Runtimes *collectionlist.List[ecosystem.Runtime]
 	Metrics  *observability.Metrics
 	Metadata meta.Store
+	Workers  *worker.Pools
 }
 
 var Module = dix.NewModule("scheduler",
 	dix.Providers(
-		dix.Provider5[*Runtime, config.Config, *slog.Logger, *collectionlist.List[ecosystem.Runtime], *observability.Metrics, meta.Store](
-			func(cfg config.Config, logger *slog.Logger, runtimes *collectionlist.List[ecosystem.Runtime], metrics *observability.Metrics, metadata meta.Store) *Runtime {
+		dix.Provider6[*Runtime, config.Config, *slog.Logger, *collectionlist.List[ecosystem.Runtime], *observability.Metrics, meta.Store, *worker.Pools](
+			func(cfg config.Config, logger *slog.Logger, runtimes *collectionlist.List[ecosystem.Runtime], metrics *observability.Metrics, metadata meta.Store, workers *worker.Pools) *Runtime {
 				return NewRuntime(RuntimeDependencies{
 					Config:   cfg,
 					Logger:   logger,
 					Runtimes: runtimes,
 					Metrics:  metrics,
 					Metadata: metadata,
+					Workers:  workers,
 				})
 			},
 		),

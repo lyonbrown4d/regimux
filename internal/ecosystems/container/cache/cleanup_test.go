@@ -112,7 +112,7 @@ func TestCleanupServiceRespectsScanLimit(t *testing.T) {
 	if err != nil {
 		t.Fatalf("list blobs: %v", err)
 	}
-	if got := len(remaining); got != 1 {
+	if got := remaining.Len(); got != 1 {
 		t.Fatalf("remaining blobs = %d, want 1", got)
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -27,7 +28,7 @@ func TestSQLStoreRefreshIntentDeduplicatesUntilDue(t *testing.T) {
 	assertDueRefreshIntentCount(ctx, t, store, now.Add(testRefreshWindow-time.Nanosecond), 0)
 
 	due := assertDueRefreshIntentCount(ctx, t, store, now.Add(testRefreshWindow), 1)
-	assertRefreshIntentSkipped(t, due[0], 1)
+	assertRefreshIntentSkipped(t, due.Values()[0], 1)
 
 	next := assertQueuedRefreshIntent(ctx, t, store, record, now.Add(testRefreshWindow+time.Second))
 	assertRefreshIntentDueAt(t, next, now.Add(testRefreshWindow+time.Second+testRefreshWindow))
@@ -88,11 +89,11 @@ func assertDedupedRefreshIntent(ctx context.Context, t *testing.T, store *meta.S
 	assertRefreshIntentDueAt(t, deduped, queued.DueAt)
 }
 
-func assertDueRefreshIntentCount(ctx context.Context, t *testing.T, store *meta.SQLStore, at time.Time, want int) []meta.RefreshIntentRecord {
+func assertDueRefreshIntentCount(ctx context.Context, t *testing.T, store *meta.SQLStore, at time.Time, want int) *collectionlist.List[meta.RefreshIntentRecord] {
 	t.Helper()
 	due := consumeDueRefreshIntents(ctx, t, store, at)
-	if len(due) != want {
-		t.Fatalf("consumed %d entries, want %d", len(due), want)
+	if due.Len() != want {
+		t.Fatalf("consumed %d entries, want %d", due.Len(), want)
 	}
 	return due
 }
@@ -132,7 +133,7 @@ func consumeDueRefreshIntents(
 	t *testing.T,
 	store *meta.SQLStore,
 	at time.Time,
-) []meta.RefreshIntentRecord {
+) *collectionlist.List[meta.RefreshIntentRecord] {
 	t.Helper()
 	records, err := store.ConsumeDueRefreshIntents(ctx, at, 100)
 	requireNoError(t, "consume due refresh intents", err)

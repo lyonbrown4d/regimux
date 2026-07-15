@@ -6,6 +6,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -85,7 +86,7 @@ func (s *SQLStore) handleRefreshIntentCreateError(ctx context.Context, key Refre
 	return nil, false, wrapError(createErr, "queue refresh intent metadata")
 }
 
-func (s *SQLStore) ConsumeDueRefreshIntents(ctx context.Context, at time.Time, limit int) ([]RefreshIntentRecord, error) {
+func (s *SQLStore) ConsumeDueRefreshIntents(ctx context.Context, at time.Time, limit int) (*collectionlist.List[RefreshIntentRecord], error) {
 	if at.IsZero() {
 		at = metadataNow()
 	}
@@ -100,7 +101,7 @@ func (s *SQLStore) ConsumeDueRefreshIntents(ctx context.Context, at time.Time, l
 		return nil, wrapError(err, "list due refresh intents metadata")
 	}
 
-	records := make([]RefreshIntentRecord, 0, rows.Len())
+	records := collectionlist.NewListWithCapacity[RefreshIntentRecord](rows.Len())
 	rows.Range(func(_ int, row refreshIntentRow) bool {
 		record, mapErr := s.mapper.RefreshIntentRowToRecord(row)
 		if mapErr != nil {
@@ -113,7 +114,7 @@ func (s *SQLStore) ConsumeDueRefreshIntents(ctx context.Context, at time.Time, l
 			return false
 		}
 		if claimed {
-			records = append(records, *record)
+			records.Add(*record)
 		}
 		return true
 	})

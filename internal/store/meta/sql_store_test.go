@@ -188,7 +188,7 @@ func assertPullListOptions(ctx context.Context, t *testing.T, store *meta.SQLSto
 	t.Helper()
 	pulls, err := store.ListPulls(ctx, meta.PullListRecentFirst(), meta.PullListLimit(2))
 	requireNoError(t, "list recent pulls", err)
-	if len(pulls) != 2 || pulls[0].Reference != "20" || pulls[1].Reference != "19" {
+	if pulls.Len() != 2 || pulls.Values()[0].Reference != "20" || pulls.Values()[1].Reference != "19" {
 		t.Fatalf("unexpected recent pulls: %#v", pulls)
 	}
 }
@@ -197,13 +197,13 @@ func assertBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQLSto
 	t.Helper()
 	recentBlobs, err := store.ListBlobs(ctx, meta.BlobListOrderByRecent(), meta.BlobListLimit(2))
 	requireNoError(t, "list recent blobs", err)
-	if len(recentBlobs) != 2 || recentBlobs[0].Digest != secondTestDigest || recentBlobs[1].Digest != thirdTestDigest {
+	if recentBlobs.Len() != 2 || recentBlobs.Values()[0].Digest != secondTestDigest || recentBlobs.Values()[1].Digest != thirdTestDigest {
 		t.Fatalf("unexpected recent blobs: %#v", recentBlobs)
 	}
 
 	largeBlobs, err := store.ListBlobs(ctx, meta.BlobListOrderByLargest(), meta.BlobListLimit(2))
 	requireNoError(t, "list large blobs", err)
-	if len(largeBlobs) != 2 || largeBlobs[0].Digest != secondTestDigest || largeBlobs[1].Digest != thirdTestDigest {
+	if largeBlobs.Len() != 2 || largeBlobs.Values()[0].Digest != secondTestDigest || largeBlobs.Values()[1].Digest != thirdTestDigest {
 		t.Fatalf("unexpected large blobs: %#v", largeBlobs)
 	}
 }
@@ -212,7 +212,7 @@ func assertRepoBlobListOptions(ctx context.Context, t *testing.T, store *meta.SQ
 	t.Helper()
 	repoBlobs, err := store.ListRepoBlobs(ctx, meta.RepoBlobListRecentFirst(), meta.RepoBlobListLimit(2))
 	requireNoError(t, "list recent repo blobs", err)
-	if len(repoBlobs) != 2 || repoBlobs[0].Digest != secondTestDigest || repoBlobs[1].Digest != thirdTestDigest {
+	if repoBlobs.Len() != 2 || repoBlobs.Values()[0].Digest != secondTestDigest || repoBlobs.Values()[1].Digest != thirdTestDigest {
 		t.Fatalf("unexpected recent repo blobs: %#v", repoBlobs)
 	}
 }

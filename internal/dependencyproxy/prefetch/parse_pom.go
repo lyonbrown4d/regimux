@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
@@ -23,7 +24,7 @@ type pomDependency struct {
 	Optional   string `xml:"optional"`
 }
 
-func parsePOM(source Source, opts ParseOptions) ([]Artifact, error) {
+func parsePOM(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	alias, err := aliasFor(opts, ecosystem.Maven)
 	if err != nil {
 		return nil, err
@@ -32,9 +33,9 @@ func parsePOM(source Source, opts ParseOptions) ([]Artifact, error) {
 	if err := xml.Unmarshal(source.Body, &project); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode pom.xml")
 	}
-	artifacts := lo.FilterMap(pomDependencies(project), func(dep pomDependency, _ int) (Artifact, bool) {
+	artifacts := collectionlist.NewList(lo.FilterMap(pomDependencies(project), func(dep pomDependency, _ int) (Artifact, bool) {
 		return mavenArtifactFromDependency(source, opts, alias, dep)
-	})
+	})...)
 	return dedupeArtifacts(artifacts), nil
 }
 

@@ -22,7 +22,7 @@ func (c *Client) LoadEndpointHealth(ctx context.Context) error {
 		if err != nil {
 			return oops.In("upstream").Wrapf(err, "load endpoint health metadata")
 		}
-		loaded += c.restoreEndpointHealthRecords(collectionlist.NewList(records...))
+		loaded += c.restoreEndpointHealthRecords(records)
 	}
 	loaded += c.loadHotEndpointHealth(ctx)
 

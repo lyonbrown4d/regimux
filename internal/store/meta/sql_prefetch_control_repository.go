@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/querydsl"
 	"github.com/arcgolabs/dbx/repository"
 )
@@ -50,7 +51,7 @@ func (s *SQLStore) ConsumePrefetchControl(ctx context.Context, action string, at
 	if err != nil {
 		return nil, false, wrapError(err, "find prefetch control metadata")
 	}
-	row, ok := firstRow[prefetchControlRow](rows).Get()
+	row, ok := rows.GetFirstOption().Get()
 	if !ok {
 		return nil, false, nil
 	}
@@ -74,7 +75,7 @@ func (s *SQLStore) ConsumePrefetchControl(ctx context.Context, action string, at
 	return record, true, nil
 }
 
-func (s *SQLStore) ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) ([]PrefetchControlRecord, error) {
+func (s *SQLStore) ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) (*collectionlist.List[PrefetchControlRecord], error) {
 	options := prefetchControlListOptions(opts...)
 	query := repository.Query(s.prefetchControls)
 	if options.RecentFirst {
@@ -96,6 +97,6 @@ func (s *SQLStore) ListPrefetchControls(ctx context.Context, opts ...PrefetchCon
 
 func (s *SQLStore) prefetchControlRowsToRecords(rows interface {
 	Values() []prefetchControlRow
-}) ([]PrefetchControlRecord, error) {
+}) (*collectionlist.List[PrefetchControlRecord], error) {
 	return mapRows(rows, s.mapper.PrefetchControlRowToRecord)
 }

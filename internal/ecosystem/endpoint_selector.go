@@ -50,14 +50,15 @@ func UpstreamEndpoints(
 
 func latestEndpointHealthByEndpoint(ctx context.Context, metadata meta.EndpointHealthRepository, ecosystem, alias string) *collectionmapping.Map[string, meta.EndpointHealthRecord] {
 	records, err := metadata.ListEndpointHealth(ctx, meta.EndpointHealthListAlias(ScopedAlias(ecosystem, alias)))
-	if err != nil || len(records) == 0 {
+	if err != nil || records.Len() == 0 {
 		return nil
 	}
 
-	recordByEndpoint := collectionmapping.NewMapWithCapacity[string, meta.EndpointHealthRecord](len(records))
+	recordByEndpoint := collectionmapping.NewMapWithCapacity[string, meta.EndpointHealthRecord](records.Len())
 	foundAny := false
-	for i := range records {
-		record := records[i]
+	recordValues := records.Values()
+	for i := range recordValues {
+		record := recordValues[i]
 		registry := normalizeEndpoint(record.Registry)
 		if registry == "" {
 			continue

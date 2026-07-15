@@ -25,8 +25,9 @@ func (s *CleanupService) protectedBlobDigests(ctx context.Context) (*collections
 	}
 
 	protected := collectionset.NewSet[string]()
-	for i := range manifests {
-		s.protectManifestReferences(ctx, protected, manifests[i])
+	manifestValues := manifests.Values()
+	for i := range manifestValues {
+		s.protectManifestReferences(ctx, protected, manifestValues[i])
 	}
 	return protected, nil
 }

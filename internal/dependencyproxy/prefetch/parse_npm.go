@@ -7,6 +7,7 @@ import (
 	"slices"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
@@ -26,7 +27,7 @@ type packageLockDependency struct {
 	Dependencies map[string]packageLockDependency `json:"dependencies"`
 }
 
-func parsePackageLock(source Source, opts ParseOptions) ([]Artifact, error) {
+func parsePackageLock(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	alias, err := aliasFor(opts, ecosystem.NPM)
 	if err != nil {
 		return nil, err
@@ -35,15 +36,15 @@ func parsePackageLock(source Source, opts ParseOptions) ([]Artifact, error) {
 	if err := json.Unmarshal(source.Body, &payload); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode package-lock.json")
 	}
-	artifacts := lo.FilterMap(sortedKeys(payload.Packages), func(path string, _ int) (Artifact, bool) {
+	artifacts := collectionlist.NewList(lo.FilterMap(sortedKeys(payload.Packages), func(path string, _ int) (Artifact, bool) {
 		pkg := payload.Packages[path]
 		name, ok := packageNameFromLockPath(path)
 		if !ok {
 			return Artifact{}, false
 		}
 		return npmTarballArtifact(source, opts, alias, name, pkg.Resolved, 0)
-	})
-	walkPackageLockDependencies(source, opts, alias, payload.Dependencies, 0, &artifacts)
+	})...)
+	walkPackageLockDependencies(source, opts, alias, payload.Dependencies, 0, artifacts)
 	return dedupeArtifacts(artifacts), nil
 }
 
@@ -53,12 +54,12 @@ func walkPackageLockDependencies(
 	alias string,
 	dependencies map[string]packageLockDependency,
 	depth int,
-	artifacts *[]Artifact,
+	artifacts *collectionlist.List[Artifact],
 ) {
 	for _, name := range sortedKeys(dependencies) {
 		dep := dependencies[name]
 		if artifact, ok := npmTarballArtifact(source, opts, alias, name, dep.Resolved, 0); ok {
-			*artifacts = append(*artifacts, artifact)
+			artifacts.Add(artifact)
 		}
 		if depth < 8 {
 			walkPackageLockDependencies(source, opts, alias, dep.Dependencies, depth+1, artifacts)

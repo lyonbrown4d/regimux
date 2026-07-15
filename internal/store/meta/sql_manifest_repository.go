@@ -5,6 +5,7 @@ import (
 	"errors"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -68,7 +69,7 @@ func (s *SQLStore) PutManifest(ctx context.Context, record ManifestRecord) error
 	return nil
 }
 
-func (s *SQLStore) ListManifests(ctx context.Context) ([]ManifestRecord, error) {
+func (s *SQLStore) ListManifests(ctx context.Context) (*collectionlist.List[ManifestRecord], error) {
 	rows, err := s.manifest.List(ctx, nil)
 	if err != nil {
 		return nil, wrapError(err, "list manifest metadata")

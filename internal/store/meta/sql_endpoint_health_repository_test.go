@@ -134,7 +134,7 @@ func assertEndpointHealthList(ctx context.Context, t *testing.T, store *meta.SQL
 	t.Helper()
 	list, err := store.ListEndpointHealth(ctx, meta.EndpointHealthListAlias("hub"))
 	requireNoError(t, "list endpoint health", err)
-	if len(list) != 1 || list[0].Repository != "library/nginx" {
+	if list.Len() != 1 || list.Values()[0].Repository != "library/nginx" {
 		t.Fatalf("unexpected endpoint health list: %#v", list)
 	}
 }

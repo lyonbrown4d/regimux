@@ -5,6 +5,7 @@ import (
 	"errors"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -131,7 +132,7 @@ func (s *SQLStore) DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error {
 	return nil
 }
 
-func (s *SQLStore) ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) ([]RepoBlobRecord, error) {
+func (s *SQLStore) ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) (*collectionlist.List[RepoBlobRecord], error) {
 	options := repoBlobListOptions(opts...)
 	query := repository.Query(s.repoBlobs)
 	if options.RecentFirst {
@@ -155,7 +156,7 @@ func (s *SQLStore) ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption
 
 func (s *SQLStore) repoBlobRowsToRecords(rows interface {
 	Values() []repoBlobRow
-}) ([]RepoBlobRecord, error) {
+}) (*collectionlist.List[RepoBlobRecord], error) {
 	return mapRows(rows, s.mapper.RepoBlobRowToRecord)
 }
 

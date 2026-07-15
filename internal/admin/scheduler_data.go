@@ -73,7 +73,7 @@ func (s *Service) prefetchHistoryRows(ctx context.Context) (*collectionlist.List
 	if err != nil {
 		return nil, nil, oops.In("admin").Wrapf(err, "list prefetch outcomes")
 	}
-	return prefetchRunRows(collectionlist.NewList(runs...)), prefetchOutcomeRows(collectionlist.NewList(outcomes...)), nil
+	return prefetchRunRows(runs), prefetchOutcomeRows(outcomes), nil
 }
 
 func prefetchRunRows(records *collectionlist.List[meta.PrefetchRunRecord]) *collectionlist.List[PrefetchRunRow] {

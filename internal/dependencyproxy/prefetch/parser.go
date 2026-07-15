@@ -5,12 +5,13 @@ import (
 	"path/filepath"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
 
-func Parse(source Source, opts ParseOptions) ([]Artifact, error) {
+func Parse(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	format := sourceFormat(source)
 	switch format {
 	case FormatGoSum:
@@ -102,8 +103,8 @@ func withDefaults(artifact Artifact, source Source, opts ParseOptions) Artifact 
 	return artifact
 }
 
-func dedupeArtifacts(artifacts []Artifact) []Artifact {
-	return lo.UniqBy(artifacts, artifactDedupeKey)
+func dedupeArtifacts(artifacts *collectionlist.List[Artifact]) *collectionlist.List[Artifact] {
+	return collectionlist.NewList(lo.UniqBy(artifacts.Values(), artifactDedupeKey)...)
 }
 
 func artifactDedupeKey(artifact Artifact) string {

@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 
@@ -39,6 +40,12 @@ func (p *Pools) IOPool() *ants.Pool {
 	return p.ioPool
 }
 
+func (p *Pools) RunIOAllSettled(ctx context.Context, tasks TaskIterable) error {
+	if p != nil && p.ioPool != nil {
+		return RunAllSettled(ctx, p.ioPool, tasks)
+	}
+	return runAllSettledSequential(ctx, tasks)
+}
 func (p *Pools) LeasePool() *ants.Pool {
 	if p == nil {
 		return nil
@@ -137,6 +144,26 @@ func RunAllSettled(ctx context.Context, pool *ants.Pool, tasks TaskIterable) err
 	return nil
 }
 
+func runAllSettledSequential(ctx context.Context, tasks TaskIterable) error {
+	if tasks == nil || tasks.Len() == 0 {
+		return nil
+	}
+	if ctx == nil {
+		return oops.Errorf("worker context is required")
+	}
+
+	var runErr error
+	tasks.Range(func(_ int, task func(context.Context) error) bool {
+		if err := runOne(ctx, nil, task); err != nil {
+			runErr = errors.Join(runErr, err)
+		}
+		return true
+	})
+	if runErr != nil {
+		return oops.Wrapf(runErr, "run sequential worker tasks")
+	}
+	return nil
+}
 func newConcContextPool(ctx context.Context, pool *ants.Pool) *concpool.ContextPool {
 	runtimePool := concpool.New().WithContext(ctx)
 	if pool != nil {

@@ -14,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
@@ -36,9 +37,9 @@ type Runtime struct {
 	runtimes           *collectionlist.List[ecosystem.Runtime]
 	metrics            *observability.Metrics
 	metadata           meta.Store
-
-	scheduler gocron.Scheduler
-	redis     goredis.UniversalClient
+	workers            *worker.Pools
+	scheduler          gocron.Scheduler
+	redis              goredis.UniversalClient
 }
 
 func NewRuntime(deps RuntimeDependencies) *Runtime {
@@ -58,6 +59,7 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 		runtimes: runtimes,
 		metrics:  metrics,
 		metadata: deps.Metadata,
+		workers:  deps.Workers,
 	}
 }
 

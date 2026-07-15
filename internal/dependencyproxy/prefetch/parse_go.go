@@ -3,15 +3,16 @@ package prefetch
 import (
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
-func parseGoSum(source Source, opts ParseOptions) ([]Artifact, error) {
+func parseGoSum(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	alias, err := aliasFor(opts, ecosystem.Go)
 	if err != nil {
 		return nil, err
 	}
-	artifacts := make([]Artifact, 0)
+	artifacts := collectionlist.NewList[Artifact]()
 	lineNo := 0
 	for line := range strings.SplitSeq(string(source.Body), "\n") {
 		lineNo++
@@ -28,7 +29,7 @@ func parseGoSum(source Source, opts ParseOptions) ([]Artifact, error) {
 		if !ok {
 			continue
 		}
-		artifacts = append(artifacts, withDefaults(Artifact{
+		artifacts.Add(withDefaults(Artifact{
 			Ecosystem: ecosystem.Go,
 			Alias:     alias,
 			Artifact:  module,

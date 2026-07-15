@@ -24,12 +24,12 @@ func TestSQLStoreRepositoryMetadataAggregates(t *testing.T) {
 
 	repositories, err := store.ListRepositories(ctx, meta.RepositoryListRecentFirst())
 	requireNoError(t, "list repository metadata", err)
-	if len(repositories) != 1 || repositories[0].Name != "library/node" {
+	if repositories.Len() != 1 || repositories.Values()[0].Name != "library/node" {
 		t.Fatalf("unexpected repositories: %#v", repositories)
 	}
 	upstreams, err := store.ListUpstreams(ctx, meta.UpstreamListRecentFirst())
 	requireNoError(t, "list upstream metadata", err)
-	if len(upstreams) != 1 || upstreams[0].RepositoryCount != 1 || upstreams[0].PullCount != 2 || upstreams[0].PolicyDeniedPullCount != 1 || upstreams[0].BlobBytes != 400 {
+	if upstreams.Len() != 1 || upstreams.Values()[0].RepositoryCount != 1 || upstreams.Values()[0].PullCount != 2 || upstreams.Values()[0].PolicyDeniedPullCount != 1 || upstreams.Values()[0].BlobBytes != 400 {
 		t.Fatalf("unexpected upstream aggregates: %#v", upstreams)
 	}
 

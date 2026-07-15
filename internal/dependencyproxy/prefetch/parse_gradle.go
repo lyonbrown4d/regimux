@@ -5,15 +5,16 @@ import (
 	"path"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 )
 
-func parseGradleWrapper(source Source, opts ParseOptions) ([]Artifact, error) {
+func parseGradleWrapper(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	alias, err := aliasFor(opts, ecosystem.Dist)
 	if err != nil {
 		return nil, err
 	}
-	artifacts := make([]Artifact, 0, 1)
+	artifacts := collectionlist.NewListWithCapacity[Artifact](1)
 	lineNo := 0
 	for line := range strings.SplitSeq(string(source.Body), "\n") {
 		lineNo++
@@ -22,7 +23,7 @@ func parseGradleWrapper(source Source, opts ParseOptions) ([]Artifact, error) {
 			continue
 		}
 		if artifact, ok := gradleDistributionArtifact(source, opts, alias, value, lineNo); ok {
-			artifacts = append(artifacts, artifact)
+			artifacts.Add(artifact)
 		}
 	}
 	return dedupeArtifacts(artifacts), nil

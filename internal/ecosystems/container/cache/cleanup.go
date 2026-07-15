@@ -87,9 +87,8 @@ func (s *CleanupService) CleanupBlobs(ctx context.Context, opts CleanupOptions) 
 		return nil, err
 	}
 
-	blobList := collectionlist.NewList(blobs...)
-	report := newCleanupReport(opts, blobList)
-	if err := s.cleanupBlobRecords(ctx, opts, now.Add(-opts.UnusedFor), blobList, protected, report); err != nil {
+	report := newCleanupReport(opts, blobs)
+	if err := s.cleanupBlobRecords(ctx, opts, now.Add(-opts.UnusedFor), blobs, protected, report); err != nil {
 		return nil, err
 	}
 	s.logger.InfoContext(ctx,

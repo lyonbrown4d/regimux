@@ -35,7 +35,7 @@ func TestSQLStoreUpsertManifestConcurrent(t *testing.T) {
 
 	manifests, err := store.ListManifests(ctx)
 	requireNoError(t, "list manifests after concurrent upsert", err)
-	if len(manifests) != 1 || manifests[0].Digest != testDigest {
+	if manifests.Len() != 1 || manifests.Values()[0].Digest != testDigest {
 		t.Fatalf("unexpected manifests after concurrent upsert: %#v", manifests)
 	}
 }
@@ -59,7 +59,7 @@ func TestSQLStoreUpsertBlobConcurrent(t *testing.T) {
 
 	blobs, err := store.ListBlobs(ctx)
 	requireNoError(t, "list blobs after concurrent upsert", err)
-	if len(blobs) != 1 || blobs[0].Digest != testDigest {
+	if blobs.Len() != 1 || blobs.Values()[0].Digest != testDigest {
 		t.Fatalf("unexpected blobs after concurrent upsert: %#v", blobs)
 	}
 }
@@ -85,7 +85,7 @@ func TestSQLStoreUpsertTagConcurrent(t *testing.T) {
 
 	tags, err := store.ListTags(ctx)
 	requireNoError(t, "list tags after concurrent upsert", err)
-	if len(tags) != 1 || tags[0].Reference != "1.36.1" {
+	if tags.Len() != 1 || tags.Values()[0].Reference != "1.36.1" {
 		t.Fatalf("unexpected tags after concurrent upsert: %#v", tags)
 	}
 }
@@ -109,7 +109,7 @@ func TestSQLStoreUpsertRepoBlobConcurrent(t *testing.T) {
 
 	repoBlobs, err := store.ListRepoBlobs(ctx)
 	requireNoError(t, "list repository blobs after concurrent upsert", err)
-	if len(repoBlobs) != 1 || repoBlobs[0].Digest != testDigest {
+	if repoBlobs.Len() != 1 || repoBlobs.Values()[0].Digest != testDigest {
 		t.Fatalf("unexpected repository blobs after concurrent upsert: %#v", repoBlobs)
 	}
 }

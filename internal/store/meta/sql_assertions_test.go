@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -91,42 +92,42 @@ func seedListRecords(ctx context.Context, t *testing.T, store *meta.SQLStore, ex
 	requireNoError(t, "record pull", err)
 }
 
-func assertManifestList(t *testing.T, manifests []meta.ManifestRecord) {
+func assertManifestList(t *testing.T, manifests *collectionlist.List[meta.ManifestRecord]) {
 	t.Helper()
 
-	if len(manifests) != 1 || manifests[0].Digest != testDigest {
+	if manifests.Len() != 1 || manifests.Values()[0].Digest != testDigest {
 		t.Fatalf("unexpected manifests: %#v", manifests)
 	}
 }
 
-func assertTagList(t *testing.T, tags []meta.TagRecord) {
+func assertTagList(t *testing.T, tags *collectionlist.List[meta.TagRecord]) {
 	t.Helper()
 
-	if len(tags) != 1 || tags[0].Reference != "latest" {
+	if tags.Len() != 1 || tags.Values()[0].Reference != "latest" {
 		t.Fatalf("unexpected tags: %#v", tags)
 	}
 }
 
-func assertPullList(t *testing.T, pulls []meta.PullRecord) {
+func assertPullList(t *testing.T, pulls *collectionlist.List[meta.PullRecord]) {
 	t.Helper()
 
-	if len(pulls) != 1 || pulls[0].Reference != "20" {
+	if pulls.Len() != 1 || pulls.Values()[0].Reference != "20" {
 		t.Fatalf("unexpected pulls: %#v", pulls)
 	}
 }
 
-func assertBlobList(t *testing.T, blobs []meta.BlobRecord) {
+func assertBlobList(t *testing.T, blobs *collectionlist.List[meta.BlobRecord]) {
 	t.Helper()
 
-	if len(blobs) != 1 || blobs[0].Digest != secondTestDigest {
+	if blobs.Len() != 1 || blobs.Values()[0].Digest != secondTestDigest {
 		t.Fatalf("unexpected blobs: %#v", blobs)
 	}
 }
 
-func assertRepoBlobList(t *testing.T, repoBlobs []meta.RepoBlobRecord) {
+func assertRepoBlobList(t *testing.T, repoBlobs *collectionlist.List[meta.RepoBlobRecord]) {
 	t.Helper()
 
-	if len(repoBlobs) != 1 || repoBlobs[0].Digest != secondTestDigest || repoBlobs[0].LastAccessAt.IsZero() {
+	if repoBlobs.Len() != 1 || repoBlobs.Values()[0].Digest != secondTestDigest || repoBlobs.Values()[0].LastAccessAt.IsZero() {
 		t.Fatalf("unexpected repo blobs: %#v", repoBlobs)
 	}
 }

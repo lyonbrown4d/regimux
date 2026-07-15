@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"time"
+
+	collectionlist "github.com/arcgolabs/collectionx/list"
 )
 
 var (
@@ -29,15 +31,15 @@ type Store interface {
 
 type CatalogRepository interface {
 	UpstreamByAlias(ctx context.Context, alias string) (*Upstream, error)
-	ListUpstreams(ctx context.Context, opts ...UpstreamListOption) ([]Upstream, error)
+	ListUpstreams(ctx context.Context, opts ...UpstreamListOption) (*collectionlist.List[Upstream], error)
 	RepositoryByName(ctx context.Context, upstreamID int64, name string) (*Repository, error)
-	ListRepositories(ctx context.Context, opts ...RepositoryListOption) ([]Repository, error)
+	ListRepositories(ctx context.Context, opts ...RepositoryListOption) (*collectionlist.List[Repository], error)
 }
 
 type EndpointHealthRepository interface {
 	EndpointHealth(ctx context.Context, key EndpointHealthKey) (*EndpointHealthRecord, bool, error)
 	UpsertEndpointHealth(ctx context.Context, record EndpointHealthRecord) (*EndpointHealthRecord, error)
-	ListEndpointHealth(ctx context.Context, opts ...EndpointHealthListOption) ([]EndpointHealthRecord, error)
+	ListEndpointHealth(ctx context.Context, opts ...EndpointHealthListOption) (*collectionlist.List[EndpointHealthRecord], error)
 }
 
 type ManifestRepository interface {
@@ -46,7 +48,7 @@ type ManifestRepository interface {
 	DeleteManifest(ctx context.Context, key ManifestKey) error
 	GetManifest(ctx context.Context, key string) (*ManifestRecord, bool, error)
 	PutManifest(ctx context.Context, record ManifestRecord) error
-	ListManifests(ctx context.Context) ([]ManifestRecord, error)
+	ListManifests(ctx context.Context) (*collectionlist.List[ManifestRecord], error)
 }
 
 type TagRepository interface {
@@ -55,7 +57,7 @@ type TagRepository interface {
 	DeleteTag(ctx context.Context, key TagKey) error
 	GetTag(ctx context.Context, key string) (*TagRecord, bool, error)
 	PutTag(ctx context.Context, record TagRecord) error
-	ListTags(ctx context.Context) ([]TagRecord, error)
+	ListTags(ctx context.Context) (*collectionlist.List[TagRecord], error)
 }
 
 type PullRepository interface {
@@ -63,7 +65,7 @@ type PullRepository interface {
 	RecordPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	RecordUpstreamPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
 	RecordPolicyDeniedPull(ctx context.Context, key PullKey, at time.Time) (*PullRecord, error)
-	ListPulls(ctx context.Context, opts ...PullListOption) ([]PullRecord, error)
+	ListPulls(ctx context.Context, opts ...PullListOption) (*collectionlist.List[PullRecord], error)
 }
 
 type BlobRepository interface {
@@ -72,32 +74,32 @@ type BlobRepository interface {
 	DeleteBlob(ctx context.Context, key BlobKey) error
 	GetBlob(ctx context.Context, digest string) (*BlobRecord, bool, error)
 	PutBlob(ctx context.Context, record BlobRecord) error
-	ListBlobs(ctx context.Context, opts ...BlobListOption) ([]BlobRecord, error)
+	ListBlobs(ctx context.Context, opts ...BlobListOption) (*collectionlist.List[BlobRecord], error)
 }
 
 type RepoBlobRepository interface {
 	RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error)
 	UpsertRepoBlob(ctx context.Context, record RepoBlobRecord) (*RepoBlobRecord, error)
 	DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error
-	ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) ([]RepoBlobRecord, error)
+	ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption) (*collectionlist.List[RepoBlobRecord], error)
 }
 
 type PrefetchRepository interface {
 	CreatePrefetchRun(ctx context.Context, record PrefetchRunRecord) (*PrefetchRunRecord, error)
 	UpdatePrefetchRun(ctx context.Context, record PrefetchRunRecord) (*PrefetchRunRecord, error)
-	ListPrefetchRuns(ctx context.Context, opts ...PrefetchRunListOption) ([]PrefetchRunRecord, error)
+	ListPrefetchRuns(ctx context.Context, opts ...PrefetchRunListOption) (*collectionlist.List[PrefetchRunRecord], error)
 	CreatePrefetchOutcome(ctx context.Context, record PrefetchOutcomeRecord) (*PrefetchOutcomeRecord, error)
 	LatestPrefetchOutcome(ctx context.Context, key PrefetchCandidateKey) (*PrefetchOutcomeRecord, bool, error)
-	ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOutcomeListOption) ([]PrefetchOutcomeRecord, error)
+	ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOutcomeListOption) (*collectionlist.List[PrefetchOutcomeRecord], error)
 	RequestPrefetchControl(ctx context.Context, record PrefetchControlRecord) (*PrefetchControlRecord, error)
 	ConsumePrefetchControl(ctx context.Context, action string, at time.Time) (*PrefetchControlRecord, bool, error)
-	ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) ([]PrefetchControlRecord, error)
+	ListPrefetchControls(ctx context.Context, opts ...PrefetchControlListOption) (*collectionlist.List[PrefetchControlRecord], error)
 }
 
 type RefreshRepository interface {
 	RefreshIntent(ctx context.Context, key RefreshIntentKey) (*RefreshIntentRecord, bool, error)
 	QueueRefreshIntent(ctx context.Context, record RefreshIntentRecord, at time.Time, window time.Duration) (*RefreshIntentRecord, bool, error)
-	ConsumeDueRefreshIntents(ctx context.Context, at time.Time, limit int) ([]RefreshIntentRecord, error)
+	ConsumeDueRefreshIntents(ctx context.Context, at time.Time, limit int) (*collectionlist.List[RefreshIntentRecord], error)
 }
 
 type MetadataReadModel interface {

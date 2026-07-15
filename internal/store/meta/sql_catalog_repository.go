@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/dbx/querydsl"
 	"github.com/arcgolabs/dbx/repository"
 )
@@ -27,7 +28,7 @@ func (s *SQLStore) UpstreamByAlias(ctx context.Context, alias string) (*Upstream
 	return record, nil
 }
 
-func (s *SQLStore) ListUpstreams(ctx context.Context, opts ...UpstreamListOption) ([]Upstream, error) {
+func (s *SQLStore) ListUpstreams(ctx context.Context, opts ...UpstreamListOption) (*collectionlist.List[Upstream], error) {
 	options := upstreamListOptions(opts...)
 	query := repository.Query(s.upstreams)
 	if options.RecentFirst {
@@ -74,7 +75,7 @@ func (s *SQLStore) RepositoryByName(ctx context.Context, upstreamID int64, name 
 	return record, nil
 }
 
-func (s *SQLStore) ListRepositories(ctx context.Context, opts ...RepositoryListOption) ([]Repository, error) {
+func (s *SQLStore) ListRepositories(ctx context.Context, opts ...RepositoryListOption) (*collectionlist.List[Repository], error) {
 	options := repositoryListOptions(opts...)
 	query := repository.Query(s.repositories)
 	if options.RecentFirst {
@@ -96,12 +97,12 @@ func (s *SQLStore) ListRepositories(ctx context.Context, opts ...RepositoryListO
 
 func (s *SQLStore) upstreamRowsToRecords(rows interface {
 	Values() []upstreamRow
-}) ([]Upstream, error) {
+}) (*collectionlist.List[Upstream], error) {
 	return mapRows(rows, s.mapper.UpstreamRowToRecord)
 }
 
 func (s *SQLStore) repositoryRowsToRecords(rows interface {
 	Values() []repositoryRow
-}) ([]Repository, error) {
+}) (*collectionlist.List[Repository], error) {
 	return mapRows(rows, s.mapper.RepositoryRowToRecord)
 }

@@ -127,12 +127,12 @@ func assertPrefetchHistory(ctx context.Context, t *testing.T, store meta.Store) 
 	t.Helper()
 	runs, err := store.ListPrefetchRuns(ctx, meta.PrefetchRunListRecentFirst(), meta.PrefetchRunListLimit(1))
 	requireNoError(t, "list prefetch runs", err)
-	if len(runs) != 1 || runs[0].Trigger != ecosystem.NPM || runs[0].Status != "completed" {
+	if runs.Len() != 1 || runs.Values()[0].Trigger != ecosystem.NPM || runs.Values()[0].Status != "completed" {
 		t.Fatalf("unexpected prefetch runs: %#v", runs)
 	}
 	outcomes, err := store.ListPrefetchOutcomes(ctx, meta.PrefetchOutcomeListRecentFirst(), meta.PrefetchOutcomeListLimit(1))
 	requireNoError(t, "list prefetch outcomes", err)
-	if len(outcomes) != 1 || outcomes[0].Alias != "npm/default" || outcomes[0].Status != "success" {
+	if outcomes.Len() != 1 || outcomes.Values()[0].Alias != "npm/default" || outcomes.Values()[0].Status != "success" {
 		t.Fatalf("unexpected prefetch outcomes: %#v", outcomes)
 	}
 }
@@ -141,7 +141,7 @@ func assertPrefetchHistoryWithoutOutcomes(ctx context.Context, t *testing.T, sto
 	t.Helper()
 	outcomes, err := store.ListPrefetchOutcomes(ctx, meta.PrefetchOutcomeListRecentFirst(), meta.PrefetchOutcomeListLimit(1))
 	requireNoError(t, "list prefetch outcomes", err)
-	if len(outcomes) != 0 {
+	if outcomes.Len() != 0 {
 		t.Fatalf("unexpected prefetch outcomes: %#v", outcomes)
 	}
 }
@@ -150,7 +150,7 @@ func assertPrefetchRunFailed(ctx context.Context, t *testing.T, store meta.Store
 	t.Helper()
 	runs, err := store.ListPrefetchRuns(ctx, meta.PrefetchRunListRecentFirst(), meta.PrefetchRunListLimit(1))
 	requireNoError(t, "list prefetch runs", err)
-	if len(runs) != 1 || runs[0].Status != "failed" || runs[0].Prefetched != 0 || runs[0].BytesWarmed != 0 {
+	if runs.Len() != 1 || runs.Values()[0].Status != "failed" || runs.Values()[0].Prefetched != 0 || runs.Values()[0].BytesWarmed != 0 {
 		t.Fatalf("unexpected prefetch run: %#v", runs)
 	}
 }

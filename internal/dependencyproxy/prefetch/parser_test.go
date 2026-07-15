@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/dependencyproxy/prefetch"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/manualsync"
@@ -106,10 +107,10 @@ func TestServiceWarmSubmitsDedupeSyncJobs(t *testing.T) {
 	syncer := &recordingSyncer{}
 	service := prefetch.NewService(prefetch.ServiceDependencies{Syncer: syncer})
 	report, err := service.Warm(context.Background(), prefetch.WarmRequest{
-		Sources: []prefetch.Source{{
+		Sources: collectionlist.NewList(prefetch.Source{
 			Name: "go.sum",
 			Body: []byte("example.com/mod v1.2.3 h1:abc\nexample.com/mod v1.2.3 h1:abc\n"),
-		}},
+		}),
 		Options: prefetch.ParseOptions{DefaultAliases: map[string]string{ecosystem.Go: "gomod"}},
 	})
 	requireNoError(t, err)
@@ -125,16 +126,16 @@ func TestServiceWarmReportsSubmitFailures(t *testing.T) {
 	syncer := &recordingSyncer{err: errors.New("queue full")}
 	service := prefetch.NewService(prefetch.ServiceDependencies{Syncer: syncer})
 	report, err := service.Warm(context.Background(), prefetch.WarmRequest{
-		Sources: []prefetch.Source{{
+		Sources: collectionlist.NewList(prefetch.Source{
 			Name: "requirements.txt",
 			Body: []byte("Django==5.0.1\n"),
-		}},
+		}),
 		Options: prefetch.ParseOptions{DefaultAliases: map[string]string{ecosystem.PyPI: "pypi"}},
 	})
 	if err == nil {
 		t.Fatal("expected warm error")
 	}
-	if report == nil || report.Parsed != 1 || report.Submitted != 0 || report.Failed != 1 || len(report.Failures) != 1 {
+	if report == nil || report.Parsed != 1 || report.Submitted != 0 || report.Failed != 1 || report.Failures.Len() != 1 {
 		t.Fatalf("unexpected report: %#v", report)
 	}
 }
@@ -159,14 +160,14 @@ func requireNoError(t *testing.T, err error) {
 	}
 }
 
-func assertArtifacts(t *testing.T, got, want []prefetch.Artifact) {
+func assertArtifacts(t *testing.T, got *collectionlist.List[prefetch.Artifact], want []prefetch.Artifact) {
 	t.Helper()
-	if len(got) != len(want) {
-		t.Fatalf("artifact count = %d, want %d: %#v", len(got), len(want), got)
+	if got.Len() != len(want) {
+		t.Fatalf("artifact count = %d, want %d: %#v", got.Len(), len(want), got)
 	}
 	for i := range want {
-		if got[i] != want[i] {
-			t.Fatalf("artifact[%d] = %#v, want %#v", i, got[i], want[i])
+		if got.Values()[i] != want[i] {
+			t.Fatalf("artifact[%d] = %#v, want %#v", i, got.Values()[i], want[i])
 		}
 	}
 }

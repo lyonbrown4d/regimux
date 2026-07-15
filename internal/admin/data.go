@@ -70,7 +70,7 @@ func (s *Service) loadPullRows(ctx context.Context, active string, rows *metadat
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list pulls")
 	}
-	rows.pulls = collectionlist.NewList(pulls...)
+	rows.pulls = pulls
 	return nil
 }
 
@@ -84,7 +84,7 @@ func (s *Service) loadBlobRows(ctx context.Context, active string, rows *metadat
 		if err != nil {
 			return oops.In("admin").Wrapf(err, "list recent blobs")
 		}
-		rows.recentBlobs = collectionlist.NewList(recentBlobs...)
+		rows.recentBlobs = recentBlobs
 	}
 	if active != "storage" {
 		return nil
@@ -105,7 +105,7 @@ func (s *Service) loadRepositoryRows(ctx context.Context, active string, rows *m
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list repository metadata")
 	}
-	rows.repositories = collectionlist.NewList(repositories...)
+	rows.repositories = repositories
 	return nil
 }
 
@@ -117,7 +117,7 @@ func (s *Service) loadUpstreamMetadataRows(ctx context.Context, active string, r
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list upstream metadata")
 	}
-	rows.upstreams = collectionlist.NewList(upstreams...)
+	rows.upstreams = upstreams
 	return nil
 }
 
@@ -136,8 +136,8 @@ func (s *Service) loadStorageBlobRows(ctx context.Context, rows *metadataSnapsho
 	if err != nil {
 		return oops.In("admin").Wrapf(err, "list repo blobs")
 	}
-	rows.largeBlobs = collectionlist.NewList(largeBlobs...)
-	rows.repoBlobs = collectionlist.NewList(repoBlobs...)
+	rows.largeBlobs = largeBlobs
+	rows.repoBlobs = repoBlobs
 	return nil
 }
 

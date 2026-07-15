@@ -196,8 +196,8 @@ func (s *Service) run(ctx context.Context, opts RunOptions, execution *runExecut
 	if err != nil {
 		return nil, cacheWrap(err, "list pull records for prefetch")
 	}
-	scannedRecords := len(records)
-	filteredRecords := filterPullRecords(collectionlist.NewList(records...), opts)
+	scannedRecords := records.Len()
+	filteredRecords := filterPullRecords(records, opts)
 
 	report := &RunReport{
 		ScannedRecords: scannedRecords,

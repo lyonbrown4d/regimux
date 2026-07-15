@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/samber/lo"
-	"github.com/samber/mo"
 )
 
 func (m *MetadataMapper) TagRecordToRow(record TagRecord) (tagRow, error) {
@@ -61,7 +61,7 @@ type rowValues[T any] interface {
 	Values() []T
 }
 
-func mapRows[T, R any](rows rowValues[T], mapper func(T) (*R, error)) ([]R, error) {
+func mapRows[T, R any](rows rowValues[T], mapper func(T) (*R, error)) (*collectionlist.List[R], error) {
 	records, err := lo.MapErr(rows.Values(), func(row T, _ int) (R, error) {
 		record, err := mapper(row)
 		if err != nil {
@@ -73,15 +73,7 @@ func mapRows[T, R any](rows rowValues[T], mapper func(T) (*R, error)) ([]R, erro
 	if err != nil {
 		return nil, wrapError(err, "map metadata rows")
 	}
-	return records, nil
-}
-
-func firstRow[T any](rows rowValues[T]) mo.Option[T] {
-	values := rows.Values()
-	if len(values) == 0 {
-		return mo.None[T]()
-	}
-	return mo.Some(values[0])
+	return collectionlist.NewList(records...), nil
 }
 
 func encodeHeaders(headers map[string][]string) (string, error) {

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
+	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	containerreference "github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/samber/oops"
@@ -12,7 +13,7 @@ import (
 type ociCollector struct {
 	source    Source
 	opts      ParseOptions
-	artifacts []Artifact
+	artifacts *collectionlist.List[Artifact]
 }
 
 type containerTarget struct {
@@ -21,8 +22,8 @@ type containerTarget struct {
 	Reference  string
 }
 
-func parseContainerRefs(source Source, opts ParseOptions) ([]Artifact, error) {
-	artifacts := make([]Artifact, 0)
+func parseContainerRefs(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
+	artifacts := collectionlist.NewList[Artifact]()
 	lineNo := 0
 	for line := range strings.SplitSeq(string(source.Body), "\n") {
 		lineNo++
@@ -34,17 +35,17 @@ func parseContainerRefs(source Source, opts ParseOptions) ([]Artifact, error) {
 		if err != nil {
 			return nil, err
 		}
-		artifacts = append(artifacts, containerArtifact(source, opts, target, lineNo))
+		artifacts.Add(containerArtifact(source, opts, target, lineNo))
 	}
 	return dedupeArtifacts(artifacts), nil
 }
 
-func parseOCIManifest(source Source, opts ParseOptions) ([]Artifact, error) {
+func parseOCIManifest(source Source, opts ParseOptions) (*collectionlist.List[Artifact], error) {
 	var payload any
 	if err := json.Unmarshal(source.Body, &payload); err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "decode OCI manifest descriptors")
 	}
-	collector := ociCollector{source: source, opts: opts}
+	collector := ociCollector{source: source, opts: opts, artifacts: collectionlist.NewList[Artifact]()}
 	if err := collector.collect(payload, containerTarget{}); err != nil {
 		return nil, err
 	}
@@ -90,7 +91,7 @@ func (c *ociCollector) collectImageRef(values map[string]any) error {
 	if err != nil {
 		return err
 	}
-	c.artifacts = append(c.artifacts, containerArtifact(c.source, c.opts, parsed, 0))
+	c.artifacts.Add(containerArtifact(c.source, c.opts, parsed, 0))
 	return nil
 }
 
@@ -107,7 +108,7 @@ func (c *ociCollector) collectDescriptor(values map[string]any, target container
 	if target.Alias == "" {
 		return oops.In("dependency-prefetch").With("repository", target.Repository).Errorf("container descriptor upstream alias is required")
 	}
-	c.artifacts = append(c.artifacts, containerArtifact(c.source, c.opts, target, 0))
+	c.artifacts.Add(containerArtifact(c.source, c.opts, target, 0))
 	return nil
 }
 

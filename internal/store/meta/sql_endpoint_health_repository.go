@@ -79,7 +79,7 @@ func (s *SQLStore) PutEndpointHealthSnapshot(ctx context.Context, record Endpoin
 	return s.upsertEndpointHealthRow(ctx, row)
 }
 
-func (s *SQLStore) ListEndpointHealth(ctx context.Context, opts ...EndpointHealthListOption) ([]EndpointHealthRecord, error) {
+func (s *SQLStore) ListEndpointHealth(ctx context.Context, opts ...EndpointHealthListOption) (*collectionlist.List[EndpointHealthRecord], error) {
 	options := endpointHealthListOptions(opts...)
 	rows, err := repository.Query(s.endpointHealth).OrderBy(
 		sqlEndpointHealthRows.UpdatedAt.Desc(),
@@ -92,14 +92,13 @@ func (s *SQLStore) ListEndpointHealth(ctx context.Context, opts ...EndpointHealt
 	if err != nil {
 		return nil, err
 	}
-	filtered := collectionlist.NewList(records...).
-		Where(func(_ int, record EndpointHealthRecord) bool {
-			return options.Alias == "" || record.Alias == options.Alias
-		})
+	filtered := records.Where(func(_ int, record EndpointHealthRecord) bool {
+		return options.Alias == "" || record.Alias == options.Alias
+	})
 	if options.Limit > 0 {
 		filtered = filtered.Take(options.Limit)
 	}
-	return filtered.Values(), nil
+	return filtered, nil
 }
 
 func (s *SQLStore) upsertEndpointHealthRow(ctx context.Context, row endpointHealthRow) error {
