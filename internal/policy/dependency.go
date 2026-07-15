@@ -6,7 +6,6 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/samber/lo"
 )
 
 const (
@@ -89,10 +88,10 @@ func FromConfig(cfg config.DependencyPolicyConfig) DependencyPolicy {
 }
 
 func dependencyRulesFromConfig(rules *collectionlist.List[config.DependencyRuleConfig]) *collectionlist.List[DependencyRule] {
-	if rules == nil || rules.Len() == 0 {
+	if rules == nil || rules.IsEmpty() {
 		return nil
 	}
-	out := lo.Map(rules.Values(), func(rule config.DependencyRuleConfig, _ int) DependencyRule {
+	return collectionlist.MapList(rules, func(_ int, rule config.DependencyRuleConfig) DependencyRule {
 		return DependencyRule{
 			Ecosystem: rule.Ecosystem,
 			Alias:     rule.Alias,
@@ -100,10 +99,6 @@ func dependencyRulesFromConfig(rules *collectionlist.List[config.DependencyRuleC
 			Reference: rule.Reference,
 		}
 	})
-	if len(out) == 0 {
-		return nil
-	}
-	return collectionlist.NewList(out...)
 }
 
 func dependencyRulesFromConfigValues(rules *collectionlist.List[DependencyRule]) []DependencyRule {
@@ -114,19 +109,12 @@ func dependencyRulesFromConfigValues(rules *collectionlist.List[DependencyRule])
 }
 
 func firstMatchingDependencyRule(rules *collectionlist.List[DependencyRule], target DependencyTarget) (DependencyRule, bool) {
-	if rules == nil || rules.Len() == 0 {
+	if rules == nil {
 		return DependencyRule{}, false
 	}
-	for i := range rules.Len() {
-		rule, ok := rules.Get(i)
-		if !ok {
-			continue
-		}
-		if dependencyRuleMatches(rule, target) {
-			return rule, true
-		}
-	}
-	return DependencyRule{}, false
+	return rules.FirstWhere(func(_ int, rule DependencyRule) bool {
+		return dependencyRuleMatches(rule, target)
+	}).Get()
 }
 
 func dependencyRuleMatches(rule DependencyRule, target DependencyTarget) bool {

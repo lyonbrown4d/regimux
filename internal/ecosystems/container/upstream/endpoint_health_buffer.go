@@ -9,6 +9,7 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/samber/lo"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
 )
@@ -98,15 +99,12 @@ func (c *Client) drainEndpointHealth() *collectionlist.List[meta.EndpointHealthR
 	if c.healthPending == nil || c.healthPending.Len() == 0 {
 		return collectionlist.NewList[meta.EndpointHealthRecord]()
 	}
-	items := c.healthPending.All()
-	c.healthPending.Clear()
-	records := collectionlist.NewList[meta.EndpointHealthRecord]()
-	for key := range items {
-		record := items[key]
+	records := lo.MapToSlice(c.healthPending.All(), func(key string, record meta.EndpointHealthRecord) meta.EndpointHealthRecord {
 		record.Key = key
-		records.Add(record)
-	}
-	return records
+		return record
+	})
+	c.healthPending.Clear()
+	return collectionlist.NewList(records...)
 }
 
 func endpointHealthPersistenceContext(parent context.Context) (context.Context, context.CancelFunc) {

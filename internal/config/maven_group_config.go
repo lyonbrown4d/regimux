@@ -3,8 +3,12 @@ package config
 import (
 	"errors"
 	"fmt"
-	"sort"
+	"maps"
+	"slices"
 	"strings"
+
+	collectionset "github.com/arcgolabs/collectionx/set"
+	"github.com/samber/lo"
 )
 
 const (
@@ -30,12 +34,7 @@ func (c Config) MavenGroup(alias string) (MavenGroupConfig, bool) {
 
 // OrderedMavenGroups returns Maven group aliases in deterministic order.
 func (c Config) OrderedMavenGroups() []string {
-	aliases := make([]string, 0, len(c.MavenGroups))
-	for alias := range c.MavenGroups {
-		aliases = append(aliases, alias)
-	}
-	sort.Strings(aliases)
-	return aliases
+	return slices.Sorted(maps.Keys(c.MavenGroups))
 }
 
 func (c *Config) normalizeMavenGroups() error {
@@ -118,27 +117,29 @@ func (c *Config) normalizeMavenGroupMembers(
 		return nil, fmt.Errorf("normalize maven group %q: members must not be empty", alias)
 	}
 
-	members := make([]string, len(rawMembers))
-	seen := make(map[string]struct{}, len(rawMembers))
-	for index, rawMember := range rawMembers {
+	seen := collectionset.NewSetWithCapacity[string](len(rawMembers))
+	members, err := lo.MapErr(rawMembers, func(rawMember string, _ int) (string, error) {
 		member := strings.TrimSpace(rawMember)
 		if err := c.validateMavenGroupMember(alias, member, seen); err != nil {
-			return nil, err
+			return "", err
 		}
-		seen[member] = struct{}{}
-		members[index] = member
+		seen.Add(member)
+		return member, nil
+	})
+	if err != nil {
+		return nil, fmt.Errorf("normalize maven group %q members: %w", alias, err)
 	}
 	return members, nil
 }
 
 func (c *Config) validateMavenGroupMember(
 	alias, member string,
-	seen map[string]struct{},
+	seen *collectionset.Set[string],
 ) error {
 	if member == "" {
 		return fmt.Errorf("normalize maven group %q: member must not be empty", alias)
 	}
-	if _, duplicate := seen[member]; duplicate {
+	if seen.Contains(member) {
 		return fmt.Errorf("normalize maven group %q: duplicate member %q", alias, member)
 	}
 	if _, nested := c.MavenGroups[member]; nested {

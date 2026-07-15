@@ -7,6 +7,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/samber/lo"
 )
 
 const resolvedUpstreamHeader = "X-Regimux-Upstream"
@@ -38,26 +39,20 @@ func (s *Service) GroupAliases() []string {
 
 // Targets returns physical Maven upstreams plus logical Maven groups.
 func (s *Service) Targets() *collectionlist.List[ecosystem.Upstream] {
-	upstreams := s.Upstreams().Values()
-	targets := make([]ecosystem.Upstream, 0, len(upstreams)+len(s.GroupAliases()))
-	for index := range upstreams {
-		upstream := &upstreams[index]
-		targets = append(targets, ecosystem.Upstream{
+	targets := collectionlist.MapList(s.Upstreams(), func(_ int, upstream Upstream) ecosystem.Upstream {
+		return ecosystem.Upstream{
 			Ecosystem: "maven",
 			Alias:     upstream.Alias,
 			Config:    upstream.Config,
-		})
-	}
-	for _, alias := range s.GroupAliases() {
-		upstream, ok := s.groupUpstream(alias)
-		if !ok {
-			continue
 		}
-		targets = append(targets, ecosystem.Upstream{
+	})
+	groups := lo.FilterMap(s.GroupAliases(), func(alias string, _ int) (ecosystem.Upstream, bool) {
+		upstream, ok := s.groupUpstream(alias)
+		return ecosystem.Upstream{
 			Ecosystem: "maven",
 			Alias:     alias,
 			Config:    upstream,
-		})
-	}
-	return collectionlist.NewList(targets...)
+		}, ok
+	})
+	return targets.MergeSlice(groups)
 }

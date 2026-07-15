@@ -28,18 +28,13 @@ func normalizeContainerPrewarmPlatforms(values []string) ([]string, error) {
 	if len(values) == 0 {
 		return []string{DefaultContainerPrewarmPlatform()}, nil
 	}
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		platform, err := normalizeContainerPrewarmPlatform(value)
-		if err != nil {
-			return nil, err
-		}
-		if platform == "" {
-			continue
-		}
-		out = append(out, platform)
+	out, err := lo.MapErr(values, func(value string, _ int) (string, error) {
+		return normalizeContainerPrewarmPlatform(value)
+	})
+	if err != nil {
+		return nil, oops.In("config").Wrapf(err, "normalize container prewarm platforms")
 	}
-	out = uniqueStrings(out)
+	out = uniqueStrings(lo.Compact(out))
 	if len(out) == 0 {
 		return []string{DefaultContainerPrewarmPlatform()}, nil
 	}

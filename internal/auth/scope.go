@@ -81,7 +81,7 @@ func listContains(values *collectionlist.List[string], candidate string) bool {
 	if values == nil || candidate == "" {
 		return false
 	}
-	return lo.ContainsBy(values.Values(), func(value string) bool {
+	return values.AnyMatch(func(_ int, value string) bool {
 		return strings.TrimSpace(value) == candidate
 	})
 }

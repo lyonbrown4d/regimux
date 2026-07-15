@@ -4,10 +4,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"maps"
-	"slices"
 	"sort"
 	"strings"
+
+	collectionmapping "github.com/arcgolabs/collectionx/mapping"
+	collectionset "github.com/arcgolabs/collectionx/set"
 )
 
 type mavenMetadataDocument struct {
@@ -43,8 +44,8 @@ type mavenMetadataPlugin struct {
 
 type metadataMergeState struct {
 	document          mavenMetadataDocument
-	versionSet        map[string]struct{}
-	plugins           map[string]mavenMetadataPlugin
+	versionSet        *collectionset.Set[string]
+	plugins           *collectionmapping.Map[string, mavenMetadataPlugin]
 	latestCandidates  []string
 	releaseCandidates []string
 }
@@ -88,8 +89,8 @@ func newMetadataMergeState() *metadataMergeState {
 		document: mavenMetadataDocument{
 			XMLName: xml.Name{Local: "metadata"},
 		},
-		versionSet: make(map[string]struct{}),
-		plugins:    make(map[string]mavenMetadataPlugin),
+		versionSet: collectionset.NewSet[string](),
+		plugins:    collectionmapping.NewMap[string, mavenMetadataPlugin](),
 	}
 }
 
@@ -190,7 +191,7 @@ func mergeMetadataVersions(
 		if version == "" {
 			continue
 		}
-		state.versionSet[version] = struct{}{}
+		state.versionSet.Add(version)
 		state.latestCandidates = append(state.latestCandidates, version)
 		if !isSnapshotVersion(version) {
 			state.releaseCandidates = append(state.releaseCandidates, version)
@@ -199,7 +200,7 @@ func mergeMetadataVersions(
 }
 
 func mergeMetadataPlugins(
-	plugins map[string]mavenMetadataPlugin,
+	plugins *collectionmapping.Map[string, mavenMetadataPlugin],
 	incoming *mavenMetadataPlugins,
 ) {
 	if incoming == nil {
@@ -207,15 +208,13 @@ func mergeMetadataPlugins(
 	}
 	for _, plugin := range incoming.Items {
 		key := plugin.Prefix + "\x00" + plugin.ArtifactID
-		if _, exists := plugins[key]; !exists {
-			plugins[key] = plugin
-		}
+		plugins.GetOrSet(key, plugin)
 	}
 }
 
 func finalizeMetadataVersioning(
 	merged *mavenMetadataDocument,
-	versionSet map[string]struct{},
+	versionSet *collectionset.Set[string],
 	latestCandidates []string,
 	releaseCandidates []string,
 ) {
@@ -230,8 +229,8 @@ func finalizeMetadataVersioning(
 	merged.Versioning.Release = maxMavenVersion(releaseCandidates)
 }
 
-func sortedMavenVersions(versionSet map[string]struct{}) []string {
-	versions := slices.Collect(maps.Keys(versionSet))
+func sortedMavenVersions(versionSet *collectionset.Set[string]) []string {
+	versions := versionSet.Values()
 	sort.SliceStable(versions, func(left, right int) bool {
 		comparison := compareMavenVersions(versions[left], versions[right])
 		if comparison == 0 {
@@ -244,17 +243,17 @@ func sortedMavenVersions(versionSet map[string]struct{}) []string {
 
 func finalizeMetadataPlugins(
 	merged *mavenMetadataDocument,
-	pluginSet map[string]mavenMetadataPlugin,
+	pluginSet *collectionmapping.Map[string, mavenMetadataPlugin],
 ) {
-	if len(pluginSet) == 0 {
+	if pluginSet.IsEmpty() {
 		return
 	}
 	plugins := sortedMavenPlugins(pluginSet)
 	merged.Plugins = &mavenMetadataPlugins{Items: plugins}
 }
 
-func sortedMavenPlugins(pluginSet map[string]mavenMetadataPlugin) []mavenMetadataPlugin {
-	plugins := slices.Collect(maps.Values(pluginSet))
+func sortedMavenPlugins(pluginSet *collectionmapping.Map[string, mavenMetadataPlugin]) []mavenMetadataPlugin {
+	plugins := pluginSet.Values()
 	sort.SliceStable(plugins, func(left, right int) bool {
 		if plugins[left].Prefix != plugins[right].Prefix {
 			return plugins[left].Prefix < plugins[right].Prefix

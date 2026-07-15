@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/samber/lo"
 	"github.com/samber/mo"
 )
 
@@ -61,14 +62,16 @@ type rowValues[T any] interface {
 }
 
 func mapRows[T, R any](rows rowValues[T], mapper func(T) (*R, error)) ([]R, error) {
-	recordRows := rows.Values()
-	records := make([]R, 0, len(recordRows))
-	for _, row := range recordRows {
+	records, err := lo.MapErr(rows.Values(), func(row T, _ int) (R, error) {
 		record, err := mapper(row)
 		if err != nil {
-			return nil, wrapError(err, "map metadata rows")
+			var zero R
+			return zero, err
 		}
-		records = append(records, *record)
+		return *record, nil
+	})
+	if err != nil {
+		return nil, wrapError(err, "map metadata rows")
 	}
 	return records, nil
 }
