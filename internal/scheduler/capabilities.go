@@ -119,3 +119,46 @@ func (r *Runtime) findRuntimeByName(name string, matcher runtimeNameMatcher) (ec
 		return runtime != nil && matcher(runtime.Name(), name)
 	})
 }
+
+// RuntimeCapabilitySearchMode controls whether a named lookup continues past a matching runtime.
+type RuntimeCapabilitySearchMode = runtimeCapabilitySearchMode
+
+const (
+	// ContinueAfterRuntimeMatch allows lookup to find a capability on a later runtime with the same name.
+	ContinueAfterRuntimeMatch RuntimeCapabilitySearchMode = continueAfterRuntimeMatch
+	// StopAfterRuntimeMatch stops lookup at the first runtime whose name matches.
+	StopAfterRuntimeMatch RuntimeCapabilitySearchMode = stopAfterRuntimeMatch
+)
+
+// RuntimeNameMatcher compares a runtime name with a lookup value.
+type RuntimeNameMatcher = runtimeNameMatcher
+
+// MatchRuntimeNameExact performs a case-sensitive runtime name match.
+func MatchRuntimeNameExact(runtimeName, lookup string) bool {
+	return matchRuntimeNameExact(runtimeName, lookup)
+}
+
+// MatchRuntimeNameFold performs a case-insensitive runtime name match.
+func MatchRuntimeNameFold(runtimeName, lookup string) bool {
+	return matchRuntimeNameFold(runtimeName, lookup)
+}
+
+// RuntimeCapabilities returns every runtime implementing T.
+func RuntimeCapabilities[T any](runtime *Runtime) *collectionlist.List[T] {
+	return runtimeCapabilities[T](runtime)
+}
+
+// NamedRuntimeCapability returns a named runtime capability using the requested search behavior.
+func NamedRuntimeCapability[T any](
+	runtime *Runtime,
+	name string,
+	matcher RuntimeNameMatcher,
+	mode RuntimeCapabilitySearchMode,
+) (T, bool) {
+	return namedRuntimeCapability[T](runtime, name, matcher, mode)
+}
+
+// FindRuntimeByName returns the first runtime matching name.
+func (r *Runtime) FindRuntimeByName(name string, matcher RuntimeNameMatcher) (ecosystem.Runtime, bool) {
+	return r.findRuntimeByName(name, matcher)
+}

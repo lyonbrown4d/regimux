@@ -1,5 +1,4 @@
-//nolint:testpackage // Tests cover unexported scheduler job registration helpers.
-package scheduler
+package scheduler_test
 
 import (
 	"context"
@@ -9,6 +8,7 @@ import (
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
+	"github.com/lyonbrown4d/regimux/internal/scheduler"
 )
 
 type schedulerJobContextKey struct{}
@@ -29,13 +29,14 @@ func (countingLock) Unlock(context.Context) error {
 }
 
 func TestRegisterDurationJobBuildsOptionsAndStartsImmediately(t *testing.T) {
-	scheduler := newTestScheduler(t)
+	cron := newTestScheduler(t)
 	parentCtx := context.WithValue(context.Background(), schedulerJobContextKey{}, "parent")
 	done := make(chan struct{})
 	receivedValue := make(chan string, 1)
 
-	job, err := registerDurationJob(
-		scheduler,
+	job, err := scheduler.RegisterDurationJob(
+		parentCtx,
+		cron,
 		time.Hour,
 		func(ctx context.Context) error {
 			value, ok := ctx.Value(schedulerJobContextKey{}).(string)
@@ -46,11 +47,10 @@ func TestRegisterDurationJobBuildsOptionsAndStartsImmediately(t *testing.T) {
 			close(done)
 			return nil
 		},
-		schedulerJobOptions{
-			name:             "regimux.test.duration",
-			tags:             []string{"maintenance", "probe"},
-			ctx:              parentCtx,
-			startImmediately: true,
+		scheduler.JobOptions{
+			Name:             "regimux.test.duration",
+			Tags:             []string{"maintenance", "probe"},
+			StartImmediately: true,
 		},
 	)
 	if err != nil {
@@ -70,7 +70,7 @@ func TestRegisterDurationJobBuildsOptionsAndStartsImmediately(t *testing.T) {
 		t.Fatalf("expected duration %s, got %s", time.Hour, schedule.Duration)
 	}
 
-	scheduler.Start()
+	cron.Start()
 	waitForJobRun(t, done)
 	if got := <-receivedValue; got != "parent" {
 		t.Fatalf("expected task context value parent, got %q", got)
@@ -79,20 +79,21 @@ func TestRegisterDurationJobBuildsOptionsAndStartsImmediately(t *testing.T) {
 
 func TestRegisterImmediateJobDisablesDistributedLocker(t *testing.T) {
 	locker := &countingLocker{}
-	scheduler := newTestScheduler(t, gocron.WithDistributedLocker(locker))
+	cron := newTestScheduler(t, gocron.WithDistributedLocker(locker))
 	done := make(chan struct{})
 	localJob := false
 
-	job, err := registerImmediateJob(
-		scheduler,
+	job, err := scheduler.RegisterImmediateJob(
+		context.Background(),
+		cron,
 		func(context.Context) error {
 			close(done)
 			return nil
 		},
-		schedulerJobOptions{
-			name:        "regimux.test.immediate",
-			tags:        []string{"manual"},
-			distributed: &localJob,
+		scheduler.JobOptions{
+			Name:        "regimux.test.immediate",
+			Tags:        []string{"manual"},
+			Distributed: &localJob,
 		},
 	)
 	if err != nil {
@@ -102,7 +103,7 @@ func TestRegisterImmediateJobDisablesDistributedLocker(t *testing.T) {
 		t.Fatalf("expected tags %v, got %v", want, got)
 	}
 
-	scheduler.Start()
+	cron.Start()
 	waitForJobRun(t, done)
 	if got := locker.lockCalls.Load(); got != 0 {
 		t.Fatalf("expected distributed locker to be disabled, got %d lock calls", got)
@@ -111,18 +112,18 @@ func TestRegisterImmediateJobDisablesDistributedLocker(t *testing.T) {
 
 func newTestScheduler(t *testing.T, options ...gocron.SchedulerOption) gocron.Scheduler {
 	t.Helper()
-	scheduler, err := gocron.NewScheduler(options...)
+	cron, err := gocron.NewScheduler(options...)
 	if err != nil {
 		t.Fatalf("create scheduler: %v", err)
 	}
 	t.Cleanup(func() {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 		defer cancel()
-		if err := scheduler.ShutdownWithContext(ctx); err != nil {
+		if err := cron.ShutdownWithContext(ctx); err != nil {
 			t.Fatalf("shutdown scheduler: %v", err)
 		}
 	})
-	return scheduler
+	return cron
 }
 
 func waitForJobRun(t *testing.T, done <-chan struct{}) {

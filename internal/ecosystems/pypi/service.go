@@ -3,6 +3,7 @@ package pypi
 import (
 	"bytes"
 	"context"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"io"
 	"log/slog"
 	"net/http"
@@ -200,11 +201,13 @@ func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
 	return s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeRefresh)
 }
 
+const pypiSimpleIndexMaxBytes int64 = 32 << 20
+
 func (s *Service) prepareFetched(req Request, requestRoute Route, fetched *upstreamFetch) (*upstreamFetch, error) {
 	if fetched == nil || fetched.body == nil || requestRoute.Kind != RouteSimple {
 		return fetched, nil
 	}
-	body, err := io.ReadAll(fetched.body)
+	body, err := upstreamhttp.ReadAllLimited(fetched.body, pypiSimpleIndexMaxBytes)
 	if err != nil {
 		return nil, wrapError(err, "read pypi upstream body")
 	}

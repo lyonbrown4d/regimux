@@ -3,13 +3,13 @@ package dist_test
 
 import (
 	"context"
+	"github.com/lyonbrown4d/regimux/internal/testkit"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/dist"
@@ -59,14 +59,13 @@ func TestServiceCachesFullDistArtifact(t *testing.T) {
 	}
 }
 
-//nolint:cyclop,gocyclo,gocognit,funlen // Concurrent miss coalescing test keeps synchronization and cache-status assertions together.
 func TestServiceCoalescesConcurrentFullArtifactMiss(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var releaseOnce sync.Once
-	defer releaseOnce.Do(func() { close(release) })
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requests.Add(1) == 1 {
@@ -83,67 +82,23 @@ func TestServiceCoalescesConcurrentFullArtifactMiss(t *testing.T) {
 	service, _, _ := newTestService(ctx, t, upstream.URL, []string{"gradle-*-bin.zip"})
 
 	const clients = 8
-	type getResult struct {
-		resp *dist.Response
-		err  error
-	}
-	start := make(chan struct{})
-	results := make(chan getResult, clients)
-	var ready sync.WaitGroup
-	ready.Add(clients)
-	for range clients {
-		go func() {
-			ready.Done()
-			<-start
-			resp, err := service.Get(ctx, dist.Request{Alias: "gradle", Tail: "gradle-8.7-bin.zip", Method: http.MethodGet})
-			results <- getResult{resp: resp, err: err}
-		}()
-	}
-	ready.Wait()
-	close(start)
-
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("upstream request did not start")
-	}
-	time.Sleep(100 * time.Millisecond)
-	if got := requests.Load(); got != 1 {
-		t.Fatalf("upstream requests while first fill is blocked = %d, want 1", got)
-	}
+	run := testkit.StartConcurrent(clients, func() (*dist.Response, error) {
+		return service.Get(ctx, dist.Request{Alias: "gradle", Tail: "gradle-8.7-bin.zip", Method: http.MethodGet})
+	})
+	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	misses := 0
-	hits := 0
-	for range clients {
-		var result getResult
-		select {
-		case result = <-results:
-			requireNoError(t, "concurrent dist get", result.err)
-		case <-time.After(2 * time.Second):
-			t.Fatal("concurrent dist get did not return")
-		}
-		resp := result.resp
+	responses := run.Wait(t)
+	testkit.RequireOneMiss(t, responses, artifactcache.CacheMiss, artifactcache.CacheHit, func(resp *dist.Response) string {
 		if body := readResponse(t, resp); body != "abcdef" {
 			t.Fatalf("body = %q", body)
 		}
-		switch resp.Cache {
-		case artifactcache.CacheMiss:
-			misses++
-		case artifactcache.CacheHit:
-			hits++
-		default:
-			t.Fatalf("cache = %q, want hit or miss", resp.Cache)
-		}
-	}
-	if misses != 1 || hits != clients-1 {
-		t.Fatalf("cache statuses: misses=%d hits=%d, want 1 miss and %d hits", misses, hits, clients-1)
-	}
+		return resp.Cache
+	})
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("upstream requests = %d, want 1", got)
 	}
 }
-
 func TestServiceHeadDoesNotCacheDistArtifact(t *testing.T) {
 	ctx := context.Background()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

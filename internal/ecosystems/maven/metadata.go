@@ -4,6 +4,8 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
+	"maps"
+	"slices"
 	"sort"
 	"strings"
 )
@@ -229,10 +231,7 @@ func finalizeMetadataVersioning(
 }
 
 func sortedMavenVersions(versionSet map[string]struct{}) []string {
-	versions := make([]string, 0, len(versionSet))
-	for version := range versionSet {
-		versions = append(versions, version)
-	}
+	versions := slices.Collect(maps.Keys(versionSet))
 	sort.SliceStable(versions, func(left, right int) bool {
 		comparison := compareMavenVersions(versions[left], versions[right])
 		if comparison == 0 {
@@ -255,10 +254,7 @@ func finalizeMetadataPlugins(
 }
 
 func sortedMavenPlugins(pluginSet map[string]mavenMetadataPlugin) []mavenMetadataPlugin {
-	plugins := make([]mavenMetadataPlugin, 0, len(pluginSet))
-	for _, plugin := range pluginSet {
-		plugins = append(plugins, plugin)
-	}
+	plugins := slices.Collect(maps.Values(pluginSet))
 	sort.SliceStable(plugins, func(left, right int) bool {
 		if plugins[left].Prefix != plugins[right].Prefix {
 			return plugins[left].Prefix < plugins[right].Prefix

@@ -4,6 +4,7 @@ package registrytool
 
 import (
 	"context"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"io"
 	"net/http"
 	"net/url"
@@ -230,8 +231,10 @@ func orasCredential(cfg AuthConfig) orasauth.Credential {
 	return orasauth.EmptyCredential
 }
 
+const maxManifestBodyBytes int64 = 16 << 20
+
 func readAndCloseManifest(rc io.ReadCloser) ([]byte, error) {
-	content, err := io.ReadAll(rc)
+	content, err := upstreamhttp.ReadAllLimited(rc, maxManifestBodyBytes)
 	closeErr := rc.Close()
 	if err != nil || closeErr != nil {
 		return nil, oops.In("registrytool").Wrapf(multierr.Combine(err, closeErr), "read registry manifest")

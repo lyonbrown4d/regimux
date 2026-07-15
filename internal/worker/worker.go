@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/panjf2000/ants/v2"
@@ -167,7 +168,14 @@ func runInline(ctx context.Context, task func(context.Context) error) error {
 func runPooled(ctx context.Context, pool *ants.Pool, task func(context.Context) error) error {
 	done := make(chan error, 1)
 	if err := pool.Submit(func() {
-		done <- task(ctx)
+		var taskErr error
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				taskErr = fmt.Errorf("worker task panicked: %v", recovered)
+			}
+			done <- taskErr
+		}()
+		taskErr = task(ctx)
 	}); err != nil {
 		return oops.Wrapf(err, "submit worker task")
 	}

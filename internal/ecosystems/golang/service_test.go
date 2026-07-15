@@ -3,13 +3,13 @@ package golang_test
 
 import (
 	"context"
+	"github.com/lyonbrown4d/regimux/internal/testkit"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"sync"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
@@ -60,14 +60,13 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	}
 }
 
-//nolint:cyclop,gocyclo,gocognit,funlen // Concurrent miss coalescing test keeps synchronization and cache-status assertions together.
 func TestServiceCoalescesConcurrentVersionedGoProxyMiss(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64
 	started := make(chan struct{})
 	release := make(chan struct{})
 	var releaseOnce sync.Once
-	defer releaseOnce.Do(func() { close(release) })
+	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if requests.Add(1) == 1 {
@@ -84,68 +83,21 @@ func TestServiceCoalescesConcurrentVersionedGoProxyMiss(t *testing.T) {
 
 	service := newTestService(ctx, t, upstream.URL)
 	const clients = 8
-	type getResult struct {
-		resp *golang.Response
-		err  error
-	}
-	start := make(chan struct{})
-	results := make(chan getResult, clients)
-	var ready sync.WaitGroup
-	ready.Add(clients)
-	for range clients {
-		go func() {
-			ready.Done()
-			<-start
-			resp, err := service.Get(ctx, golang.Request{
-				Alias: "default",
-				Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
-			})
-			results <- getResult{resp: resp, err: err}
-		}()
-	}
-	ready.Wait()
-	close(start)
-
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("upstream request did not start")
-	}
-	time.Sleep(100 * time.Millisecond)
-	if got := requests.Load(); got != 1 {
-		t.Fatalf("upstream requests while first fill is blocked = %d, want 1", got)
-	}
+	run := testkit.StartConcurrent(clients, func() (*golang.Response, error) {
+		return service.Get(ctx, golang.Request{Alias: "default", Tail: "github.com/acme/lib/@v/v1.2.3.mod"})
+	})
+	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	misses := 0
-	hits := 0
-	for range clients {
-		var result getResult
-		select {
-		case result = <-results:
-			requireNoError(t, "concurrent go proxy get", result.err)
-		case <-time.After(2 * time.Second):
-			t.Fatal("concurrent go proxy get did not return")
-		}
-		resp := result.resp
+	responses := run.Wait(t)
+	testkit.RequireOneMiss(t, responses, cacheMiss, cacheHit, func(resp *golang.Response) string {
 		assertBody(t, resp, "module github.com/acme/lib\n")
-		switch resp.Cache {
-		case cacheMiss:
-			misses++
-		case cacheHit:
-			hits++
-		default:
-			t.Fatalf("cache = %q, want hit or miss", resp.Cache)
-		}
-	}
-	if misses != 1 || hits != clients-1 {
-		t.Fatalf("cache statuses: misses=%d hits=%d, want 1 miss and %d hits", misses, hits, clients-1)
-	}
+		return resp.Cache
+	})
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("upstream requests = %d, want 1", got)
 	}
 }
-
 func TestServiceCachesRootGoProxyFile(t *testing.T) {
 	ctx := context.Background()
 	requests := 0

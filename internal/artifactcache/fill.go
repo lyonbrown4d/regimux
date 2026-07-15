@@ -134,29 +134,33 @@ func CoalesceFill[T any](
 	})
 }
 
-//nolint:gocognit // The owner/waiter retry loop is clearer kept as one generic coordination state machine.
 func CoalesceFillWith[T any](req CoalesceRequest[T]) (T, error) {
-	var zero T
 	for {
 		current, owner := req.Tracker.Begin(req.Key)
-		if !owner {
-			if err := current.Wait(req.Context); err != nil && req.Context.Err() != nil {
-				return zero, wrapError(err, "wait for artifact cache fill")
-			}
-			result, ok, err := req.Wait()
-			if ok || err != nil {
-				return result, err
-			}
-			continue
+		if owner {
+			return finishTrackedFill(req, current)
 		}
-
-		result, err := coalesceFillOwner(req)
-		req.Tracker.Finish(req.Key, current, err)
-		return result, err
+		result, retry, err := waitForTrackedFill(req, current)
+		if !retry {
+			return result, err
+		}
 	}
 }
 
-//nolint:gocognit // Lease ownership and waiter polling are one small state machine with explicit retry branches.
+func waitForTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, bool, error) {
+	var zero T
+	if err := current.Wait(req.Context); err != nil && req.Context.Err() != nil {
+		return zero, false, wrapError(err, "wait for artifact cache fill")
+	}
+	result, ok, err := req.Wait()
+	return result, !ok && err == nil, err
+}
+
+func finishTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, error) {
+	result, err := coalesceFillOwner(req)
+	req.Tracker.Finish(req.Key, current, err)
+	return result, err
+}
 func coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
 	var zero T
 	for {
@@ -164,13 +168,9 @@ func coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
 		if ok || err != nil {
 			return result, err
 		}
-
-		lease, owner := acquireFillLease(req.Context, req.Tracker, req.Key)
-		if owner {
-			if lease == nil {
-				return req.Fill()
-			}
-			return fillWithLease(req.Context, req.Tracker, lease, req.Fill)
+		result, filled, err := fillAsLeaseOwner(req)
+		if filled || err != nil {
+			return result, err
 		}
 		if err := waitForFillPoll(req.Context, req.Tracker); err != nil {
 			return zero, err
@@ -178,6 +178,19 @@ func coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
 	}
 }
 
+func fillAsLeaseOwner[T any](req CoalesceRequest[T]) (T, bool, error) {
+	var zero T
+	lease, owner := acquireFillLease(req.Context, req.Tracker, req.Key)
+	if !owner {
+		return zero, false, nil
+	}
+	if lease == nil {
+		result, err := req.Fill()
+		return result, true, err
+	}
+	result, err := fillWithLease(req.Context, req.Tracker, lease, req.Fill)
+	return result, true, err
+}
 func fillKey(key Key) string {
 	if key.Alias == "" || key.Repository == "" || key.Reference == "" {
 		return ""

@@ -45,13 +45,7 @@ func (r *Runtime) runAsync(ctx context.Context, jobName string, tags []string, f
 		return oops.In("scheduler").Errorf("scheduled task is not configured")
 	}
 	if r.scheduler == nil {
-		go func() {
-			taskCtx := context.WithoutCancel(ctx)
-			if err := fn(taskCtx); err != nil && r.logger != nil {
-				r.logger.WarnContext(taskCtx, "manual scheduler task failed", "job", jobName, "error", err)
-			}
-		}()
-		return nil
+		return r.runBackground(ctx, jobName, fn)
 	}
 	_, err := registerImmediateJob(
 		r.scheduler,
@@ -71,6 +65,21 @@ func (r *Runtime) runAsync(ctx context.Context, jobName string, tags []string, f
 	return nil
 }
 
+func (r *Runtime) runBackground(
+	ctx context.Context,
+	jobName string,
+	fn func(context.Context) error,
+) error {
+	started := r.startBackground(ctx, func(taskCtx context.Context) {
+		if err := fn(taskCtx); err != nil && r.logger != nil {
+			r.logger.WarnContext(taskCtx, "manual scheduler task failed", "job", jobName, "error", err)
+		}
+	})
+	if !started {
+		return errRuntimeStopping
+	}
+	return nil
+}
 func (r *Runtime) findProbeTarget(ecosystemName, alias string) (ecosystem.Prober, ecosystem.ProbeTarget, error) {
 	if r == nil {
 		return nil, ecosystem.ProbeTarget{}, oops.In("scheduler").Errorf("scheduler is not configured")

@@ -73,3 +73,46 @@ func registerGocronJob(
 	}
 	return job, nil
 }
+
+// JobOptions configures a scheduler job registered through the package boundary.
+type JobOptions struct {
+	Name               string
+	Tags               []string
+	Distributed        *bool
+	StartImmediately   bool
+	LimitedRuns        uint
+	SingletonLimitMode gocron.LimitMode
+}
+
+// RegisterDurationJob registers a recurring duration job.
+func RegisterDurationJob(
+	ctx context.Context,
+	scheduler gocron.Scheduler,
+	interval time.Duration,
+	task func(context.Context) error,
+	options JobOptions,
+) (gocron.Job, error) {
+	return registerDurationJob(scheduler, interval, task, options.schedulerOptions(ctx))
+}
+
+// RegisterImmediateJob registers a one-time job that runs immediately.
+func RegisterImmediateJob(
+	ctx context.Context,
+	scheduler gocron.Scheduler,
+	task func(context.Context) error,
+	options JobOptions,
+) (gocron.Job, error) {
+	return registerImmediateJob(scheduler, task, options.schedulerOptions(ctx))
+}
+
+func (o JobOptions) schedulerOptions(ctx context.Context) schedulerJobOptions {
+	return schedulerJobOptions{
+		name:               o.Name,
+		tags:               o.Tags,
+		ctx:                ctx,
+		distributed:        o.Distributed,
+		startImmediately:   o.StartImmediately,
+		limitedRuns:        o.LimitedRuns,
+		singletonLimitMode: o.SingletonLimitMode,
+	}
+}

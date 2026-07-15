@@ -1,5 +1,4 @@
-//nolint:testpackage // Tests cover unexported runtime capability helpers.
-package scheduler
+package scheduler_test
 
 import (
 	"context"
@@ -7,6 +6,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/scheduler"
 )
 
 type testRuntime struct {
@@ -27,7 +27,7 @@ func (r testCleanerRuntime) Cleanup(context.Context) (*ecosystem.CleanupReport, 
 
 func TestRuntimeCapabilitiesCollectsMatchingRuntimes(t *testing.T) {
 	var nilRuntime ecosystem.Runtime
-	runtime := NewRuntime(RuntimeDependencies{
+	runtime := scheduler.NewRuntime(scheduler.RuntimeDependencies{
 		Runtimes: collectionlist.NewList[ecosystem.Runtime](
 			nilRuntime,
 			testRuntime{name: "plain"},
@@ -35,7 +35,7 @@ func TestRuntimeCapabilitiesCollectsMatchingRuntimes(t *testing.T) {
 		),
 	})
 
-	cleaners := runtimeCapabilities[ecosystem.Cleaner](runtime)
+	cleaners := scheduler.RuntimeCapabilities[ecosystem.Cleaner](runtime)
 	if cleaners.Len() != 1 {
 		t.Fatalf("expected 1 cleaner, got %d", cleaners.Len())
 	}
@@ -45,20 +45,31 @@ func TestRuntimeCapabilitiesCollectsMatchingRuntimes(t *testing.T) {
 }
 
 func TestRuntimeCapabilityByNameSearchModes(t *testing.T) {
-	runtime := NewRuntime(RuntimeDependencies{
+	runtime := scheduler.NewRuntime(scheduler.RuntimeDependencies{
 		Runtimes: collectionlist.NewList[ecosystem.Runtime](
 			testRuntime{name: "go"},
 			testCleanerRuntime{testRuntime: testRuntime{name: "go"}},
 		),
 	})
 
-	if _, ok := namedRuntimeCapability[ecosystem.Cleaner](runtime, "go", matchRuntimeNameExact, stopAfterRuntimeMatch); ok {
-		t.Fatal("expected stopAfterRuntimeMatch to stop on the first named runtime without a cleaner")
+	_, ok := scheduler.NamedRuntimeCapability[ecosystem.Cleaner](
+		runtime,
+		"go",
+		scheduler.MatchRuntimeNameExact,
+		scheduler.StopAfterRuntimeMatch,
+	)
+	if ok {
+		t.Fatal("expected stop mode to stop on the first named runtime without a cleaner")
 	}
 
-	cleaner, ok := namedRuntimeCapability[ecosystem.Cleaner](runtime, "go", matchRuntimeNameExact, continueAfterRuntimeMatch)
+	cleaner, ok := scheduler.NamedRuntimeCapability[ecosystem.Cleaner](
+		runtime,
+		"go",
+		scheduler.MatchRuntimeNameExact,
+		scheduler.ContinueAfterRuntimeMatch,
+	)
 	if !ok {
-		t.Fatal("expected continueAfterRuntimeMatch to find the later cleaner")
+		t.Fatal("expected continue mode to find the later cleaner")
 	}
 	if got := cleaner.Name(); got != "go" {
 		t.Fatalf("expected cleaner name go, got %q", got)
@@ -66,13 +77,11 @@ func TestRuntimeCapabilityByNameSearchModes(t *testing.T) {
 }
 
 func TestFindRuntimeByNameSupportsFoldedMatching(t *testing.T) {
-	runtime := NewRuntime(RuntimeDependencies{
-		Runtimes: collectionlist.NewList[ecosystem.Runtime](
-			testRuntime{name: "Go"},
-		),
+	runtime := scheduler.NewRuntime(scheduler.RuntimeDependencies{
+		Runtimes: collectionlist.NewList[ecosystem.Runtime](testRuntime{name: "Go"}),
 	})
 
-	found, ok := runtime.findRuntimeByName("go", matchRuntimeNameFold)
+	found, ok := runtime.FindRuntimeByName("go", scheduler.MatchRuntimeNameFold)
 	if !ok {
 		t.Fatal("expected folded runtime match")
 	}

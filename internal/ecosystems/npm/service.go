@@ -257,24 +257,21 @@ func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseUR
 	return resp, nil
 }
 
+const npmMetadataMaxBytes int64 = 64 << 20
+
 func (s *Service) prepareFetched(req Request, requestRoute route, fetched *upstreamFetch) (*upstreamFetch, error) {
 	if fetched == nil || fetched.body == nil {
 		return fetched, nil
 	}
-	body, err := io.ReadAll(fetched.body)
+	if requestRoute.Kind != routeMetadata {
+		return fetched, nil
+	}
+	body, err := upstreamhttp.ReadAllLimited(fetched.body, npmMetadataMaxBytes)
 	if err != nil {
 		return nil, wrapError(err, "read npm upstream body")
 	}
 	closeReadCloser(fetched.body, s.logger, "close npm upstream body")
 
-	if requestRoute.Kind != routeMetadata {
-		return &upstreamFetch{
-			status:     fetched.status,
-			headers:    fetched.headers,
-			body:       io.NopCloser(bytes.NewReader(body)),
-			requestURL: fetched.requestURL,
-		}, nil
-	}
 	rewritten, changed, err := rewriteMetadata(body, localBase(requestPublicURL(s.publicURL, req.ProxyBaseURL), requestRoute.Alias))
 	if err != nil {
 		return nil, err

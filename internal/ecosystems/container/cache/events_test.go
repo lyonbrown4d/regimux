@@ -1,5 +1,4 @@
-//nolint:testpackage // This internal test exercises unexported cache event fan-out.
-package cache
+package cache_test
 
 import (
 	"context"
@@ -7,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	containercache "github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/events"
 )
 
@@ -27,11 +27,11 @@ func TestPublishCacheAccessEmitsLowCardinalityContainerPullEvent(t *testing.T) {
 	}
 	t.Cleanup(unsubscribe)
 
-	blobProxy{events: bus}.publishCacheAccess(context.Background(), BlobRequest{
+	containercache.PublishBlobCacheAccess(context.Background(), bus, containercache.BlobRequest{
 		UpstreamAlias: "hub",
 		Repo:          "library/alpine",
 		Digest:        "sha256:abc",
-	}, CacheHit)
+	}, containercache.CacheHit)
 
 	select {
 	case event := <-received:

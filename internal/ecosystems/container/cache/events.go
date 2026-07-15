@@ -99,15 +99,20 @@ func (p manifestProxy) publishCacheStore(ctx context.Context, req ManifestReques
 	})
 }
 
-func (p blobProxy) publishCacheAccess(ctx context.Context, req BlobRequest, status CacheStatus) {
-	publishContainerPullCacheAccess(ctx, p.events, "blob", req.UpstreamAlias, status)
-	publishCacheEvent(ctx, p.events, events.CacheAccess{
+// PublishBlobCacheAccess emits cache access events for a container blob request.
+func PublishBlobCacheAccess(ctx context.Context, bus events.Bus, req BlobRequest, status CacheStatus) {
+	publishContainerPullCacheAccess(ctx, bus, "blob", req.UpstreamAlias, status)
+	publishCacheEvent(ctx, bus, events.CacheAccess{
 		Kind:       "blob",
 		Alias:      req.UpstreamAlias,
 		Repository: req.Repo,
 		Digest:     req.Digest,
 		Status:     string(status),
 	})
+}
+
+func (p blobProxy) publishCacheAccess(ctx context.Context, req BlobRequest, status CacheStatus) {
+	PublishBlobCacheAccess(ctx, p.events, req, status)
 }
 
 func (p blobProxy) publishStreamCacheFallback(ctx context.Context, req BlobRequest, reason string) {

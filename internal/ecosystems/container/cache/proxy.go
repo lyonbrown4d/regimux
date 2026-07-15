@@ -2,6 +2,7 @@
 package cache
 
 import (
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"io"
 	"log/slog"
 	"mime"
@@ -201,12 +202,14 @@ func defaultManifestTTL() time.Duration {
 	return 10 * time.Minute
 }
 
+const maxProxyMetadataBodyBytes int64 = 16 << 20
+
 func readHTTPBody(body io.ReadCloser, label string) ([]byte, error) {
 	if body == nil {
 		return nil, nil
 	}
 
-	data, readErr := io.ReadAll(body)
+	data, readErr := upstreamhttp.ReadAllLimited(body, maxProxyMetadataBodyBytes)
 	closeErr := body.Close()
 	if readErr != nil {
 		return nil, wrapError(readErr, "read %s", label)

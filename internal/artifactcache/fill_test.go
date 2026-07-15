@@ -2,6 +2,7 @@ package artifactcache_test
 
 import (
 	"context"
+	"github.com/lyonbrown4d/regimux/internal/testkit"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -10,81 +11,89 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 )
 
-//nolint:funlen,gocognit // This concurrent lease test keeps setup, blocking, release, and result assertions together.
 func TestCoalesceFillUsesSharedLeaseAcrossTrackers(t *testing.T) {
-	ctx := context.Background()
-	locker := newFakeFillLocker()
-	left := artifactcache.NewFillTracker(
-		artifactcache.WithFillLocker(locker),
-		artifactcache.WithFillPollInterval(5*time.Millisecond),
-		artifactcache.WithFillLeaseTTL(time.Second),
-	)
-	right := artifactcache.NewFillTracker(
-		artifactcache.WithFillLocker(locker),
-		artifactcache.WithFillPollInterval(5*time.Millisecond),
-		artifactcache.WithFillLeaseTTL(time.Second),
-	)
-	key := artifactcache.Key{Alias: "npmjs", Repository: "left-pad", Reference: "metadata"}
+	fixture := newSharedLeaseFixture(t)
+	leftResult := fixture.start(fixture.left)
+	testkit.WaitForSignal(t, fixture.started)
 
-	var upstreamCalls atomic.Int64
-	var cached atomic.Bool
-	var waitErr error
-	var fillErr error
-	started := make(chan struct{})
-	release := make(chan struct{})
-	var releaseOnce sync.Once
-	t.Cleanup(func() { releaseOnce.Do(func() { close(release) }) })
-
-	wait := func() (string, bool, error) {
-		if waitErr != nil {
-			return "", true, waitErr
-		}
-		if cached.Load() {
-			return "cached", true, nil
-		}
-		return "", false, nil
-	}
-	fill := func() (string, error) {
-		if upstreamCalls.Add(1) == 1 {
-			close(started)
-		}
-		<-release
-		if fillErr != nil {
-			return "", fillErr
-		}
-		cached.Store(true)
-		return "origin", nil
-	}
-
-	leftResult := make(chan fillResult, 1)
-	go func() {
-		value, err := artifactcache.CoalesceFill(ctx, left, key, wait, fill)
-		leftResult <- fillResult{value: value, err: err}
-	}()
-
-	select {
-	case <-started:
-	case <-time.After(time.Second):
-		t.Fatal("first fill did not start")
-	}
-
-	rightResult := make(chan fillResult, 1)
-	go func() {
-		value, err := artifactcache.CoalesceFill(ctx, right, key, wait, fill)
-		rightResult <- fillResult{value: value, err: err}
-	}()
-
-	time.Sleep(50 * time.Millisecond)
-	if got := upstreamCalls.Load(); got != 1 {
+	rightResult := fixture.start(fixture.right)
+	testkit.WaitForSignal(t, fixture.locker.contended)
+	if got := fixture.upstreamCalls.Load(); got != 1 {
 		t.Fatalf("upstream calls while distributed lease is held = %d, want 1", got)
 	}
-	releaseOnce.Do(func() { close(release) })
 
+	fixture.releaseFill()
 	assertFillResult(t, leftResult, "origin")
 	assertFillResult(t, rightResult, "cached")
-	if got := upstreamCalls.Load(); got != 1 {
+	if got := fixture.upstreamCalls.Load(); got != 1 {
 		t.Fatalf("upstream calls = %d, want 1", got)
 	}
+}
+
+type sharedLeaseFixture struct {
+	ctx           context.Context
+	key           artifactcache.Key
+	locker        *fakeFillLocker
+	left          *artifactcache.FillTracker
+	right         *artifactcache.FillTracker
+	upstreamCalls atomic.Int64
+	cached        atomic.Bool
+	started       chan struct{}
+	release       chan struct{}
+	releaseOnce   sync.Once
+}
+
+func newSharedLeaseFixture(t *testing.T) *sharedLeaseFixture {
+	t.Helper()
+	locker := newFakeFillLocker()
+	fixture := &sharedLeaseFixture{
+		ctx:     context.Background(),
+		key:     artifactcache.Key{Alias: "npmjs", Repository: "left-pad", Reference: "metadata"},
+		locker:  locker,
+		left:    newLeaseTracker(locker),
+		right:   newLeaseTracker(locker),
+		started: make(chan struct{}),
+		release: make(chan struct{}),
+	}
+	t.Cleanup(fixture.releaseFill)
+	return fixture
+}
+
+func newLeaseTracker(locker artifactcache.FillLocker) *artifactcache.FillTracker {
+	return artifactcache.NewFillTracker(
+		artifactcache.WithFillLocker(locker),
+		artifactcache.WithFillPollInterval(5*time.Millisecond),
+		artifactcache.WithFillLeaseTTL(time.Second),
+	)
+}
+
+func (f *sharedLeaseFixture) start(tracker *artifactcache.FillTracker) <-chan fillResult {
+	results := make(chan fillResult, 1)
+	go func() {
+		value, err := artifactcache.CoalesceFill(f.ctx, tracker, f.key, f.wait, f.fill)
+		results <- fillResult{value: value, err: err}
+	}()
+	return results
+}
+
+func (f *sharedLeaseFixture) wait() (string, bool, error) {
+	if f.cached.Load() {
+		return "cached", true, nil
+	}
+	return "", false, nil
+}
+
+func (f *sharedLeaseFixture) fill() (string, error) {
+	if f.upstreamCalls.Add(1) == 1 {
+		close(f.started)
+	}
+	<-f.release
+	f.cached.Store(true)
+	return "origin", nil
+}
+
+func (f *sharedLeaseFixture) releaseFill() {
+	f.releaseOnce.Do(func() { close(f.release) })
 }
 
 type fillResult struct {
@@ -108,13 +117,18 @@ func assertFillResult(t *testing.T, results <-chan fillResult, want string) {
 }
 
 type fakeFillLocker struct {
-	mu    sync.Mutex
-	locks map[string]string
-	next  atomic.Int64
+	mu            sync.Mutex
+	locks         map[string]string
+	next          atomic.Int64
+	contended     chan struct{}
+	contendedOnce sync.Once
 }
 
 func newFakeFillLocker() *fakeFillLocker {
-	return &fakeFillLocker{locks: map[string]string{}}
+	return &fakeFillLocker{
+		locks:     map[string]string{},
+		contended: make(chan struct{}),
+	}
 }
 
 func (l *fakeFillLocker) AcquireLease(
@@ -125,6 +139,7 @@ func (l *fakeFillLocker) AcquireLease(
 	l.mu.Lock()
 	defer l.mu.Unlock()
 	if _, ok := l.locks[key]; ok {
+		l.contendedOnce.Do(func() { close(l.contended) })
 		return nil, false, nil
 	}
 	token := l.next.Add(1)

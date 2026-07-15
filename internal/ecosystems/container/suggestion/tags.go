@@ -3,7 +3,7 @@ package suggestion
 import (
 	"context"
 	"encoding/json"
-	"io"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"net/url"
 	"strconv"
 	"strings"
@@ -66,11 +66,13 @@ func (s *Service) fetchTagPage(ctx context.Context, req ManifestRequest, last st
 	return page.Tags, nextLastFromLink(resp.Headers.Get(distribution.HeaderLink)), nil
 }
 
+const maxTagListBodyBytes int64 = 16 << 20
+
 func readResponseBody(resp *upstream.TagsResponse) ([]byte, error) {
 	if resp == nil || resp.Body == nil {
 		return nil, errorf("tags response body is required")
 	}
-	data, readErr := io.ReadAll(resp.Body)
+	data, readErr := upstreamhttp.ReadAllLimited(resp.Body, maxTagListBodyBytes)
 	closeErr := resp.Body.Close()
 	if readErr != nil || closeErr != nil {
 		err := multierr.Combine(readErr, closeErr)

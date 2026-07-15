@@ -75,11 +75,15 @@ func RawDo(ctx context.Context, client *http.Client, req Request) (*Response, er
 	}
 	applyRawAuth(httpReq, req.Auth)
 
-	resp, err := client.Do(httpReq) //nolint:bodyclose // The response body is returned to the caller for streaming/materialization.
+	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, oops.Wrapf(err, "send upstream http request")
 	}
 	body := resp.Body
+	resp.Body = http.NoBody
+	if err := resp.Body.Close(); err != nil {
+		return nil, oops.Wrapf(err, "close detached upstream response")
+	}
 	if body == nil {
 		body = http.NoBody
 	}

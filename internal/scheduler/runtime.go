@@ -2,7 +2,9 @@ package scheduler
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"sync"
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -18,12 +20,22 @@ import (
 	"go.uber.org/multierr"
 )
 
+var errRuntimeStopping = errors.New("scheduler runtime is stopping")
+
 type Runtime struct {
-	cfg      config.Config
-	logger   *slog.Logger
-	runtimes *collectionlist.List[ecosystem.Runtime]
-	metrics  *observability.Metrics
-	metadata meta.Store
+	backgroundOnce     sync.Once
+	backgroundStopOnce sync.Once
+	backgroundMu       sync.Mutex
+	backgroundTasks    sync.WaitGroup
+	backgroundCtx      context.Context
+	backgroundCancel   context.CancelFunc
+	backgroundDone     chan struct{}
+	backgroundStopping bool
+	cfg                config.Config
+	logger             *slog.Logger
+	runtimes           *collectionlist.List[ecosystem.Runtime]
+	metrics            *observability.Metrics
+	metadata           meta.Store
 
 	scheduler gocron.Scheduler
 	redis     goredis.UniversalClient
@@ -101,10 +113,15 @@ func runtimeNames(runtimes *collectionlist.List[ecosystem.Runtime]) *collectionl
 	return collectionlist.NewList(names...)
 }
 
-func (r *Runtime) Stop(ctx context.Context) error {
+func (r *Runtime) Stop(ctx context.Context) (err error) {
 	if r == nil {
 		return nil
 	}
+	ctx = ensureContext(ctx)
+	r.beginBackgroundStop()
+	defer func() {
+		err = errors.Join(err, r.waitForBackground(ctx))
+	}()
 	r.logger.Info("scheduler stopping")
 	var stopErr error
 	if r.scheduler != nil {
@@ -217,4 +234,65 @@ func join(left, right error) error {
 		return nil
 	}
 	return oops.Wrapf(err, "join scheduler errors")
+}
+
+func (r *Runtime) startBackground(parent context.Context, task func(context.Context)) bool {
+	r.initializeBackground()
+	parent = ensureContext(parent)
+	r.backgroundMu.Lock()
+	if r.backgroundStopping {
+		r.backgroundMu.Unlock()
+		return false
+	}
+	r.backgroundTasks.Add(1)
+	runtimeCtx := r.backgroundCtx
+	r.backgroundMu.Unlock()
+
+	taskCtx, cancel := context.WithCancel(context.WithoutCancel(parent))
+	go cancelOnSignal(runtimeCtx.Done(), taskCtx.Done(), cancel)
+	go func() {
+		defer r.backgroundTasks.Done()
+		defer cancel()
+		task(taskCtx)
+	}()
+	return true
+}
+
+func (r *Runtime) initializeBackground() {
+	r.backgroundOnce.Do(func() {
+		r.backgroundCtx, r.backgroundCancel = context.WithCancel(context.Background())
+		r.backgroundDone = make(chan struct{})
+	})
+}
+
+func (r *Runtime) beginBackgroundStop() {
+	r.initializeBackground()
+	r.backgroundStopOnce.Do(func() {
+		r.backgroundMu.Lock()
+		r.backgroundStopping = true
+		r.backgroundCancel()
+		r.backgroundMu.Unlock()
+		go func() {
+			r.backgroundTasks.Wait()
+			close(r.backgroundDone)
+		}()
+	})
+}
+
+func (r *Runtime) waitForBackground(ctx context.Context) error {
+	r.beginBackgroundStop()
+	select {
+	case <-r.backgroundDone:
+		return nil
+	case <-ctx.Done():
+		return oops.Wrapf(ctx.Err(), "wait for scheduler background tasks")
+	}
+}
+
+func cancelOnSignal(stop, completed <-chan struct{}, cancel context.CancelFunc) {
+	select {
+	case <-stop:
+		cancel()
+	case <-completed:
+	}
 }
