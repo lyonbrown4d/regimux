@@ -43,8 +43,7 @@ func validateUpstreamContentDigest(expected, actual string) error {
 }
 
 func isContentInconsistent(err error) bool {
-	var mismatch *contentInconsistentError
-	if errors.As(err, &mismatch) {
+	if matched, ok := errors.AsType[*contentInconsistentError](err); ok && matched != nil {
 		return true
 	}
 	list := distribution.FromError(err)
