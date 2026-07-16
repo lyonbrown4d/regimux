@@ -136,7 +136,7 @@ func TestServiceCachesRootGoProxyFile(t *testing.T) {
 
 func TestServicePersistsModuleZipAfterFullDownload(t *testing.T) {
 	ctx := context.Background()
-	const body = "zip-bytes"
+	const body = "PK\x05\x06\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00"
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/github.com/acme/lib/@v/v1.2.3.zip" {
 			t.Fatalf("upstream path = %s", r.URL.Path)

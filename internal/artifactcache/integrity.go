@@ -9,6 +9,8 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+
+	"golang.org/x/net/html/charset"
 )
 
 func ValidateBody(
@@ -76,7 +78,9 @@ func validateXMLRoot(body io.ReaderAt, size int64, allowed map[string]struct{}) 
 	if body == nil || size <= 0 {
 		return errEmptyBody
 	}
-	root, err := decodeXMLRoot(xml.NewDecoder(io.NewSectionReader(body, 0, size)))
+	decoder := xml.NewDecoder(io.NewSectionReader(body, 0, size))
+	decoder.CharsetReader = charset.NewReaderLabel
+	root, err := decodeXMLRoot(decoder)
 	if err != nil {
 		return err
 	}

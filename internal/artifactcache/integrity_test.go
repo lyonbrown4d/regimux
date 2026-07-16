@@ -61,6 +61,14 @@ func TestXMLRootValidator(t *testing.T) {
 			body: "\uFEFF<?xml version=\"1.0\"?><!-- pom --><project><modelVersion>4.0.0</modelVersion></project>",
 		},
 		{
+			name: "accepts ISO-8859-1 document",
+			body: "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?><project><name>Caf\xe9</name></project>",
+		},
+		{
+			name:    "rejects unsupported XML charset",
+			body:    "<?xml version=\"1.0\" encoding=\"x-unsupported\"?><project/>",
+			wantErr: true,
+		}, {
 			name:    "rejects html error document",
 			body:    "<html><body>upstream error</body></html>",
 			wantErr: true,

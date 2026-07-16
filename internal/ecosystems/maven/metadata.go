@@ -1,11 +1,14 @@
 package maven
 
 import (
+	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+
+	"golang.org/x/net/html/charset"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	collectionset "github.com/arcgolabs/collectionx/set"
@@ -52,7 +55,9 @@ type metadataMergeState struct {
 
 func parseMavenMetadata(data []byte) (mavenMetadataDocument, error) {
 	var document mavenMetadataDocument
-	if err := xml.Unmarshal(data, &document); err != nil {
+	decoder := xml.NewDecoder(bytes.NewReader(data))
+	decoder.CharsetReader = charset.NewReaderLabel
+	if err := decoder.Decode(&document); err != nil {
 		return mavenMetadataDocument{}, fmt.Errorf("unmarshal Maven metadata: %w", err)
 	}
 	if document.XMLName.Local != "metadata" {

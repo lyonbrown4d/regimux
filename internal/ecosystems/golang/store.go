@@ -13,34 +13,34 @@ import (
 	"github.com/samber/oops"
 )
 
+type preparedGoProxyArtifact struct {
+	file   *os.File
+	path   string
+	digest string
+	size   int64
+}
+
 func (s *Service) store(ctx context.Context, requestRoute route, fetched *upstreamFetch) (storedResponse, error) {
 	if fetched == nil || fetched.body == nil {
 		return storedResponse{}, oops.In("go").Errorf("go proxy upstream body is empty")
 	}
 	defer closeReadCloser(fetched.body, s.logger, "close go proxy upstream body")
 
-	tmp, err := os.CreateTemp("", "regimux-go-*")
+	prepared, err := s.prepareGoProxyArtifact(requestRoute, fetched)
 	if err != nil {
-		return storedResponse{}, wrapError(err, "create go proxy temp file")
+		return storedResponse{}, err
 	}
-	tmpName := tmp.Name()
-	defer removePath(tmpName, s.logger)
+	defer removePath(prepared.path, s.logger)
 
-	digester := ocidigest.SHA256.Digester()
-	size, err := io.Copy(io.MultiWriter(tmp, digester.Hash()), fetched.body)
-	if err != nil {
-		return storedResponse{}, closeAndRemoveTemp(tmp, tmpName, err, "write go proxy temp file")
-	}
-	_, seekErr := tmp.Seek(0, io.SeekStart)
-	if seekErr != nil {
-		return storedResponse{}, closeAndRemoveTemp(tmp, tmpName, seekErr, "rewind go proxy temp file")
-	}
-
-	digest := digester.Digest().String()
-	headers := cacheHeaders(fetched.headers, size)
+	headers := cacheHeaders(fetched.headers, prepared.size)
 	contentType := contentType(headers, requestRoute.Reference)
-	info, err := s.objects.Put(ctx, digest, tmp, object.PutOptions{ContentType: contentType})
-	closeErr := tmp.Close()
+	info, err := s.objects.Put(
+		ctx,
+		prepared.digest,
+		prepared.file,
+		object.PutOptions{ContentType: contentType},
+	)
+	closeErr := prepared.file.Close()
 	if err != nil {
 		return storedResponse{}, wrapError(err, "store go proxy object")
 	}
@@ -48,21 +48,75 @@ func (s *Service) store(ctx context.Context, requestRoute route, fetched *upstre
 		return storedResponse{}, wrapError(closeErr, "close go proxy temp file")
 	}
 
-	if metadataErr := s.storeMetadata(ctx, requestRoute, digest, info, headers, contentType); metadataErr != nil {
+	if metadataErr := s.storeMetadata(
+		ctx,
+		requestRoute,
+		prepared.digest,
+		info,
+		headers,
+		contentType,
+	); metadataErr != nil {
 		return storedResponse{}, metadataErr
 	}
-	reader, _, err := s.objects.Get(ctx, digest, object.GetOptions{})
+	reader, _, err := s.objects.Get(ctx, prepared.digest, object.GetOptions{})
 	if err != nil {
 		return storedResponse{}, wrapError(err, "open stored go proxy object")
 	}
 	return storedResponse{
-		digest:  digest,
-		size:    size,
+		digest:  prepared.digest,
+		size:    prepared.size,
 		headers: headers,
 		body:    reader,
 	}, nil
 }
 
+func (s *Service) prepareGoProxyArtifact(
+	requestRoute route,
+	fetched *upstreamFetch,
+) (preparedGoProxyArtifact, error) {
+	tmp, err := os.CreateTemp("", "regimux-go-*")
+	if err != nil {
+		return preparedGoProxyArtifact{}, wrapError(err, "create go proxy temp file")
+	}
+	tmpName := tmp.Name()
+	digester := ocidigest.SHA256.Digester()
+	size, err := io.Copy(io.MultiWriter(tmp, digester.Hash()), fetched.body)
+	if err != nil {
+		return preparedGoProxyArtifact{}, closeAndRemoveTemp(
+			tmp,
+			tmpName,
+			err,
+			"write go proxy temp file",
+		)
+	}
+	if _, err = tmp.Seek(0, io.SeekStart); err != nil {
+		return preparedGoProxyArtifact{}, closeAndRemoveTemp(
+			tmp,
+			tmpName,
+			err,
+			"rewind go proxy temp file",
+		)
+	}
+	if validationErr := validateGoProxyBody(
+		requestRoute,
+		tmp,
+		size,
+		fetched.headers,
+	); validationErr != nil {
+		return preparedGoProxyArtifact{}, closeAndRemoveTemp(
+			tmp,
+			tmpName,
+			validationErr,
+			"discard invalid go proxy temp file",
+		)
+	}
+	return preparedGoProxyArtifact{
+		file:   tmp,
+		path:   tmpName,
+		digest: digester.Digest().String(),
+		size:   size,
+	}, nil
+}
 func (s *Service) storeMetadata(ctx context.Context, requestRoute route, digest string, info *object.Info, headers http.Header, contentType string) error {
 	if s.metadata == nil || info == nil {
 		return nil
