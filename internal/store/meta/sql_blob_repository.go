@@ -154,12 +154,16 @@ func (s *SQLStore) ListBlobs(ctx context.Context, opts ...BlobListOption) (*coll
 	return s.blobRowsToRecords(rows)
 }
 
-func (s *SQLStore) blobRowsToRecords(rows interface {
-	Values() []blobRow
-}) (*collectionlist.List[BlobRecord], error) {
-	return mapRows(rows, s.mapper.BlobRowToRecord)
+func (*SQLStore) blobRowsToRecords(
+	rows rowCollection[blobRow],
+) (*collectionlist.List[BlobRecord], error) {
+	records := collectionlist.NewListWithCapacity[BlobRecord](rows.Len())
+	rows.Range(func(_ int, row blobRow) bool {
+		records.Add(blobRecordFromRow(row))
+		return true
+	})
+	return records, nil
 }
-
 func (s *SQLStore) updateBlobRow(ctx context.Context, row blobRow) error {
 	return patchRowByKey(ctx, s.blobs, sqlBlobRows.Digest, row.Digest, "upsert blob metadata",
 		sqlBlobRows.Size.Set(row.Size),

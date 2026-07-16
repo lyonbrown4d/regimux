@@ -95,14 +95,10 @@ func (s *SQLStore) ListRepositories(ctx context.Context, opts ...RepositoryListO
 	return s.repositoryRowsToRecords(rows)
 }
 
-func (s *SQLStore) upstreamRowsToRecords(rows interface {
-	Values() []upstreamRow
-}) (*collectionlist.List[Upstream], error) {
+func (s *SQLStore) upstreamRowsToRecords(rows rowCollection[upstreamRow]) (*collectionlist.List[Upstream], error) {
 	return mapRows(rows, s.mapper.UpstreamRowToRecord)
 }
 
-func (s *SQLStore) repositoryRowsToRecords(rows interface {
-	Values() []repositoryRow
-}) (*collectionlist.List[Repository], error) {
+func (s *SQLStore) repositoryRowsToRecords(rows rowCollection[repositoryRow]) (*collectionlist.List[Repository], error) {
 	return mapRows(rows, s.mapper.RepositoryRowToRecord)
 }

@@ -113,9 +113,7 @@ func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) (*coll
 	return s.pullRowsToRecords(rows)
 }
 
-func (s *SQLStore) pullRowsToRecords(rows interface {
-	Values() []pullRow
-}) (*collectionlist.List[PullRecord], error) {
+func (s *SQLStore) pullRowsToRecords(rows rowCollection[pullRow]) (*collectionlist.List[PullRecord], error) {
 	return mapRows(rows, s.mapper.PullRowToRecord)
 }
 

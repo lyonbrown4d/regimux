@@ -168,14 +168,10 @@ func (s *SQLStore) ListPrefetchOutcomes(ctx context.Context, opts ...PrefetchOut
 	return s.prefetchOutcomeRowsToRecords(rows)
 }
 
-func (s *SQLStore) prefetchRunRowsToRecords(rows interface {
-	Values() []prefetchRunRow
-}) (*collectionlist.List[PrefetchRunRecord], error) {
+func (s *SQLStore) prefetchRunRowsToRecords(rows rowCollection[prefetchRunRow]) (*collectionlist.List[PrefetchRunRecord], error) {
 	return mapRows(rows, s.mapper.PrefetchRunRowToRecord)
 }
 
-func (s *SQLStore) prefetchOutcomeRowsToRecords(rows interface {
-	Values() []prefetchOutcomeRow
-}) (*collectionlist.List[PrefetchOutcomeRecord], error) {
+func (s *SQLStore) prefetchOutcomeRowsToRecords(rows rowCollection[prefetchOutcomeRow]) (*collectionlist.List[PrefetchOutcomeRecord], error) {
 	return mapRows(rows, s.mapper.PrefetchOutcomeRowToRecord)
 }

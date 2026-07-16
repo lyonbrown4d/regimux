@@ -11,7 +11,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
-	"github.com/samber/lo"
 )
 
 const cleanupManifestProtectionReadLimit = 4 << 20
@@ -24,11 +23,14 @@ func (s *CleanupService) protectedBlobDigests(ctx context.Context) (*collections
 		return nil, wrapError(err, "list manifest metadata for cleanup")
 	}
 
-	protected := collectionset.NewSet[string]()
-	manifestValues := manifests.Values()
-	for i := range manifestValues {
-		s.protectManifestReferences(ctx, protected, manifestValues[i])
+	if manifests == nil {
+		return collectionset.NewSet[string](), nil
 	}
+	protected := collectionset.NewSetWithCapacity[string](manifests.Len() * 4)
+	manifests.Range(func(_ int, manifest meta.ManifestRecord) bool {
+		s.protectManifestReferences(ctx, protected, manifest)
+		return true
+	})
 	return protected, nil
 }
 
@@ -45,9 +47,7 @@ func (s *CleanupService) protectManifestReferences(
 		s.logCleanupManifestProtectionError(ctx, manifest, err)
 		return
 	}
-	for _, digest := range cleanupManifestReferenceDigests(manifest.MediaType, body) {
-		addCleanupProtectedDigest(protected, digest)
-	}
+	addCleanupManifestReferenceDigests(protected, manifest.MediaType, body)
 }
 
 func (s *CleanupService) readCleanupManifestBody(ctx context.Context, manifest meta.ManifestRecord) ([]byte, error) {
@@ -86,17 +86,19 @@ func cleanupManifestObjectKey(manifest meta.ManifestRecord) string {
 	return manifest.Digest
 }
 
-func cleanupManifestReferenceDigests(mediaType string, body []byte) []string {
+func addCleanupManifestReferenceDigests(
+	protected *collectionset.Set[string],
+	mediaType string,
+	body []byte,
+) {
 	if len(body) == 0 {
-		return nil
+		return
 	}
 	switch cleanupManifestMediaType(mediaType, body) {
 	case distribution.MediaTypeOCIManifest, distribution.MediaTypeDockerManifest:
-		return cleanupImageManifestDigests(body)
+		addCleanupImageManifestDigests(protected, body)
 	case distribution.MediaTypeOCIIndex, distribution.MediaTypeDockerManifestList:
-		return cleanupImageIndexDigests(body)
-	default:
-		return nil
+		addCleanupImageIndexDigests(protected, body)
 	}
 }
 
@@ -106,49 +108,45 @@ func cleanupManifestMediaType(mediaType string, body []byte) string {
 		return mediaType
 	}
 	var envelope struct {
-		MediaType string `json:"mediaType"`
+		MediaType string
 	}
 	if err := json.Unmarshal(body, &envelope); err != nil {
 		return ""
 	}
 	return distribution.NormalizeMediaType(envelope.MediaType)
 }
-
-func cleanupImageManifestDigests(body []byte) []string {
+func addCleanupImageManifestDigests(protected *collectionset.Set[string], body []byte) {
 	var manifest ocispec.Manifest
 	if err := json.Unmarshal(body, &manifest); err != nil {
-		return nil
+		return
 	}
-	descriptors := cleanupDescriptors(manifest.Subject, manifest.Config, manifest.Layers)
-	return cleanupDescriptorDigests(descriptors)
+	addCleanupDescriptorDigest(protected, manifest.Subject)
+	addCleanupDescriptorDigest(protected, &manifest.Config)
+	for i := range manifest.Layers {
+		addCleanupDescriptorDigest(protected, &manifest.Layers[i])
+	}
 }
 
-func cleanupImageIndexDigests(body []byte) []string {
+func addCleanupImageIndexDigests(protected *collectionset.Set[string], body []byte) {
 	var index ocispec.Index
 	if err := json.Unmarshal(body, &index); err != nil {
-		return nil
+		return
 	}
-	descriptors := cleanupDescriptors(index.Subject, ocispec.Descriptor{}, index.Manifests)
-	return cleanupDescriptorDigests(descriptors)
-}
-
-func cleanupDescriptors(subject *ocispec.Descriptor, config ocispec.Descriptor, children []ocispec.Descriptor) []ocispec.Descriptor {
-	out := make([]ocispec.Descriptor, 0, len(children)+2)
-	if subject != nil {
-		out = append(out, *subject)
+	addCleanupDescriptorDigest(protected, index.Subject)
+	for i := range index.Manifests {
+		addCleanupDescriptorDigest(protected, &index.Manifests[i])
 	}
-	out = append(out, config)
-	out = append(out, children...)
-	return out
 }
 
-func cleanupDescriptorDigests(descriptors []ocispec.Descriptor) []string {
-	return lo.FilterMap(descriptors, func(descriptor ocispec.Descriptor, _ int) (string, bool) {
-		digest := string(descriptor.Digest)
-		return digest, digest != ""
-	})
+func addCleanupDescriptorDigest(
+	protected *collectionset.Set[string],
+	descriptor *ocispec.Descriptor,
+) {
+	if descriptor == nil {
+		return
+	}
+	addCleanupProtectedDigest(protected, string(descriptor.Digest))
 }
-
 func addCleanupProtectedDigest(protected *collectionset.Set[string], digest string) {
 	if protected == nil || digest == "" {
 		return

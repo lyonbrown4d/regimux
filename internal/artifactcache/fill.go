@@ -149,7 +149,7 @@ func CoalesceFillWith[T any](req CoalesceRequest[T]) (T, error) {
 
 func waitForTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, bool, error) {
 	var zero T
-	if err := current.Wait(req.Context); err != nil && req.Context.Err() != nil {
+	if err := current.Wait(req.Context); err != nil {
 		return zero, false, wrapError(err, "wait for artifact cache fill")
 	}
 	result, ok, err := req.Wait()

@@ -25,6 +25,11 @@ func (s *Store) Put(ctx context.Context, req PutRequest) (Entry, error) {
 	if err != nil {
 		return Entry{}, err
 	}
+	validationErr := ValidateBody(tmp, size, req.Headers, req.Validator)
+	if validationErr != nil {
+		return Entry{}, closeAndRemoveTemp(tmp, tmpName, validationErr, "validate artifact body")
+	}
+
 	headers := cacheHeaders(req.Headers, size)
 	info, err := s.objects.Put(ctx, digest, tmp, object.PutOptions{ContentType: req.ContentType})
 	if err != nil {

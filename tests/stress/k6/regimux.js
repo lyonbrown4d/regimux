@@ -1,6 +1,9 @@
 import http from "k6/http";
 import { check, fail, sleep } from "k6";
-import { Trend } from "k6/metrics";
+import crypto from "k6/crypto";
+import { Rate, Trend } from "k6/metrics";
+import { bodyByteLength, hasZIPSignature, looksLikeMavenPOM } from "./integrity.js";
+import { buildThresholds, metricRow } from "./reporting.js";
 
 const BASE_URL = (__ENV.REGIMUX_BASE_URL || "http://regimux:8080").replace(/\/+$/, "");
 const PROFILE = __ENV.REGIMUX_STRESS_PROFILE || "load";
@@ -20,6 +23,7 @@ const manifestAccept = [
 const referrersAccept = "application/vnd.oci.image.index.v1+json";
 const blobStatuses = [200, 206];
 const warmupDuration = new Trend("regimux_warmup_duration", true);
+const artifactIntegrityFailed = new Rate("regimux_artifact_integrity_failed");
 
 const artifacts = {
   npm: {
@@ -158,6 +162,13 @@ const scenarioDefs = [
     duration: profile.isolatedDuration,
   },
   {
+    name: "maven_pom_hot",
+    exec: "mavenPOMHot",
+    description: "Maven POM download with XML and digest integrity checks.",
+    vus: profile.isolatedVus,
+    duration: profile.isolatedDuration,
+  },
+  {
     name: "container_manifest_hot",
     exec: "containerManifestHot",
     description: "OCI/Docker manifest request from hot manifest cache.",
@@ -211,6 +222,7 @@ const endpointDefs = [
   { name: "pypi_simple_hot", description: "Hot PyPI simple index request." },
   { name: "pypi_wheel_hot", description: "Hot PyPI wheel body request." },
   { name: "maven_release_hot", description: "Hot Maven release body request." },
+  { name: "maven_pom_hot", description: "Hot Maven POM integrity request." },
   { name: "container_manifest_hot", description: "Hot container manifest request." },
   { name: "container_blob_hot", description: "Hot container blob range request." },
   { name: "container_blob_same_digest_concurrent", description: "Concurrent same-digest blob range request." },
@@ -225,6 +237,7 @@ const endpointDefs = [
   { name: "mixed_pypi_simple", description: "Mixed PyPI simple request." },
   { name: "mixed_pypi_wheel", description: "Mixed PyPI wheel request." },
   { name: "mixed_maven_release", description: "Mixed Maven release request." },
+  { name: "mixed_maven_pom", description: "Mixed Maven POM integrity request." },
   { name: "mixed_container_manifest", description: "Mixed container manifest request." },
   { name: "mixed_container_blob", description: "Mixed container blob range request." },
 ];
@@ -232,7 +245,7 @@ const endpointDefs = [
 export const options = {
   discardResponseBodies: false,
   scenarios: buildScenarios(scenarioDefs),
-  thresholds: buildThresholds(scenarioDefs, endpointDefs),
+  thresholds: buildThresholds(profile, scenarioDefs, endpointDefs),
   summaryTrendStats: ["min", "avg", "med", "p(90)", "p(95)", "p(99)", "max"],
 };
 
@@ -243,6 +256,7 @@ export function setup() {
   const npmTarballURL = `${BASE_URL}/npm/default/lodash/-/lodash-4.17.21.tgz`;
   const pypiSimpleURL = `${BASE_URL}/pypi/default/simple/six/`;
   const mavenJarURL = `${BASE_URL}/maven/central/commons-io/commons-io/2.16.1/commons-io-2.16.1.jar`;
+  const mavenPOMURL = `${BASE_URL}/maven/central/commons-io/commons-io/2.16.1/commons-io-2.16.1.pom`;
 
   warmup("npm_metadata", http.get(npmMetadataURL, tagged("warmup_npm_metadata")));
   warmup("npm_tarball", http.get(npmTarballURL, tagged("warmup_npm_tarball")));
@@ -251,7 +265,18 @@ export function setup() {
   const pypiWheelURL = findPyPIWheelURL(pypiSimple.body);
   warmup("pypi_wheel", http.get(pypiWheelURL, tagged("warmup_pypi_wheel")));
 
-  warmup("maven_release", http.get(mavenJarURL, tagged("warmup_maven_release")));
+  const mavenJarSHA256 = warmupArtifact(
+    "maven_release",
+    http.get(mavenJarURL, binaryTagged("warmup_maven_release")),
+    hasZIPSignature,
+    1024,
+  );
+  const mavenPOMSHA256 = warmupArtifact(
+    "maven_pom",
+    http.get(mavenPOMURL, tagged("warmup_maven_pom")),
+    looksLikeMavenPOM,
+    32,
+  );
 
   const hotTarget = artifacts.container.hot;
   const hotManifestURL = containerManifestURL(hotTarget);
@@ -275,7 +300,12 @@ export function setup() {
     npmTarballURL,
     pypiSimpleURL,
     pypiWheelURL,
-    mavenJarURL,
+    maven: {
+      jarURL: mavenJarURL,
+      jarSHA256: mavenJarSHA256,
+      pomURL: mavenPOMURL,
+      pomSHA256: mavenPOMSHA256,
+    },
     container: {
       hot: {
         target: hotTarget,
@@ -348,7 +378,14 @@ export function pypiWheelHot(data) {
 }
 
 export function mavenReleaseHot(data) {
-  request("maven_release_hot", "GET", data.mavenJarURL);
+  const res = request("maven_release_hot", "GET", data.maven.jarURL, binaryTagged("maven_release_hot"));
+  verifyArtifact("maven_release_hot", res, data.maven.jarSHA256, hasZIPSignature, 1024);
+  maybeSleep();
+}
+
+export function mavenPOMHot(data) {
+  const res = request("maven_pom_hot", "GET", data.maven.pomURL);
+  verifyArtifact("maven_pom_hot", res, data.maven.pomSHA256, looksLikeMavenPOM, 32);
   maybeSleep();
 }
 
@@ -436,7 +473,7 @@ export function containerReferrersTags(data) {
 }
 
 export function mixedEcosystems(data) {
-  switch (__ITER % 7) {
+  switch (__ITER % 8) {
     case 0:
       request("mixed_npm_metadata", "GET", data.npmMetadataURL);
       break;
@@ -449,10 +486,17 @@ export function mixedEcosystems(data) {
     case 3:
       request("mixed_pypi_wheel", "GET", data.pypiWheelURL);
       break;
-    case 4:
-      request("mixed_maven_release", "GET", data.mavenJarURL);
+    case 4: {
+      const res = request("mixed_maven_release", "GET", data.maven.jarURL, binaryTagged("mixed_maven_release"));
+      verifyArtifact("mixed_maven_release", res, data.maven.jarSHA256, hasZIPSignature, 1024);
       break;
-    case 5:
+    }
+    case 5: {
+      const res = request("mixed_maven_pom", "GET", data.maven.pomURL);
+      verifyArtifact("mixed_maven_pom", res, data.maven.pomSHA256, looksLikeMavenPOM, 32);
+      break;
+    }
+    case 6:
       request("mixed_container_manifest", "GET", data.container.hot.manifestURL, withHeaders({ Accept: manifestAccept }, "mixed_container_manifest"));
       break;
     default:
@@ -504,25 +548,6 @@ function buildScenarios(defs) {
   return scenarios;
 }
 
-function buildThresholds(scenarios, endpoints) {
-  const thresholds = {
-    checks: ["rate>0.99"],
-    http_req_failed: ["rate<0.01"],
-    http_req_duration: [`p(95)<${profile.p95ThresholdMs}`],
-    regimux_warmup_duration: ["p(95)<30000"],
-  };
-  for (const def of scenarios) {
-    thresholds[`http_reqs{scenario:${def.name}}`] = ["count>0"];
-    thresholds[`http_req_failed{scenario:${def.name}}`] = ["rate<0.01"];
-    thresholds[`http_req_duration{scenario:${def.name}}`] = [`p(95)<${def.p95ThresholdMs || profile.p95ThresholdMs}`];
-  }
-  for (const def of endpoints) {
-    thresholds[`http_reqs{endpoint:${def.name}}`] = ["count>0"];
-    thresholds[`http_req_failed{endpoint:${def.name}}`] = ["rate<0.01"];
-  }
-  return thresholds;
-}
-
 function waitReady() {
   for (let i = 0; i < 60; i += 1) {
     const res = http.get(`${BASE_URL}/readyz`, tagged("readyz"));
@@ -557,8 +582,43 @@ function warmup(name, res, expected = [200]) {
   return res;
 }
 
+function warmupArtifact(name, res, validator, minimumBytes) {
+  warmup(name, res);
+  const result = verifyArtifact(`warmup_${name}`, res, "", validator, minimumBytes);
+  if (!result.ok) {
+    fail(`warmup ${name} returned an invalid artifact body`);
+  }
+  return result.digest;
+}
+
+function verifyArtifact(name, res, expectedDigest, validator, minimumBytes) {
+  const length = bodyByteLength(res.body);
+  const digest = artifactSHA256(res.body);
+  const rules = {};
+  rules[`${name} body size`] = () => length >= minimumBytes;
+  rules[`${name} format`] = (response) => validator(response.body);
+  rules[`${name} sha256`] = () => expectedDigest === "" || digest === expectedDigest;
+  const ok = check(res, rules);
+  artifactIntegrityFailed.add(!ok, { artifact: name });
+  if (!ok) {
+    console.error(`${name} integrity failed: bytes=${length} sha256=${digest}`);
+  }
+  return { digest, ok };
+}
+
+function artifactSHA256(body) {
+  if (bodyByteLength(body) === 0) {
+    return "";
+  }
+  return crypto.sha256(body, "hex");
+}
+
 function tagged(name) {
   return { tags: { endpoint: name } };
+}
+
+function binaryTagged(name) {
+  return { responseType: "binary", tags: { endpoint: name } };
 }
 
 function withHeaders(headers, endpoint) {
@@ -735,24 +795,6 @@ function scenarioInfo(def) {
     duration: def.duration || null,
     max_duration: def.maxDuration || null,
     description: def.description,
-  };
-}
-
-function metricRow(data, selector) {
-  return {
-    requests: valueOf(data, `http_reqs${selector}`, "count"),
-    request_rate: valueOf(data, `http_reqs${selector}`, "rate"),
-    failed_rate: valueOf(data, `http_req_failed${selector}`, "rate"),
-    duration_ms: {
-      min: valueOf(data, `http_req_duration${selector}`, "min"),
-      avg: valueOf(data, `http_req_duration${selector}`, "avg"),
-      med: valueOf(data, `http_req_duration${selector}`, "med"),
-      p90: valueOf(data, `http_req_duration${selector}`, "p(90)"),
-      p95: valueOf(data, `http_req_duration${selector}`, "p(95)"),
-      p99: valueOf(data, `http_req_duration${selector}`, "p(99)"),
-      max: valueOf(data, `http_req_duration${selector}`, "max"),
-    },
-    data_received_bytes: selector === "" ? valueOf(data, "data_received", "count") : null,
   };
 }
 

@@ -219,6 +219,11 @@ tasks:
       - task: integration:mysql
       - task: integration:postgres
 
+  stress:test:
+    desc: Run deterministic stress report and resource aggregation tests.
+    cmds:
+      - node --test tests/stress/test/*.test.js
+
   stress:run:
     desc: Run the k6 stress script against the current integration environment.
     cmds:
@@ -238,7 +243,7 @@ tasks:
       - task: integration:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=sqlite -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-load k6 run --quiet /stress/k6/regimux.js
+      - node tests/stress/run.js --compose-file {{.INTEGRATION_COMPOSE}} --service regimux --report tests/stress/reports/regimux-stress-sqlite-load -- docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=sqlite -e REGIMUX_K6_REPORT_NAME=regimux-stress-sqlite-load k6 run --quiet /stress/k6/regimux.js
 
   stress:mysql:
     desc: Run the default k6 load profile against MySQL metadata storage.
@@ -246,7 +251,7 @@ tasks:
       - task: integration:mysql:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=mysql -e REGIMUX_K6_REPORT_NAME=regimux-stress-mysql-load k6 run --quiet /stress/k6/regimux.js
+      - node tests/stress/run.js --compose-file {{.INTEGRATION_COMPOSE}} --service regimux --report tests/stress/reports/regimux-stress-mysql-load -- docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=mysql -e REGIMUX_K6_REPORT_NAME=regimux-stress-mysql-load k6 run --quiet /stress/k6/regimux.js
 
   stress:postgres:
     desc: Run the default k6 load profile against Postgres metadata storage.
@@ -254,7 +259,7 @@ tasks:
       - task: integration:postgres:up
       - defer:
           task: integration:down
-      - docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=postgres -e REGIMUX_K6_REPORT_NAME=regimux-stress-postgres-load k6 run --quiet /stress/k6/regimux.js
+      - node tests/stress/run.js --compose-file {{.INTEGRATION_COMPOSE}} --service regimux --report tests/stress/reports/regimux-stress-postgres-load -- docker compose -f {{.INTEGRATION_COMPOSE}} --profile stress run --rm -e REGIMUX_STRESS_PROFILE=load -e REGIMUX_STRESS_META_STORE=postgres -e REGIMUX_K6_REPORT_NAME=regimux-stress-postgres-load k6 run --quiet /stress/k6/regimux.js
 
   stress:compare:
     desc: Generate sqlite, MySQL, and Postgres k6 stress comparison reports.

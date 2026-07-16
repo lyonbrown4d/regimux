@@ -27,7 +27,7 @@ func TestServiceCachesFullDistArtifact(t *testing.T) {
 		}
 		w.Header().Set(distribution.HeaderContentType, "application/zip")
 		w.Header().Set(distribution.HeaderETag, `"gradle"`)
-		writeBody(t, w, "abcdef")
+		writeBody(t, w, testZIPBody)
 	}))
 	t.Cleanup(upstream.Close)
 	service, metadata, objects := newTestService(ctx, t, upstream.URL, []string{"gradle-*-bin.zip"})
@@ -37,21 +37,21 @@ func TestServiceCachesFullDistArtifact(t *testing.T) {
 	if first.Cache != artifactcache.CacheMiss {
 		t.Fatalf("first cache = %q", first.Cache)
 	}
-	if body := readResponse(t, first); body != "abcdef" {
+	if body := readResponse(t, first); body != testZIPBody {
 		t.Fatalf("first body = %q", body)
 	}
 	assertStoredArtifact(ctx, t, metadata, objects, meta.TagKey{
 		Alias:      "gradle",
 		Repository: "dist",
 		Reference:  "gradle-8.7-bin.zip",
-	}, "abcdef", "application/zip")
+	}, testZIPBody, "application/zip")
 
 	second, err := service.Get(ctx, dist.Request{Alias: "gradle", Tail: "gradle-8.7-bin.zip", Method: http.MethodGet})
 	requireNoError(t, "second get", err)
 	if second.Cache != artifactcache.CacheHit {
 		t.Fatalf("second cache = %q", second.Cache)
 	}
-	if body := readResponse(t, second); body != "abcdef" {
+	if body := readResponse(t, second); body != testZIPBody {
 		t.Fatalf("second body = %q", body)
 	}
 	if got := requests.Load(); got != 1 {
@@ -76,7 +76,7 @@ func TestServiceCoalescesConcurrentFullArtifactMiss(t *testing.T) {
 		}
 		<-release
 		w.Header().Set(distribution.HeaderContentType, "application/zip")
-		writeBody(t, w, "abcdef")
+		writeBody(t, w, testZIPBody)
 	}))
 	t.Cleanup(upstream.Close)
 	service, _, _ := newTestService(ctx, t, upstream.URL, []string{"gradle-*-bin.zip"})
@@ -90,7 +90,7 @@ func TestServiceCoalescesConcurrentFullArtifactMiss(t *testing.T) {
 
 	responses := run.Wait(t)
 	testkit.RequireOneMiss(t, responses, artifactcache.CacheMiss, artifactcache.CacheHit, func(resp *dist.Response) string {
-		if body := readResponse(t, resp); body != "abcdef" {
+		if body := readResponse(t, resp); body != testZIPBody {
 			t.Fatalf("body = %q", body)
 		}
 		return resp.Cache
@@ -129,7 +129,7 @@ func TestServiceRangeMissPassesThroughWithoutCaching(t *testing.T) {
 		if got := r.Header.Get("Range"); got != "bytes=2-3" {
 			t.Fatalf("upstream range = %q", got)
 		}
-		w.Header().Set(distribution.HeaderContentRange, "bytes 2-3/6")
+		w.Header().Set(distribution.HeaderContentRange, "bytes 2-3/22")
 		w.Header().Set(distribution.HeaderContentLength, "2")
 		w.WriteHeader(http.StatusPartialContent)
 		writeBody(t, w, "cd")
@@ -159,7 +159,7 @@ func TestServiceRangeHitReadsCachedObject(t *testing.T) {
 		requests.Add(1)
 		w.Header().Set(distribution.HeaderContentType, "application/zip")
 		w.Header().Set(distribution.HeaderContentLength, "6")
-		writeBody(t, w, "abcdef")
+		writeBody(t, w, testZIPBody)
 	}))
 	t.Cleanup(upstream.Close)
 	service, _, _ := newTestService(ctx, t, upstream.URL, []string{"gradle-*.zip"})
@@ -173,13 +173,13 @@ func TestServiceRangeHitReadsCachedObject(t *testing.T) {
 	if ranged.Status != http.StatusPartialContent {
 		t.Fatalf("status = %d, want 206", ranged.Status)
 	}
-	if got := ranged.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-3/6" {
+	if got := ranged.Headers.Get(distribution.HeaderContentRange); got != "bytes 2-3/22" {
 		t.Fatalf("content-range = %q", got)
 	}
 	if got := ranged.Headers.Get(distribution.HeaderContentLength); got != "2" {
 		t.Fatalf("content-length = %q", got)
 	}
-	if body := readResponse(t, ranged); body != "cd" {
+	if body := readResponse(t, ranged); body != testZIPBody[2:4] {
 		t.Fatalf("range body = %q", body)
 	}
 	if got := requests.Load(); got != 1 {
@@ -202,7 +202,7 @@ func TestServiceFallsBackToMirrorOnDistHTTPStatus(t *testing.T) {
 			t.Fatalf("mirror path = %q", r.URL.Path)
 		}
 		w.Header().Set(distribution.HeaderContentType, "application/zip")
-		writeBody(t, w, "mirror-body")
+		writeBody(t, w, testZIPBody)
 	}))
 	t.Cleanup(mirror.Close)
 	service, metadata, objects := newTestServiceWithMirrors(ctx, t, primary.URL, []string{mirror.URL}, []string{"gradle-*.zip"})
@@ -212,7 +212,7 @@ func TestServiceFallsBackToMirrorOnDistHTTPStatus(t *testing.T) {
 	if resp.Cache != artifactcache.CacheMiss {
 		t.Fatalf("cache = %q", resp.Cache)
 	}
-	if body := readResponse(t, resp); body != "mirror-body" {
+	if body := readResponse(t, resp); body != testZIPBody {
 		t.Fatalf("body = %q", body)
 	}
 	if got := primaryRequests.Load(); got != 1 {
@@ -225,7 +225,7 @@ func TestServiceFallsBackToMirrorOnDistHTTPStatus(t *testing.T) {
 		Alias:      "gradle",
 		Repository: "dist",
 		Reference:  "gradle-8.7-bin.zip",
-	}, "mirror-body", "application/zip")
+	}, testZIPBody, "application/zip")
 }
 
 func TestServiceDoesNotFallbackToMirrorOnDistForbidden(t *testing.T) {
@@ -237,7 +237,7 @@ func TestServiceDoesNotFallbackToMirrorOnDistForbidden(t *testing.T) {
 	t.Cleanup(primary.Close)
 	mirror := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mirrorRequests.Add(1)
-		writeBody(t, w, "mirror-body")
+		writeBody(t, w, testZIPBody)
 	}))
 	t.Cleanup(mirror.Close)
 	service, _, _ := newTestServiceWithMirrors(ctx, t, primary.URL, []string{mirror.URL}, []string{"gradle-*.zip"})

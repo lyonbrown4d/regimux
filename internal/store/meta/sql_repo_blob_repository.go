@@ -154,9 +154,7 @@ func (s *SQLStore) ListRepoBlobs(ctx context.Context, opts ...RepoBlobListOption
 	return s.repoBlobRowsToRecords(rows)
 }
 
-func (s *SQLStore) repoBlobRowsToRecords(rows interface {
-	Values() []repoBlobRow
-}) (*collectionlist.List[RepoBlobRecord], error) {
+func (s *SQLStore) repoBlobRowsToRecords(rows rowCollection[repoBlobRow]) (*collectionlist.List[RepoBlobRecord], error) {
 	return mapRows(rows, s.mapper.RepoBlobRowToRecord)
 }
 

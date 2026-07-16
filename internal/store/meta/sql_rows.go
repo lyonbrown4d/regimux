@@ -6,7 +6,6 @@ import (
 	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/samber/lo"
 )
 
 func (m *MetadataMapper) TagRecordToRow(record TagRecord) (tagRow, error) {
@@ -33,18 +32,40 @@ func (m *MetadataMapper) PullRowToRecord(row pullRow) (*PullRecord, error) {
 	return &record, nil
 }
 
-func (m *MetadataMapper) BlobRecordToRow(record BlobRecord) (blobRow, error) {
-	return mapMetadata[blobRow](m, record)
+func (*MetadataMapper) BlobRecordToRow(record BlobRecord) (blobRow, error) {
+	return blobRowFromRecord(record), nil
 }
 
-func (m *MetadataMapper) BlobRowToRecord(row blobRow) (*BlobRecord, error) {
-	record, err := mapMetadata[BlobRecord](m, row)
-	if err != nil {
-		return nil, err
-	}
+func (*MetadataMapper) BlobRowToRecord(row blobRow) (*BlobRecord, error) {
+	record := blobRecordFromRow(row)
 	return &record, nil
 }
 
+func blobRowFromRecord(record BlobRecord) blobRow {
+	return blobRow{
+		ID:           record.ID,
+		Digest:       record.Digest,
+		Size:         record.Size,
+		MediaType:    record.MediaType,
+		ObjectKey:    record.ObjectKey,
+		CreatedAt:    unixNano(record.CreatedAt),
+		UpdatedAt:    unixNano(record.UpdatedAt),
+		LastAccessAt: unixNano(record.LastAccessAt),
+	}
+}
+
+func blobRecordFromRow(row blobRow) BlobRecord {
+	return BlobRecord{
+		ID:           row.ID,
+		Digest:       row.Digest,
+		Size:         row.Size,
+		MediaType:    row.MediaType,
+		ObjectKey:    row.ObjectKey,
+		CreatedAt:    timeFromUnixNano(row.CreatedAt),
+		UpdatedAt:    timeFromUnixNano(row.UpdatedAt),
+		LastAccessAt: timeFromUnixNano(row.LastAccessAt),
+	}
+}
 func (m *MetadataMapper) RepoBlobRecordToRow(record RepoBlobRecord) (repoBlobRow, error) {
 	return mapMetadata[repoBlobRow](m, record)
 }
@@ -57,25 +78,31 @@ func (m *MetadataMapper) RepoBlobRowToRecord(row repoBlobRow) (*RepoBlobRecord, 
 	return &record, nil
 }
 
-type rowValues[T any] interface {
-	Values() []T
+type rowCollection[T any] interface {
+	Len() int
+	Range(func(index int, item T) bool)
 }
 
-func mapRows[T, R any](rows rowValues[T], mapper func(T) (*R, error)) (*collectionlist.List[R], error) {
-	records, err := lo.MapErr(rows.Values(), func(row T, _ int) (R, error) {
+func mapRows[T, R any](
+	rows rowCollection[T],
+	mapper func(T) (*R, error),
+) (*collectionlist.List[R], error) {
+	records := collectionlist.NewListWithCapacity[R](rows.Len())
+	var mapErr error
+	rows.Range(func(_ int, row T) bool {
 		record, err := mapper(row)
 		if err != nil {
-			var zero R
-			return zero, err
+			mapErr = err
+			return false
 		}
-		return *record, nil
+		records.Add(*record)
+		return true
 	})
-	if err != nil {
-		return nil, wrapError(err, "map metadata rows")
+	if mapErr != nil {
+		return nil, wrapError(mapErr, "map metadata rows")
 	}
-	return collectionlist.NewList(records...), nil
+	return records, nil
 }
-
 func encodeHeaders(headers map[string][]string) (string, error) {
 	headers = NormalizeManifestHeaders(headers)
 	if len(headers) == 0 {

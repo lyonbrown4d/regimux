@@ -22,6 +22,7 @@ func (s *Service) store(ctx context.Context, requestRoute Route, fetched *upstre
 		Headers:     fetched.headers,
 		ContentType: routeContentType(requestRoute, fetched.headers),
 		TTL:         s.artifactTTL(requestRoute.Alias),
+		Validator:   distBodyValidator(requestRoute),
 	})
 	if err != nil {
 		return storedResponse{}, wrapError(err, "store dist artifact")

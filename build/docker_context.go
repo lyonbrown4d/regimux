@@ -9,7 +9,7 @@ import (
 )
 
 type dockerContextCopy struct {
-	sourceRoot  *os.Root
+	sourceRoot  dockerContextSource
 	source      string
 	destination string
 }
@@ -109,9 +109,9 @@ func populateDockerContext(
 }
 
 func copyDockerContextFiles(
-	distRoot *os.Root,
-	repositoryRoot *os.Root,
-	destinationRoot *os.Root,
+	distRoot dockerContextSource,
+	repositoryRoot dockerContextSource,
+	destinationRoot dockerContextDestination,
 ) error {
 	copies := []dockerContextCopy{
 		{
@@ -153,9 +153,9 @@ func copyDockerContextFiles(
 }
 
 func copyRootFile(
-	sourceRoot *os.Root,
+	sourceRoot dockerContextSource,
 	source string,
-	destinationRoot *os.Root,
+	destinationRoot dockerContextDestination,
 	destination string,
 ) (err error) {
 	input, err := sourceRoot.Open(source)
@@ -191,7 +191,10 @@ func copyRootFile(
 	return nil
 }
 
-func activateDockerContext(distRoot *os.Root, temporaryName string) error {
+func activateDockerContext(
+	distRoot dockerContextActivator,
+	temporaryName string,
+) error {
 	if err := distRoot.RemoveAll(dockerContextName); err != nil {
 		return fmt.Errorf("remove previous Docker context: %w", err)
 	}
@@ -202,7 +205,7 @@ func activateDockerContext(distRoot *os.Root, temporaryName string) error {
 }
 
 func cleanupTemporaryContext(
-	distRoot *os.Root,
+	distRoot dockerContextRemover,
 	temporaryName string,
 	activated bool,
 ) error {

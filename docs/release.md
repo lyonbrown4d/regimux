@@ -1,26 +1,39 @@
 # Local release workflow
 
-Use the cross-platform Go helper when GitHub Actions quota is exhausted or a release needs to be published from a workstation.
+Use the cross-platform Goyek pipeline when GitHub Actions quota is exhausted or a release must be published from a workstation.
 
-```sh
-go run -tags release ./cmd/regimux-release --version v1.2.7
-```
+~~~sh
+task release:local -- --version v1.2.12
+~~~
 
-The helper intentionally avoids PowerShell-only behavior. It runs GoReleaser in the official container for GitHub release assets and then uses the host Docker CLI for multi-arch image publishing, so it can reuse the host Docker login state on Windows, macOS, or Linux.
+The top-level release runs these stages strictly in order:
+
+~~~text
+validate -> release-preflight -> release-artifacts -> release-images -> release-verify
+~~~
+
+A failed stage stops later publication. Each publishing stage can be retried independently:
+
+~~~sh
+go run ./build release-artifacts --version v1.2.12
+go run ./build release-images --version v1.2.12
+go run ./build release-verify --version v1.2.12
+~~~
 
 Prerequisites:
 
-- `git` can see the target release tag at `HEAD`.
-- `docker` has Buildx enabled and is logged in to GHCR and Docker Hub.
-- `GITHUB_TOKEN` is set, or `gh auth token` can return a token.
+- The worktree has no tracked changes.
+- The target annotated or lightweight tag points at HEAD locally and on origin.
+- Docker Desktop or Docker Engine is running with Buildx enabled.
+- Docker is logged in to GHCR and Docker Hub.
+- GITHUB_TOKEN is set, or gh auth token returns a token.
 
-Useful options:
+Preflight validates the application and build modules, checks Docker and Buildx, verifies local and remote tag identity, resolves GitHub credentials, and starts the pinned GoReleaser container once to validate its Go toolchain.
 
-```sh
-go run -tags release ./cmd/regimux-release --dry-run --version v1.2.7
-go run -tags release ./cmd/regimux-release --skip-docker --version v1.2.7
-go run -tags release ./cmd/regimux-release --skip-github --version v1.2.7
-go run -tags release ./cmd/regimux-release --registry-image ghcr.io/owner/regimux --dockerhub-image owner/regimux --version v1.2.7
-```
+GoReleaser runs in goreleaser/goreleaser:v2.17.0 with GOTOOLCHAIN=auto. This allows the container to honor the Go patch version declared by go.work even when the image was built with an earlier patch release.
 
-The GitHub release step always passes `--skip=docker` to GoReleaser. Docker images are built separately by the host Docker CLI to avoid Linux GoReleaser containers reading platform-specific Docker credential helpers from the host.
+Secret command environments are logged as [REDACTED]. The GitHub token is passed to Docker through the process environment and is never embedded in the command line.
+
+The GitHub artifact stage always passes --skip=docker. Multi-platform images are published separately through host Docker Buildx so the release can reuse the host credential helpers on Windows, macOS, and Linux.
+
+Final verification requires all expected archives, packages, executables, and checksums in the GitHub Release and verifies linux/amd64 plus linux/arm64 manifests for the versioned Alpine and Debian images in both GHCR and Docker Hub.

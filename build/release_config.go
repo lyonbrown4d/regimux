@@ -15,7 +15,8 @@ import (
 const (
 	defaultRegistryImage   = "ghcr.io/lyonbrown4d/regimux"
 	defaultDockerHubImage  = "lyonbrown4d/regimux"
-	defaultGoReleaserImage = "goreleaser/goreleaser:v2.12.2"
+	defaultGoReleaserImage = "goreleaser/goreleaser:v2.17.0"
+	defaultGoToolchain     = "auto"
 	defaultSourceURL       = "https://github.com/lyonbrown4d/regimux"
 )
 
@@ -45,6 +46,11 @@ var (
 		environmentOrDefault("GORELEASER_IMAGE", defaultGoReleaserImage),
 		"GoReleaser container image",
 	)
+	releaseGoToolchain = flag.String(
+		"go-toolchain",
+		defaultGoToolchain,
+		"Go toolchain policy passed to the GoReleaser container",
+	)
 	releaseSourceURL = flag.String(
 		"source-url",
 		environmentOrDefault("SOURCE_URL", defaultSourceURL),
@@ -71,6 +77,7 @@ type releaseConfig struct {
 	RegistryImage   string
 	DockerHubImage  string
 	GoReleaserImage string
+	GoToolchain     string
 	SourceURL       string
 	Parallelism     int
 	Clean           bool
@@ -80,6 +87,7 @@ type releaseTargets struct {
 	registryImage   string
 	dockerHubImage  string
 	goReleaserImage string
+	goToolchain     string
 	sourceURL       string
 }
 
@@ -123,6 +131,7 @@ func resolveReleaseConfig(a *goyek.A) (releaseConfig, error) {
 		RegistryImage:   targets.registryImage,
 		DockerHubImage:  targets.dockerHubImage,
 		GoReleaserImage: targets.goReleaserImage,
+		GoToolchain:     targets.goToolchain,
 		SourceURL:       targets.sourceURL,
 		Parallelism:     *releaseParallelism,
 		Clean:           *releaseClean,
@@ -180,6 +189,10 @@ func resolveReleaseTargets() (releaseTargets, error) {
 	if err != nil {
 		return releaseTargets{}, err
 	}
+	goToolchain, err := requiredReleaseValue("Go toolchain", *releaseGoToolchain)
+	if err != nil {
+		return releaseTargets{}, err
+	}
 	sourceURL, err := requiredReleaseValue(
 		"source URL",
 		strings.TrimRight(*releaseSourceURL, "/"),
@@ -191,6 +204,7 @@ func resolveReleaseTargets() (releaseTargets, error) {
 		registryImage:   registryImage,
 		dockerHubImage:  dockerHubImage,
 		goReleaserImage: goReleaserImage,
+		goToolchain:     goToolchain,
 		sourceURL:       sourceURL,
 	}, nil
 }

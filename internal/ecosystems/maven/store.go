@@ -22,6 +22,7 @@ func (s *Service) store(ctx context.Context, requestRoute Route, fetched *upstre
 		Headers:     fetched.headers,
 		ContentType: routeContentType(requestRoute, fetched.headers),
 		TTL:         routeTTL(requestRoute),
+		Validator:   mavenBodyValidator(requestRoute),
 	})
 	if err != nil {
 		return storedResponse{}, wrapError(err, "store maven artifact")

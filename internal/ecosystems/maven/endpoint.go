@@ -2,12 +2,12 @@ package maven
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"strconv"
 
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/lyonbrown4d/regimux/internal/artifactstream"
 )
 
 type Endpoint struct {
@@ -76,10 +76,10 @@ func (e *Endpoint) dispatch(
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
 	}
-	return outputFromResponse(method, resp), nil
+	return e.outputFromResponse(ctx, in, method, resp), nil
 }
 
-func outputFromResponse(method string, resp *Response) *output {
+func (e *Endpoint) outputFromResponse(ctx context.Context, in *input, method string, resp *Response) *output {
 	if resp == nil {
 		return plainError(http.StatusBadGateway, "maven proxy response is empty")
 	}
@@ -102,12 +102,20 @@ func outputFromResponse(method string, resp *Response) *output {
 	if method == http.MethodHead || resp.Body == nil || resp.Body == http.NoBody {
 		return out
 	}
-	out.Body = streamWithStatus(resp.Status, httpx.StreamWriter(func(writer io.Writer) {
-		defer closeReadCloser(resp.Body, nil, "close maven response body")
-		if _, err := io.Copy(writer, resp.Body); err != nil {
-			return
-		}
-	}))
+	logger := e.service.logger
+	out.Body = streamWithStatus(resp.Status, func(streamCtx huma.Context) {
+		defer closeReadCloser(resp.Body, logger, "close maven response body")
+		artifactstream.Copy(ctx, artifactstream.CopyRequest{
+			Destination:   streamCtx.BodyWriter(),
+			Source:        resp.Body,
+			Logger:        logger,
+			Ecosystem:     ecosystemMaven,
+			Alias:         in.Alias,
+			Reference:     in.Tail.String(),
+			Cache:         resp.Cache,
+			ExpectedBytes: resp.Size,
+		})
+	})
 	return out
 }
 

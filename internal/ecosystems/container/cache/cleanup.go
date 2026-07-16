@@ -166,7 +166,6 @@ func (s *CleanupService) cleanupBlobRecords(
 	report *CleanupReport,
 ) error {
 	ordered := cleanupOrderedBlobs(blobs, report.needsCapacityReclaim())
-	var stopEarly bool
 	var outErr error
 	ordered.Range(func(_ int, blob meta.BlobRecord) bool {
 		stop, err := s.cleanupBlob(ctx, opts, cutoff, &blob, protected, report)
@@ -174,24 +173,10 @@ func (s *CleanupService) cleanupBlobRecords(
 			outErr = err
 			return false
 		}
-		if stop {
-			stopEarly = true
-			return false
-		}
-		return true
+		return !stop
 	})
-	if outErr != nil {
-		return outErr
-	}
-	if stopEarly {
-		return nil
-	}
-	if ordered.Len() == 0 {
-		return nil
-	}
-	return nil
+	return outErr
 }
-
 func (s *CleanupService) cleanupBlob(
 	ctx context.Context,
 	opts CleanupOptions,

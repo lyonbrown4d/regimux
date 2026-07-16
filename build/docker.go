@@ -53,11 +53,13 @@ var releaseDebianTask = goyek.Define(goyek.Task{
 	},
 })
 
-var releaseImagesTask = goyek.Define(goyek.Task{
-	Name:  "release-images",
-	Usage: "publish all multi-platform container images",
-	Deps:  goyek.Deps{releaseAlpineTask, releaseDebianTask},
-})
+func init() {
+	goyek.Define(goyek.Task{
+		Name:  "release-images",
+		Usage: "publish all multi-platform container images",
+		Deps:  goyek.Deps{releaseAlpineTask, releaseDebianTask},
+	})
+}
 
 func publishDockerVariant(
 	a *goyek.A,

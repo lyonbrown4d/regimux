@@ -5,7 +5,6 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
-	"github.com/samber/lo"
 )
 
 func (t *EndpointHealthTracker) RecordProbeSuccess(registry string, latency time.Duration, now time.Time) EndpointHealthSnapshot {
@@ -137,35 +136,50 @@ func (t *EndpointHealthTracker) RestoreSnapshot(snapshot EndpointHealthSnapshot)
 	state.contentMismatchCount = snapshot.ContentMismatchCount
 }
 
-func (t *EndpointHealthTracker) RankEndpointCandidates(registries *collectionlist.List[string], now time.Time) *collectionlist.List[EndpointHealthCandidate] {
+func (t *EndpointHealthTracker) RankEndpointCandidates(
+	registries *collectionlist.List[string],
+	now time.Time,
+) *collectionlist.List[EndpointHealthCandidate] {
 	if t == nil || registries == nil {
 		return collectionlist.NewList[EndpointHealthCandidate]()
 	}
-	ranked := collectionlist.NewList(lo.Map(registries.Values(), func(registry string, index int) endpointHealthCandidateRank {
+	ranked := collectionlist.NewListWithCapacity[endpointHealthCandidateRank](registries.Len())
+	registries.Range(func(index int, registry string) bool {
 		state := t.Snapshot(registry, now)
-		return endpointHealthCandidateRank{
+		ranked.Add(endpointHealthCandidateRank{
 			candidate: EndpointHealthCandidate{Registry: state.Registry, State: state},
 			index:     index,
-		}
-	})...).Sort(compareEndpointHealthCandidateRank)
-	return collectionlist.NewList(lo.Map(ranked.Values(), func(item endpointHealthCandidateRank, _ int) EndpointHealthCandidate {
-		return item.candidate
-	})...)
-}
+		})
+		return true
+	})
+	ranked.Sort(compareEndpointHealthCandidateRank)
 
-func (t *EndpointHealthTracker) rankRuntimeCandidates(runtimes *collectionlist.List[upstreamRuntime], repository string, now time.Time) *collectionlist.List[endpointRuntimeCandidate] {
+	out := collectionlist.NewListWithCapacity[EndpointHealthCandidate](ranked.Len())
+	ranked.Range(func(_ int, item endpointHealthCandidateRank) bool {
+		out.Add(item.candidate)
+		return true
+	})
+	return out
+}
+func (t *EndpointHealthTracker) rankRuntimeCandidates(
+	runtimes *collectionlist.List[upstreamRuntime],
+	repository string,
+	now time.Time,
+) *collectionlist.List[endpointRuntimeCandidate] {
 	if t == nil || runtimes == nil {
 		return collectionlist.NewList[endpointRuntimeCandidate]()
 	}
-	return collectionlist.NewList(lo.Map(runtimes.Values(), func(runtime upstreamRuntime, index int) endpointRuntimeCandidate {
-		return endpointRuntimeCandidate{
+	ranked := collectionlist.NewListWithCapacity[endpointRuntimeCandidate](runtimes.Len())
+	runtimes.Range(func(index int, runtime upstreamRuntime) bool {
+		ranked.Add(endpointRuntimeCandidate{
 			runtime: runtime,
 			state:   t.runtimeSnapshot(runtime.config.Registry, repository, now),
 			index:   index,
-		}
-	})...).Sort(compareEndpointRuntimeCandidate)
+		})
+		return true
+	})
+	return ranked.Sort(compareEndpointRuntimeCandidate)
 }
-
 func (t *EndpointHealthTracker) runtimeSnapshot(registry, repository string, now time.Time) EndpointHealthSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()

@@ -95,8 +95,6 @@ func (s *SQLStore) ListPrefetchControls(ctx context.Context, opts ...PrefetchCon
 	return s.prefetchControlRowsToRecords(rows)
 }
 
-func (s *SQLStore) prefetchControlRowsToRecords(rows interface {
-	Values() []prefetchControlRow
-}) (*collectionlist.List[PrefetchControlRecord], error) {
+func (s *SQLStore) prefetchControlRowsToRecords(rows rowCollection[prefetchControlRow]) (*collectionlist.List[PrefetchControlRecord], error) {
 	return mapRows(rows, s.mapper.PrefetchControlRowToRecord)
 }

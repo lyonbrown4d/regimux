@@ -1,13 +1,37 @@
-// Package main defines the regimux build and release pipeline.
+// Package main defines the RegiMux build and release pipeline.
 package main
 
 import (
+	"os/exec"
 	"strconv"
 	"strings"
 
 	"github.com/goyek/goyek/v3"
 	goyekcmd "github.com/goyek/x/cmd"
 )
+
+const redactedCommandValue = "[REDACTED]"
+
+type commandEnvironment struct {
+	Name   string
+	Value  string
+	Secret bool
+}
+
+func publicCommandEnvironment(name, value string) commandEnvironment {
+	return commandEnvironment{Name: name, Value: value}
+}
+
+func secretCommandEnvironment(name, value string) commandEnvironment {
+	return commandEnvironment{Name: name, Value: value, Secret: true}
+}
+
+func (environment commandEnvironment) logValue() string {
+	if environment.Secret {
+		return redactedCommandValue
+	}
+	return environment.Value
+}
 
 func runCommand(
 	a *goyek.A,
@@ -17,6 +41,25 @@ func runCommand(
 ) {
 	a.Helper()
 	if !goyekcmd.Exec(a, commandLine(name, args...), options...) {
+		a.FailNow()
+	}
+}
+
+func runCommandWithEnvironment(
+	a *goyek.A,
+	directory string,
+	name string,
+	args []string,
+	environment ...commandEnvironment,
+) {
+	a.Helper()
+	logCommand(a, directory, name, args, environment)
+	if !goyekcmd.Exec(
+		a,
+		commandLine(name, args...),
+		goyekcmd.Dir(directory),
+		commandEnvironmentOption(environment),
+	) {
 		a.FailNow()
 	}
 }
@@ -34,6 +77,59 @@ func commandOutput(a *goyek.A, directory, name string, args ...string) string {
 		a.FailNow()
 	}
 	return strings.TrimSpace(output.String())
+}
+
+func commandOutputWithEnvironment(
+	a *goyek.A,
+	directory string,
+	name string,
+	args []string,
+	environment ...commandEnvironment,
+) string {
+	a.Helper()
+	logCommand(a, directory, name, args, environment)
+
+	var output strings.Builder
+	if !goyekcmd.Exec(
+		a,
+		commandLine(name, args...),
+		goyekcmd.Dir(directory),
+		commandEnvironmentOption(environment),
+		goyekcmd.Stdout(&output),
+	) {
+		a.FailNow()
+	}
+	return strings.TrimSpace(output.String())
+}
+
+func commandEnvironmentOption(
+	environment []commandEnvironment,
+) goyekcmd.Option {
+	return func(_ *goyek.A, command *exec.Cmd) {
+		command.Env = command.Environ()
+		for _, variable := range environment {
+			command.Env = append(
+				command.Env,
+				variable.Name+"="+variable.Value,
+			)
+		}
+	}
+}
+
+func logCommand(
+	a *goyek.A,
+	directory string,
+	name string,
+	args []string,
+	environment []commandEnvironment,
+) {
+	if directory != "" {
+		a.Logf("Work dir: %s", directory)
+	}
+	for _, variable := range environment {
+		a.Logf("Env: %s=%s", variable.Name, variable.logValue())
+	}
+	a.Logf("Exec: %s", commandLine(name, args...))
 }
 
 func commandLine(name string, args ...string) string {

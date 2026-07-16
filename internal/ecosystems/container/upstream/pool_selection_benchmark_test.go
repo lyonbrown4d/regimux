@@ -3,6 +3,7 @@ package upstream_test
 import (
 	"context"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 )
 
 func BenchmarkClientGetManifestOrderedMirrors(b *testing.B) {
+	silenceBenchmarkLogs(b)
 	servers := benchmarkRegistryServers(b, benchmarkManifestHandler)
 	client := newTestClient(map[string]upstream.Config{
 		"hub": {
@@ -36,6 +38,7 @@ func BenchmarkClientGetManifestOrderedMirrors(b *testing.B) {
 }
 
 func BenchmarkClientGetBlobOrderedMirrors(b *testing.B) {
+	silenceBenchmarkLogs(b)
 	servers := benchmarkRegistryServers(b, benchmarkBlobHandler)
 	client := newTestClient(map[string]upstream.Config{
 		"hub": {
@@ -116,4 +119,13 @@ func closeBenchmarkBody(b *testing.B, body io.ReadCloser) {
 	if err := body.Close(); err != nil {
 		b.Fatalf("close response body: %v", err)
 	}
+}
+
+func silenceBenchmarkLogs(b *testing.B) {
+	b.Helper()
+	previous := slog.Default()
+	slog.SetDefault(slog.New(slog.DiscardHandler))
+	b.Cleanup(func() {
+		slog.SetDefault(previous)
+	})
 }

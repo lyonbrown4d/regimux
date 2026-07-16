@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 	"sync"
@@ -138,29 +139,29 @@ func (s runtimeSelection) Release() {
 	}
 }
 
-func (p *upstreamPool) selectRuntimes(operation, repository, digest string) runtimeSelection {
+func (p *upstreamPool) selectRuntimes(ctx context.Context, operation, repository, digest string) runtimeSelection {
 	if p == nil {
 		return newRuntimeSelection(nil, nil)
 	}
 	if operation == operationBlob {
-		return p.selectBlobRuntimes(repository, digest)
+		return p.selectBlobRuntimes(ctx, repository, digest)
 	}
 	now := time.Now()
-	selected := p.selectHealthyRuntimes(p.runtimes, repository, now, operation)
+	selected := p.selectHealthyRuntimes(ctx, p.runtimes, repository, now, operation)
 	return newRuntimeSelection(p.runtimesForPolicy(p.policy, selected, false), nil)
 }
 
-func (p *upstreamPool) selectBlobRuntimes(repository, digest string) runtimeSelection {
+func (p *upstreamPool) selectBlobRuntimes(ctx context.Context, repository, digest string) runtimeSelection {
 	now := time.Now()
 	switch p.blobPolicy {
 	case mirrorPolicyRoundRobin:
-		selected := p.selectHealthyRuntimes(p.runtimes, repository, now, operationBlob)
+		selected := p.selectHealthyRuntimes(ctx, p.runtimes, repository, now, operationBlob)
 		return newRuntimeSelection(p.runtimesForPolicy(mirrorPolicyRoundRobin, selected, true), nil)
 	case mirrorPolicyLatency:
-		selected := p.selectHealthyRuntimes(p.runtimes, repository, now, operationBlob)
-		return p.selectLatencyBlobRuntimes(repository, digest, selected, now)
+		selected := p.selectHealthyRuntimes(ctx, p.runtimes, repository, now, operationBlob)
+		return p.selectLatencyBlobRuntimes(ctx, repository, digest, selected, now)
 	default:
-		selected := p.selectHealthyRuntimes(p.runtimes, repository, now, operationBlob)
+		selected := p.selectHealthyRuntimes(ctx, p.runtimes, repository, now, operationBlob)
 		return newRuntimeSelection(p.runtimesForPolicy(mirrorPolicyOrdered, selected, true), nil)
 	}
 }
@@ -183,12 +184,12 @@ func (p *upstreamPool) runtimesForPolicy(policy string, runtimes *collectionlist
 	return ordered
 }
 
-func (p *upstreamPool) selectLatencyBlobRuntimes(repository, digest string, runtimes *collectionlist.List[upstreamRuntime], now time.Time) runtimeSelection {
+func (p *upstreamPool) selectLatencyBlobRuntimes(ctx context.Context, repository, digest string, runtimes *collectionlist.List[upstreamRuntime], now time.Time) runtimeSelection {
 	if runtimes == nil || runtimes.Len() <= 1 {
 		return newRuntimeSelection(runtimes, nil)
 	}
 	candidates := p.health.rankRuntimeCandidates(runtimes, repository, now)
-	filtered := p.selectHealthyRuntimeCandidates(candidates, repository, operationBlob)
+	filtered := p.selectHealthyRuntimeCandidates(ctx, candidates, repository, operationBlob)
 	return p.scheduler.schedule(digest, filtered, p.blobTopN, p.blobAttemptConcurrency(), now)
 }
 

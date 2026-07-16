@@ -57,6 +57,8 @@ type Entry struct {
 	Expired bool
 }
 
+type BodyValidator func(io.ReaderAt, int64) error
+
 type PutRequest struct {
 	Key         Key
 	AcceptKey   string
@@ -64,4 +66,5 @@ type PutRequest struct {
 	Headers     http.Header
 	ContentType string
 	TTL         time.Duration
+	Validator   BodyValidator
 }

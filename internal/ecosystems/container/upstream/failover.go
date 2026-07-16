@@ -24,7 +24,7 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 	if err != nil {
 		return nil, err
 	}
-	selection := pool.selectRuntimes(req.operation, req.repository, req.digest)
+	selection := pool.selectRuntimes(ctx, req.operation, req.repository, req.digest)
 
 	runtimes := selection.runtimes
 	if runtimes == nil || runtimes.Len() == 0 {
