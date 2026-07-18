@@ -6,7 +6,7 @@ until docker info >/dev/null 2>&1; do
 done
 
 concurrency="${REGIMUX_INTEGRATION_CONCURRENCY:-4}"
-images="${REGIMUX_CONTAINER_IMAGES:-regimux:8080/hub/library/busybox:1.36.1 regimux:8080/hub/library/ubuntu:24.04 regimux:8080/hub/moby/buildkit:buildx-stable-1}"
+images="${REGIMUX_CONTAINER_IMAGES:-regimux:8080/library/busybox:1.36.1 regimux:8080/hub/library/busybox:1.36.1 regimux:8080/moby/buildkit:buildx-stable-1}"
 
 set -- $images
 if [ "$#" -eq 0 ]; then
@@ -61,13 +61,14 @@ for image in "$@"; do
   docker image inspect "$image" >/dev/null
   docker image rm "$image" >/dev/null 2>&1 || true
 
-  repository="${image#regimux:8080/hub/}"
-  reference="${repository##*:}"
-  repository="${repository%:*}"
+  repository_with_ref="${image#regimux:8080/}"
+  repository="${repository_with_ref%:*}"
+  reference="${repository_with_ref##*:}"
+  manifest_url="http://regimux:8080/v2/${repository}/manifests/${reference}"
   cache_status="$(
     wget -S --spider \
       --header="Accept: application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
-      "http://regimux:8080/v2/hub/$repository/manifests/$reference" \
+      "$manifest_url" \
       2>&1 |
       awk 'tolower($0) ~ /x-mirror-cache:/ {print tolower($2); exit}' |
       tr -d '\r'

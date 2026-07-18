@@ -23,6 +23,9 @@ func (c *Config) normalizeUpstreams() error {
 		return err
 	}
 	c.Upstreams = containerUpstreams
+	if err := c.validateContainerDefaultAlias(); err != nil {
+		return err
+	}
 
 	if err := c.normalizeDependencyUpstreams(ecosystemGo, c.ensureGoConfig()); err != nil {
 		return err
@@ -137,6 +140,19 @@ func normalizeDistAllow(values []string) []string {
 
 func sortedConfigAliases[T any](values map[string]T) *collectionlist.List[string] {
 	return collectionlist.NewList(slices.Sorted(maps.Keys(values))...)
+}
+
+func (c *Config) validateContainerDefaultAlias() error {
+	alias := c.ContainerDefaultAlias()
+	if alias == "" {
+		return nil
+	}
+	if _, ok := c.ContainerUpstream(alias); !ok {
+		return oops.In("config").
+			With("alias", alias).
+			Errorf("default_container_alias must reference a configured container upstream: %q", alias)
+	}
+	return nil
 }
 
 func (c *Config) ensureGoConfig() DependencyEcosystemConfig {

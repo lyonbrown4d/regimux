@@ -35,8 +35,10 @@ type RegistryEndpoint struct {
 	events      events.Bus
 	workers     *worker.Pools
 
-	defaultNamespaces *collectionmapping.Map[string, string]
-	dependencyPolicy  accesspolicy.DependencyPolicy
+	defaultNamespaces     *collectionmapping.Map[string, string]
+	defaultContainerAlias string
+	containerAliases      map[string]struct{}
+	dependencyPolicy      accesspolicy.DependencyPolicy
 }
 
 func NewRegistryEndpoint(
@@ -69,6 +71,11 @@ func NewRegistryEndpointFromConfig(
 ) *RegistryEndpoint {
 	endpoint := NewRegistryEndpoint(manifests, blobs, tags, referrers, logger)
 	endpoint.defaultNamespaces = defaultNamespacesFromConfig(cfg)
+	endpoint.defaultContainerAlias = cfg.ContainerDefaultAlias()
+	endpoint.containerAliases = make(map[string]struct{}, len(cfg.Container))
+	for alias := range cfg.Container {
+		endpoint.containerAliases[alias] = struct{}{}
+	}
 	return endpoint
 }
 
@@ -138,7 +145,7 @@ func (e *RegistryEndpoint) head(ctx context.Context, input *registryInput) (*reg
 func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, method string) (*registryOutput, error) {
 	startedAt := time.Now()
 	routeName := "registry.invalid"
-	route, err := routeFromInput(input)
+	route, err := e.routeFromInput(input)
 	if err != nil {
 		if errors.Is(err, reference.ErrDigestInvalid) {
 			out := errorOutput(distribution.ErrDigestInvalid.WithDetail(err.Error()))

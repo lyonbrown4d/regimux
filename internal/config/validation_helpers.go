@@ -64,6 +64,10 @@ func (c Config) ContainerAliases() *collectionlist.List[string] {
 	return sortedConfigAliases(c.Container)
 }
 
+func (c Config) ContainerDefaultAlias() string {
+	return strings.TrimSpace(c.DefaultContainerAlias)
+}
+
 func (c Config) ContainerUpstream(alias string) (UpstreamConfig, bool) {
 	cfg, ok := c.Container[strings.TrimSpace(alias)]
 	if !ok {

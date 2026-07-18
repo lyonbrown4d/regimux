@@ -184,6 +184,8 @@ docker {
   }
 }
 
+default_container_alias = "hub"
+
 container {
   hub {
     registry = "https://registry-1.docker.io"

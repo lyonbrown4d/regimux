@@ -3,23 +3,24 @@ package config
 import "time"
 
 type Config struct {
-	Server      ServerConfig              `json:"server"       koanf:"server"       mapstructure:"server"       validate:"required"`
-	Auth        RegistryAuthConfig        `json:"auth"         koanf:"auth"         mapstructure:"auth"`
-	Policy      PolicyConfig              `json:"policy"       koanf:"policy"       mapstructure:"policy"`
-	Log         LogConfig                 `json:"log"          koanf:"log"          mapstructure:"log"`
-	Cache       CacheConfig               `json:"cache"        koanf:"cache"        mapstructure:"cache"        validate:"required"`
-	Store       StoreConfig               `json:"store"        koanf:"store"        mapstructure:"store"        validate:"required"`
-	Scheduler   SchedulerConfig           `json:"scheduler"    koanf:"scheduler"    mapstructure:"scheduler"`
-	Worker      WorkerConfig              `json:"worker"       koanf:"worker"       mapstructure:"worker"`
-	Docker      DockerConfig              `json:"docker"       koanf:"docker"       mapstructure:"docker"`
-	Container   ContainerConfig           `json:"container"    koanf:"container"    mapstructure:"container"`
-	Go          DependencyEcosystemConfig `json:"go"           koanf:"go"           mapstructure:"go"`
-	NPM         DependencyEcosystemConfig `json:"npm"          koanf:"npm"          mapstructure:"npm"`
-	PyPI        DependencyEcosystemConfig `json:"pypi"         koanf:"pypi"         mapstructure:"pypi"`
-	Maven       DependencyEcosystemConfig `json:"maven"        koanf:"maven"        mapstructure:"maven"`
-	MavenGroups MavenGroupsConfig         `json:"maven_groups" koanf:"maven_groups" mapstructure:"maven_groups"`
-	Dist        DistEcosystemConfig       `json:"dist"         koanf:"dist"         mapstructure:"dist"`
-	Upstreams   map[string]UpstreamConfig `json:"-"            koanf:"-"            mapstructure:"-"`
+	Server                ServerConfig              `json:"server"                  koanf:"server"                  mapstructure:"server"                  validate:"required"`
+	Auth                  RegistryAuthConfig        `json:"auth"                    koanf:"auth"                    mapstructure:"auth"`
+	Policy                PolicyConfig              `json:"policy"                  koanf:"policy"                  mapstructure:"policy"`
+	Log                   LogConfig                 `json:"log"                     koanf:"log"                     mapstructure:"log"`
+	Cache                 CacheConfig               `json:"cache"                   koanf:"cache"                   mapstructure:"cache"                   validate:"required"`
+	Store                 StoreConfig               `json:"store"                   koanf:"store"                   mapstructure:"store"                   validate:"required"`
+	Scheduler             SchedulerConfig           `json:"scheduler"               koanf:"scheduler"               mapstructure:"scheduler"`
+	Worker                WorkerConfig              `json:"worker"                  koanf:"worker"                  mapstructure:"worker"`
+	Docker                DockerConfig              `json:"docker"                  koanf:"docker"                  mapstructure:"docker"`
+	Container             ContainerConfig           `json:"container"               koanf:"container"               mapstructure:"container"`
+	DefaultContainerAlias string                    `json:"default_container_alias" koanf:"default_container_alias" mapstructure:"default_container_alias"`
+	Go                    DependencyEcosystemConfig `json:"go"                      koanf:"go"                      mapstructure:"go"`
+	NPM                   DependencyEcosystemConfig `json:"npm"                     koanf:"npm"                     mapstructure:"npm"`
+	PyPI                  DependencyEcosystemConfig `json:"pypi"                    koanf:"pypi"                    mapstructure:"pypi"`
+	Maven                 DependencyEcosystemConfig `json:"maven"                   koanf:"maven"                   mapstructure:"maven"`
+	MavenGroups           MavenGroupsConfig         `json:"maven_groups"            koanf:"maven_groups"            mapstructure:"maven_groups"`
+	Dist                  DistEcosystemConfig       `json:"dist"                    koanf:"dist"                    mapstructure:"dist"`
+	Upstreams             map[string]UpstreamConfig `json:"-"                       koanf:"-"                       mapstructure:"-"`
 }
 
 type ServerConfig struct {

@@ -22,7 +22,10 @@ func (r *Resolver) ResolvePath(path string) (auth.ResolvedResource, bool, error)
 	if !strings.HasPrefix(cleanPath, "/v2") {
 		return auth.ResolvedResource{}, false, nil
 	}
-	route, err := reference.Parse(cleanPath)
+	route, err := reference.ParseWithDefaultAlias(cleanPath, r.cfg.ContainerDefaultAlias(), func(alias string) bool {
+		_, ok := r.cfg.Container[alias]
+		return ok
+	})
 	if err != nil {
 		return auth.ResolvedResource{}, true, oops.Wrapf(err, "parse container auth resource")
 	}
