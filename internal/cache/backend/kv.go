@@ -3,12 +3,14 @@ package backend
 import (
 	"context"
 	"log/slog"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/arcgolabs/kvx"
 	redisadapter "github.com/arcgolabs/kvx/adapter/redis"
 	valkeyadapter "github.com/arcgolabs/kvx/adapter/valkey"
+	"github.com/lyonbrown4d/regimux/internal/cache/backend/valkeyreply"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/valkey-io/valkey-go"
 )
@@ -34,6 +36,22 @@ type KVOptions struct {
 	Logger   *slog.Logger
 	Debug    bool
 }
+
+const (
+	releaseLockScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+	return redis.call('DEL', KEYS[1])
+end
+return 0
+`
+
+	extendLockScript = `
+if redis.call('GET', KEYS[1]) == ARGV[1] then
+	return redis.call('PEXPIRE', KEYS[1], ARGV[2])
+end
+return 0
+`
+)
 
 func NewRedis(opts KVOptions) (*KV, error) {
 	if len(opts.Addrs) == 0 {
@@ -78,7 +96,10 @@ func NewValkey(opts KVOptions) (*KV, error) {
 		return nil, wrapError(err, "ping valkey cache")
 	}
 
-	return NewKV(valkeyadapter.NewFromClient(client), opts.Prefix), nil
+	return NewKV(&valkeyKVClient{
+		cache:  valkeyadapter.NewFromClient(client),
+		client: client,
+	}, opts.Prefix), nil
 }
 
 func NewKV(client KVClient, prefix string) *KV {
@@ -146,6 +167,83 @@ func (b *KV) Close() error {
 
 func (b *KV) key(key string) (string, error) {
 	return cacheKey(b.prefix, strings.TrimLeft(strings.TrimSpace(key), ":"))
+}
+
+type valkeyKVClient struct {
+	client valkey.Client
+	cache  *valkeyadapter.Adapter
+}
+
+func (c *valkeyKVClient) Get(ctx context.Context, key string) ([]byte, error) {
+	value, err := c.cache.Get(ctx, key)
+	if err != nil {
+		return nil, wrapError(err, "get valkey cache value")
+	}
+	return value, nil
+}
+
+func (c *valkeyKVClient) Set(ctx context.Context, key string, value []byte, expiration time.Duration) error {
+	if err := c.cache.Set(ctx, key, value, expiration); err != nil {
+		return wrapError(err, "set valkey cache value")
+	}
+	return nil
+}
+
+func (c *valkeyKVClient) Delete(ctx context.Context, key string) error {
+	if err := c.cache.Delete(ctx, key); err != nil {
+		return wrapError(err, "delete valkey cache value")
+	}
+	return nil
+}
+
+func (c *valkeyKVClient) Close() error {
+	if err := c.cache.Close(); err != nil {
+		return wrapError(err, "close valkey cache")
+	}
+	return nil
+}
+
+func (c *valkeyKVClient) Acquire(ctx context.Context, key, token string, ttl time.Duration) (bool, error) {
+	resp := c.client.Do(ctx, c.client.B().Set().Key(key).Value(token).Nx().Px(ttl).Build())
+	if err := resp.Error(); err != nil {
+		if valkey.IsValkeyNil(err) {
+			return false, nil
+		}
+		return false, wrapError(err, "acquire valkey cache lease")
+	}
+
+	return true, nil
+}
+
+func (c *valkeyKVClient) Release(ctx context.Context, key, token string) (bool, error) {
+	command := c.client.B().Eval().
+		Script(releaseLockScript).
+		Numkeys(1).
+		Key(key).
+		Arg(token).
+		Build()
+	resp := c.client.Do(ctx, command)
+	released, err := valkeyreply.ParseLock(resp)
+	if err != nil {
+		return false, wrapError(err, "release valkey cache lease")
+	}
+	return released, nil
+}
+
+func (c *valkeyKVClient) Extend(ctx context.Context, key, token string, ttl time.Duration) (bool, error) {
+	command := c.client.B().Eval().
+		Script(extendLockScript).
+		Numkeys(1).
+		Key(key).
+		Arg(token).
+		Arg(strconv.FormatInt(ttl.Milliseconds(), 10)).
+		Build()
+	resp := c.client.Do(ctx, command)
+	extended, err := valkeyreply.ParseLock(resp)
+	if err != nil {
+		return false, wrapError(err, "extend valkey cache lease")
+	}
+	return extended, nil
 }
 
 var _ Backend = (*KV)(nil)
