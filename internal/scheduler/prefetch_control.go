@@ -32,7 +32,7 @@ func (r *Runtime) RetryPrefetch(ctx context.Context) (*ecosystem.PrefetchControl
 }
 
 func (r *Runtime) prefetchController() ecosystem.PrefetchController {
-	controller, _ := firstRuntimeCapability[ecosystem.PrefetchController](r)
+	controller, _ := r.firstCapability[ecosystem.PrefetchController]()
 	return controller
 }
 

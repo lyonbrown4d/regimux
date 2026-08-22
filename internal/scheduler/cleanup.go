@@ -57,5 +57,5 @@ func (r *Runtime) runCleaner(ctx context.Context, cleaner ecosystem.Cleaner) err
 }
 
 func (r *Runtime) cleaners() *collectionlist.List[ecosystem.Cleaner] {
-	return runtimeCapabilities[ecosystem.Cleaner](r)
+	return r.Capabilities[ecosystem.Cleaner]()
 }

@@ -64,7 +64,7 @@ func (r *Runtime) observeEndpointHealth(ctx context.Context) {
 	if r == nil || r.metrics == nil {
 		return
 	}
-	runtimeCapabilities[endpointHealthObserver](r).Range(func(_ int, observer endpointHealthObserver) bool {
+	r.Capabilities[endpointHealthObserver]().Range(func(_ int, observer endpointHealthObserver) bool {
 		observer.ObserveEndpointHealth(ctx, r.metrics)
 		return true
 	})

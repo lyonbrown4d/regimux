@@ -35,7 +35,7 @@ func TestRuntimeCapabilitiesCollectsMatchingRuntimes(t *testing.T) {
 		),
 	})
 
-	cleaners := scheduler.RuntimeCapabilities[ecosystem.Cleaner](runtime)
+	cleaners := runtime.Capabilities[ecosystem.Cleaner]()
 	if cleaners.Len() != 1 {
 		t.Fatalf("expected 1 cleaner, got %d", cleaners.Len())
 	}
@@ -52,8 +52,7 @@ func TestRuntimeCapabilityByNameSearchModes(t *testing.T) {
 		),
 	})
 
-	_, ok := scheduler.NamedRuntimeCapability[ecosystem.Cleaner](
-		runtime,
+	_, ok := runtime.NamedCapability[ecosystem.Cleaner](
 		"go",
 		scheduler.MatchRuntimeNameExact,
 		scheduler.StopAfterRuntimeMatch,
@@ -62,8 +61,7 @@ func TestRuntimeCapabilityByNameSearchModes(t *testing.T) {
 		t.Fatal("expected stop mode to stop on the first named runtime without a cleaner")
 	}
 
-	cleaner, ok := scheduler.NamedRuntimeCapability[ecosystem.Cleaner](
-		runtime,
+	cleaner, ok := runtime.NamedCapability[ecosystem.Cleaner](
 		"go",
 		scheduler.MatchRuntimeNameExact,
 		scheduler.ContinueAfterRuntimeMatch,

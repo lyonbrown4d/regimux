@@ -174,7 +174,7 @@ func (r *Runtime) refresher(ecosystemName string) (ecosystem.Refresher, error) {
 		return nil, oops.In("scheduler").Errorf("refresh service is not configured")
 	}
 	name := strings.TrimSpace(ecosystemName)
-	refresher, ok := namedRuntimeCapability[ecosystem.Refresher](r, name, matchRuntimeNameExact, stopAfterRuntimeMatch)
+	refresher, ok := r.NamedCapability[ecosystem.Refresher](name, MatchRuntimeNameExact, StopAfterRuntimeMatch)
 	if !ok {
 		return nil, oops.In("scheduler").With("ecosystem", name).Errorf("refresh service is not configured")
 	}

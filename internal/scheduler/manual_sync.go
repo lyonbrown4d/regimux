@@ -113,7 +113,7 @@ func (r *Runtime) manualSyncer(ecosystemName string) ecosystem.ManualSyncer {
 	if r == nil || ecosystemName == "" {
 		return nil
 	}
-	syncer, _ := namedRuntimeCapability[ecosystem.ManualSyncer](r, ecosystemName, matchRuntimeNameExact, continueAfterRuntimeMatch)
+	syncer, _ := r.NamedCapability[ecosystem.ManualSyncer](ecosystemName, MatchRuntimeNameExact, ContinueAfterRuntimeMatch)
 	return syncer
 }
 
@@ -122,7 +122,7 @@ func (r *Runtime) manualSyncerByJob(id string) (ecosystem.ManualSyncer, manualsy
 		return nil, manualsync.SyncJob{}, false
 	}
 	var job manualsync.SyncJob
-	syncer, ok := runtimeCapabilities[ecosystem.ManualSyncer](r).FirstWhere(func(_ int, syncer ecosystem.ManualSyncer) bool {
+	syncer, ok := r.Capabilities[ecosystem.ManualSyncer]().FirstWhere(func(_ int, syncer ecosystem.ManualSyncer) bool {
 		var found bool
 		job, found = syncer.SyncJob(id)
 		return found

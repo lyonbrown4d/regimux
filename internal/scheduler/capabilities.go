@@ -25,7 +25,7 @@ func matchRuntimeNameFold(runtimeName, lookup string) bool {
 }
 
 func (r *Runtime) jobProviders() *collectionlist.List[ecosystem.JobProvider] {
-	return runtimeCapabilities[ecosystem.JobProvider](r)
+	return r.Capabilities[ecosystem.JobProvider]()
 }
 
 func runtimeCapability[T any](runtime ecosystem.Runtime) (T, bool) {
@@ -40,7 +40,7 @@ func runtimeCapability[T any](runtime ecosystem.Runtime) (T, bool) {
 	return capability, true
 }
 
-func firstRuntimeCapability[T any](r *Runtime) (T, bool) {
+func (r *Runtime) firstCapability[T any]() (T, bool) {
 	var zero T
 	if r == nil || r.runtimes == nil {
 		return zero, false
@@ -55,7 +55,8 @@ func firstRuntimeCapability[T any](r *Runtime) (T, bool) {
 	return runtimeCapability[T](runtime)
 }
 
-func runtimeCapabilities[T any](r *Runtime) *collectionlist.List[T] {
+// Capabilities returns every runtime implementing T.
+func (r *Runtime) Capabilities[T any]() *collectionlist.List[T] {
 	if r == nil || r.runtimes == nil {
 		return collectionlist.NewList[T]()
 	}
@@ -70,12 +71,17 @@ func runtimeCapabilities[T any](r *Runtime) *collectionlist.List[T] {
 	return out
 }
 
-func namedRuntimeCapability[T any](r *Runtime, name string, matcher runtimeNameMatcher, mode runtimeCapabilitySearchMode) (T, bool) {
-	_, capability, ok := runtimeCapabilityByName[T](r, name, matcher, mode)
+// NamedCapability returns a named runtime capability using the requested search behavior.
+func (r *Runtime) NamedCapability[T any](
+	name string,
+	matcher RuntimeNameMatcher,
+	mode RuntimeCapabilitySearchMode,
+) (T, bool) {
+	_, capability, ok := r.capabilityByName[T](name, matcher, mode)
 	return capability, ok
 }
 
-func runtimeCapabilityByName[T any](r *Runtime, name string, matcher runtimeNameMatcher, mode runtimeCapabilitySearchMode) (ecosystem.Runtime, T, bool) {
+func (r *Runtime) capabilityByName[T any](name string, matcher runtimeNameMatcher, mode runtimeCapabilitySearchMode) (ecosystem.Runtime, T, bool) {
 	var zero T
 	if r == nil || r.runtimes == nil {
 		return nil, zero, false
@@ -145,7 +151,7 @@ func MatchRuntimeNameFold(runtimeName, lookup string) bool {
 
 // RuntimeCapabilities returns every runtime implementing T.
 func RuntimeCapabilities[T any](runtime *Runtime) *collectionlist.List[T] {
-	return runtimeCapabilities[T](runtime)
+	return runtime.Capabilities[T]()
 }
 
 // NamedRuntimeCapability returns a named runtime capability using the requested search behavior.
@@ -155,7 +161,7 @@ func NamedRuntimeCapability[T any](
 	matcher RuntimeNameMatcher,
 	mode RuntimeCapabilitySearchMode,
 ) (T, bool) {
-	return namedRuntimeCapability[T](runtime, name, matcher, mode)
+	return runtime.NamedCapability[T](name, matcher, mode)
 }
 
 // FindRuntimeByName returns the first runtime matching name.
