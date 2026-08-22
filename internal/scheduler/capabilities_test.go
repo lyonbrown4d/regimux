@@ -31,7 +31,7 @@ func TestRuntimeCapabilitiesCollectsMatchingRuntimes(t *testing.T) {
 		Runtimes: collectionlist.NewList[ecosystem.Runtime](
 			nilRuntime,
 			testRuntime{name: "plain"},
-			testCleanerRuntime{testRuntime: testRuntime{name: "go"}},
+			testCleanerRuntime{name: "go"},
 		),
 	})
 
@@ -48,7 +48,7 @@ func TestRuntimeCapabilityByNameSearchModes(t *testing.T) {
 	runtime := scheduler.NewRuntime(scheduler.RuntimeDependencies{
 		Runtimes: collectionlist.NewList[ecosystem.Runtime](
 			testRuntime{name: "go"},
-			testCleanerRuntime{testRuntime: testRuntime{name: "go"}},
+			testCleanerRuntime{name: "go"},
 		),
 	})
 

@@ -139,14 +139,12 @@ func (s *Service) signToken(principal authx.Principal, scopes []string) (TokenRe
 	claims := authjwt.Claims{
 		Roles:       principalListValues(principal.Roles),
 		Permissions: scopes,
-		RegisteredClaims: jwt.RegisteredClaims{
-			Subject:   principal.ID,
-			Issuer:    s.issuer(),
-			Audience:  jwt.ClaimStrings{s.serviceName()},
-			IssuedAt:  jwt.NewNumericDate(now),
-			NotBefore: jwt.NewNumericDate(now.Add(-time.Second)),
-			ExpiresAt: jwt.NewNumericDate(expiresAt),
-		},
+		Subject:     principal.ID,
+		Issuer:      s.issuer(),
+		Audience:    jwt.ClaimStrings{s.serviceName()},
+		IssuedAt:    jwt.NewNumericDate(now),
+		NotBefore:   jwt.NewNumericDate(now.Add(-time.Second)),
+		ExpiresAt:   jwt.NewNumericDate(expiresAt),
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	signed, err := token.SignedString(s.secret)

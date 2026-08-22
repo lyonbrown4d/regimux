@@ -138,21 +138,18 @@ func FromError(err error) *ErrorList {
 		return nil
 	}
 
-	var list *ErrorList
-	if errors.As(err, &list) {
+	if list, ok := errors.AsType[*ErrorList](err); ok {
 		return list
 	}
 
-	var distErr Error
-	if errors.As(err, &distErr) {
+	if distErr, ok := errors.AsType[Error](err); ok {
 		return &ErrorList{
 			Status: defaultStatus(distErr.Code),
 			Errors: []Error{distErr},
 		}
 	}
 
-	var descriptor ErrorDescriptor
-	if errors.As(err, &descriptor) {
+	if descriptor, ok := errors.AsType[ErrorDescriptor](err); ok {
 		return descriptor.WithDetail(nil)
 	}
 

@@ -74,8 +74,7 @@ func (p blobProxy) putBlobObject(ctx context.Context, req BlobRequest, resp *ups
 		p.storeSmallBlobCache(ctx, req.Digest, mediaType, info.Size, recorder.Bytes(info.Size))
 		return info, nil
 	}
-	var mismatch *object.DigestMismatchError
-	if errors.As(err, &mismatch) {
+	if mismatch, ok := errors.AsType[*object.DigestMismatchError](err); ok {
 		return nil, distribution.DigestMismatch(mismatch.Expected, mismatch.Actual)
 	}
 	if errors.Is(err, object.ErrDigestMismatch) {

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"reflect"
 	"strings"
 
 	"github.com/go-playground/validator/v10"
@@ -30,7 +31,7 @@ func validateConfig(cfg *Config) error {
 }
 
 func validateRegistryAuthStruct(sl validator.StructLevel) {
-	auth, ok := sl.Current().Interface().(RegistryAuthConfig)
+	auth, ok := reflect.TypeAssert[RegistryAuthConfig](sl.Current())
 	if !ok || !auth.Enabled {
 		return
 	}
@@ -61,7 +62,7 @@ func validateRegistryAuthUser(sl validator.StructLevel, username string, user Au
 }
 
 func validateCacheStruct(sl validator.StructLevel) {
-	cache, ok := sl.Current().Interface().(CacheConfig)
+	cache, ok := reflect.TypeAssert[CacheConfig](sl.Current())
 	if !ok {
 		return
 	}
@@ -78,7 +79,7 @@ func validateCacheStruct(sl validator.StructLevel) {
 }
 
 func validateStoreMetaStruct(sl validator.StructLevel) {
-	meta, ok := sl.Current().Interface().(StoreMetaConfig)
+	meta, ok := reflect.TypeAssert[StoreMetaConfig](sl.Current())
 	if !ok {
 		return
 	}
@@ -91,7 +92,7 @@ func validateStoreMetaStruct(sl validator.StructLevel) {
 }
 
 func validateStoreObjectStruct(sl validator.StructLevel) {
-	object, ok := sl.Current().Interface().(StoreObjectConfig)
+	object, ok := reflect.TypeAssert[StoreObjectConfig](sl.Current())
 	if !ok {
 		return
 	}
@@ -113,7 +114,7 @@ func validateStoreObjectS3(sl validator.StructLevel, object StoreObjectConfig) {
 }
 
 func validateSchedulerCleanupStruct(sl validator.StructLevel) {
-	cleanup, ok := sl.Current().Interface().(SchedulerCleanupConfig)
+	cleanup, ok := reflect.TypeAssert[SchedulerCleanupConfig](sl.Current())
 	if !ok {
 		return
 	}
@@ -123,7 +124,7 @@ func validateSchedulerCleanupStruct(sl validator.StructLevel) {
 }
 
 func validateContainerRegistryStruct(sl validator.StructLevel) {
-	registry, ok := sl.Current().Interface().(ContainerRegistryConfig)
+	registry, ok := reflect.TypeAssert[ContainerRegistryConfig](sl.Current())
 	if !ok {
 		return
 	}
@@ -151,7 +152,7 @@ func validateContainerPrewarmPlatforms(sl validator.StructLevel, values []string
 }
 
 func validateDockerStruct(sl validator.StructLevel) {
-	docker, ok := sl.Current().Interface().(DockerConfig)
+	docker, ok := reflect.TypeAssert[DockerConfig](sl.Current())
 	if !ok || !docker.Enabled || !docker.Prewarm.Enabled {
 		return
 	}
