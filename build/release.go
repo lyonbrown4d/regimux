@@ -154,6 +154,8 @@ func publishReleaseArtifacts(a *goyek.A, config releaseConfig) {
 		publicCommandEnvironment("REGISTRY_IMAGE", config.RegistryImage),
 		publicCommandEnvironment("DOCKERHUB_IMAGE", config.DockerHubImage),
 		publicCommandEnvironment("GOTOOLCHAIN", config.GoToolchain),
+		publicCommandEnvironment("GOFLAGS", os.Getenv("GOFLAGS")),
+		publicCommandEnvironment("GOMAXPROCS", os.Getenv("GOMAXPROCS")),
 	)
 }
 
@@ -181,6 +183,10 @@ func goReleaserDockerArguments(config releaseConfig) []string {
 		"DOCKERHUB_IMAGE",
 		"--env",
 		"GOTOOLCHAIN",
+		"--env",
+		"GOFLAGS",
+		"--env",
+		"GOMAXPROCS",
 		config.GoReleaserImage,
 		"release",
 		"--parallelism",
