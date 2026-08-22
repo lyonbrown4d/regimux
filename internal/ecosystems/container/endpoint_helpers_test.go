@@ -108,6 +108,7 @@ func httpGetWithClient(client *http.Client, url string) (*http.Response, error) 
 	if err != nil {
 		return nil, oops.Wrapf(err, "build test request")
 	}
+	req.Close = true
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, oops.Wrapf(err, "send test request")
@@ -121,6 +122,7 @@ func httpHead(t *testing.T, url string) *http.Response {
 	if err != nil {
 		t.Fatalf("build HEAD %s: %v", url, err)
 	}
+	req.Close = true
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
