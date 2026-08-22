@@ -120,7 +120,7 @@ func mapAdmin[D any](m *AdminMapper, src any, message string) (D, error) {
 	return dst, nil
 }
 
-func mapAdminInto(m *AdminMapper, dst, src any, message string) error {
+func mapAdminInto[D, S any](m *AdminMapper, dst *D, src S, message string) error {
 	if m == nil || m.mapper == nil {
 		m = NewAdminMapper()
 	}
