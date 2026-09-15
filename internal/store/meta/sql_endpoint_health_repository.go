@@ -13,7 +13,7 @@ func (s *SQLStore) EndpointHealth(ctx context.Context, key EndpointHealthKey) (*
 	if err != nil {
 		return nil, false, err
 	}
-	row, err := repository.By(s.endpointHealth, sqlEndpointHealthRows.Key).Get(ctx, key.String())
+	row, err := s.endpointHealth.By(sqlEndpointHealthRows.Key).Get(ctx, key.String())
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
@@ -92,11 +92,11 @@ func (s *SQLStore) ListEndpointHealth(ctx context.Context, opts ...EndpointHealt
 	if err != nil {
 		return nil, err
 	}
-	filtered := records.Where(func(_ int, record EndpointHealthRecord) bool {
+	filtered := collectionlist.NewList(records.Stream().Filter(func(record EndpointHealthRecord) bool {
 		return options.Alias == "" || record.Alias == options.Alias
-	})
+	}).ToSlice()...)
 	if options.Limit > 0 {
-		filtered = filtered.Take(options.Limit)
+		filtered = collectionlist.NewList(filtered.Stream().Limit(options.Limit).ToSlice()...)
 	}
 	return filtered, nil
 }

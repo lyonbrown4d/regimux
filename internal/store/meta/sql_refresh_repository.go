@@ -15,7 +15,7 @@ func (s *SQLStore) RefreshIntent(ctx context.Context, key RefreshIntentKey) (*Re
 	if err != nil {
 		return nil, false, err
 	}
-	row, err := repository.By(s.refreshIntents, sqlRefreshIntentRows.Key).Get(ctx, key.String())
+	row, err := s.refreshIntents.By(sqlRefreshIntentRows.Key).Get(ctx, key.String())
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
@@ -149,7 +149,7 @@ func (s *SQLStore) deleteRefreshIntentByKey(ctx context.Context, key string) (bo
 	if key == "" {
 		return false, nil
 	}
-	_, err := repository.By(s.refreshIntents, sqlRefreshIntentRows.Key).Delete(ctx, key)
+	_, err := s.refreshIntents.By(sqlRefreshIntentRows.Key).Delete(ctx, key)
 	if errors.Is(err, repository.ErrNotFound) {
 		return false, nil
 	}

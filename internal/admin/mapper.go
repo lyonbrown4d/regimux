@@ -141,7 +141,7 @@ func mapAdminList[T, R any](
 	}
 	source := records
 	if limit > 0 {
-		source = records.Take(limit)
+		source = collectionlist.NewList(records.Stream().Limit(limit).ToSlice()...)
 	}
 	mapped, err := collectionlist.ReduceErrList(source, out, func(out *collectionlist.List[R], _ int, record T) (*collectionlist.List[R], error) {
 		row, err := mapOne(record)

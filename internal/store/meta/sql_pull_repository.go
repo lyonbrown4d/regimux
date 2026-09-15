@@ -16,7 +16,7 @@ func (s *SQLStore) Pull(ctx context.Context, key PullKey) (*PullRecord, bool, er
 	if err != nil {
 		return nil, false, err
 	}
-	row, err := repository.By(s.pulls, sqlPullRows.Key).Get(ctx, key.String())
+	row, err := s.pulls.By(sqlPullRows.Key).Get(ctx, key.String())
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}

@@ -41,7 +41,7 @@ func LoadWithOptions(ctx context.Context, options ...configx.Option) (Config, er
 	opts := append(baseLoadOptions(), options...)
 	// Use the typed loader for source/default decoding, but keep validation
 	// after regimux normalization to preserve existing semantics.
-	loaded, err := configx.NewT[Config](opts...).LoadConfigContext(ctx)
+	loaded, err := configx.New(opts...).LoadConfigContext(ctx)
 	if err != nil {
 		return Config{}, oops.In("config").Wrapf(err, "load config")
 	}

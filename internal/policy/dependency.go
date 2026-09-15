@@ -112,7 +112,7 @@ func firstMatchingDependencyRule(rules *collectionlist.List[DependencyRule], tar
 	if rules == nil {
 		return DependencyRule{}, false
 	}
-	return rules.FirstWhere(func(_ int, rule DependencyRule) bool {
+	return rules.Stream().Find(func(rule DependencyRule) bool {
 		return dependencyRuleMatches(rule, target)
 	}).Get()
 }

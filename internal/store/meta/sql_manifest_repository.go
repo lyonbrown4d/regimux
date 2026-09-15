@@ -44,7 +44,7 @@ func (s *SQLStore) DeleteManifest(ctx context.Context, key ManifestKey) error {
 	if err != nil {
 		return err
 	}
-	_, err = repository.By(s.manifest, sqlManifestRows.Key).Delete(ctx, key.String())
+	_, err = s.manifest.By(sqlManifestRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete manifest metadata")
 	}
@@ -78,7 +78,7 @@ func (s *SQLStore) ListManifests(ctx context.Context) (*collectionlist.List[Mani
 }
 
 func (s *SQLStore) manifestByKey(ctx context.Context, key string) (*ManifestRecord, bool, error) {
-	row, err := repository.By(s.manifest, sqlManifestRows.Key).Get(ctx, key)
+	row, err := s.manifest.By(sqlManifestRows.Key).Get(ctx, key)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}

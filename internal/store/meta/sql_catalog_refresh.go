@@ -19,7 +19,7 @@ func (s *SQLStore) ensureRepositoryMetadata(ctx context.Context, alias, name str
 		return nil, err
 	}
 	key := repositoryMetadataKey(upstream.Alias, name)
-	row, err := repository.By(s.repositories, sqlRepositoryRows.Key).Get(ctx, key)
+	row, err := s.repositories.By(sqlRepositoryRows.Key).Get(ctx, key)
 	if err == nil {
 		record, mapErr := s.mapper.RepositoryRowToRecord(row)
 		if mapErr != nil {
@@ -58,7 +58,7 @@ func (s *SQLStore) ensureUpstreamMetadata(ctx context.Context, alias string, at 
 	if err != nil {
 		return nil, err
 	}
-	row, err := repository.By(s.upstreams, sqlUpstreamRows.Alias).Get(ctx, alias)
+	row, err := s.upstreams.By(sqlUpstreamRows.Alias).Get(ctx, alias)
 	if err == nil {
 		record, mapErr := s.mapper.UpstreamRowToRecord(row)
 		if mapErr != nil {
@@ -119,7 +119,7 @@ func (s *SQLStore) createUpstreamMetadataRow(ctx context.Context, alias string, 
 }
 
 func (s *SQLStore) repositoryMetadataAfterCreateRace(ctx context.Context, key string) (*Repository, bool, error) {
-	row, err := repository.By(s.repositories, sqlRepositoryRows.Key).Get(ctx, key)
+	row, err := s.repositories.By(sqlRepositoryRows.Key).Get(ctx, key)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
@@ -134,7 +134,7 @@ func (s *SQLStore) repositoryMetadataAfterCreateRace(ctx context.Context, key st
 }
 
 func (s *SQLStore) upstreamMetadataAfterCreateRace(ctx context.Context, alias string) (*Upstream, bool, error) {
-	row, err := repository.By(s.upstreams, sqlUpstreamRows.Alias).Get(ctx, alias)
+	row, err := s.upstreams.By(sqlUpstreamRows.Alias).Get(ctx, alias)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
@@ -199,7 +199,7 @@ func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string
 }
 
 func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64, at time.Time) error {
-	row, err := repository.By(s.upstreams, sqlUpstreamRows.ID).Get(ctx, upstreamID)
+	row, err := s.upstreams.By(sqlUpstreamRows.ID).Get(ctx, upstreamID)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil
 	}

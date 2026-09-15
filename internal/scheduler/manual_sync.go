@@ -122,7 +122,7 @@ func (r *Runtime) manualSyncerByJob(id string) (ecosystem.ManualSyncer, manualsy
 		return nil, manualsync.SyncJob{}, false
 	}
 	var job manualsync.SyncJob
-	syncer, ok := r.Capabilities[ecosystem.ManualSyncer]().FirstWhere(func(_ int, syncer ecosystem.ManualSyncer) bool {
+	syncer, ok := r.Capabilities[ecosystem.ManualSyncer]().Stream().Find(func(syncer ecosystem.ManualSyncer) bool {
 		var found bool
 		job, found = syncer.SyncJob(id)
 		return found

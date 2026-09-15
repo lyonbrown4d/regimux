@@ -65,7 +65,7 @@ func (d *UserDirectory) Allows(username, resource string) bool {
 	if !ok || record.repositories == nil {
 		return false
 	}
-	return record.repositories.AnyMatch(func(_ int, pattern string) bool {
+	return record.repositories.Stream().Any(func(pattern string) bool {
 		return repositoryPatternMatches(pattern, resource)
 	})
 }

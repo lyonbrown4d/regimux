@@ -14,7 +14,7 @@ func (s *SQLStore) UpstreamByAlias(ctx context.Context, alias string) (*Upstream
 	if err != nil {
 		return nil, err
 	}
-	row, err := repository.By(s.upstreams, sqlUpstreamRows.Alias).Get(ctx, alias)
+	row, err := s.upstreams.By(sqlUpstreamRows.Alias).Get(ctx, alias)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, ErrNotFound
 	}

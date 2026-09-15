@@ -140,7 +140,7 @@ func sortedCandidates(
 	results.Sort(compareCandidatePriority)
 
 	if results.Len() > limit {
-		return results.Take(limit)
+		return collectionlist.NewList(results.Stream().Limit(limit).ToSlice()...)
 	}
 	return results
 }

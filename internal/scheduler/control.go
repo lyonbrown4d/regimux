@@ -132,7 +132,7 @@ func probeTargetFromUpstreams(alias string, upstreams *collectionlist.List[ecosy
 	if upstreams == nil {
 		return ecosystem.ProbeTarget{}
 	}
-	upstream, ok := upstreams.FirstWhere(func(_ int, upstream ecosystem.Upstream) bool {
+	upstream, ok := upstreams.Stream().Find(func(upstream ecosystem.Upstream) bool {
 		return strings.EqualFold(strings.TrimSpace(upstream.Alias), alias)
 	}).Get()
 	if !ok {
@@ -145,7 +145,7 @@ func (r *Runtime) findProbeTargetFromProbes(alias string, probes *collectionlist
 	if probes == nil {
 		return ecosystem.ProbeTarget{}, false
 	}
-	return probes.FirstWhere(func(_ int, target ecosystem.ProbeTarget) bool {
+	return probes.Stream().Find(func(target ecosystem.ProbeTarget) bool {
 		return strings.EqualFold(strings.TrimSpace(target.Alias), alias)
 	}).Get()
 }

@@ -68,7 +68,7 @@ func filterPullRecords(records *collectionlist.List[meta.PullRecord], opts RunOp
 		return record.Count >= opts.MinPullCount && record.Reference != ""
 	}).Sort(comparePullRecordPriority)
 	if out.Len() > opts.MaxRecords {
-		return out.Take(opts.MaxRecords)
+		return collectionlist.NewList(out.Stream().Limit(opts.MaxRecords).ToSlice()...)
 	}
 	return out
 }

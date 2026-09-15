@@ -11,7 +11,7 @@ import (
 )
 
 type Event = eventx.Event
-type Bus = eventx.BusRuntime
+type Bus = *eventx.Bus
 
 func NewBus(logger *slog.Logger) Bus {
 	if logger == nil {

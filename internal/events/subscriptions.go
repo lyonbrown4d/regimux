@@ -32,7 +32,7 @@ func NewSubscriber[T Event](handler Handler[T], options ...SubscribeOption) Subs
 		if handler == nil {
 			return noopUnsubscribe, nil
 		}
-		unsubscribe, err := eventx.Subscribe[T](bus, handler, options...)
+		unsubscribe, err := bus.Subscribe[T](handler, options...)
 		if err != nil {
 			return nil, oops.Wrapf(err, "subscribe event handler")
 		}
@@ -135,7 +135,7 @@ func (s *Subscriptions) closeLocked() {
 
 func subscribe[T Event](bus Bus, handler func(context.Context, T) error) func() (Unsubscribe, error) {
 	return func() (Unsubscribe, error) {
-		unsubscribe, err := eventx.Subscribe[T](bus, handler)
+		unsubscribe, err := bus.Subscribe[T](handler)
 		if err != nil {
 			return nil, err
 		}

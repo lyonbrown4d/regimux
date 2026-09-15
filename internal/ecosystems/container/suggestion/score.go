@@ -93,7 +93,7 @@ func rankCandidateValues(target string, values []string, limit int) []string {
 	}
 	scored.Sort(compareScoredValue)
 	if scored.Len() > limit {
-		scored = scored.Take(limit)
+		scored = collectionlist.NewList(scored.Stream().Limit(limit).ToSlice()...)
 	}
 	return lo.Map(scored.Values(), func(item scoredValue, _ int) string {
 		return item.value

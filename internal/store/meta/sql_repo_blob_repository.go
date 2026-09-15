@@ -14,7 +14,7 @@ func (s *SQLStore) RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobReco
 	if err != nil {
 		return nil, false, err
 	}
-	row, err := repository.By(s.repoBlobs, sqlRepoBlobRows.Key).Get(ctx, key.String())
+	row, err := s.repoBlobs.By(sqlRepoBlobRows.Key).Get(ctx, key.String())
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
@@ -95,7 +95,7 @@ func (s *SQLStore) writeRepoBlobRow(ctx context.Context, record *RepoBlobRecord,
 }
 
 func (s *SQLStore) updateRepoBlobAfterCreateRace(ctx context.Context, record *RepoBlobRecord, key string) (bool, error) {
-	row, err := repository.By(s.repoBlobs, sqlRepoBlobRows.Key).Get(ctx, key)
+	row, err := s.repoBlobs.By(sqlRepoBlobRows.Key).Get(ctx, key)
 	if errors.Is(err, repository.ErrNotFound) {
 		return false, nil
 	}
@@ -122,7 +122,7 @@ func (s *SQLStore) DeleteRepoBlob(ctx context.Context, key RepoBlobKey) error {
 	if err != nil {
 		return err
 	}
-	_, err = repository.By(s.repoBlobs, sqlRepoBlobRows.Key).Delete(ctx, key.String())
+	_, err = s.repoBlobs.By(sqlRepoBlobRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete repository blob metadata")
 	}

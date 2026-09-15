@@ -13,7 +13,7 @@ func (s *SQLStore) Blob(ctx context.Context, key BlobKey) (*BlobRecord, bool, er
 	if err != nil {
 		return nil, false, err
 	}
-	row, err := repository.By(s.blobs, sqlBlobRows.Digest).Get(ctx, key.Digest)
+	row, err := s.blobs.By(sqlBlobRows.Digest).Get(ctx, key.Digest)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
@@ -102,7 +102,7 @@ func (s *SQLStore) DeleteBlob(ctx context.Context, key BlobKey) error {
 	if err != nil {
 		return err
 	}
-	_, err = repository.By(s.blobs, sqlBlobRows.Digest).Delete(ctx, key.Digest)
+	_, err = s.blobs.By(sqlBlobRows.Digest).Delete(ctx, key.Digest)
 	if err != nil {
 		return wrapError(err, "delete blob metadata")
 	}

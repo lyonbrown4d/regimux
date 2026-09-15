@@ -91,7 +91,7 @@ func (s *SQLStore) DeleteTag(ctx context.Context, key TagKey) error {
 	if err != nil {
 		return err
 	}
-	_, err = repository.By(s.tags, sqlTagRows.Key).Delete(ctx, key.String())
+	_, err = s.tags.By(sqlTagRows.Key).Delete(ctx, key.String())
 	if err != nil {
 		return wrapError(err, "delete tag metadata")
 	}
@@ -125,7 +125,7 @@ func (s *SQLStore) ListTags(ctx context.Context) (*collectionlist.List[TagRecord
 }
 
 func (s *SQLStore) tagByKey(ctx context.Context, key string) (*TagRecord, bool, error) {
-	row, err := repository.By(s.tags, sqlTagRows.Key).Get(ctx, key)
+	row, err := s.tags.By(sqlTagRows.Key).Get(ctx, key)
 	if errors.Is(err, repository.ErrNotFound) {
 		return nil, false, nil
 	}
