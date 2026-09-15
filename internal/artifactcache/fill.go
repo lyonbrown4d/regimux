@@ -46,7 +46,6 @@ type FillOwnerFunc[T any] func() (T, error)
 
 type CoalesceRequest[T any] struct {
 	Context context.Context
-	Tracker *FillTracker
 	Key     Key
 	Wait    FillWaitFunc[T]
 	Fill    FillOwnerFunc[T]
@@ -118,36 +117,20 @@ func (t *FillTracker) Finish(key Key, fill *Fill, err error) {
 	t.fills.Finish(cacheKey, fill, err)
 }
 
-func CoalesceFill[T any](
-	ctx context.Context,
-	tracker *FillTracker,
-	key Key,
-	wait FillWaitFunc[T],
-	fill FillOwnerFunc[T],
-) (T, error) {
-	return CoalesceFillWith(CoalesceRequest[T]{
-		Context: ctx,
-		Tracker: tracker,
-		Key:     key,
-		Wait:    wait,
-		Fill:    fill,
-	})
-}
-
-func CoalesceFillWith[T any](req CoalesceRequest[T]) (T, error) {
+func (t *FillTracker) Coalesce[T any](req CoalesceRequest[T]) (T, error) {
 	for {
-		current, owner := req.Tracker.Begin(req.Key)
+		current, owner := t.Begin(req.Key)
 		if owner {
-			return finishTrackedFill(req, current)
+			return t.finishTrackedFill(req, current)
 		}
-		result, retry, err := waitForTrackedFill(req, current)
+		result, retry, err := t.waitForTrackedFill(req, current)
 		if !retry {
 			return result, err
 		}
 	}
 }
 
-func waitForTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, bool, error) {
+func (t *FillTracker) waitForTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, bool, error) {
 	var zero T
 	if err := current.Wait(req.Context); err != nil {
 		return zero, false, wrapError(err, "wait for artifact cache fill")
@@ -156,31 +139,32 @@ func waitForTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, bool, 
 	return result, !ok && err == nil, err
 }
 
-func finishTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, error) {
-	result, err := coalesceFillOwner(req)
-	req.Tracker.Finish(req.Key, current, err)
+func (t *FillTracker) finishTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, error) {
+	result, err := t.coalesceFillOwner(req)
+	t.Finish(req.Key, current, err)
 	return result, err
 }
-func coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
+
+func (t *FillTracker) coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
 	var zero T
 	for {
 		result, ok, err := req.Wait()
 		if ok || err != nil {
 			return result, err
 		}
-		result, filled, err := fillAsLeaseOwner(req)
+		result, filled, err := t.fillAsLeaseOwner(req)
 		if filled || err != nil {
 			return result, err
 		}
-		if err := waitForFillPoll(req.Context, req.Tracker); err != nil {
+		if err := waitForFillPoll(req.Context, t); err != nil {
 			return zero, err
 		}
 	}
 }
 
-func fillAsLeaseOwner[T any](req CoalesceRequest[T]) (T, bool, error) {
+func (t *FillTracker) fillAsLeaseOwner[T any](req CoalesceRequest[T]) (T, bool, error) {
 	var zero T
-	lease, owner := acquireFillLease(req.Context, req.Tracker, req.Key)
+	lease, owner := acquireFillLease(req.Context, t, req.Key)
 	if !owner {
 		return zero, false, nil
 	}
@@ -188,9 +172,10 @@ func fillAsLeaseOwner[T any](req CoalesceRequest[T]) (T, bool, error) {
 		result, err := req.Fill()
 		return result, true, err
 	}
-	result, err := fillWithLease(req.Context, req.Tracker, lease, req.Fill)
+	result, err := t.fillWithLease(req.Context, lease, req.Fill)
 	return result, true, err
 }
+
 func fillKey(key Key) string {
 	if key.Alias == "" || key.Repository == "" || key.Reference == "" {
 		return ""

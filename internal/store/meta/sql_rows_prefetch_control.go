@@ -1,11 +1,11 @@
 package meta
 
 func (m *MetadataMapper) PrefetchControlRecordToRow(record PrefetchControlRecord) (prefetchControlRow, error) {
-	return mapMetadata[prefetchControlRow](m, record)
+	return m.mapMetadata[prefetchControlRow](record)
 }
 
 func (m *MetadataMapper) PrefetchControlRowToRecord(row prefetchControlRow) (*PrefetchControlRecord, error) {
-	record, err := mapMetadata[PrefetchControlRecord](m, row)
+	record, err := m.mapMetadata[PrefetchControlRecord](row)
 	if err != nil {
 		return nil, err
 	}

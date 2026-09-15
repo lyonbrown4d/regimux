@@ -89,8 +89,7 @@ func TestServiceCoalescesConcurrentVersionedGoProxyMiss(t *testing.T) {
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	responses := run.Wait(t)
-	testkit.RequireOneMiss(t, responses, cacheMiss, cacheHit, func(resp *golang.Response) string {
+	run.RequireOneMiss(t, cacheMiss, cacheHit, func(resp *golang.Response) string {
 		assertBody(t, resp, "module github.com/acme/lib\n")
 		return resp.Cache
 	})

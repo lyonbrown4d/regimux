@@ -108,8 +108,7 @@ func TestServiceCoalescesConcurrentSimpleIndexMiss(t *testing.T) {
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	responses := run.Wait(t)
-	testkit.RequireOneMiss(t, responses, cacheMiss, cacheHit, func(resp *pypi.Response) string {
+	run.RequireOneMiss(t, cacheMiss, cacheHit, func(resp *pypi.Response) string {
 		if body := readResponse(t, resp); body != "<html><body>demo</body></html>" {
 			t.Fatalf("body = %q", body)
 		}

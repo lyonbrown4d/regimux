@@ -106,8 +106,7 @@ func TestServiceCoalescesConcurrentReleaseArtifactMiss(t *testing.T) {
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	responses := run.Wait(t)
-	testkit.RequireOneMiss(t, responses, cacheMiss, cacheHit, func(resp *maven.Response) string {
+	run.RequireOneMiss(t, cacheMiss, cacheHit, func(resp *maven.Response) string {
 		assertBody(t, resp, "jar bytes")
 		return resp.Cache
 	})

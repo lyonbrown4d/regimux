@@ -47,7 +47,9 @@ func TestServiceCoalescesConcurrentLegacyCharsetPOMMiss(t *testing.T) {
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	responses := run.Wait(t)
+	responses := run.RequireOneMiss(t, cacheMiss, cacheHit, func(response *maven.Response) string {
+		return response.Cache
+	})
 	for _, response := range responses {
 		if response.Status != http.StatusOK {
 			closeBody(t, response.Body)
@@ -55,9 +57,6 @@ func TestServiceCoalescesConcurrentLegacyCharsetPOMMiss(t *testing.T) {
 		}
 		assertBody(t, response, body)
 	}
-	testkit.RequireOneMiss(t, responses, cacheMiss, cacheHit, func(response *maven.Response) string {
-		return response.Cache
-	})
 	if got := requests.Load(); got != 1 {
 		t.Fatalf("upstream requests = %d, want 1", got)
 	}

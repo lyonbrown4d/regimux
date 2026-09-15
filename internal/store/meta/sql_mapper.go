@@ -25,23 +25,23 @@ func NewMetadataMapper() *MetadataMapper {
 	}
 }
 
-func mapMetadata[D any](m *MetadataMapper, src any) (D, error) {
-	var dst D
+func (m *MetadataMapper) mapMetadata[D, S any](src S) (D, error) {
 	if m == nil || m.mapper == nil {
 		m = NewMetadataMapper()
 	}
-	if err := m.mapper.MapInto(&dst, src); err != nil {
+	dst, err := m.mapper.Map[D](src)
+	if err != nil {
 		return dst, wrapError(err, "map metadata row")
 	}
 	return dst, nil
 }
 
 func (m *MetadataMapper) ManifestRecordToRow(record ManifestRecord) (manifestRow, error) {
-	return mapMetadata[manifestRow](m, record)
+	return m.mapMetadata[manifestRow](record)
 }
 
 func (m *MetadataMapper) ManifestRowToRecord(row manifestRow) (*ManifestRecord, error) {
-	record, err := mapMetadata[ManifestRecord](m, row)
+	record, err := m.mapMetadata[ManifestRecord](row)
 	if err != nil {
 		return nil, err
 	}

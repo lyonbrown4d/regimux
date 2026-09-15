@@ -70,7 +70,12 @@ func newLeaseTracker(locker artifactcache.FillLocker) *artifactcache.FillTracker
 func (f *sharedLeaseFixture) start(tracker *artifactcache.FillTracker) <-chan fillResult {
 	results := make(chan fillResult, 1)
 	go func() {
-		value, err := artifactcache.CoalesceFill(f.ctx, tracker, f.key, f.wait, f.fill)
+		value, err := tracker.Coalesce(artifactcache.CoalesceRequest[string]{
+			Context: f.ctx,
+			Key:     f.key,
+			Wait:    f.wait,
+			Fill:    f.fill,
+		})
 		results <- fillResult{value: value, err: err}
 	}()
 	return results

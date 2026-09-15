@@ -16,7 +16,7 @@ func newUpstreamConfigMapper() *upstreamConfigMapper {
 }
 
 func (m *upstreamConfigMapper) ContainerRegistryToUpstream(cfg ContainerRegistryConfig) (UpstreamConfig, error) {
-	upstreamCfg, err := mapUpstreamConfig[UpstreamConfig](m, cfg)
+	upstreamCfg, err := m.mapUpstreamConfig[UpstreamConfig](cfg)
 	if err != nil {
 		return UpstreamConfig{}, err
 	}
@@ -25,11 +25,11 @@ func (m *upstreamConfigMapper) ContainerRegistryToUpstream(cfg ContainerRegistry
 }
 
 func (m *upstreamConfigMapper) UpstreamToContainerRegistry(upstreamCfg UpstreamConfig) (ContainerRegistryConfig, error) {
-	return mapUpstreamConfig[ContainerRegistryConfig](m, upstreamCfg)
+	return m.mapUpstreamConfig[ContainerRegistryConfig](upstreamCfg)
 }
 
 func (m *upstreamConfigMapper) DependencyUpstreamToUpstream(cfg DependencyUpstreamConfig, ecosystem string) (UpstreamConfig, error) {
-	upstreamCfg, err := mapUpstreamConfig[UpstreamConfig](m, cfg)
+	upstreamCfg, err := m.mapUpstreamConfig[UpstreamConfig](cfg)
 	if err != nil {
 		return UpstreamConfig{}, err
 	}
@@ -38,11 +38,11 @@ func (m *upstreamConfigMapper) DependencyUpstreamToUpstream(cfg DependencyUpstre
 }
 
 func (m *upstreamConfigMapper) UpstreamToDependencyUpstream(upstreamCfg UpstreamConfig) (DependencyUpstreamConfig, error) {
-	return mapUpstreamConfig[DependencyUpstreamConfig](m, upstreamCfg)
+	return m.mapUpstreamConfig[DependencyUpstreamConfig](upstreamCfg)
 }
 
 func (m *upstreamConfigMapper) DistUpstreamToUpstream(cfg DistUpstreamConfig) (UpstreamConfig, error) {
-	upstreamCfg, err := mapUpstreamConfig[UpstreamConfig](m, cfg)
+	upstreamCfg, err := m.mapUpstreamConfig[UpstreamConfig](cfg)
 	if err != nil {
 		return UpstreamConfig{}, err
 	}
@@ -51,15 +51,15 @@ func (m *upstreamConfigMapper) DistUpstreamToUpstream(cfg DistUpstreamConfig) (U
 }
 
 func (m *upstreamConfigMapper) UpstreamToDistUpstream(upstreamCfg UpstreamConfig) (DistUpstreamConfig, error) {
-	return mapUpstreamConfig[DistUpstreamConfig](m, upstreamCfg)
+	return m.mapUpstreamConfig[DistUpstreamConfig](upstreamCfg)
 }
 
-func mapUpstreamConfig[D any](m *upstreamConfigMapper, src any) (D, error) {
-	var dst D
+func (m *upstreamConfigMapper) mapUpstreamConfig[D, S any](src S) (D, error) {
 	if m == nil || m.mapper == nil {
 		m = newUpstreamConfigMapper()
 	}
-	if err := m.mapper.MapInto(&dst, src); err != nil {
+	dst, err := m.mapper.Map[D](src)
+	if err != nil {
 		return dst, oops.In("config").Wrapf(err, "map upstream config")
 	}
 	return dst, nil

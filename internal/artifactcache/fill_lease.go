@@ -30,11 +30,11 @@ func acquireFillLease(ctx context.Context, tracker *FillTracker, key Key) (FillL
 	return lease, ok
 }
 
-func fillWithLease[T any](ctx context.Context, tracker *FillTracker, lease FillLease, fill FillOwnerFunc[T]) (T, error) {
-	stopRenew := startFillLeaseRenewal(ctx, tracker, lease)
+func (t *FillTracker) fillWithLease[T any](ctx context.Context, lease FillLease, fill FillOwnerFunc[T]) (T, error) {
+	stopRenew := startFillLeaseRenewal(ctx, t, lease)
 	result, err := fill()
 	stopRenew()
-	releaseFillLease(ctx, tracker, lease)
+	releaseFillLease(ctx, t, lease)
 	return result, err
 }
 

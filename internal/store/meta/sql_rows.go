@@ -9,11 +9,11 @@ import (
 )
 
 func (m *MetadataMapper) TagRecordToRow(record TagRecord) (tagRow, error) {
-	return mapMetadata[tagRow](m, record)
+	return m.mapMetadata[tagRow](record)
 }
 
 func (m *MetadataMapper) TagRowToRecord(row tagRow) (*TagRecord, error) {
-	record, err := mapMetadata[TagRecord](m, row)
+	record, err := m.mapMetadata[TagRecord](row)
 	if err != nil {
 		return nil, err
 	}
@@ -21,11 +21,11 @@ func (m *MetadataMapper) TagRowToRecord(row tagRow) (*TagRecord, error) {
 }
 
 func (m *MetadataMapper) PullRecordToRow(record PullRecord) (pullRow, error) {
-	return mapMetadata[pullRow](m, record)
+	return m.mapMetadata[pullRow](record)
 }
 
 func (m *MetadataMapper) PullRowToRecord(row pullRow) (*PullRecord, error) {
-	record, err := mapMetadata[PullRecord](m, row)
+	record, err := m.mapMetadata[PullRecord](row)
 	if err != nil {
 		return nil, err
 	}
@@ -67,11 +67,11 @@ func blobRecordFromRow(row blobRow) BlobRecord {
 	}
 }
 func (m *MetadataMapper) RepoBlobRecordToRow(record RepoBlobRecord) (repoBlobRow, error) {
-	return mapMetadata[repoBlobRow](m, record)
+	return m.mapMetadata[repoBlobRow](record)
 }
 
 func (m *MetadataMapper) RepoBlobRowToRecord(row repoBlobRow) (*RepoBlobRecord, error) {
-	record, err := mapMetadata[RepoBlobRecord](m, row)
+	record, err := m.mapMetadata[RepoBlobRecord](row)
 	if err != nil {
 		return nil, err
 	}

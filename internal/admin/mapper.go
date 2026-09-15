@@ -58,69 +58,72 @@ func NewAdminMapper() *AdminMapper {
 }
 
 func (m *AdminMapper) PullRows(records *collectionlist.List[meta.PullRecord]) (*collectionlist.List[PullRow], error) {
-	return mapAdminList(records, 0, m.PullRow)
+	return m.mapAdminList(records, 0, m.PullRow)
 }
 
 func (m *AdminMapper) PullRow(record meta.PullRecord) (PullRow, error) {
-	return mapAdmin[PullRow](m, record, "map admin pull row")
+	return m.mapAdmin[PullRow](record, "map admin pull row")
 }
 
 func (m *AdminMapper) ActivityRowsFromPulls(records *collectionlist.List[meta.PullRecord], limit int) (*collectionlist.List[ActivityRow], error) {
-	return mapAdminList(records, limit, m.ActivityRowFromPull)
+	return m.mapAdminList(records, limit, m.ActivityRowFromPull)
 }
 
 func (m *AdminMapper) ActivityRowFromPull(record meta.PullRecord) (ActivityRow, error) {
-	return mapAdmin[ActivityRow](m, record, "map admin activity row")
+	return m.mapAdmin[ActivityRow](record, "map admin activity row")
 }
 
 func (m *AdminMapper) BlobRows(records *collectionlist.List[meta.BlobRecord], limit int) (*collectionlist.List[BlobRow], error) {
-	return mapAdminList(records, limit, m.BlobRow)
+	return m.mapAdminList(records, limit, m.BlobRow)
 }
 
 func (m *AdminMapper) BlobRow(record meta.BlobRecord) (BlobRow, error) {
-	return mapAdmin[BlobRow](m, record, "map admin blob row")
+	return m.mapAdmin[BlobRow](record, "map admin blob row")
 }
 
 func (m *AdminMapper) RepoBlobRows(records *collectionlist.List[meta.RepoBlobRecord], limit int) (*collectionlist.List[RepoBlobRow], error) {
-	return mapAdminList(records, limit, m.RepoBlobRow)
+	return m.mapAdminList(records, limit, m.RepoBlobRow)
 }
 
 func (m *AdminMapper) RepoBlobRow(record meta.RepoBlobRecord) (RepoBlobRow, error) {
-	return mapAdmin[RepoBlobRow](m, record, "map admin repo blob row")
+	return m.mapAdmin[RepoBlobRow](record, "map admin repo blob row")
 }
 
 func (m *AdminMapper) RepositoryRows(records *collectionlist.List[meta.Repository], limit int) (*collectionlist.List[RepositoryRow], error) {
-	return mapAdminList(records, limit, m.RepositoryRow)
+	return m.mapAdminList(records, limit, m.RepositoryRow)
 }
 
 func (m *AdminMapper) RepositoryRow(record meta.Repository) (RepositoryRow, error) {
-	return mapAdmin[RepositoryRow](m, record, "map admin repository row")
+	return m.mapAdmin[RepositoryRow](record, "map admin repository row")
 }
 
 func (m *AdminMapper) EndpointRows(snapshot ecosystem.UpstreamSnapshot) (*collectionlist.List[EndpointRow], error) {
-	return mapAdminList(snapshot.Endpoints, 0, m.EndpointRow)
+	return m.mapAdminList(snapshot.Endpoints, 0, m.EndpointRow)
 }
 
 func (m *AdminMapper) EndpointRow(snapshot ecosystem.EndpointSnapshot) (EndpointRow, error) {
-	return mapAdmin[EndpointRow](m, snapshot, "map admin endpoint row")
+	return m.mapAdmin[EndpointRow](snapshot, "map admin endpoint row")
 }
 
 func (m *AdminMapper) ApplyUpstreamMetadata(row *UpstreamRow, record meta.Upstream) error {
 	if row == nil {
 		return nil
 	}
-	return mapAdminInto(m, row, record, "map admin upstream metadata")
+	return m.mapAdminInto(row, record, "map admin upstream metadata")
 }
 
-func mapAdmin[D any](m *AdminMapper, src any, message string) (D, error) {
-	var dst D
-	if err := mapAdminInto(m, &dst, src, message); err != nil {
-		return dst, err
+func (m *AdminMapper) mapAdmin[D, S any](src S, message string) (D, error) {
+	if m == nil || m.mapper == nil {
+		m = NewAdminMapper()
+	}
+	dst, err := m.mapper.Map[D](src)
+	if err != nil {
+		return dst, oops.In("admin").With("mapping", message).Wrapf(err, "map admin row")
 	}
 	return dst, nil
 }
 
-func mapAdminInto[D, S any](m *AdminMapper, dst *D, src S, message string) error {
+func (m *AdminMapper) mapAdminInto[D, S any](dst *D, src S, message string) error {
 	if m == nil || m.mapper == nil {
 		m = NewAdminMapper()
 	}
@@ -130,7 +133,7 @@ func mapAdminInto[D, S any](m *AdminMapper, dst *D, src S, message string) error
 	return nil
 }
 
-func mapAdminList[T, R any](
+func (m *AdminMapper) mapAdminList[T, R any](
 	records *collectionlist.List[T],
 	limit int,
 	mapOne func(T) (R, error),

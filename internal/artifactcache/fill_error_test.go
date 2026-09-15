@@ -32,19 +32,18 @@ func TestCoalesceFillPropagatesOwnerErrorToFollower(t *testing.T) {
 	waitCalled := false
 	fillCalled := false
 	go func() {
-		_, err := artifactcache.CoalesceFill(
-			ctx,
-			tracker,
-			key,
-			func() (string, bool, error) {
+		_, err := tracker.Coalesce(artifactcache.CoalesceRequest[string]{
+			Context: ctx,
+			Key:     key,
+			Wait: func() (string, bool, error) {
 				waitCalled = true
 				return "", false, nil
 			},
-			func() (string, error) {
+			Fill: func() (string, error) {
 				fillCalled = true
 				return "", nil
 			},
-		)
+		})
 		result <- err
 	}()
 

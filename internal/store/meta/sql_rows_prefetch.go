@@ -1,11 +1,11 @@
 package meta
 
 func (m *MetadataMapper) PrefetchRunRecordToRow(record PrefetchRunRecord) (prefetchRunRow, error) {
-	return mapMetadata[prefetchRunRow](m, record)
+	return m.mapMetadata[prefetchRunRow](record)
 }
 
 func (m *MetadataMapper) PrefetchRunRowToRecord(row prefetchRunRow) (*PrefetchRunRecord, error) {
-	record, err := mapMetadata[PrefetchRunRecord](m, row)
+	record, err := m.mapMetadata[PrefetchRunRecord](row)
 	if err != nil {
 		return nil, err
 	}
@@ -13,11 +13,11 @@ func (m *MetadataMapper) PrefetchRunRowToRecord(row prefetchRunRow) (*PrefetchRu
 }
 
 func (m *MetadataMapper) PrefetchOutcomeRecordToRow(record PrefetchOutcomeRecord) (prefetchOutcomeRow, error) {
-	return mapMetadata[prefetchOutcomeRow](m, record)
+	return m.mapMetadata[prefetchOutcomeRow](record)
 }
 
 func (m *MetadataMapper) PrefetchOutcomeRowToRecord(row prefetchOutcomeRow) (*PrefetchOutcomeRecord, error) {
-	record, err := mapMetadata[PrefetchOutcomeRecord](m, row)
+	record, err := m.mapMetadata[PrefetchOutcomeRecord](row)
 	if err != nil {
 		return nil, err
 	}

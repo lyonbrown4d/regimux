@@ -59,19 +59,10 @@ func (r *ConcurrentRun[T]) Wait(tb testing.TB) []T {
 	return values
 }
 
-// WaitForSignal waits for a synchronization signal or fails the test.
-func WaitForSignal(tb testing.TB, signal <-chan struct{}) {
+// RequireOneMiss waits for the results and verifies that exactly one is a miss and all others are hits.
+func (r *ConcurrentRun[T]) RequireOneMiss[S comparable](tb testing.TB, miss, hit S, status func(T) S) []T {
 	tb.Helper()
-	select {
-	case <-signal:
-	case <-time.After(concurrentTimeout):
-		tb.Fatal("synchronization signal was not received")
-	}
-}
-
-// RequireOneMiss verifies that exactly one result is a miss and all others are hits.
-func RequireOneMiss[T any, S comparable](tb testing.TB, values []T, miss, hit S, status func(T) S) {
-	tb.Helper()
+	values := r.Wait(tb)
 	counts := make(map[S]int, 2)
 	for _, value := range values {
 		counts[status(value)]++
@@ -83,5 +74,16 @@ func RequireOneMiss[T any, S comparable](tb testing.TB, values []T, miss, hit S,
 			counts[hit],
 			len(values)-1,
 		)
+	}
+	return values
+}
+
+// WaitForSignal waits for a synchronization signal or fails the test.
+func WaitForSignal(tb testing.TB, signal <-chan struct{}) {
+	tb.Helper()
+	select {
+	case <-signal:
+	case <-time.After(concurrentTimeout):
+		tb.Fatal("synchronization signal was not received")
 	}
 }

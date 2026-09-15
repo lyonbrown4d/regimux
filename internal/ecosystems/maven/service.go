@@ -115,9 +115,8 @@ type upstreamFillRequest struct {
 }
 
 func (s *Service) coalesceFill(fillReq upstreamFillRequest) (*Response, error) {
-	resp, err := artifactcache.CoalesceFillWith(artifactcache.CoalesceRequest[*Response]{
+	resp, err := s.fills.Coalesce(artifactcache.CoalesceRequest[*Response]{
 		Context: fillReq.ctx,
-		Tracker: s.fills,
 		Key:     artifactKey(fillReq.route),
 		Wait: func() (*Response, bool, error) {
 			refreshed, ok, refreshErr := s.cached(fillReq.ctx, fillReq.route)

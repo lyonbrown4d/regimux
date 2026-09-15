@@ -1,11 +1,11 @@
 package meta
 
 func (m *MetadataMapper) EndpointHealthRecordToRow(record EndpointHealthRecord) (endpointHealthRow, error) {
-	return mapMetadata[endpointHealthRow](m, record)
+	return m.mapMetadata[endpointHealthRow](record)
 }
 
 func (m *MetadataMapper) EndpointHealthRowToRecord(row endpointHealthRow) (*EndpointHealthRecord, error) {
-	record, err := mapMetadata[EndpointHealthRecord](m, row)
+	record, err := m.mapMetadata[EndpointHealthRecord](row)
 	if err != nil {
 		return nil, err
 	}
@@ -13,11 +13,11 @@ func (m *MetadataMapper) EndpointHealthRowToRecord(row endpointHealthRow) (*Endp
 }
 
 func (m *MetadataMapper) UpstreamRecordToRow(record Upstream) (upstreamRow, error) {
-	return mapMetadata[upstreamRow](m, record)
+	return m.mapMetadata[upstreamRow](record)
 }
 
 func (m *MetadataMapper) UpstreamRowToRecord(row upstreamRow) (*Upstream, error) {
-	record, err := mapMetadata[Upstream](m, row)
+	record, err := m.mapMetadata[Upstream](row)
 	if err != nil {
 		return nil, err
 	}
@@ -25,7 +25,7 @@ func (m *MetadataMapper) UpstreamRowToRecord(row upstreamRow) (*Upstream, error)
 }
 
 func (m *MetadataMapper) RepositoryRecordToRow(record Repository) (repositoryRow, error) {
-	row, err := mapMetadata[repositoryRow](m, record)
+	row, err := m.mapMetadata[repositoryRow](record)
 	if err != nil {
 		return repositoryRow{}, err
 	}
@@ -34,7 +34,7 @@ func (m *MetadataMapper) RepositoryRecordToRow(record Repository) (repositoryRow
 }
 
 func (m *MetadataMapper) RepositoryRowToRecord(row repositoryRow) (*Repository, error) {
-	record, err := mapMetadata[Repository](m, row)
+	record, err := m.mapMetadata[Repository](row)
 	if err != nil {
 		return nil, err
 	}

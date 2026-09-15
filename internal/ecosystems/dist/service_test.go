@@ -88,8 +88,7 @@ func TestServiceCoalescesConcurrentFullArtifactMiss(t *testing.T) {
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	responses := run.Wait(t)
-	testkit.RequireOneMiss(t, responses, artifactcache.CacheMiss, artifactcache.CacheHit, func(resp *dist.Response) string {
+	run.RequireOneMiss(t, artifactcache.CacheMiss, artifactcache.CacheHit, func(resp *dist.Response) string {
 		if body := readResponse(t, resp); body != testZIPBody {
 			t.Fatalf("body = %q", body)
 		}

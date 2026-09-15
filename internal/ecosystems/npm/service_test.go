@@ -107,8 +107,7 @@ func TestServiceCoalescesConcurrentMetadataMiss(t *testing.T) {
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
-	responses := run.Wait(t)
-	testkit.RequireOneMiss(t, responses, cacheMiss, cacheHit, func(resp *npm.Response) string {
+	run.RequireOneMiss(t, cacheMiss, cacheHit, func(resp *npm.Response) string {
 		if body := readBody(t, resp); body != `{"name":"left-pad","versions":{}}` {
 			t.Fatalf("body = %q", body)
 		}
