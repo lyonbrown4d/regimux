@@ -30,6 +30,7 @@ docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps ma
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps oci-client
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps tools sh /scripts/pypi-client.sh
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps tools python /scripts/pypi-cold-range.py
+docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps tools python /scripts/pypi-large-wheel.py
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps npm-client
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps go-client
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps tools python /scripts/dist-client.py
@@ -48,6 +49,8 @@ S3 故障降级场景先执行 `tools python /scripts/cache-outage.py prepare`�
 
 `pypi-cold-range.py` 使用未缓存的 six 1.16.0 wheel 检查冷请求返回 206，SQL/S3 均未发布局部内容，再验证完整下载的 SHA-256 和 S3 缓存。重复执行时需重置验收环境，或用 `REGIMUX_COLD_PYPI_VERSION` 指定另一个未缓存版本。
 
+`pypi-large-wheel.py` 使用 #4 中原始的 75,545,685 字节 macOS wheel，验证冷 64 KiB Range、完整流式下载的长度和 SHA-256、热 Range 与 S3 完整对象。该脚本要求该文件尚未缓存。
+
 ## S3 整包清理
 
 先完成 PyPI 客户端验收，生成真实 wheel 标识，再生成清理目录：
@@ -61,6 +64,8 @@ docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps -e
 
 手动模式并发请求两个实例的 `POST /admin/scheduler/cleanup`，检查 202 JSON 响应，随后等待过期组元数据和独占 S3 对象实际删除、活跃组及共享对象保留，并重复触发检查幂等。202 仅表示受理，不能作为清理完成证据。
 
+Pull 历史记录作为活动审计数据保留；验收会检查保留组的 Pull 历史、过期组的 manifest 和仓库链接删除，以及合成跨生态引用的元数据保留。
+
 补充场景：
 
 1. 叠加 `compose.manual.yml` 重建两个实例，再运行上述脚本，验证关闭自动调度后 API 仍能清理。
@@ -70,6 +75,6 @@ docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps -e
 
 ## 记录与回收
 
-运行日志、wheel 报告及清理快照保存在已忽略的 `tmp/container-acceptance/reports/`。Go 全仓回归也必须在构建容器内运行，例如 `go test -p 1 ./... -count=1 -timeout=180s`。首次冷编译应与真实客户端验收分阶段进行，避免挤占本地服务资源。
+运行日志、wheel 报告及清理快照保存在已忽略的 `tmp/container-acceptance/reports/`。Go 全仓回归也必须在构建容器内运行，例如 `go test -p 1 -ldflags="-s -w" ./... -count=1 -timeout=180s`。链接选项只去掉调试符号。首次冷编译应与真实客户端验收分阶段进行，避免挤占本地服务资源。
 
 验收后使用本目录 Compose 的 `down -v` 回收本项目，并单独移除本次创建的构建容器/卷。不要执行全局 Docker prune，不要停止其他项目的服务。缓存对象删除与并发写入之间已有条件检查，但没有跨请求的线性化写入屏障；并发情况下允许缓存重新填充。

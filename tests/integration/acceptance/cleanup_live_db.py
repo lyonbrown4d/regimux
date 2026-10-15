@@ -62,6 +62,87 @@ def broad_pairs(cases: list[Case]) -> set[tuple[str, str]]:
     return {(case.alias, case.repository) for case in cases if case.ecosystem in {"go", "container"}}
 
 
+def cleanup_metadata_expectations(
+    before: dict[str, Any],
+    cases: list[Case],
+    expired: set[tuple[str, str, str]],
+) -> tuple[
+    set[tuple[str, ...]], set[tuple[str, ...]], set[tuple[str, ...]],
+    set[tuple[str, ...]], set[tuple[str, ...]],
+]:
+    container_pairs = {(c.alias, c.repository) for c in cases if c.ecosystem == "container" and c.retention == "expire"}
+    tags = {(r["alias"], r["repository"], r["reference"]): r for r in [*before["tags"], *before["related_tags"]]}
+    owned_sources = {
+        (r["alias"], r["repository"], r["digest"])
+        for identity, r in tags.items()
+        if identity in expired or (r["alias"], r["repository"]) in container_pairs
+    }
+    retained_sources = {
+        (r["alias"], r["repository"], r["digest"])
+        for identity, r in tags.items()
+        if identity not in expired and (r["alias"], r["repository"]) not in container_pairs
+    }
+    retired_manifests = {
+        (r["alias"], r["repository"], r["digest"])
+        for r in before["manifests"]
+        if ((r["alias"], r["repository"]) in container_pairs or (r["alias"], r["repository"], r["digest"]) in owned_sources)
+        and (r["alias"], r["repository"], r["digest"]) not in retained_sources
+    }
+    retained_manifests = {
+        (r["alias"], r["repository"], r["digest"])
+        for r in before["manifests"]
+        if (r["alias"], r["repository"], r["digest"]) in retained_sources
+    }
+    retained_link_keys = retained_sources
+    retired_links = {
+        (r["alias"], r["repository"], r["digest"])
+        for r in before["repo_blobs"]
+        if ((r["alias"], r["repository"]) in container_pairs or (r["alias"], r["repository"], r["source_manifest"]) in owned_sources)
+        and (r["alias"], r["repository"], r["digest"]) not in retained_link_keys
+    }
+    retained_links = {
+        (r["alias"], r["repository"], r["digest"])
+        for r in before["repo_blobs"]
+        if (r["alias"], r["repository"], r["digest"]) in retained_link_keys
+    }
+    keep_pull_identities = {
+        (alias, c.repository, c.reference)
+        for c in cases if c.retention == "keep"
+        for alias in ((c.alias,) if c.ecosystem == "container" else (c.alias, f"{c.ecosystem}/{c.alias}"))
+    }
+    retained_pulls = {
+        (r["alias"], r["repository"], r["reference"])
+        for r in before["pulls"]
+        if (r["alias"], r["repository"], r["reference"]) in keep_pull_identities
+    }
+    return retired_manifests, retired_links, retained_manifests, retained_links, retained_pulls
+
+
+def natural_keys(
+    conn: psycopg.Connection[DictRow],
+    table: str,
+    columns: tuple[str, ...],
+    expected: set[tuple[str, ...]],
+) -> set[tuple[str, ...]]:
+    if not expected:
+        return set()
+    row_predicates: list[sql.Composed] = []
+    params: list[str] = []
+    for key in sorted(expected):
+        row_predicates.append(sql.SQL("({})").format(sql.SQL(" AND ").join(
+            sql.SQL("{}=%s").format(sql.Identifier(column)) for column in columns
+        )))
+        params.extend(key)
+    query = sql.SQL("SELECT {} FROM {} WHERE {}").format(
+        sql.SQL(",").join(sql.Identifier(column) for column in columns),
+        sql.Identifier(table),
+        sql.SQL(" OR ").join(row_predicates),
+    )
+    with conn.cursor() as cur:
+        cur.execute(query, params)
+        return {tuple(str(row[column]) for column in columns) for row in cur.fetchall()}
+
+
 def snapshot(conn: psycopg.Connection[DictRow], cases: list[Case], tags: list[DictRow], s3: S3Client) -> dict[str, Any]:
     extra_tags = tags_for_pairs(conn, broad_pairs(cases))
     all_tags = {(r["alias"], r["repository"], r["reference"]): r for r in [*tags, *extra_tags]}

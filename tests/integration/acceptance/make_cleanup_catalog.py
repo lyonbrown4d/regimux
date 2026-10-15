@@ -37,16 +37,18 @@ def reference_rows(conn: psycopg.Connection, alias: str, repository: str, accept
     return [str(row[0]) for row in rows if row[0] is not None]
 
 
-def append_maven_siblings(conn: psycopg.Connection, artifacts: list[Artifact], repository: str) -> None:
+def append_maven_siblings(
+    conn: psycopg.Connection, artifacts: list[Artifact], repository: str, version: str, retention: str,
+) -> None:
     existing = {item["reference"] for item in artifacts if item["ecosystem"] == "maven" and item["repository"] == repository}
     for reference in reference_rows(conn, "central", repository, "maven"):
         if reference in existing:
             continue
         safe_id = "".join(char if char.isalnum() or char in "-._" else "-" for char in reference)
         artifacts.append(case(
-            f"maven-2.16.1-extra-{safe_id}", "maven",
+            f"maven-{version}-extra-{safe_id}", "maven",
             f"/maven/central/{urllib.parse.quote(repository, safe='/')}/{urllib.parse.quote(reference, safe='@+')}",
-            "central", repository, reference, repository, "keep",
+            "central", repository, reference, repository, retention,
         ))
 
 
@@ -124,7 +126,8 @@ def main() -> None:
     if not isinstance(wheel_url, str):
         raise ValueError("PyPI client report has no valid proxy URL")
     with psycopg.connect(os.environ["PG_DSN"]) as conn:
-        append_maven_siblings(conn, artifacts, "commons-io/commons-io/2.16.1")
+        append_maven_siblings(conn, artifacts, "commons-io/commons-io/2.15.1", "2.15.1", "expire")
+        append_maven_siblings(conn, artifacts, "commons-io/commons-io/2.16.1", "2.16.1", "keep")
         row = conn.execute(
             "SELECT t.alias,t.repository,t.reference FROM meta_tags t "
             "JOIN meta_manifests m ON t.alias=m.alias AND t.repository=m.repository AND t.digest=m.digest "

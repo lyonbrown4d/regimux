@@ -24,7 +24,7 @@ from psycopg import sql
 from psycopg.rows import DictRow
 
 from cleanup_live_support import Case, POLL_SECONDS, load_catalog, require_env, warm_case
-from cleanup_live_db import age_test_records, broad_pairs, head_object, identity_predicate, pair_predicate, pg_connect, repo_blobs_for_cases, selected_tags, snapshot
+from cleanup_live_db import age_test_records, broad_pairs, cleanup_metadata_expectations, head_object, identity_predicate, natural_keys, pair_predicate, pg_connect, repo_blobs_for_cases, selected_tags, snapshot
 
 
 def seed_synthetic_shared(conn: psycopg.Connection[DictRow], spec: dict[str, str] | None, cases: list[Case], tags: list[DictRow]) -> str | None:
@@ -139,14 +139,19 @@ def expired_identities(before: dict[str, Any], cases: list[Case]) -> set[tuple[s
     return expired
 
 
-def wait_for_cleanup(conn: psycopg.Connection[DictRow], cases: list[Case], s3: S3Client, before: dict[str, Any], shared_digest: str | None) -> None:
+def wait_for_cleanup(
+    conn: psycopg.Connection[DictRow], cases: list[Case], s3: S3Client,
+    before: dict[str, Any], shared_digest: str | None, synthetic: dict[str, str] | None,
+) -> None:
     expires = [c for c in cases if c.retention == "expire"]
     keeps = [c for c in cases if c.retention == "keep"]
     keep_digests = {row["digest"] for row in before["tags"] if any((row["alias"], row["repository"], row["reference"]) == (c.alias, c.repository, c.reference) for c in keeps)}
     delete_digests = expected_deleted_digests(before, cases, shared_digest)
+    expired = expired_identities(before, cases)
+    retired_manifests, retired_links, kept_manifests, kept_links, kept_pulls = cleanup_metadata_expectations(before, cases, expired)
     object_keys = {digest: info["key"] for digest, info in before["objects"].items() if digest in delete_digests}
     deadline = time.monotonic() + POLL_SECONDS
-    removed = retained = metadata_removed = objects_removed = shared_ok = False
+    removed = retained = metadata_removed = objects_removed = shared_ok = refs_removed = refs_kept = pulls_kept = False
     while time.monotonic() < deadline:
         tags, digests = current_state(conn, cases)
         expired_keys = {f"{alias}|{repo}|{reference}" for alias, repo, reference in expired_identities(before, cases)}
@@ -157,10 +162,34 @@ def wait_for_cleanup(conn: psycopg.Connection[DictRow], cases: list[Case], s3: S
         shared_ok = shared_digest is None or shared_digest in digests and head_by_digest(s3, conn, shared_digest) is not None
         kept_ok = all(bool(tags_for_case(conn, c)) for c in keeps) and all(head_by_digest(s3, conn, digest) is not None for digest in keep_digests)
         metadata_removed = delete_digests <= gone
-        if removed and retained and objects_removed and shared_ok and kept_ok and metadata_removed:
+        current_manifests_removed = natural_keys(conn, "meta_manifests", ("alias", "repository", "digest"), retired_manifests)
+        current_links_removed = natural_keys(conn, "meta_repo_blobs", ("alias", "repository", "digest"), retired_links)
+        current_manifests_kept = natural_keys(conn, "meta_manifests", ("alias", "repository", "digest"), kept_manifests)
+        current_links_kept = natural_keys(conn, "meta_repo_blobs", ("alias", "repository", "digest"), kept_links)
+        current_pulls_kept = natural_keys(conn, "meta_pulls", ("alias", "repository", "reference"), kept_pulls)
+        refs_removed = not current_manifests_removed and not current_links_removed
+        refs_kept = kept_manifests <= current_manifests_kept and kept_links <= current_links_kept
+        pulls_kept = kept_pulls <= current_pulls_kept
+        synthetic_ok = synthetic_metadata_present(conn, synthetic, shared_digest)
+        if removed and retained and objects_removed and shared_ok and kept_ok and metadata_removed and refs_removed and refs_kept and pulls_kept and synthetic_ok:
             return
         time.sleep(2)
-    raise TimeoutError(f"cleanup did not converge: removed={removed}, retained={retained}, metadata={metadata_removed}, objects={objects_removed}, shared={shared_ok}")
+    raise TimeoutError(f"cleanup did not converge: removed={removed}, retained={retained}, metadata={metadata_removed}, objects={objects_removed}, references_removed={refs_removed}, references_kept={refs_kept}, pull_history_kept={pulls_kept}, shared={shared_ok}")
+
+
+def synthetic_metadata_present(
+    conn: psycopg.Connection[DictRow], synthetic: dict[str, str] | None, digest: str | None,
+) -> bool:
+    if synthetic is None or digest is None:
+        return True
+    alias, repository, reference = (synthetic[key] for key in ("alias", "repository", "reference"))
+    manifest_key = (alias, repository, digest)
+    tag_key_value = (alias, repository, reference)
+    return (
+        manifest_key in natural_keys(conn, "meta_manifests", ("alias", "repository", "digest"), {manifest_key})
+        and manifest_key in natural_keys(conn, "meta_repo_blobs", ("alias", "repository", "digest"), {manifest_key})
+        and tag_key_value in natural_keys(conn, "meta_tags", ("alias", "repository", "reference"), {tag_key_value})
+    )
 
 
 def tag_key(case: Case) -> str:
@@ -227,10 +256,10 @@ def main() -> None:
         print(f"MANUAL cleanup submissions: {statuses}")
     else:
         raise ValueError("REGIMUX_ACCEPTANCE_CLEANUP_TRIGGER must be 'manual' or 'scheduled'")
-    wait_for_cleanup(conn, cases, s3, before, shared_digest)
+    wait_for_cleanup(conn, cases, s3, before, shared_digest, synthetic)
     if trigger == "manual":
         post_cleanup(peer)
-        wait_for_cleanup(conn, cases, s3, before, shared_digest)
+        wait_for_cleanup(conn, cases, s3, before, shared_digest, synthetic)
         print(f"PASS cleanup accepted, converged, and repeated idempotently; snapshot={snapshot_path}")
     else:
         print(f"PASS scheduled cleanup converged; snapshot={snapshot_path}")

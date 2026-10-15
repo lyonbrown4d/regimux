@@ -126,7 +126,7 @@ func installCompress(app *fiber.App, cfg config.MiddlewareCompressConfig) {
 		return
 	}
 	app.Use(compress.New(compress.Config{
-		Next:  skipRegistryPath,
+		Next:  skipArtifactResponseTransform,
 		Level: fiberCompressLevel(cfg.Level),
 	}))
 }
@@ -135,7 +135,7 @@ func installETag(app *fiber.App, cfg config.MiddlewareToggleConfig) {
 	if !cfg.Enabled {
 		return
 	}
-	app.Use(etag.New(etag.Config{Next: skipRegistryPath}))
+	app.Use(etag.New(etag.Config{Next: skipArtifactResponseTransform}))
 }
 
 func installRateLimit(app *fiber.App, cfg config.MiddlewareRateLimitConfig) {
@@ -180,6 +180,18 @@ func fiberCompressLevel(level string) compress.Level {
 
 func skipRegistryPath(c fiber.Ctx) bool {
 	return isRegistryPath(c.Path())
+}
+
+func skipArtifactResponseTransform(c fiber.Ctx) bool {
+	// Artifact handlers own validators and byte ranges. Generic ETag generation
+	// reads the complete body, while compression changes the artifact bytes.
+	path := c.Path()
+	for _, prefix := range []string{registryPathPrefix, "/go", "/npm", "/pypi", "/maven", "/dist"} {
+		if path == prefix || strings.HasPrefix(path, prefix+"/") {
+			return true
+		}
+	}
+	return false
 }
 
 func skipNonAdminPath(c fiber.Ctx) bool {

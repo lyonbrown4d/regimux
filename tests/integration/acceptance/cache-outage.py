@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import TypedDict
 
+import psycopg
+
 from pypi_acceptance_http import request_bytes
 
 
@@ -49,6 +51,12 @@ def main() -> None:
         assert hashlib.sha256(result.body).hexdigest() == artifact["sha256"], artifact["label"]
         assert elapsed < 45, (artifact["label"], elapsed)
         timings[artifact["label"]] = round(elapsed, 3)
+    with psycopg.connect(os.environ["PG_DSN"]) as conn:
+        row = conn.execute(
+            "SELECT count(*) FROM meta_tags WHERE alias=%s AND repository=%s AND reference=%s",
+            ("central", "commons-codec/commons-codec/1.17.1", "commons-codec-1.17.1.pom"),
+        ).fetchone()
+        assert row is not None and row[0] == 0, "outage cold Maven case is already cached"
     started = time.monotonic()
     cold = request_bytes(base + "/maven/central/commons-codec/commons-codec/1.17.1/commons-codec-1.17.1.pom")
     assert cold.status == 200, cold.status
