@@ -118,6 +118,7 @@ func dependencyDefaultUpstream(ecosystem, registry string) UpstreamConfig {
 		Registry: registry,
 		Auth:     AuthConfig{Type: "anonymous"},
 		HTTP: HTTPConfig{
+			AttemptTimeout: 10 * time.Second,
 			Retry: HTTPRetryConfig{
 				Enabled:    true,
 				MaxRetries: 2,

@@ -3,10 +3,11 @@ package config
 import "time"
 
 type HTTPConfig struct {
-	Timeout time.Duration   `json:"timeout" koanf:"timeout" mapstructure:"timeout" validate:"min=0"`
-	HTTP2   HTTP2Config     `json:"http2"   koanf:"http2"   mapstructure:"http2"`
-	Retry   HTTPRetryConfig `json:"retry"   koanf:"retry"   mapstructure:"retry"`
-	TLS     HTTPTLSConfig   `json:"tls"     koanf:"tls"     mapstructure:"tls"`
+	Timeout        time.Duration   `json:"timeout"         koanf:"timeout"         mapstructure:"timeout"         validate:"min=0"`
+	AttemptTimeout time.Duration   `json:"attempt_timeout" koanf:"attempt_timeout" mapstructure:"attempt_timeout" validate:"min=0"`
+	HTTP2          HTTP2Config     `json:"http2"           koanf:"http2"           mapstructure:"http2"`
+	Retry          HTTPRetryConfig `json:"retry"           koanf:"retry"           mapstructure:"retry"`
+	TLS            HTTPTLSConfig   `json:"tls"             koanf:"tls"             mapstructure:"tls"`
 }
 
 type HTTP2Config struct {

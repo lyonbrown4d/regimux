@@ -173,10 +173,39 @@ func (s *Service) responseFromFetched(ctx context.Context, req Request, requestR
 	if shouldPassThrough(req, fetched.status) {
 		return s.responseFromUpstream(req, requestRoute, fetched), nil
 	}
-	stored, err := s.store(ctx, requestRoute, fetched)
+	if s.cache == nil {
+		return s.responseFromUpstream(req, requestRoute, fetched), nil
+	}
+
+	replay, err := newReplayableBody(fetched.body)
 	if err != nil {
 		return nil, err
 	}
+	storeFetched := *fetched
+	storeFetched.body, err = replay.Open(false)
+	if err != nil {
+		replay.Remove()
+		return nil, err
+	}
+	stored, err := s.store(ctx, requestRoute, &storeFetched)
+	if err != nil {
+		if !shouldServeUpstreamAfterCacheError(err) {
+			replay.Remove()
+			return nil, err
+		}
+		fallbackBody, openErr := replay.Open(true)
+		if openErr != nil {
+			replay.Remove()
+			return nil, errors.Join(err, openErr)
+		}
+		if s.logger != nil {
+			s.logger.WarnContext(ctx, "maven cache write failed; serving upstream response", "alias", requestRoute.Alias, "repository", requestRoute.Repository, "reference", requestRoute.Reference, "error", err)
+		}
+		fallback := *fetched
+		fallback.body = fallbackBody
+		return s.responseFromUpstream(req, requestRoute, &fallback), nil
+	}
+	replay.Remove()
 	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
 }
 

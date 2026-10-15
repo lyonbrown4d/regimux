@@ -12,7 +12,10 @@ func (s *Service) cached(ctx context.Context, requestRoute Route) (storedRespons
 	}
 	entry, ok, err := s.cache.Get(ctx, artifactKey(requestRoute))
 	if err != nil {
-		return storedResponse{}, false, wrapError(err, "lookup cached maven artifact")
+		if s.logger != nil {
+			s.logger.WarnContext(ctx, "maven cache lookup failed; falling back to upstream", "alias", requestRoute.Alias, "repository", requestRoute.Repository, "reference", requestRoute.Reference, "error", err)
+		}
+		return storedResponse{}, false, nil
 	}
 	if !ok {
 		return storedResponse{}, false, nil
