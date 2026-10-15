@@ -21,7 +21,8 @@ func (r *Runtime) TriggerCleanup(ctx context.Context) error {
 		}
 		return nil
 	}
-	return r.runAsync(context.WithoutCancel(ctx), "regimux.cache.cleanup.manual", []string{"maintenance", "cleanup", "manual"}, func(ctx context.Context) error {
+	distributed := r.cfg.Scheduler.Cleanup.Distributed
+	return r.runAsyncWithDistributedLock(context.WithoutCancel(ctx), sharedCleanupJobName, []string{"maintenance", "cleanup", "all", "manual"}, &distributed, func(ctx context.Context) error {
 		return r.runCleanup(ctx)
 	})
 }
@@ -43,6 +44,10 @@ func (r *Runtime) TriggerProbe(ctx context.Context, ecosystemName, alias string)
 }
 
 func (r *Runtime) runAsync(ctx context.Context, jobName string, tags []string, fn func(context.Context) error) error {
+	return r.runAsyncWithDistributedLock(ctx, jobName, tags, nil, fn)
+}
+
+func (r *Runtime) runAsyncWithDistributedLock(ctx context.Context, jobName string, tags []string, distributed *bool, fn func(context.Context) error) error {
 	ctx = ensureContext(ctx)
 	if r == nil {
 		return oops.In("scheduler").Errorf("scheduler is not configured")
@@ -57,9 +62,10 @@ func (r *Runtime) runAsync(ctx context.Context, jobName string, tags []string, f
 		r.scheduler,
 		fn,
 		schedulerJobOptions{
-			name: jobName,
-			tags: tags,
-			ctx:  ctx,
+			name:        jobName,
+			tags:        tags,
+			ctx:         ctx,
+			distributed: distributed,
 		},
 	)
 	if err != nil {

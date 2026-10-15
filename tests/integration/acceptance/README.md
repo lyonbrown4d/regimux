@@ -73,7 +73,7 @@ Pull 历史记录作为活动审计数据保留；验收会检查保留组的 Pu
 1. 叠加 `compose.manual.yml` 重建两个实例，再运行上述脚本，验证关闭自动调度后 API 仍能清理。
 2. 恢复默认 Compose。运行脚本时设置 `REGIMUX_ACCEPTANCE_CLEANUP_TRIGGER=scheduled`，等待输出 `PREPARED`；随后叠加 `compose.cron.yml` 重建主实例，等待下一分钟的真实 cron 完成清理。此模式不调用清理 API。验收结束后恢复默认配置。
 
-默认配置仍为每天 **Asia/Shanghai 03:00**；一分钟 cron 仅用于本目录的临时验收。关闭整个 scheduler 时只有进程内互斥；开启 scheduler 并使用 Redis 时提供跨实例任务锁。
+默认配置仍为每天 **Asia/Shanghai 03:00**；一分钟 cron 仅用于本目录的临时验收。关闭 scheduler 后不注册周期任务，但仍保留手动清理执行器；配置 Redis/Valkey 分布式锁时，手动与定时清理共享同名任务锁。内存缓存或显式关闭分布式锁时只提供进程内互斥。
 
 ## 记录与回收
 

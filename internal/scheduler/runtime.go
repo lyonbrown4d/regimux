@@ -42,6 +42,7 @@ type Runtime struct {
 	objects            object.Store
 	workers            *worker.Pools
 	scheduler          gocron.Scheduler
+	distributedLocker  gocron.Locker
 	redis              goredis.UniversalClient
 	cleanup            *cachegc.Service
 	cleanupNow         func() time.Time
@@ -84,6 +85,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 	}
 	if !r.cfg.Scheduler.Enabled {
 		r.logger.Info("scheduler disabled")
+		if r.cleanup != nil {
+			return r.startManualScheduler(ctx)
+		}
 		return nil
 	}
 	r.logger.Info("scheduler starting",
@@ -165,6 +169,9 @@ func (r *Runtime) schedulerOptions(ctx context.Context) ([]gocron.SchedulerOptio
 	if !r.shouldUseDistributedLock() {
 		return nil, nil
 	}
+	if r.distributedLocker != nil {
+		return []gocron.SchedulerOption{gocron.WithDistributedLocker(r.distributedLocker)}, nil
+	}
 	client, locker, err := r.newRedisLocker(ctx)
 	if err != nil {
 		return nil, err
@@ -175,6 +182,24 @@ func (r *Runtime) schedulerOptions(ctx context.Context) ([]gocron.SchedulerOptio
 	r.redis = client
 	r.logger.Info("scheduler distributed locker enabled", "backend", r.cfg.Cache.Backend)
 	return []gocron.SchedulerOption{gocron.WithDistributedLocker(locker)}, nil
+}
+
+func (r *Runtime) startManualScheduler(ctx context.Context) error {
+	options, err := r.schedulerOptions(ctx)
+	if err != nil {
+		return err
+	}
+	scheduler, err := gocron.NewScheduler(options...)
+	if err != nil {
+		return oops.Wrapf(err, "create manual cleanup scheduler")
+	}
+	r.scheduler = scheduler
+	scheduler.Start()
+	if r.metrics != nil {
+		r.metrics.ObserveSchedulerRuntime(ctx, len(scheduler.Jobs()))
+	}
+	r.logger.InfoContext(ctx, "manual cleanup scheduler started", "distributed_lock", r.cfg.Scheduler.DistributedLock)
+	return nil
 }
 
 func (r *Runtime) shouldUseDistributedLock() bool {
