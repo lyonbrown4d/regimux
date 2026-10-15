@@ -8,13 +8,15 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
 type Service struct {
-	metadata meta.Store
-	objects  object.Store
+	metadata          meta.Store
+	objects           object.Store
+	invalidatePackage func(context.Context, ecosystem.CacheCleanupGroup) error
 }
 
 type CleanupOptions struct {
@@ -58,13 +60,19 @@ const (
 	reasonProtected
 )
 
-func New(metadata meta.Store, objects object.Store) *Service {
-	return &Service{metadata: metadata, objects: objects}
+func New(metadata meta.Store, objects object.Store, options ...Option) *Service {
+	service := &Service{metadata: metadata, objects: objects}
+	for _, option := range options {
+		if option != nil {
+			option(service)
+		}
+	}
+	return service
 }
 
 // NewCleanupService retains the established cleanup constructor name.
-func NewCleanupService(metadata meta.Store, objects object.Store) *Service {
-	return New(metadata, objects)
+func NewCleanupService(metadata meta.Store, objects object.Store, options ...Option) *Service {
+	return New(metadata, objects, options...)
 }
 
 // CleanupBlobs retains the established container cleanup API name.

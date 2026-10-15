@@ -68,6 +68,7 @@ def stream_full_wheel(url: str) -> tuple[int, str, bytes, str]:
     total = 0
     tail = bytearray()
     cache_header = ""
+    started = time.monotonic()
     try:
         connection.request(
             "GET",
@@ -76,6 +77,7 @@ def stream_full_wheel(url: str) -> tuple[int, str, bytes, str]:
         )
         response = connection.getresponse()
         require(response.status == 200, f"full wheel GET returned HTTP {response.status}")
+        print(f"FULL headers received in {time.monotonic() - started:.3f}s", flush=True)
         cache_header = response.getheader("X-Mirror-Cache", "") or ""
         while chunk := response.read(1024 * 1024):
             total += len(chunk)
@@ -86,6 +88,7 @@ def stream_full_wheel(url: str) -> tuple[int, str, bytes, str]:
                 del tail[:-RANGE_SIZE]
     finally:
         connection.close()
+    print(f"FULL received {total} bytes in {time.monotonic() - started:.3f}s", flush=True)
     return total, digest.hexdigest(), bytes(tail), cache_header
 
 
@@ -128,6 +131,7 @@ def main() -> None:
         require(artifact_count(conn) == 0, "cold Range published an artifact tag")
         require(blob_count(conn, partial_digest) == 0, "cold Range published a partial blob row")
         require(head_object(s3, partial_digest) is None, "cold Range published a partial S3 object")
+        print("COLD Range: 206, 65536 bytes, no partial SQL/S3 publication", flush=True)
 
         size, digest, expected_tail, cache_header = stream_full_wheel(url)
         require(size == EXPECTED_SIZE, f"full wheel size was {size}, expected {EXPECTED_SIZE}")

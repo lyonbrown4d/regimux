@@ -71,7 +71,10 @@ func NewRedis(opts KVOptions) (*KV, error) {
 		return nil, joinError("ping redis cache", err, client.Close())
 	}
 
-	return NewKV(redisadapter.NewFromClient(client), opts.Prefix), nil
+	return NewKV(&redisKVClient{
+		Adapter: redisadapter.NewFromClient(client),
+		client:  client,
+	}, opts.Prefix), nil
 }
 
 func NewValkey(opts KVOptions) (*KV, error) {
@@ -151,6 +154,27 @@ func (b *KV) Delete(ctx context.Context, key string) error {
 	}
 	if err := b.client.Delete(ctx, key); err != nil {
 		return wrapError(err, "delete kv cache entry")
+	}
+	return nil
+}
+
+func (b *KV) DeletePrefix(ctx context.Context, prefix string) error {
+	if err := validateDeletePrefix(prefix); err != nil {
+		return err
+	}
+	if b == nil || b.client == nil {
+		return nil
+	}
+	physicalPrefix, err := b.key(prefix)
+	if err != nil {
+		return err
+	}
+	client, ok := b.client.(prefixKVClient)
+	if !ok {
+		return wrapError(ErrPrefixDeleteUnsupported, "delete kv cache prefix")
+	}
+	if err := client.DeletePrefix(ctx, physicalPrefix); err != nil {
+		return wrapError(err, "delete kv cache prefix")
 	}
 	return nil
 }
@@ -247,3 +271,4 @@ func (c *valkeyKVClient) Extend(ctx context.Context, key, token string, ttl time
 }
 
 var _ Backend = (*KV)(nil)
+var _ PrefixDeleter = (*KV)(nil)

@@ -43,3 +43,13 @@ type CacheCleanupPlanner interface {
 	Runtime
 	PlanCacheCleanup(context.Context, CacheCleanupInventory, CacheCleanupOptions) ([]CacheCleanupGroup, error)
 }
+
+// CacheCleanupInvalidator removes transient protocol caches before durable
+// references are retired. The group contains only references selected for
+// retirement after excluding references owned by retained packages.
+// Unowned repository links and CAS digests are dispatched to every invalidator
+// with its ecosystem name; these can only invalidate transient cache entries.
+type CacheCleanupInvalidator interface {
+	Runtime
+	InvalidateCacheCleanup(context.Context, CacheCleanupGroup) error
+}

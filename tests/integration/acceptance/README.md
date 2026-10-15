@@ -8,11 +8,11 @@
 
 以下命令从仓库根目录执行。宿主机只需要 Git、Docker 和 Compose，Go、Python、uv、Maven、npm 均在容器内运行。
 
-1. 将待验收提交通过 `git archive` 导出，复制到 Go 构建容器的 Linux 数据卷，再执行 `go build -p 1 -ldflags="-s -w" -o /tmp/regimuxd ./cmd/regimuxd`。链接参数沿用本仓库 GoReleaser 的调试符号设置。推荐 `GOMEMLIMIT=768MiB`、`GOMAXPROCS=2`，并为模块缓存和编译缓存使用独立命名卷。Windows 上避免直接在挂载目录中编译大型依赖。
+1. 将待验收提交通过 `git archive` 导出，复制到 Go 构建容器的 Linux 数据卷，再执行 `go build -p 1 -ldflags="-s -w" -o /tmp/regimuxd ./cmd/regimuxd`。链接参数沿用本仓库 GoReleaser 的调试符号设置。本次使用容器内存上限 8 GiB、`GOMEMLIMIT=2GiB`、`GOMAXPROCS=2`，并为模块缓存和编译缓存使用独立命名卷。Windows 上避免直接在挂载目录中编译大型依赖。
 2. 将 Linux 二进制复制到 `tmp/container-acceptance/bin/regimuxd`，构建服务和工具镜像：
 
 ```powershell
-docker build -t regimux-acceptance:22ee8d2 -f tests/integration/acceptance/runtime.Dockerfile tmp/container-acceptance/bin
+docker build -t regimux-acceptance:local -f tests/integration/acceptance/runtime.Dockerfile tmp/container-acceptance/bin
 docker build -t regimux-acceptance-tools:22ee8d2 -f tests/integration/acceptance/tools.Dockerfile tests/integration/acceptance
 docker compose -f tests/integration/acceptance/compose.yml up -d redis postgres s3 restricted-mirror dind
 docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps tools python /scripts/bootstrap_live.py
@@ -63,6 +63,8 @@ docker compose -f tests/integration/acceptance/compose.yml run --rm --no-deps -e
 脚本只允许本 Compose 项目的数据库、bucket 和服务地址。它先通过代理下载六个生态的真实内容，记录 SQL 元数据和 S3 HEAD 快照，再把验收数据的访问时间调旧。Maven 保留组只刷新一个 POM，Go 保留组只刷新一个 info，以检查兄弟文件整体保留。额外插入一条明确标记的合成引用，用于验证跨生态共享 CAS 内容不会误删；真实包下载本身不依赖合成数据。
 
 手动模式并发请求两个实例的 `POST /admin/scheduler/cleanup`，检查 202 JSON 响应，随后等待过期组元数据和独占 S3 对象实际删除、活跃组及共享对象保留，并重复触发检查幂等。202 仅表示受理，不能作为清理完成证据。
+
+OCI 清理先使 Redis 中对应引用的全部 Accept 变体和可选小 blob 缓存失效，再删除持久元数据；失效失败会中止删除。连续运行清理场景时，应验证清理后立即预热可以重新建立 SQL/S3 缓存，无需等待 TTL 或清空 Redis。流式下载的缓存发布可能稍晚于客户端收到 EOF，脚本会等待预热元数据就绪再开始老化数据。
 
 Pull 历史记录作为活动审计数据保留；验收会检查保留组的 Pull 历史、过期组的 manifest 和仓库链接删除，以及合成跨生态引用的元数据保留。
 

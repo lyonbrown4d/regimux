@@ -113,6 +113,7 @@ func (p *Proxy) Manifests() ManifestService {
 		ttl:          p.manifestTTL,
 		staleIfError: p.manifestStaleIfError,
 		maxStale:     p.manifestMaxStale,
+		smallCache:   p.blobSmallCache,
 		group:        &p.manifestGroup,
 	}
 }
@@ -163,6 +164,7 @@ type manifestProxy struct {
 	ttl          time.Duration
 	staleIfError bool
 	maxStale     time.Duration
+	smallCache   smallBlobCacheConfig
 	group        *singleflightx.Group[string, *CachedManifest]
 }
 

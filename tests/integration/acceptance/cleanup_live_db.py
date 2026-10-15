@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any
 
@@ -22,14 +23,18 @@ def pg_connect() -> psycopg.Connection[DictRow]:
 
 def selected_tags(conn: psycopg.Connection[DictRow], cases: list[Case]) -> list[DictRow]:
     where, args = identity_predicate(cases)
-    with conn.cursor() as cur:
-        cur.execute(sql.SQL("SELECT * FROM meta_tags WHERE {}").format(where), args)
-        rows = list(cur.fetchall())
-    found = {(r["alias"], r["repository"], r["reference"]) for r in rows}
-    missing = [c.id for c in cases if (c.alias, c.repository, c.reference) not in found]
-    if missing:
-        raise RuntimeError(f"real cache warm did not create expected tag rows: {missing}")
-    return rows
+    deadline = time.monotonic() + 60
+    while True:
+        with conn.cursor() as cur:
+            cur.execute(sql.SQL("SELECT * FROM meta_tags WHERE {}").format(where), args)
+            rows = list(cur.fetchall())
+        found = {(r["alias"], r["repository"], r["reference"]) for r in rows}
+        missing = [c.id for c in cases if (c.alias, c.repository, c.reference) not in found]
+        if not missing:
+            return rows
+        if time.monotonic() >= deadline:
+            raise RuntimeError(f"real cache warm did not publish expected tag rows within 60s: {missing}")
+        time.sleep(0.5)
 
 
 def identity_predicate(cases: list[Case], prefix: str = "") -> tuple[Query, list[str]]:

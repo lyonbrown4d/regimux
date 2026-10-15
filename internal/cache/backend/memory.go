@@ -2,6 +2,7 @@ package backend
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	lru "github.com/hashicorp/golang-lru/v2"
@@ -18,6 +19,7 @@ type Memory struct {
 }
 
 var _ Backend = (*Memory)(nil)
+var _ PrefixDeleter = (*Memory)(nil)
 
 func NewMemory(opts MemoryOptions) *Memory {
 	cache, err := lru.New[string, memoryEntry](memoryMaxItems(opts.MaxItems))
@@ -61,6 +63,28 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 		return err
 	}
 	m.cache.Remove(key)
+	return nil
+}
+
+func (m *Memory) DeletePrefix(ctx context.Context, prefix string) error {
+	if err := validateDeletePrefix(prefix); err != nil {
+		return err
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	physicalPrefix, err := m.key(prefix)
+	if err != nil {
+		return err
+	}
+	for _, key := range m.cache.Keys() {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if strings.HasPrefix(key, physicalPrefix) {
+			m.cache.Remove(key)
+		}
+	}
 	return nil
 }
 

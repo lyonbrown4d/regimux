@@ -15,12 +15,13 @@ import (
 )
 
 type Runtime struct {
-	cfg             config.Config
-	upstream        *upstream.Client
-	prefetch        *prefetch.Service
-	manifestRefresh cache.ManifestRefresher
-	cleanup         *cache.CleanupService
-	manual          *manualsync.Service
+	cfg                     config.Config
+	upstream                *upstream.Client
+	prefetch                *prefetch.Service
+	manifestRefresh         cache.ManifestRefresher
+	packageCacheInvalidator cache.PackageCacheInvalidator
+	cleanup                 *cache.CleanupService
+	manual                  *manualsync.Service
 }
 
 func NewRuntime(
@@ -34,6 +35,10 @@ func NewRuntime(
 	if refresher, ok := manifests.(cache.ManifestRefresher); ok {
 		manifestRefresher = refresher
 	}
+	var packageCacheInvalidator cache.PackageCacheInvalidator
+	if invalidator, ok := manifests.(cache.PackageCacheInvalidator); ok {
+		packageCacheInvalidator = invalidator
+	}
 	manual := manualsync.NewService(manualsync.ServiceDependencies{
 		Execute: func(ctx context.Context, opts manualsync.SyncOptions) (*manualsync.SyncReport, error) {
 			if prefetchService == nil {
@@ -43,17 +48,31 @@ func NewRuntime(
 		},
 	})
 	return &Runtime{
-		cfg:             cfg,
-		upstream:        upstreamClient,
-		prefetch:        prefetchService,
-		manifestRefresh: manifestRefresher,
-		cleanup:         cleanupService,
-		manual:          manual,
+		cfg:                     cfg,
+		upstream:                upstreamClient,
+		prefetch:                prefetchService,
+		manifestRefresh:         manifestRefresher,
+		packageCacheInvalidator: packageCacheInvalidator,
+		cleanup:                 cleanupService,
+		manual:                  manual,
 	}
 }
 
 func (r *Runtime) Name() string {
 	return ecosystem.Container
+}
+
+func (r *Runtime) InvalidateCacheCleanup(ctx context.Context, group ecosystem.CacheCleanupGroup) error {
+	if group.Ecosystem != ecosystem.Container {
+		return nil
+	}
+	if r == nil || r.packageCacheInvalidator == nil {
+		return oops.In("container").Errorf("container package cache invalidator is not configured")
+	}
+	if err := r.packageCacheInvalidator.InvalidatePackageCache(ctx, group); err != nil {
+		return oops.Wrapf(err, "invalidate container package cache")
+	}
+	return nil
 }
 
 func (r *Runtime) Upstreams() *collectionlist.List[ecosystem.Upstream] {
@@ -75,6 +94,7 @@ var _ ecosystem.Runtime = (*Runtime)(nil)
 var _ ecosystem.UpstreamProvider = (*Runtime)(nil)
 var _ ecosystem.Prober = (*Runtime)(nil)
 var _ ecosystem.Cleaner = (*Runtime)(nil)
+var _ ecosystem.CacheCleanupInvalidator = (*Runtime)(nil)
 var _ ecosystem.Prefetcher = (*Runtime)(nil)
 var _ ecosystem.Refresher = (*Runtime)(nil)
 var _ ecosystem.UpstreamSnapshotProvider = (*Runtime)(nil)

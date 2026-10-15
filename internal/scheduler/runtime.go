@@ -72,7 +72,8 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 		cleanupNow:  func() time.Time { return time.Now().UTC() },
 	}
 	if deps.Metadata != nil && deps.Objects != nil {
-		runtime.cleanup = cachegc.NewCleanupService(deps.Metadata, deps.Objects)
+		runtime.cleanup = cachegc.NewCleanupService(deps.Metadata, deps.Objects,
+			cachegc.WithPackageInvalidator(runtime.invalidatePackageCache))
 	}
 	return runtime
 }

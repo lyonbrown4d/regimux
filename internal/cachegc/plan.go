@@ -44,8 +44,13 @@ func (s *Service) ApplyCleanupPlan(ctx context.Context, inventory ecosystem.Cach
 	retireOrphanLinks(inventory, opts, result.Candidates, &retired)
 	if opts.DryRun {
 		result.Metadata = &cleanupMetadataView{Store: s.metadata, inventory: inventory, retired: retired}
-	} else if err := s.retirePackageMetadata(ctx, retired); err != nil {
-		return nil, err
+	} else {
+		if err := s.invalidatePackageCaches(ctx, groups, selected, retired, result.Candidates); err != nil {
+			return nil, err
+		}
+		if err := s.retirePackageMetadata(ctx, retired); err != nil {
+			return nil, err
+		}
 	}
 	result.RetiredReferences = len(retired.tags) + len(retired.manifests) + len(retired.links)
 	return result, nil

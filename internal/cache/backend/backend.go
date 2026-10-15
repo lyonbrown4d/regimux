@@ -17,9 +17,17 @@ type Backend interface {
 	Close() error
 }
 
+// PrefixDeleter removes cache entries whose logical key begins with a prefix.
+// Implementations apply their configured namespace before matching keys.
+type PrefixDeleter interface {
+	DeletePrefix(ctx context.Context, prefix string) error
+}
+
 var (
-	ErrEmptyKey = errors.New("cache backend key is empty")
-	ErrNoAddrs  = errors.New("cache backend addrs is empty")
+	ErrEmptyKey                = errors.New("cache backend key is empty")
+	ErrNoAddrs                 = errors.New("cache backend addrs is empty")
+	ErrNoCacheNodes            = errors.New("cache backend has no nodes to scan")
+	ErrPrefixDeleteUnsupported = errors.New("cache backend does not support prefix deletion")
 )
 
 func cacheKey(prefix, key string) (string, error) {
@@ -32,6 +40,13 @@ func cacheKey(prefix, key string) (string, error) {
 		return key, nil
 	}
 	return prefix + ":" + key, nil
+}
+
+func validateDeletePrefix(prefix string) error {
+	if strings.Trim(strings.TrimSpace(prefix), ":") == "" {
+		return ErrEmptyKey
+	}
+	return nil
 }
 
 func normalizePrefix(prefix string) string {

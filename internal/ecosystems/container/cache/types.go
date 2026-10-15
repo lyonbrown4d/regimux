@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"strconv"
 
+	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/oops"
 )
@@ -25,6 +26,10 @@ type ManifestService interface {
 
 type ManifestRefresher interface {
 	Refresh(ctx context.Context, req ManifestRequest) (*CachedManifest, error)
+}
+
+type PackageCacheInvalidator interface {
+	InvalidatePackageCache(ctx context.Context, group ecosystem.CacheCleanupGroup) error
 }
 
 type BlobService interface {
