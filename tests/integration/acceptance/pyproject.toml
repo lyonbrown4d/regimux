@@ -1,0 +1,20 @@
+[project]
+name = "regimux-container-acceptance"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "boto3>=1.43.114",
+    "pip>=26.2.1",
+    "psycopg[binary]>=3.3.6",
+]
+
+[dependency-groups]
+dev = [
+    "boto3-stubs[s3]>=1.43.114",
+    "pyright>=1.1.414",
+]
+
+[tool.pyright]
+typeCheckingMode = "strict"
+pythonVersion = "3.12"
+include = ["*.py"]

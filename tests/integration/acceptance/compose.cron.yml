@@ -1,0 +1,9 @@
+# Start only after cleanup_live.py prints PREPARED in scheduled-trigger mode.
+services:
+  regimux:
+    environment:
+      REGIMUX__SCHEDULER__ENABLED: "true"
+      REGIMUX__SCHEDULER__CLEANUP__ENABLED: "true"
+      REGIMUX__SCHEDULER__CLEANUP__INTERVAL: "0s"
+      REGIMUX__SCHEDULER__CLEANUP__CRON: "* * * * *"
+      REGIMUX__SCHEDULER__CLEANUP__TIMEZONE: "Asia/Shanghai"

@@ -1,0 +1,10 @@
+# Recreate both acceptance replicas with scheduling disabled, then run cleanup_live.py.
+services:
+  regimux:
+    environment:
+      REGIMUX__SCHEDULER__ENABLED: "false"
+      REGIMUX__SCHEDULER__CLEANUP__ENABLED: "false"
+  regimux-peer:
+    environment:
+      REGIMUX__SCHEDULER__ENABLED: "false"
+      REGIMUX__SCHEDULER__CLEANUP__ENABLED: "false"

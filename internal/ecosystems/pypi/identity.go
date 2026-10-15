@@ -21,7 +21,10 @@ func packageIdentity(req Request, route Route) (Request, Route) {
 	if project := query.Get(packageProjectQuery); project != "" {
 		req.Project = project
 	}
-	if hash := query.Get(packageHashQuery); hash != "" {
+	if hash, ok := pipMetadataWheelHash(route, route.Query); ok {
+		req.SHA256 = hash
+		route = packageMetadataRoute(route)
+	} else if hash := query.Get(packageHashQuery); hash != "" {
 		req.SHA256 = hash
 	}
 	route.Query = stripPyPIProxyQuery(route.Query)
@@ -30,6 +33,44 @@ func packageIdentity(req Request, route Route) (Request, Route) {
 		route.Reference += "?query-sha256=" + hex.EncodeToString(digest[:])
 	}
 	return req, route
+}
+
+func pipMetadataWheelHash(route Route, rawQuery string) (string, bool) {
+	if route.Kind != RoutePackage || !strings.HasSuffix(route.PackageTail, ".whl") {
+		return "", false
+	}
+	lastParameter := rawQuery
+	if separator := strings.LastIndexByte(lastParameter, '&'); separator >= 0 {
+		lastParameter = lastParameter[separator+1:]
+	}
+	key, rawValue, ok := strings.Cut(lastParameter, "=")
+	if !ok {
+		return "", false
+	}
+	key, err := url.QueryUnescape(key)
+	if err != nil || key != packageHashQuery {
+		return "", false
+	}
+	value, err := url.QueryUnescape(rawValue)
+	if err != nil {
+		return "", false
+	}
+	hash, ok := strings.CutSuffix(value, ".metadata")
+	if !ok || !validSHA256(hash) {
+		return "", false
+	}
+	return strings.ToLower(hash), true
+}
+
+func packageMetadataRoute(route Route) Route {
+	route.Tail += ".metadata"
+	route.UpstreamTail += ".metadata"
+	route.PackageTail += ".metadata"
+	route.Reference += ".metadata"
+	if strings.HasSuffix(route.DirectURL, ".whl") {
+		route.DirectURL += ".metadata"
+	}
+	return route
 }
 
 func addPackageIdentity(href string, simpleURL *url.URL, fragment string) string {

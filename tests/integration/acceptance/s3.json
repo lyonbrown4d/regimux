@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "isolated-acceptance-only",
+      "credentials": [
+        {"accessKey": "acceptance-only", "secretKey": "acceptance-only-secret"}
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}

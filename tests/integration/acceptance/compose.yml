@@ -1,0 +1,123 @@
+name: regimux-acceptance-20261015
+services:
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: regimux
+      POSTGRES_USER: regimux
+      POSTGRES_PASSWORD: acceptance-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U regimux -d regimux"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+  s3:
+    image: chrislusf/seaweedfs:4.47
+    command:
+      - server
+      - -s3
+      - -s3.port=9000
+      - -s3.config=/etc/seaweedfs/s3.json
+      - -dir=/data
+      - -ip=s3
+      - -volume.max=8
+      - -master.volumeSizeLimitMB=128
+    volumes:
+      - ./s3.json:/etc/seaweedfs/s3.json:ro
+      - s3-data:/data
+  restricted-mirror:
+    image: nginx:1.29.5-alpine
+    volumes:
+      - ./restricted-mirror.conf:/etc/nginx/conf.d/default.conf:ro
+  regimux: &regimux
+    image: ${REGIMUX_ACCEPTANCE_IMAGE:-regimux-acceptance:22ee8d2}
+    mem_limit: 768m
+    environment:
+      GOMEMLIMIT: 512MiB
+    volumes:
+      - ./regimux.hcl:/etc/regimux/acceptance.hcl:ro
+    depends_on:
+      redis: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      s3: {condition: service_started}
+      restricted-mirror: {condition: service_started}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+  regimux-peer:
+    <<: *regimux
+  dind:
+    image: docker:27-dind
+    privileged: true
+    environment:
+      DOCKER_TLS_CERTDIR: ""
+    command: ["--host=tcp://0.0.0.0:2375", "--insecure-registry=regimux:8080"]
+    healthcheck:
+      test: ["CMD", "docker", "info"]
+      interval: 2s
+      timeout: 5s
+      retries: 60
+  tools:
+    image: regimux-acceptance-tools:22ee8d2
+    mem_limit: 1536m
+    profiles: ["clients"]
+    environment:
+      REGIMUX_BASE_URL: http://regimux:8080
+      REGIMUX_PEER_URL: http://regimux-peer:8080
+      PG_DSN: postgresql://regimux:acceptance-only@postgres:5432/regimux
+      S3_ENDPOINT: http://s3:9000
+      S3_BUCKET: regimux-acceptance
+      S3_PREFIX: cache
+      AWS_ACCESS_KEY_ID: acceptance-only
+      AWS_SECRET_ACCESS_KEY: acceptance-only-secret
+      AWS_DEFAULT_REGION: us-east-1
+      REPORT_DIR: /reports
+    volumes:
+      - ./:/scripts:ro
+      - ../../../tmp/container-acceptance/reports:/reports
+  maven-client:
+    image: maven:3.9-eclipse-temurin-21-alpine
+    mem_limit: 768m
+    environment:
+      MAVEN_OPTS: -Xmx384m
+      REGIMUX_MAVEN_COMMAND_TIMEOUT_SECONDS: "600"
+    profiles: ["clients"]
+    volumes: ["./:/scripts:ro"]
+    entrypoint: ["/bin/sh", "/scripts/maven-client.sh"]
+  oci-client:
+    image: docker:27-cli
+    profiles: ["clients"]
+    environment:
+      DOCKER_HOST: tcp://dind:2375
+      DOCKER_TLS_CERTDIR: ""
+    volumes: ["./:/scripts:ro"]
+    entrypoint: ["/bin/sh", "/scripts/oci-client.sh"]
+  npm-client:
+    image: node:22-alpine
+    profiles: ["clients"]
+    environment:
+      REGIMUX_INTEGRATION_CONCURRENCY: "2"
+    volumes: ["../scripts:/scripts:ro"]
+    entrypoint: ["/bin/sh", "/scripts/npm-client.sh"]
+  go-client:
+    image: golang:1.26-alpine
+    profiles: ["clients"]
+    environment:
+      GOMEMLIMIT: 256MiB
+      GOMAXPROCS: "2"
+      REGIMUX_INTEGRATION_CONCURRENCY: "2"
+      REGIMUX_GO_MODULE: rsc.io/quote
+      REGIMUX_GO_VERSION: v1.5.2
+    volumes: ["../scripts:/scripts:ro"]
+    entrypoint: ["/bin/sh", "/scripts/go-client.sh"]
+volumes:
+  s3-data:
