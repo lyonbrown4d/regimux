@@ -64,7 +64,7 @@ func TestSharedCleanupDoesNotInvalidateOtherEcosystems(t *testing.T) {
 func TestOrphanCleanupDispatchesToEveryInvalidator(t *testing.T) {
 	runtime, _, _ := newSharedCleanupRuntime(t)
 	called := make(map[string]bool)
-	var planners []ecosystem.Runtime
+	planners := make([]ecosystem.Runtime, 0, 2)
 	for _, name := range []string{"first", "second"} {
 		planners = append(planners, invalidatingCleanupPlanner{
 			name: name,

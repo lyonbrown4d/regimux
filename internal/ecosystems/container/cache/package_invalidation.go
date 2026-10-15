@@ -18,36 +18,52 @@ func (p manifestProxy) InvalidatePackageCache(ctx context.Context, group ecosyst
 	if group.Ecosystem != ecosystem.Container {
 		return nil
 	}
+	if err := validatePackageInvalidationContext(ctx); err != nil {
+		return err
+	}
+	if p.cache == nil {
+		return nil
+	}
+	if err := p.invalidateManifestPrefixes(ctx, group); err != nil {
+		return err
+	}
+	return p.invalidateSmallBlobEntries(ctx, group)
+}
+
+func validatePackageInvalidationContext(ctx context.Context) error {
 	if ctx == nil {
 		return errors.New("invalidate OCI package cache: context is required")
 	}
 	if err := ctx.Err(); err != nil {
 		return fmt.Errorf("invalidate OCI package cache: %w", err)
 	}
-	if p.cache == nil {
+	return nil
+}
+
+func (p manifestProxy) invalidateManifestPrefixes(ctx context.Context, group ecosystem.CacheCleanupGroup) error {
+	prefixes := manifestCachePrefixes(group)
+	if len(prefixes) == 0 {
 		return nil
 	}
-
-	prefixes := manifestCachePrefixes(group)
-	var deleter backend.PrefixDeleter
-	if len(prefixes) > 0 {
-		var ok bool
-		deleter, ok = p.cache.(backend.PrefixDeleter)
-		if !ok {
-			return errors.New("invalidate OCI package cache: cache backend does not support prefix deletion")
-		}
+	deleter, ok := p.cache.(backend.PrefixDeleter)
+	if !ok {
+		return errors.New("invalidate OCI package cache: cache backend does not support prefix deletion")
 	}
-
 	for _, prefix := range prefixes {
 		if err := deleter.DeletePrefix(ctx, prefix); err != nil {
 			return fmt.Errorf("invalidate OCI manifest cache prefix: %w", err)
 		}
 	}
-	if p.smallCache.enabled {
-		for _, digest := range uniqueRepoBlobDigests(group) {
-			if err := p.cache.Delete(ctx, smallBlobCacheKey(digest)); err != nil {
-				return fmt.Errorf("invalidate OCI small blob cache for %s: %w", digest, err)
-			}
+	return nil
+}
+
+func (p manifestProxy) invalidateSmallBlobEntries(ctx context.Context, group ecosystem.CacheCleanupGroup) error {
+	if !p.smallCache.enabled {
+		return nil
+	}
+	for _, digest := range uniqueRepoBlobDigests(group) {
+		if err := p.cache.Delete(ctx, smallBlobCacheKey(digest)); err != nil {
+			return fmt.Errorf("invalidate OCI small blob cache for %s: %w", digest, err)
 		}
 	}
 	return nil

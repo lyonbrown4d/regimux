@@ -71,7 +71,7 @@ func (m *Memory) DeletePrefix(ctx context.Context, prefix string) error {
 		return err
 	}
 	if err := ctx.Err(); err != nil {
-		return err
+		return wrapError(err, "delete memory cache prefix")
 	}
 	physicalPrefix, err := m.key(prefix)
 	if err != nil {
@@ -79,7 +79,7 @@ func (m *Memory) DeletePrefix(ctx context.Context, prefix string) error {
 	}
 	for _, key := range m.cache.Keys() {
 		if err := ctx.Err(); err != nil {
-			return err
+			return wrapError(err, "delete memory cache prefix")
 		}
 		if strings.HasPrefix(key, physicalPrefix) {
 			m.cache.Remove(key)

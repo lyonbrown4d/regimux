@@ -20,7 +20,7 @@ func deletePrefixAcrossNodes(ctx context.Context, prefix string, scanners []keyS
 	}
 	for _, scan := range scanners {
 		if err := deletePrefixByScan(ctx, prefix, scan, remove); err != nil {
-			return err
+			return wrapError(err, "delete cache prefix across nodes")
 		}
 	}
 	return nil
@@ -33,33 +33,41 @@ func deletePrefixByScan(ctx context.Context, prefix string, scan keyScanner, rem
 	pattern := escapeRedisGlob(prefix) + "*"
 	var cursor uint64
 	for {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		keys, nextCursor, err := scan(ctx, cursor, pattern, prefixDeleteBatchSize)
+		nextCursor, done, err := deletePrefixScanPage(ctx, cursor, prefix, pattern, scan, remove)
 		if err != nil {
 			return err
 		}
-		matches := make([]string, 0, len(keys))
-		for _, key := range keys {
-			if strings.HasPrefix(key, prefix) {
-				matches = append(matches, key)
-			}
-		}
-		if err := deleteKeyBatches(ctx, matches, remove); err != nil {
-			return err
-		}
-		cursor = nextCursor
-		if cursor == 0 {
+		if done {
 			return nil
 		}
+		cursor = nextCursor
 	}
+}
+
+func deletePrefixScanPage(ctx context.Context, cursor uint64, prefix, pattern string, scan keyScanner, remove keyBatchDeleter) (uint64, bool, error) {
+	if err := ctx.Err(); err != nil {
+		return 0, false, wrapError(err, "scan cache prefix")
+	}
+	keys, nextCursor, err := scan(ctx, cursor, pattern, prefixDeleteBatchSize)
+	if err != nil {
+		return 0, false, wrapError(err, "scan cache prefix")
+	}
+	matches := make([]string, 0, len(keys))
+	for _, key := range keys {
+		if strings.HasPrefix(key, prefix) {
+			matches = append(matches, key)
+		}
+	}
+	if err := deleteKeyBatches(ctx, matches, remove); err != nil {
+		return 0, false, wrapError(err, "delete scanned cache prefix keys")
+	}
+	return nextCursor, nextCursor == 0, nil
 }
 
 func deleteKeyBatches(ctx context.Context, keys []string, remove keyBatchDeleter) error {
 	for len(keys) > 0 {
 		if err := ctx.Err(); err != nil {
-			return err
+			return wrapError(err, "delete cache prefix batch")
 		}
 		batchSize := min(len(keys), prefixDeleteBatchSize)
 		if err := remove(ctx, keys[:batchSize]); err != nil {
@@ -71,13 +79,11 @@ func deleteKeyBatches(ctx context.Context, keys []string, remove keyBatchDeleter
 }
 
 func escapeRedisGlob(value string) string {
-	var escaped strings.Builder
-	escaped.Grow(len(value))
-	for _, char := range value {
-		if strings.ContainsRune(`\*?[]`, char) {
-			escaped.WriteByte('\\')
-		}
-		escaped.WriteRune(char)
-	}
-	return escaped.String()
+	return strings.NewReplacer(
+		`\`, `\\`,
+		`*`, `\*`,
+		`?`, `\?`,
+		`[`, `\[`,
+		`]`, `\]`,
+	).Replace(value)
 }

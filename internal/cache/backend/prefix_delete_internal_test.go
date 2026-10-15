@@ -75,7 +75,7 @@ func TestDeletePrefixByScanStopsWhenContextCancelled(t *testing.T) {
 		t.Fatalf("deletePrefixByScan error = %v, want context.Canceled", err)
 	}
 	if scanCalled {
-		t.Fatal("scan was called with an already cancelled context")
+		t.Fatal("scan was called with an already canceled context")
 	}
 }
 

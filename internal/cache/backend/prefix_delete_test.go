@@ -3,6 +3,7 @@ package backend_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -15,46 +16,50 @@ func TestMemoryDeletePrefixUsesLiteralNamespacedPrefix(t *testing.T) {
 
 	ctx := context.Background()
 	cache := backend.NewMemory(backend.MemoryOptions{Prefix: "tenant-a"})
-	t.Cleanup(func() {
-		if err := cache.Close(); err != nil {
-			t.Fatalf("close memory backend: %v", err)
-		}
-	})
-
-	for _, key := range []string{
+	registerMemoryCacheCleanup(t, cache)
+	matchingKeys := []string{
 		"manifest:repo:tag:application/json",
 		"manifest:repo:tag:application/vnd.example+json",
+	}
+	preservedKeys := []string{
 		"manifest:repo:tag2:application/json",
 		"manifest:repo:tag*:application/json",
 		"manifest:repo:tagX:application/json",
 		"other:manifest:repo:tag:application/json",
-	} {
-		if err := cache.Set(ctx, key, []byte(key), time.Minute); err != nil {
-			t.Fatalf("set %q: %v", key, err)
-		}
 	}
+	seedMemoryCacheKeys(ctx, t, cache, append(append([]string{}, matchingKeys...), preservedKeys...))
 
 	var deleter backend.PrefixDeleter = cache
 	if err := deleter.DeletePrefix(ctx, "manifest:repo:tag:"); err != nil {
 		t.Fatalf("delete prefix: %v", err)
 	}
+	assertMemoryCacheKeyState(ctx, t, cache, matchingKeys, false)
+	assertMemoryCacheKeyState(ctx, t, cache, preservedKeys, true)
+}
 
-	for _, key := range []string{
-		"manifest:repo:tag:application/json",
-		"manifest:repo:tag:application/vnd.example+json",
-	} {
-		if _, found, err := cache.Get(ctx, key); err != nil || found {
-			t.Fatalf("expected %q removed, found=%v err=%v", key, found, err)
+func registerMemoryCacheCleanup(t *testing.T, cache *backend.Memory) {
+	t.Helper()
+	t.Cleanup(func() {
+		if err := cache.Close(); err != nil {
+			t.Errorf("close memory backend: %v", err)
+		}
+	})
+}
+
+func seedMemoryCacheKeys(ctx context.Context, t *testing.T, cache *backend.Memory, keys []string) {
+	t.Helper()
+	for _, key := range keys {
+		if err := cache.Set(ctx, key, []byte(key), time.Minute); err != nil {
+			t.Fatalf("set %q: %v", key, err)
 		}
 	}
-	for _, key := range []string{
-		"manifest:repo:tag2:application/json",
-		"manifest:repo:tag*:application/json",
-		"manifest:repo:tagX:application/json",
-		"other:manifest:repo:tag:application/json",
-	} {
-		if _, found, err := cache.Get(ctx, key); err != nil || !found {
-			t.Fatalf("expected %q preserved, found=%v err=%v", key, found, err)
+}
+
+func assertMemoryCacheKeyState(ctx context.Context, t *testing.T, cache *backend.Memory, keys []string, wantFound bool) {
+	t.Helper()
+	for _, key := range keys {
+		if _, found, err := cache.Get(ctx, key); err != nil || found != wantFound {
+			t.Fatalf("key %q found=%v err=%v, want found=%v", key, found, err, wantFound)
 		}
 	}
 }
@@ -146,7 +151,7 @@ type prefixKVClient struct {
 
 func (c *prefixKVClient) DeletePrefix(ctx context.Context, prefix string) error {
 	if err := ctx.Err(); err != nil {
-		return err
+		return fmt.Errorf("fake prefix deletion: %w", err)
 	}
 	c.deletedPrefix = prefix
 	if c.prefixErr != nil {

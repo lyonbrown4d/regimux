@@ -172,12 +172,11 @@ func splitOperationPath(path, marker string) (name, tail string, ok bool) {
 	if !strings.HasPrefix(path, "/v2/") {
 		return "", "", false
 	}
-	idx := strings.LastIndex(path, marker)
-	if idx < 0 {
+	name, tail, ok = strings.CutLast(path, marker)
+	if !ok {
 		return "", "", false
 	}
-	name = strings.TrimPrefix(path[:idx], "/v2/")
-	tail = path[idx+len(marker):]
+	name = strings.TrimPrefix(name, "/v2/")
 	if name == "" || tail == "" || strings.Contains(tail, "/") {
 		return "", "", false
 	}

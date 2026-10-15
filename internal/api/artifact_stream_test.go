@@ -1,6 +1,7 @@
 package api_test
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"sync"
@@ -14,20 +15,22 @@ import (
 )
 
 type artifactStreamRoute struct {
-	path    string
-	release <-chan struct{}
+	path      string
+	release   <-chan struct{}
+	completed chan<- error
 }
 
 func (route artifactStreamRoute) RegisterFiber(app *fiber.App) {
 	app.Get(route.path, func(c fiber.Ctx) error {
 		reader, writer := io.Pipe()
 		go func() {
-			defer writer.Close()
-			if _, err := io.WriteString(writer, "wheel-"); err != nil {
-				return
+			_, writeErr := io.WriteString(writer, "wheel-")
+			if writeErr == nil {
+				<-route.release
+				_, writeErr = io.WriteString(writer, "body")
 			}
-			<-route.release
-			_, _ = io.WriteString(writer, "body")
+			closeErr := writer.CloseWithError(writeErr)
+			route.completed <- errors.Join(writeErr, closeErr)
 		}()
 		c.Set(fiber.HeaderContentType, "application/octet-stream")
 		c.Set(fiber.HeaderETag, `"upstream-artifact"`)
@@ -47,40 +50,64 @@ func TestDefaultMiddlewareStreamsArtifactHeadersBeforeBodyCompletes(t *testing.T
 		"/v2/hub/demo/blobs/sha256:abc",
 	} {
 		t.Run(path, func(t *testing.T) {
-			release := make(chan struct{})
-			var once sync.Once
-			releaseBody := func() { once.Do(func() { close(release) }) }
-			defer releaseBody()
-			cfg := config.DefaultConfig()
-			base := startAPIServerWithOptions(t, api.Options{
-				Middleware: cfg.Server.Middleware,
-				FiberRoutes: collectionlist.NewList[api.FiberRoute](artifactStreamRoute{
-					path: path, release: release,
-				}),
-			})
-			client := &http.Client{Timeout: 2 * time.Second}
-			defer client.CloseIdleConnections()
-			req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, http.NoBody)
-			if err != nil {
-				t.Fatal(err)
-			}
-			req.Header.Set("Accept-Encoding", "gzip")
-			resp, err := client.Do(req)
-			if err != nil {
-				t.Fatalf("headers must arrive before releasing the complete body: %v", err)
-			}
-			defer resp.Body.Close()
-			if resp.StatusCode != http.StatusOK || resp.Header.Get("ETag") != `"upstream-artifact"` {
-				t.Fatalf("artifact status/ETag changed: %d %v", resp.StatusCode, resp.Header)
-			}
-			if resp.ContentLength != int64(len("wheel-body")) || resp.Header.Get("Content-Encoding") != "" {
-				t.Fatalf("artifact representation was transformed: %v", resp.Header)
-			}
-			releaseBody()
-			if body := readHTTPResponse(t, resp); string(body) != "wheel-body" {
-				t.Fatalf("body = %q", body)
-			}
+			assertArtifactResponseStreams(t, path)
 		})
+	}
+}
+
+func assertArtifactResponseStreams(t *testing.T, path string) {
+	t.Helper()
+	release := make(chan struct{})
+	completed := make(chan error, 1)
+	var once sync.Once
+	releaseBody := func() { once.Do(func() { close(release) }) }
+	defer releaseBody()
+	cfg := config.DefaultConfig()
+	base := startAPIServerWithOptions(t, api.Options{
+		Middleware: cfg.Server.Middleware,
+		FiberRoutes: collectionlist.NewList[api.FiberRoute](artifactStreamRoute{
+			path: path, release: release, completed: completed,
+		}),
+	})
+	client := &http.Client{Timeout: 2 * time.Second}
+	defer client.CloseIdleConnections()
+	req, err := http.NewRequestWithContext(t.Context(), http.MethodGet, base+path, http.NoBody)
+	if err != nil {
+		t.Fatal(err)
+	}
+	req.Header.Set("Accept-Encoding", "gzip")
+	resp, err := client.Do(req)
+	if err != nil {
+		t.Fatalf("headers must arrive before releasing the complete body: %v", err)
+	}
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	}()
+	assertArtifactRepresentation(t, resp)
+	releaseBody()
+	body, readErr := io.ReadAll(resp.Body)
+	if readErr != nil || string(body) != "wheel-body" {
+		t.Fatalf("body = %q, read error = %v", body, readErr)
+	}
+	select {
+	case streamErr := <-completed:
+		if streamErr != nil {
+			t.Fatal(streamErr)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("fixture stream writer did not finish")
+	}
+}
+
+func assertArtifactRepresentation(t *testing.T, resp *http.Response) {
+	t.Helper()
+	if resp.StatusCode != http.StatusOK || resp.Header.Get("ETag") != `"upstream-artifact"` {
+		t.Fatalf("artifact status/ETag changed: %d %v", resp.StatusCode, resp.Header)
+	}
+	if resp.ContentLength != int64(len("wheel-body")) || resp.Header.Get("Content-Encoding") != "" {
+		t.Fatalf("artifact representation was transformed: %v", resp.Header)
 	}
 }
 

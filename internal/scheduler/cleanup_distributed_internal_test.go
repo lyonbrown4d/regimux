@@ -3,7 +3,7 @@ package scheduler
 import (
 	"context"
 	"errors"
-	"path/filepath"
+	"fmt"
 	"sync"
 	"testing"
 	"time"
@@ -17,27 +17,38 @@ import (
 )
 
 func TestDisabledManualCleanupUsesSharedDistributedLockAcrossRuntimes(t *testing.T) {
-	metadata, err := meta.OpenSQLite(filepath.Join(t.TempDir(), "cache.db"), nil)
-	if err != nil {
-		t.Fatal(err)
+	fixture := newLockedCleanupFixture(t)
+	if err := fixture.runtimes[0].TriggerCleanup(t.Context()); err != nil {
+		t.Fatalf("trigger first runtime cleanup: %v", err)
 	}
-	t.Cleanup(func() {
-		if closeErr := metadata.Close(); closeErr != nil {
-			t.Error(closeErr)
-		}
-	})
-	baseObjects, err := object.NewLocal(t.TempDir())
-	if err != nil {
-		t.Fatal(err)
+	select {
+	case <-fixture.objects.entered:
+	case <-time.After(5 * time.Second):
+		t.Fatal("first cleanup did not reach object deletion")
 	}
-	objects := &blockingDeleteStore{
-		Store:   baseObjects,
-		entered: make(chan struct{}),
-		release: make(chan struct{}),
+	if err := fixture.runtimes[1].TriggerCleanup(t.Context()); err != nil {
+		t.Fatalf("trigger second runtime cleanup: %v", err)
 	}
+	assertSharedCleanupLockKeys(t, fixture.locker)
+	fixture.objects.unblock()
+	waitForSharedCleanup(t, fixture.baseObjects, fixture.digests)
+	assertExclusiveCleanupLock(t, fixture.locker)
+}
 
+type lockedCleanupFixture struct {
+	baseObjects object.Store
+	objects     *blockingDeleteStore
+	locker      *exclusiveCleanupLocker
+	runtimes    []*Runtime
+	digests     []string
+}
+
+func newLockedCleanupFixture(t *testing.T) lockedCleanupFixture {
+	t.Helper()
+	baseRuntime, metadata, baseObjects := newSharedCleanupRuntime(t)
+	objects := &blockingDeleteStore{Store: baseObjects, entered: make(chan struct{}), release: make(chan struct{})}
 	locker := &exclusiveCleanupLocker{attempts: make(chan string, 4)}
-	cfg := config.DefaultConfig()
+	cfg := baseRuntime.cfg
 	cfg.Scheduler.Enabled = false
 	cfg.Scheduler.DistributedLock = true
 	cfg.Scheduler.Cleanup.Distributed = true
@@ -46,45 +57,41 @@ func TestDisabledManualCleanupUsesSharedDistributedLockAcrossRuntimes(t *testing
 		newRuntimeForLockedCleanup(cfg, metadata, objects, locker),
 		newRuntimeForLockedCleanup(cfg, metadata, objects, locker),
 	}
-	for i, runtime := range runtimes {
-		if err := runtime.Start(t.Context()); err != nil {
-			t.Fatalf("start runtime %d: %v", i, err)
-		}
-		i := i
-		t.Cleanup(func() {
-			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-			defer cancel()
-			if stopErr := runtimes[i].Stop(ctx); stopErr != nil {
-				t.Error(stopErr)
-			}
-		})
+	future := time.Now().UTC().Add(30 * 24 * time.Hour)
+	for _, runtime := range runtimes {
+		runtime.cleanupNow = func() time.Time { return future }
+		startLockedCleanupRuntime(t, runtime)
 	}
 	t.Cleanup(objects.unblock)
-	digests := seedSharedCleanupArtifacts(t, metadata, baseObjects)
-	for _, runtime := range runtimes {
-		future := time.Now().UTC().Add(30 * 24 * time.Hour)
-		runtime.cleanupNow = func() time.Time { return future }
-	}
+	return lockedCleanupFixture{baseObjects: baseObjects, objects: objects, locker: locker,
+		runtimes: runtimes, digests: seedSharedCleanupArtifacts(t, metadata, baseObjects)}
+}
 
-	if err := runtimes[0].TriggerCleanup(t.Context()); err != nil {
-		t.Fatalf("trigger first runtime cleanup: %v", err)
+func startLockedCleanupRuntime(t *testing.T, runtime *Runtime) {
+	t.Helper()
+	if err := runtime.Start(t.Context()); err != nil {
+		t.Fatal(err)
 	}
-	select {
-	case <-objects.entered:
-	case <-time.After(5 * time.Second):
-		t.Fatal("first cleanup did not reach object deletion")
-	}
-	if err := runtimes[1].TriggerCleanup(t.Context()); err != nil {
-		t.Fatalf("trigger second runtime cleanup: %v", err)
-	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		if stopErr := runtime.Stop(ctx); stopErr != nil {
+			t.Error(stopErr)
+		}
+	})
+}
+
+func assertSharedCleanupLockKeys(t *testing.T, locker *exclusiveCleanupLocker) {
+	t.Helper()
 	firstKey := awaitCleanupLockAttempt(t, locker)
 	secondKey := awaitCleanupLockAttempt(t, locker)
 	if firstKey != sharedCleanupJobName || secondKey != sharedCleanupJobName {
 		t.Fatalf("manual cleanup lock keys = %q, %q; want both %q", firstKey, secondKey, sharedCleanupJobName)
 	}
-	objects.unblock()
-	waitForSharedCleanup(t, baseObjects, digests)
+}
 
+func assertExclusiveCleanupLock(t *testing.T, locker *exclusiveCleanupLocker) {
+	t.Helper()
 	if maxActive, acquired, rejected := locker.results(); maxActive != 1 || acquired != 1 || rejected != 1 {
 		t.Fatalf("distributed lock max active=%d acquired=%d rejected=%d, want 1, 1, 1", maxActive, acquired, rejected)
 	}
@@ -175,8 +182,11 @@ func (s *blockingDeleteStore) Delete(ctx context.Context, digest string) error {
 		select {
 		case <-s.release:
 		case <-ctx.Done():
-			return ctx.Err()
+			return fmt.Errorf("blocked test object deletion: %w", ctx.Err())
 		}
 	}
-	return s.Store.Delete(ctx, digest)
+	if err := s.Store.Delete(ctx, digest); err != nil {
+		return fmt.Errorf("delete test object: %w", err)
+	}
+	return nil
 }

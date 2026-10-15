@@ -29,7 +29,7 @@ func TestPackagePlanKeepsWholeGAVUnderObjectBudgetAndDryRun(t *testing.T) {
 	if preview.DeletedBlobs != 2 {
 		t.Fatalf("dry-run planned %d objects, want 2", preview.DeletedBlobs)
 	}
-	assertPackageReferences(t, metadata, 2)
+	assertPackageReferences(t.Context(), t, metadata, 2)
 	for _, digest := range groups[0].Digests {
 		exists, existsErr := objects.Exists(t.Context(), digest)
 		if existsErr != nil || !exists {
@@ -45,7 +45,7 @@ func TestPackagePlanKeepsWholeGAVUnderObjectBudgetAndDryRun(t *testing.T) {
 	if actual.DeletedBlobs != preview.DeletedBlobs {
 		t.Fatalf("dry-run/actual mismatch: %d/%d", preview.DeletedBlobs, actual.DeletedBlobs)
 	}
-	assertPackageReferences(t, metadata, 0)
+	assertPackageReferences(t.Context(), t, metadata, 0)
 }
 
 func TestPackageScanBudgetPrioritizesOldPackagesAcrossEcosystems(t *testing.T) {
@@ -78,7 +78,7 @@ func TestPackagePlanRetainsEverySiblingAfterConcurrentAccess(t *testing.T) {
 	if planned.EvictedPackages != 0 || len(planned.Candidates) != 0 {
 		t.Fatalf("freshly accessed package was partially retired: %+v", planned)
 	}
-	assertPackageReferences(t, metadata, 2)
+	assertPackageReferences(t.Context(), t, metadata, 2)
 }
 
 func TestPackagePlanPreservesMetadataOwnedByARetainedGroup(t *testing.T) {
@@ -94,7 +94,7 @@ func TestPackagePlanPreservesMetadataOwnedByARetainedGroup(t *testing.T) {
 	if planned.EvictedPackages != 1 {
 		t.Fatalf("evicted packages=%d", planned.EvictedPackages)
 	}
-	assertPackageReferences(t, metadata, 2)
+	assertPackageReferences(t.Context(), t, metadata, 2)
 	if report := sweepPackagePlan(t, objects, planned, opts); report.DeletedBlobs != 0 {
 		t.Fatalf("removed shared retained objects: %+v", report)
 	}
@@ -142,9 +142,9 @@ func sweepPackagePlan(t *testing.T, objects object.Store, plan *cachegc.PackageC
 	return report
 }
 
-func assertPackageReferences(t *testing.T, metadata meta.Store, want int) {
+func assertPackageReferences(ctx context.Context, t *testing.T, metadata meta.Store, want int) {
 	t.Helper()
-	tags, err := metadata.ListTags(context.Background())
+	tags, err := metadata.ListTags(ctx)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -24,19 +24,11 @@ func TestInvalidateCacheCleanupDeletesOnlyRetiredManifestPrefixes(t *testing.T) 
 	accepts := []string{"application/vnd.oci.image.manifest.v1+json", "application/vnd.docker.distribution.manifest.v2+json"}
 	rootDigest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	sharedChildDigest := "sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
-	retiredRefs := []string{"1.36.1", rootDigest}
 	retainedRefs := []string{"1.36.10", "stable", sharedChildDigest}
-	for _, ref := range append(retiredRefs, retainedRefs...) {
-		for _, accept := range accepts {
-			key := testManifestKey("hub", "library/busybox", ref, accept)
-			if err := store.Set(ctx, key, []byte("cached"), time.Minute); err != nil {
-				t.Fatalf("seed cache key %q: %v", key, err)
-			}
-		}
-	}
-	if err := store.Set(ctx, "tags:hub:library/busybox::", []byte("tags"), time.Minute); err != nil {
-		t.Fatalf("seed tags-list cache: %v", err)
-	}
+	retiredRefs := make([]string, 0, 2+len(retainedRefs))
+	retiredRefs = append(retiredRefs, "1.36.1", rootDigest)
+	seedManifestCacheReferences(ctx, t, store, append(retiredRefs, retainedRefs...), accepts)
+	seedCacheEntry(ctx, t, store, "tags:hub:library/busybox::", []byte("tags"))
 
 	group := ecosystem.CacheCleanupGroup{
 		Ecosystem: ecosystem.Container,
@@ -53,25 +45,9 @@ func TestInvalidateCacheCleanupDeletesOnlyRetiredManifestPrefixes(t *testing.T) 
 		t.Fatalf("invalidate retired manifest cache entries: %v", err)
 	}
 
-	for _, ref := range retiredRefs {
-		for _, accept := range accepts {
-			key := testManifestKey("hub", "library/busybox", ref, accept)
-			if _, found, err := store.Get(ctx, key); err != nil || found {
-				t.Errorf("retired manifest key %q remains (found=%t, err=%v)", key, found, err)
-			}
-		}
-	}
-	for _, ref := range retainedRefs {
-		for _, accept := range accepts {
-			key := testManifestKey("hub", "library/busybox", ref, accept)
-			if _, found, err := store.Get(ctx, key); err != nil || !found {
-				t.Errorf("retained manifest key %q was removed (found=%t, err=%v)", key, found, err)
-			}
-		}
-	}
-	if _, found, err := store.Get(ctx, "tags:hub:library/busybox::"); err != nil || !found {
-		t.Errorf("unrelated tags-list cache was removed (found=%t, err=%v)", found, err)
-	}
+	assertManifestCacheReferences(ctx, t, store, retiredRefs, accepts, false)
+	assertManifestCacheReferences(ctx, t, store, retainedRefs, accepts, true)
+	assertCacheKey(ctx, t, store, "tags:hub:library/busybox::", true)
 }
 
 func TestInvalidateCacheCleanupRequiresPrefixDeleteAndPropagatesErrors(t *testing.T) {
@@ -138,25 +114,25 @@ func TestInvalidateCacheCleanupDeletesOnlyMaskedSmallBlobDigests(t *testing.T) {
 	}
 	t.Run("enabled", func(t *testing.T) {
 		store := backend.NewMemory(backend.MemoryOptions{})
-		seedSmallBlobCache(t, ctx, store, retiredDigest, adjacentDigest)
+		seedSmallBlobCache(ctx, t, store, retiredDigest, adjacentDigest)
 		proxy := cache.NewProxy(cache.ProxyDependencies{Cache: store, CacheConfig: smallBlobCacheEnabledConfig()})
 		runtime := container.NewRuntime(config.Config{}, nil, nil, proxy.Manifests(), nil)
 		if err := runtime.InvalidateCacheCleanup(ctx, group); err != nil {
 			t.Fatalf("invalidate small blob cache: %v", err)
 		}
-		assertCacheKey(t, ctx, store, "blob-small:"+retiredDigest, false)
-		assertCacheKey(t, ctx, store, "blob-small:"+adjacentDigest, true)
+		assertCacheKey(ctx, t, store, "blob-small:"+retiredDigest, false)
+		assertCacheKey(ctx, t, store, "blob-small:"+adjacentDigest, true)
 	})
 	t.Run("disabled", func(t *testing.T) {
 		store := backend.NewMemory(backend.MemoryOptions{})
-		seedSmallBlobCache(t, ctx, store, retiredDigest, adjacentDigest)
+		seedSmallBlobCache(ctx, t, store, retiredDigest, adjacentDigest)
 		proxy := cache.NewProxy(cache.ProxyDependencies{Cache: store})
 		runtime := container.NewRuntime(config.Config{}, nil, nil, proxy.Manifests(), nil)
 		if err := runtime.InvalidateCacheCleanup(ctx, group); err != nil {
 			t.Fatalf("invalidate with small cache disabled: %v", err)
 		}
-		assertCacheKey(t, ctx, store, "blob-small:"+retiredDigest, true)
-		assertCacheKey(t, ctx, store, "blob-small:"+adjacentDigest, true)
+		assertCacheKey(ctx, t, store, "blob-small:"+retiredDigest, true)
+		assertCacheKey(ctx, t, store, "blob-small:"+adjacentDigest, true)
 	})
 }
 
@@ -178,7 +154,7 @@ func TestInvalidateCacheCleanupDeletesOrphanSmallBlobDigest(t *testing.T) {
 	ctx := context.Background()
 	digest := "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	store := backend.NewMemory(backend.MemoryOptions{})
-	seedSmallBlobCache(t, ctx, store, digest)
+	seedSmallBlobCache(ctx, t, store, digest)
 	proxy := cache.NewProxy(cache.ProxyDependencies{Cache: store, CacheConfig: smallBlobCacheEnabledConfig()})
 	runtime := container.NewRuntime(config.Config{}, nil, nil, proxy.Manifests(), nil)
 	group := ecosystem.CacheCleanupGroup{
@@ -188,7 +164,7 @@ func TestInvalidateCacheCleanupDeletesOrphanSmallBlobDigest(t *testing.T) {
 	if err := runtime.InvalidateCacheCleanup(ctx, group); err != nil {
 		t.Fatalf("invalidate orphan small blob cache: %v", err)
 	}
-	assertCacheKey(t, ctx, store, "blob-small:"+digest, false)
+	assertCacheKey(ctx, t, store, "blob-small:"+digest, false)
 }
 
 func testManifestKey(alias, repository, ref, accept string) string {
@@ -203,16 +179,39 @@ func smallBlobCacheEnabledConfig() config.CacheConfig {
 	}
 }
 
-func seedSmallBlobCache(t *testing.T, ctx context.Context, store backend.Backend, digests ...string) {
+func seedManifestCacheReferences(ctx context.Context, t *testing.T, store backend.Backend, refs, accepts []string) {
 	t.Helper()
-	for _, digest := range digests {
-		if err := store.Set(ctx, "blob-small:"+digest, []byte("cached"), time.Minute); err != nil {
-			t.Fatalf("seed small blob cache for %s: %v", digest, err)
+	for _, ref := range refs {
+		for _, accept := range accepts {
+			seedCacheEntry(ctx, t, store, testManifestKey("hub", "library/busybox", ref, accept), []byte("cached"))
 		}
 	}
 }
 
-func assertCacheKey(t *testing.T, ctx context.Context, store backend.Backend, key string, wantFound bool) {
+func assertManifestCacheReferences(ctx context.Context, t *testing.T, store backend.Backend, refs, accepts []string, wantFound bool) {
+	t.Helper()
+	for _, ref := range refs {
+		for _, accept := range accepts {
+			assertCacheKey(ctx, t, store, testManifestKey("hub", "library/busybox", ref, accept), wantFound)
+		}
+	}
+}
+
+func seedSmallBlobCache(ctx context.Context, t *testing.T, store backend.Backend, digests ...string) {
+	t.Helper()
+	for _, digest := range digests {
+		seedCacheEntry(ctx, t, store, "blob-small:"+digest, []byte("cached"))
+	}
+}
+
+func seedCacheEntry(ctx context.Context, t *testing.T, store backend.Backend, key string, value []byte) {
+	t.Helper()
+	if err := store.Set(ctx, key, value, time.Minute); err != nil {
+		t.Fatalf("seed cache key %q: %v", key, err)
+	}
+}
+
+func assertCacheKey(ctx context.Context, t *testing.T, store backend.Backend, key string, wantFound bool) {
 	t.Helper()
 	_, found, err := store.Get(ctx, key)
 	if err != nil || found != wantFound {

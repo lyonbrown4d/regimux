@@ -2,7 +2,7 @@ version: "2"
 
 run:
   timeout: 20m
-  go: "1.26.5"
+  go: "1.27.2"
 
 linters:
   default: none
