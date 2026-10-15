@@ -105,12 +105,13 @@ func ConfigsFromUpstreamConfigs(configs *collectionmapping.OrderedMap[string, co
 // ConfigFromUpstreamConfig converts one runtime upstream config into a client config.
 func ConfigFromUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 	return Config{
-		Alias:            alias,
-		Registry:         cfg.Registry,
-		Mirrors:          cfg.Mirrors,
-		MirrorPolicy:     cfg.MirrorPolicy,
-		DefaultNamespace: cfg.DefaultNamespace,
-		TagTTL:           cfg.TagTTL.String(),
+		Alias:                 alias,
+		Registry:              cfg.Registry,
+		Mirrors:               cfg.Mirrors,
+		MirrorPolicy:          cfg.MirrorPolicy,
+		MirrorForbiddenPolicy: cfg.MirrorForbiddenPolicy,
+		DefaultNamespace:      cfg.DefaultNamespace,
+		TagTTL:                cfg.TagTTL.String(),
 		Blob: BlobConfig{
 			MirrorPolicy:              cfg.Blob.MirrorPolicy,
 			TopN:                      cfg.Blob.TopN,

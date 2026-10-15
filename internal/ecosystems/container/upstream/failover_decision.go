@@ -3,6 +3,7 @@ package upstream
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/arcgolabs/clientx"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -10,6 +11,9 @@ import (
 
 func shouldFailover(req failoverRequest, err error) bool {
 	if err == nil {
+		return false
+	}
+	if _, ok := errors.AsType[*authenticatedUpstreamStatusError](err); ok {
 		return false
 	}
 
@@ -37,8 +41,10 @@ func shouldFailoverError(err error) bool {
 
 func shouldFailoverStatus(req failoverRequest, status int) bool {
 	switch status {
-	case http.StatusBadRequest, http.StatusUnauthorized, http.StatusForbidden:
+	case http.StatusBadRequest, http.StatusUnauthorized:
 		return false
+	case http.StatusForbidden:
+		return req.allowPublicMirrorForbidden && req.endpointIsMirror && !req.endpointAuthenticated
 	case http.StatusNotFound:
 		return shouldFailoverNotFound(req.operation)
 	case http.StatusTooManyRequests:
@@ -46,6 +52,26 @@ func shouldFailoverStatus(req failoverRequest, status int) bool {
 	default:
 		return status >= http.StatusInternalServerError
 	}
+}
+
+const (
+	mirrorForbiddenPolicyTerminal = "terminal"
+	mirrorForbiddenPolicyPublic   = "public"
+)
+
+func normalizeMirrorForbiddenPolicy(policy string) string {
+	if strings.EqualFold(strings.TrimSpace(policy), mirrorForbiddenPolicyPublic) {
+		return mirrorForbiddenPolicyPublic
+	}
+	return mirrorForbiddenPolicyTerminal
+}
+
+func isAuthenticated(auth AuthConfig) bool {
+	typeName := strings.ToLower(strings.TrimSpace(auth.Type))
+	if typeName == "" || typeName == "anonymous" {
+		return auth.Token != "" || auth.Username != "" || auth.Password != ""
+	}
+	return true
 }
 
 func shouldFailoverNotFound(operation string) bool {

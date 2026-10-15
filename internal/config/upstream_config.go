@@ -15,6 +15,16 @@ func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (Upstream
 	upstreamCfg.Alias = alias
 	upstreamCfg.Type = normalizeUpstreamType(upstreamCfg.Type)
 	upstreamCfg.Registry = strings.TrimSpace(upstreamCfg.Registry)
+	upstreamCfg.Auth.Type = strings.ToLower(strings.TrimSpace(upstreamCfg.Auth.Type))
+	if upstreamCfg.Auth.Type == "" {
+		upstreamCfg.Auth.Type = "anonymous"
+	}
+
+	forbiddenPolicy, forbiddenPolicyErr := normalizeMirrorForbiddenPolicy(alias, upstreamCfg)
+	if forbiddenPolicyErr != nil {
+		return UpstreamConfig{}, forbiddenPolicyErr
+	}
+	upstreamCfg.MirrorForbiddenPolicy = forbiddenPolicy
 
 	policy, policyErr := normalizeMirrorPolicy(alias, upstreamCfg.MirrorPolicy)
 	if policyErr != nil {
@@ -44,10 +54,34 @@ func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (Upstream
 		return UpstreamConfig{}, err
 	}
 	upstreamCfg.Mirrors = mirrors
-	if upstreamCfg.Auth.Type == "" {
-		upstreamCfg.Auth.Type = "anonymous"
-	}
 	return upstreamCfg, nil
+}
+
+func normalizeMirrorForbiddenPolicy(alias string, upstreamCfg UpstreamConfig) (string, error) {
+	policy := strings.ToLower(strings.TrimSpace(upstreamCfg.MirrorForbiddenPolicy))
+	if policy == "" {
+		return "terminal", nil
+	}
+	if policy != "terminal" && policy != "public" {
+		return "", oops.In("config").With("alias", alias, "mirror_forbidden_policy", policy).
+			Errorf("upstreams.%s.mirror_forbidden_policy must be terminal or public", alias)
+	}
+	if policy != "public" {
+		return policy, nil
+	}
+	if upstreamCfg.Type != "oci" {
+		return "", oops.In("config").With("alias", alias, "type", upstreamCfg.Type).
+			Errorf("upstreams.%s.mirror_forbidden_policy=public is only supported for OCI upstreams", alias)
+	}
+	if upstreamCfg.Auth.Type != "anonymous" {
+		return "", oops.In("config").With("alias", alias, "auth_type", upstreamCfg.Auth.Type).
+			Errorf("upstreams.%s.mirror_forbidden_policy=public requires anonymous authentication", alias)
+	}
+	if len(upstreamCfg.Mirrors) == 0 {
+		return "", oops.In("config").With("alias", alias).
+			Errorf("upstreams.%s.mirror_forbidden_policy=public requires at least one configured mirror", alias)
+	}
+	return policy, nil
 }
 
 func normalizeUpstreamType(value string) string {

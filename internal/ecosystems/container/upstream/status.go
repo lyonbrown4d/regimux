@@ -11,6 +11,24 @@ type upstreamHTTPStatusError struct {
 	err    error
 }
 
+type authenticatedUpstreamStatusError struct {
+	err error
+}
+
+func (e *authenticatedUpstreamStatusError) Error() string {
+	if e == nil || e.err == nil {
+		return "authenticated upstream returned an unsuccessful status"
+	}
+	return e.err.Error()
+}
+
+func (e *authenticatedUpstreamStatusError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
+}
+
 func (e *upstreamHTTPStatusError) Error() string {
 	if e == nil || e.err == nil {
 		return "upstream returned an unsuccessful status"
@@ -53,4 +71,10 @@ func mapStatus(status int, kind string) error {
 
 func withUpstreamStatus(status int, err error) error {
 	return &upstreamHTTPStatusError{status: status, err: err}
+}
+
+func withAuthenticatedUpstreamStatus(status int, kind string) error {
+	return &authenticatedUpstreamStatusError{
+		err: withUpstreamStatus(status, MapStatus(status, kind)),
+	}
 }

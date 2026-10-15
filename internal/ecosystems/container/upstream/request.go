@@ -58,7 +58,17 @@ func (c *Client) do(
 	}
 	retryRuntime := runtime
 	retryRuntime.config.Auth = AuthConfig{Type: distribution.AuthSchemeBearer, Token: token}
-	return c.execute(ctx, retryRuntime, spec)
+	retryResp, err := c.execute(ctx, retryRuntime, spec)
+	if err != nil {
+		return upstreamResponse{}, err
+	}
+	if retryResp.StatusCode == http.StatusUnauthorized || retryResp.StatusCode == http.StatusForbidden {
+		return upstreamResponse{}, closeBodyWithError(
+			retryResp.Body,
+			withAuthenticatedUpstreamStatus(retryResp.StatusCode, spec.operation),
+		)
+	}
+	return retryResp, nil
 }
 
 func (c *Client) execute(

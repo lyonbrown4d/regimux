@@ -24,6 +24,7 @@ type upstreamPool struct {
 	mu              sync.Mutex
 	alias           string
 	policy          string
+	forbiddenPolicy string
 	blobPolicy      string
 	blobTopN        int
 	blobLimit       int
@@ -39,9 +40,10 @@ type upstreamPool struct {
 }
 
 type upstreamRuntime struct {
-	config Config
-	client clienthttp.Client
-	err    error
+	config   Config
+	client   clienthttp.Client
+	err      error
+	isMirror bool
 }
 
 func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes *collectionlist.List[upstreamRuntime]) *upstreamPool {
@@ -52,6 +54,7 @@ func newUpstreamPool(cfg Config, logger *slog.Logger, runtimes *collectionlist.L
 	pool := &upstreamPool{
 		alias:           cfg.Alias,
 		policy:          policy,
+		forbiddenPolicy: normalizeMirrorForbiddenPolicy(cfg.MirrorForbiddenPolicy),
 		blobPolicy:      normalizeBlobMirrorPolicy(cfg.Blob.MirrorPolicy, policy),
 		blobTopN:        cfg.Blob.TopN,
 		blobLimit:       cfg.Blob.MaxConcurrencyPerEndpoint,
@@ -94,6 +97,16 @@ func endpointRegistries(cfg Config) *collectionlist.List[string] {
 		return registry, registry != ""
 	}))
 	return collectionlist.NewList(out...)
+}
+
+func isMirrorEndpoint(cfg Config, registry string) bool {
+	registry = strings.TrimRight(strings.TrimSpace(registry), "/")
+	for _, mirror := range cfg.Mirrors {
+		if strings.TrimRight(strings.TrimSpace(mirror), "/") == registry {
+			return true
+		}
+	}
+	return false
 }
 
 func normalizeMirrorPolicy(policy string) string {

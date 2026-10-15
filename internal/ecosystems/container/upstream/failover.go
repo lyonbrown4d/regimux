@@ -12,11 +12,14 @@ import (
 )
 
 type failoverRequest struct {
-	alias      string
-	operation  string
-	repository string
-	digest     string
-	sequential bool
+	alias                      string
+	operation                  string
+	repository                 string
+	digest                     string
+	sequential                 bool
+	allowPublicMirrorForbidden bool
+	endpointIsMirror           bool
+	endpointAuthenticated      bool
 }
 
 func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn func(upstreamRuntime) error) (func(), error) {
@@ -25,6 +28,7 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 		return nil, err
 	}
 	selection := pool.selectRuntimes(ctx, req.operation, req.repository, req.digest)
+	req.allowPublicMirrorForbidden = pool.forbiddenPolicy == mirrorForbiddenPolicyPublic
 
 	runtimes := selection.runtimes
 	if runtimes == nil || runtimes.Len() == 0 {
@@ -127,26 +131,37 @@ func (c *Client) doWithSequentialFailover(
 	}
 	var lastErr error
 	runtimes.Range(func(i int, runtime upstreamRuntime) bool {
+		attemptReq := decorateFailoverRequest(req, pool, runtime)
 		lastErr = runAgainstRuntime(ctx, pool, req.operation, runtime, fn)
 		if lastErr == nil {
-			c.recordEndpointSuccess(ctx, req, pool, runtime)
+			c.recordEndpointSuccess(ctx, attemptReq, pool, runtime)
 			return false
 		}
 		if ctxErr := ctx.Err(); ctxErr != nil {
 			return false
 		}
-		if !shouldFailover(req, lastErr) {
+		if !shouldFailover(attemptReq, lastErr) {
 			return false
 		}
-		c.recordEndpointFailure(ctx, req, pool, runtime, lastErr)
-		c.logFailover(req, runtime, lastErr, i < runtimes.Len()-1)
-		c.publishFailover(ctx, req, runtime, lastErr, i < runtimes.Len()-1)
+		c.recordEndpointFailure(ctx, attemptReq, pool, runtime, lastErr)
+		c.logFailover(attemptReq, runtime, lastErr, i < runtimes.Len()-1)
+		c.publishFailover(ctx, attemptReq, runtime, lastErr, i < runtimes.Len()-1)
 		return true
 	})
 	if err := ctx.Err(); err != nil {
 		return wrapError(err, "upstream %s context", req.operation)
 	}
 	return lastErr
+}
+
+func decorateFailoverRequest(req failoverRequest, pool *upstreamPool, runtime upstreamRuntime) failoverRequest {
+	decorated := req
+	if pool != nil {
+		decorated.allowPublicMirrorForbidden = pool.forbiddenPolicy == mirrorForbiddenPolicyPublic
+	}
+	decorated.endpointIsMirror = runtime.isMirror
+	decorated.endpointAuthenticated = isAuthenticated(runtime.config.Auth)
+	return decorated
 }
 
 func (c *Client) logBlobAttempt(ctx context.Context, req failoverRequest, runtime upstreamRuntime, attempt, total, maxAttempts int) {

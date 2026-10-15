@@ -24,17 +24,18 @@ type RemoteConfig struct {
 }
 
 type Config struct {
-	Alias            string         `json:"-"                 koanf:"-"                 yaml:"-"`
-	Registry         string         `json:"registry"          koanf:"registry"          yaml:"registry"`
-	Mirrors          []string       `json:"mirrors"           koanf:"mirrors"           yaml:"mirrors"`
-	MirrorPolicy     string         `json:"mirror_policy"     koanf:"mirror_policy"     yaml:"mirror_policy"`
-	DefaultNamespace string         `json:"default_namespace" koanf:"default_namespace" yaml:"default_namespace"`
-	TagTTL           string         `json:"tag_ttl"           koanf:"tag_ttl"           yaml:"tag_ttl"`
-	Blob             BlobConfig     `json:"blob"              koanf:"blob"              yaml:"blob"`
-	Probe            ProbeConfig    `json:"probe"             koanf:"probe"             yaml:"probe"`
-	Auth             AuthConfig     `json:"auth"              koanf:"auth"              yaml:"auth"`
-	HTTP             HTTPConfig     `json:"http"              koanf:"http"              yaml:"http"`
-	Remotes          []RemoteConfig `json:"remotes"           koanf:"remotes"           yaml:"remotes"`
+	Alias                 string         `json:"-"                 koanf:"-"                 yaml:"-"`
+	Registry              string         `json:"registry"          koanf:"registry"          yaml:"registry"`
+	Mirrors               []string       `json:"mirrors"           koanf:"mirrors"           yaml:"mirrors"`
+	MirrorPolicy          string         `json:"mirror_policy"     koanf:"mirror_policy"     yaml:"mirror_policy"`
+	MirrorForbiddenPolicy string         `json:"mirror_forbidden_policy" koanf:"mirror_forbidden_policy" yaml:"mirror_forbidden_policy"`
+	DefaultNamespace      string         `json:"default_namespace" koanf:"default_namespace" yaml:"default_namespace"`
+	TagTTL                string         `json:"tag_ttl"           koanf:"tag_ttl"           yaml:"tag_ttl"`
+	Blob                  BlobConfig     `json:"blob"              koanf:"blob"              yaml:"blob"`
+	Probe                 ProbeConfig    `json:"probe"             koanf:"probe"             yaml:"probe"`
+	Auth                  AuthConfig     `json:"auth"              koanf:"auth"              yaml:"auth"`
+	HTTP                  HTTPConfig     `json:"http"              koanf:"http"              yaml:"http"`
+	Remotes               []RemoteConfig `json:"remotes"           koanf:"remotes"           yaml:"remotes"`
 }
 
 type BlobConfig struct {

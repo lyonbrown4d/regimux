@@ -46,7 +46,10 @@ func newEndpointRuntimes(cfg Config, logger *slog.Logger, factory *clientfactory
 	return collectionlist.MapList(registries, func(_ int, registry string) upstreamRuntime {
 		runtimeCfg := cfg
 		runtimeCfg.Registry = registry
-		runtime := upstreamRuntime{config: runtimeCfg}
+		runtime := upstreamRuntime{
+			config:   runtimeCfg,
+			isMirror: isMirrorEndpoint(cfg, registry),
+		}
 		runtime.client, runtime.err = newHTTPClient(runtimeCfg, logger, factory)
 		if runtime.err != nil && logger != nil {
 			logger.Warn(
