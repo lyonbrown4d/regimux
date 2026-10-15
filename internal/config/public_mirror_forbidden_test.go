@@ -38,6 +38,20 @@ func TestPublicMirrorForbiddenPolicyRejectsAuthenticatedContainerUpstream(t *tes
 	}
 }
 
+func TestPublicMirrorForbiddenPolicyRejectsCredentialsOnAnonymousUpstream(t *testing.T) {
+	cfg := config.DefaultConfig()
+	hub := cfg.Container["hub"]
+	hub.Mirrors = []string{"https://mirror.example.test"}
+	hub.MirrorForbiddenPolicy = "public"
+	hub.Auth.Type = "anonymous"
+	hub.Auth.Token = "configured-token"
+	cfg.Container["hub"] = hub
+
+	if err := cfg.NormalizeAndValidate(); err == nil {
+		t.Fatal("expected public mirror policy to reject configured credentials on anonymous auth")
+	}
+}
+
 func TestPublicMirrorForbiddenPolicyRejectsUnknownValue(t *testing.T) {
 	cfg := config.DefaultConfig()
 	hub := cfg.Container["hub"]

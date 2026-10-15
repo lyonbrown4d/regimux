@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/golang"
@@ -35,7 +36,7 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	}))
 	t.Cleanup(upstream.Close)
 
-	service := newTestService(ctx, t, upstream.URL)
+	service, metadata, _ := newTestServiceWithStores(ctx, t, map[string]config.DependencyUpstreamConfig{"default": {Registry: upstream.URL}})
 	first, err := service.Get(ctx, golang.Request{
 		Alias: "default",
 		Tail:  "github.com/acme/lib/@v/v1.2.3.mod",
@@ -44,6 +45,20 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	assertBody(t, first, "module github.com/acme/lib\n")
 	if first.Cache != cacheMiss {
 		t.Fatalf("first cache = %q, want %q", first.Cache, cacheMiss)
+	}
+	blobs, err := metadata.ListBlobs(ctx)
+	requireNoError(t, "list blobs", err)
+	blob := blobs.Values()[0]
+	blob.ID = 0 // Reinsert a fresh metadata row after resetting the access timestamp.
+	old := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	blob.LastAccessAt = old
+	err = metadata.DeleteBlob(ctx, meta.BlobKey{Digest: blob.Digest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = metadata.UpsertBlob(ctx, blob)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	second, err := service.Get(ctx, golang.Request{
@@ -54,6 +69,11 @@ func TestServiceCachesVersionedGoProxyFile(t *testing.T) {
 	assertBody(t, second, "module github.com/acme/lib\n")
 	if second.Cache != cacheHit {
 		t.Fatalf("second cache = %q, want %q", second.Cache, cacheHit)
+	}
+	blobAfter, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: blob.Digest})
+	requireNoError(t, "get blob metadata", err)
+	if !ok || !blobAfter.LastAccessAt.After(old) {
+		t.Fatalf("blob access time = %v, want after %s", blobAfter, old)
 	}
 	if requests != 1 {
 		t.Fatalf("upstream requests = %d, want 1", requests)

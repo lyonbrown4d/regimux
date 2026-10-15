@@ -141,14 +141,16 @@ scheduler {
 
   cleanup {
     enabled = true
-    interval = "1h"
+    cron = "0 3 * * *"
+    timezone = "Asia/Shanghai"
+    interval = "0s"
     unused_for = "168h"
     max_scan = 0
     max_deletes = 1000
     max_bytes = 0
     target_bytes = 0
     dry_run = false
-    distributed = false
+    distributed = true
   }
 
   prefetch {

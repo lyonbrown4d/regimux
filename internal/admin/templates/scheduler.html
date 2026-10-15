@@ -8,7 +8,7 @@
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.cleanup"}}</div>
       <div class="mt-1 text-lg font-semibold text-zinc-50">{{.Scheduler.CleanupEnabled}}</div>
-      <div class="mt-1 text-xs text-zinc-500">{{t . "label.every"}} {{.Scheduler.CleanupInterval}}</div>
+      <div class="mt-1 text-xs text-zinc-500">{{if .Scheduler.CleanupUsesCron}}{{.Scheduler.CleanupCron}} ({{.Scheduler.CleanupTimezone}}){{else}}{{t . "label.every"}} {{.Scheduler.CleanupInterval}}{{end}}</div>
     </div>
     <div class="rounded border border-zinc-800 bg-zinc-900/70 p-3">
       <div class="text-xs uppercase tracking-wide text-zinc-500">{{t . "label.prefetch"}}</div>
@@ -34,7 +34,11 @@
       </form>
       <dl class="divide-y divide-zinc-800 text-sm">
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.enabled"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupEnabled}}</dd></div>
+        {{if .Scheduler.CleanupUsesCron}}
+        <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.schedule"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupCron}} ({{.Scheduler.CleanupTimezone}})</dd></div>
+        {{else}}
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.interval"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupInterval}}</dd></div>
+        {{end}}
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.unused_for"}}</dt><dd class="text-zinc-100">{{.Scheduler.CleanupUnusedFor}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_scan"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxScan}}</dd></div>
         <div class="flex justify-between gap-4 px-4 py-2"><dt class="text-zinc-500">{{t . "field.max_deletes"}}</dt><dd class="tabular-nums text-zinc-100">{{.Scheduler.CleanupMaxDeletes}}</dd></div>

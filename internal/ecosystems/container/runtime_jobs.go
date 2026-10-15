@@ -18,7 +18,6 @@ func (r *Runtime) Jobs() *collectionlist.List[ecosystem.JobSpec] {
 	if r == nil {
 		return jobs
 	}
-	r.addCleanupJob(jobs)
 	r.addProbeJobs(jobs)
 	r.addPrefetchJob(jobs)
 	r.addManifestRefreshJob(jobs)

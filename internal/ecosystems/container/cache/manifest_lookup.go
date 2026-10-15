@@ -42,6 +42,10 @@ func (p manifestProxy) lookupEnvelope(ctx context.Context, req ManifestRequest, 
 	if !supportedManifestMediaType(manifest.MediaType) {
 		return p.deleteInvalidManifestCache(ctx, cacheKey)
 	}
+	p.touchManifestAccess(ctx, meta.ManifestRecord{
+		Digest: manifest.Digest, MediaType: manifest.MediaType, Size: manifest.Size,
+		ObjectKey: manifest.Digest,
+	})
 	return manifestForMethod(manifest, req.Method), true, nil
 }
 
@@ -60,14 +64,6 @@ func (p manifestProxy) lookupStored(ctx context.Context, req ManifestRequest, ca
 	}
 	p.setManifestCache(ctx, cacheKey, *record, manifest.Body, ttlUntil(record.ExpiresAt, p.ttl))
 	return manifest, true, nil
-}
-
-func manifestForMethod(manifest *CachedManifest, method string) *CachedManifest {
-	if method == http.MethodHead {
-		manifest.Body = nil
-	}
-	manifest.Cache = CacheHit
-	return manifest
 }
 
 func (p manifestProxy) lookupStale(ctx context.Context, req ManifestRequest) (*CachedManifest, bool, error) {
@@ -218,6 +214,7 @@ func (p manifestProxy) manifestFromRecord(ctx context.Context, req ManifestReque
 	if !supportedManifestMediaType(record.MediaType) {
 		return nil, false, nil
 	}
+	p.touchManifestAccess(ctx, *record)
 
 	body, ok, err := p.storedManifestBody(ctx, req, record)
 	if err != nil || !ok {

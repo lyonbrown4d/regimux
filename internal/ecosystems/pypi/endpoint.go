@@ -2,7 +2,6 @@ package pypi
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"strconv"
 
@@ -15,8 +14,16 @@ type Endpoint struct {
 }
 
 type input struct {
-	Alias string         `path:"alias"`
-	Tail  httpx.PathTail `path:"tail"`
+	Alias   string         `path:"alias"`
+	Tail    httpx.PathTail `path:"tail"`
+	Range   string         `header:"Range"`
+	IfRange string         `header:"If-Range"`
+	Query   string         `json:"-"`
+}
+
+func (in *input) Resolve(ctx huma.Context) []error {
+	in.Query = ctx.URL().RawQuery
+	return nil
 }
 
 type output struct {
@@ -25,6 +32,8 @@ type output struct {
 	ContentLength string `header:"Content-Length"`
 	ETag          string `header:"ETag"`
 	LastModified  string `header:"Last-Modified"`
+	ContentRange  string `header:"Content-Range"`
+	AcceptRanges  string `header:"Accept-Ranges"`
 	XMirrorCache  string `header:"X-Mirror-Cache"`
 	Body          httpx.ResponseStream
 }
@@ -61,9 +70,12 @@ func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*out
 		return plainError(http.StatusBadRequest, "pypi proxy input is required"), nil
 	}
 	resp, err := e.service.Get(ctx, Request{
-		Alias:  in.Alias,
-		Tail:   in.Tail.String(),
-		Method: method,
+		Alias:   in.Alias,
+		Tail:    in.Tail.String(),
+		Method:  method,
+		Range:   in.Range,
+		IfRange: in.IfRange,
+		Query:   in.Query,
 	})
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
@@ -81,6 +93,8 @@ func outputFromResponse(method string, resp *Response) *output {
 		ContentLength: resp.Headers.Get("Content-Length"),
 		ETag:          resp.Headers.Get("ETag"),
 		LastModified:  resp.Headers.Get("Last-Modified"),
+		ContentRange:  resp.Headers.Get("Content-Range"),
+		AcceptRanges:  resp.Headers.Get("Accept-Ranges"),
 		XMirrorCache:  resp.Headers.Get(headerMirrorCache),
 		Body:          streamWithStatus(resp.Status, nil),
 	}
@@ -93,12 +107,7 @@ func outputFromResponse(method string, resp *Response) *output {
 	if method == http.MethodHead || resp.Body == nil || resp.Body == http.NoBody {
 		return out
 	}
-	out.Body = streamWithStatus(resp.Status, httpx.StreamWriter(func(writer io.Writer) {
-		defer closeReadCloser(resp.Body, nil, "close pypi response body")
-		if _, err := io.Copy(writer, resp.Body); err != nil {
-			return
-		}
-	}))
+	out.Body = streamResponseBody(resp.Status, resp.Size, resp.Body)
 	return out
 }
 

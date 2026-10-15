@@ -1,6 +1,7 @@
 package maven
 
 import (
+	"context"
 	"log/slog"
 
 	"github.com/arcgolabs/dix"
@@ -31,4 +32,14 @@ var Module = dix.NewModule("maven",
 		dix.Provider5[*runtimeAdapter, *Service, *ecosystem.EndpointProber, meta.Store, *worker.Pools, *slog.Logger](newRuntimeAdapter, dix.Into[ecosystem.Runtime](dix.Key("maven"), dix.Order(32))),
 		dix.Provider1[*Endpoint, *Service](NewEndpoint, dix.Into[httpx.Endpoint](dix.Key("maven"), dix.Order(32))),
 	),
+	dix.Hooks(
+		dix.OnStop[*Service](closeService, dix.LifecycleName("regimux.maven_clients_close"), dix.LifecyclePriority(-60)),
+	),
 )
+
+func closeService(_ context.Context, service *Service) error {
+	if service == nil {
+		return nil
+	}
+	return service.Close()
+}

@@ -1,3 +1,4 @@
+//nolint:testpackage // Fetch failover tests exercise private transport helpers.
 package maven
 
 import (
@@ -5,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -48,6 +50,41 @@ func TestServiceFailsOverWhenMavenEndpointAttemptTimesOut(t *testing.T) {
 	if slowRequests.Load() != 1 || mirrorRequests.Load() != 1 {
 		t.Fatalf("requests = slow:%d mirror:%d, want one request per endpoint", slowRequests.Load(), mirrorRequests.Load())
 	}
+}
+
+func TestFetchURLClosesUpstreamBodyAfterMaterialization(t *testing.T) {
+	upstreamBody := &closeTrackedBody{Reader: strings.NewReader("healthy artifact")}
+	service := &Service{client: &http.Client{Transport: closeTrackingTransport{body: upstreamBody}}}
+	fetched, err := service.fetchPhysical(context.Background(), config.UpstreamConfig{
+		Registry: "https://repo.example.com",
+	}, "central", Route{UpstreamTail: "com/acme/demo/1.0/demo-1.0.jar"}, http.MethodGet)
+	if err != nil {
+		t.Fatalf("fetch artifact: %v", err)
+	}
+	defer func() {
+		if err := fetched.body.Close(); err != nil {
+			t.Errorf("close materialized body: %v", err)
+		}
+	}()
+	if !upstreamBody.closed.Load() {
+		t.Fatal("upstream response body remained open after materialization")
+	}
+}
+
+type closeTrackingTransport struct{ body io.ReadCloser }
+
+func (t closeTrackingTransport) RoundTrip(*http.Request) (*http.Response, error) {
+	return &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: t.body}, nil
+}
+
+type closeTrackedBody struct {
+	io.Reader
+	closed atomic.Bool
+}
+
+func (b *closeTrackedBody) Close() error {
+	b.closed.Store(true)
+	return nil
 }
 
 func TestServiceFailsOverWhenMavenEndpointReturnsRetryableStatus(t *testing.T) {
@@ -133,7 +170,11 @@ func assertFetchBody(t *testing.T, fetched *upstreamFetch, want string) {
 	if fetched == nil || fetched.body == nil {
 		t.Fatal("fetched response body is empty")
 	}
-	defer fetched.body.Close()
+	defer func() {
+		if err := fetched.body.Close(); err != nil {
+			t.Errorf("close fetched body: %v", err)
+		}
+	}()
 	body, err := io.ReadAll(fetched.body)
 	if err != nil {
 		t.Fatalf("read fetched body: %v", err)

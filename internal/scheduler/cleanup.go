@@ -11,6 +11,13 @@ import (
 )
 
 func (r *Runtime) runCleanup(ctx context.Context) error {
+	if r.cleanup != nil {
+		report, err := r.runSharedCleanup(ctx)
+		if err == nil {
+			r.observeCleanupReport(ctx, report)
+		}
+		return err
+	}
 	cleaners := r.cleaners()
 	if cleaners.Len() == 0 {
 		return oops.In("scheduler").Errorf("cleanup service is not configured")

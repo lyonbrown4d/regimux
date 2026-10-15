@@ -169,17 +169,35 @@ func (s *Service) responseFromFetchError(req Request, requestRoute Route, cached
 	return nil, err
 }
 
+//nolint:cyclop,funlen,gocognit,gocyclo // Validation, storage fallback, and cancellation share replay ownership.
 func (s *Service) responseFromFetched(ctx context.Context, req Request, requestRoute Route, fetched *upstreamFetch) (*Response, error) {
+	if err := ctx.Err(); err != nil {
+		if fetched != nil {
+			closeReadCloser(fetched.body, s.logger, "close canceled maven upstream response body")
+		}
+		return nil, wrapError(err, "check maven request context")
+	}
 	if shouldPassThrough(req, fetched.status) {
 		return s.responseFromUpstream(req, requestRoute, fetched), nil
 	}
-	if s.cache == nil {
-		return s.responseFromUpstream(req, requestRoute, fetched), nil
-	}
 
-	replay, err := newReplayableBody(fetched.body)
+	replay, err := newReplayableBody(ctx, fetched.body)
 	if err != nil {
 		return nil, err
+	}
+	if validationErr := validateMavenReplay(requestRoute, fetched, replay); validationErr != nil {
+		replay.Remove()
+		return nil, wrapError(validationErr, "validate maven upstream artifact")
+	}
+	if s.cache == nil {
+		body, openErr := replay.Open(true)
+		if openErr != nil {
+			replay.Remove()
+			return nil, openErr
+		}
+		passthrough := *fetched
+		passthrough.body = body
+		return s.responseFromUpstream(req, requestRoute, &passthrough), nil
 	}
 	storeFetched := *fetched
 	storeFetched.body, err = replay.Open(false)
@@ -189,9 +207,9 @@ func (s *Service) responseFromFetched(ctx context.Context, req Request, requestR
 	}
 	stored, err := s.store(ctx, requestRoute, &storeFetched)
 	if err != nil {
-		if !shouldServeUpstreamAfterCacheError(err) {
+		if ctx.Err() != nil {
 			replay.Remove()
-			return nil, err
+			return nil, wrapError(ctx.Err(), "store maven artifact")
 		}
 		fallbackBody, openErr := replay.Open(true)
 		if openErr != nil {
@@ -199,13 +217,17 @@ func (s *Service) responseFromFetched(ctx context.Context, req Request, requestR
 			return nil, errors.Join(err, openErr)
 		}
 		if s.logger != nil {
-			s.logger.WarnContext(ctx, "maven cache write failed; serving upstream response", "alias", requestRoute.Alias, "repository", requestRoute.Repository, "reference", requestRoute.Reference, "error", err)
+			s.logger.WarnContext(ctx, "maven cache write failed; serving upstream response", "alias", requestRoute.Alias, "repository", requestRoute.Repository, "reference", requestRoute.Reference, "error_kind", mavenErrorKind(err))
 		}
 		fallback := *fetched
 		fallback.body = fallbackBody
 		return s.responseFromUpstream(req, requestRoute, &fallback), nil
 	}
 	replay.Remove()
+	if err := ctx.Err(); err != nil {
+		closeReadCloser(stored.body, s.logger, "close canceled cached maven response body")
+		return nil, wrapError(err, "check maven request context")
+	}
 	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
 }
 

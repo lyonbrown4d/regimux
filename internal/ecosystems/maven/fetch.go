@@ -6,7 +6,6 @@ import (
 	"io"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
 
 	clienthttp "github.com/arcgolabs/clientx/http"
@@ -18,6 +17,7 @@ import (
 )
 
 const defaultMavenAttemptTimeout = 10 * time.Second
+const defaultMavenBodyIdleTimeout = 30 * time.Second
 
 type mavenClientKey struct {
 	factory            *clientfactory.Factory
@@ -33,23 +33,43 @@ type mavenClientKey struct {
 	serverName         string
 }
 
-var mavenClients = struct {
-	sync.Mutex
-	clients map[mavenClientKey]clienthttp.Client
-}{
-	clients: make(map[mavenClientKey]clienthttp.Client),
-}
-
+//nolint:cyclop,funlen,gocognit,gocyclo // Endpoint failover is one stateful attempt loop.
 func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Maven, upstreamAlias, cfg)
 	var lastErr error
 	var lastRetryable *upstreamFetch
-	for _, endpoint := range endpoints {
+	for index, endpoint := range endpoints {
 		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
 		requestURL = urlWithQuery(requestURL, requestRoute.Query)
-		attemptCtx, cancel := mavenAttemptContext(ctx, cfg.HTTP.AttemptTimeout)
-		resp, err := s.fetchURL(attemptCtx, cfg, requestURL, method)
-		cancel()
+		started := time.Now()
+		attemptTimeout := cfg.HTTP.AttemptTimeout
+		if attemptTimeout <= 0 {
+			attemptTimeout = defaultMavenAttemptTimeout
+		}
+		attemptCtx, cancel := context.WithCancel(ctx)
+		attemptTimer := time.AfterFunc(attemptTimeout, cancel)
+		resp, err := s.fetchURL(attemptCtx, cfg, requestURL, method, cancel, attemptTimer.Stop)
+		status := 0
+		if resp != nil {
+			status = resp.status
+		}
+		eventErr := err
+		if ctx.Err() != nil {
+			eventErr = ctx.Err()
+		}
+		s.publishUpstreamRequest(ctx, requestRoute, endpoint, methodOrGet(method), status, time.Since(started), eventErr)
+		if err != nil || retryableMavenStatus(status) {
+			s.publishUpstreamFailover(ctx, requestRoute, endpoint, methodOrGet(method), status, eventErr, index+1 < len(endpoints))
+		}
+		if ctx.Err() != nil {
+			if resp != nil {
+				closeReadCloser(resp.body, s.logger, "close canceled maven endpoint response body")
+			}
+			if lastRetryable != nil {
+				closeReadCloser(lastRetryable.body, s.logger, "close canceled maven retryable response body")
+			}
+			return nil, wrapError(ctx.Err(), "fetch maven upstream")
+		}
 		if err == nil {
 			if retryableMavenStatus(resp.status) {
 				if lastRetryable != nil {
@@ -63,12 +83,6 @@ func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, 
 			}
 			return resp, nil
 		}
-		if ctx.Err() != nil {
-			if lastRetryable != nil {
-				closeReadCloser(lastRetryable.body, s.logger, "close canceled maven retryable response body")
-			}
-			return nil, wrapError(ctx.Err(), "fetch maven upstream")
-		}
 		lastErr = err
 	}
 	if lastRetryable != nil {
@@ -80,7 +94,7 @@ func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, 
 	return nil, wrapError(lastErr, "fetch maven upstream")
 }
 
-func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string) (*upstreamFetch, error) {
+func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string, cancel context.CancelFunc, stopAttemptTimeout func() bool) (*upstreamFetch, error) {
 	headers := http.Header{}
 	headers.Set("User-Agent", defaultUserAgent)
 	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
@@ -90,8 +104,12 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 		Auth:    cfg.Auth,
 	})
 	if err != nil {
+		stopAttemptTimeout()
+		cancel()
 		return nil, wrapError(err, "send maven upstream request")
 	}
+	stopAttemptTimeout()
+	resp.Body = upstreamhttp.WithIdleTimeout(resp.Body, cancel, defaultMavenBodyIdleTimeout)
 	defer closeReadCloser(resp.Body, s.logger, "close maven upstream response body")
 	body, err := materializeHTTPBody(resp.Body)
 	if err != nil {
@@ -124,9 +142,15 @@ func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseUR
 }
 
 func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clienthttp.Client, error) {
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	if s.closed {
+		return nil, errors.New("maven service is closed")
+	}
 	factory := s.factory
 	if factory == nil {
 		factory = clientfactory.New(s.logger)
+		s.factory = factory
 	}
 	key := mavenClientKey{
 		factory:            factory,
@@ -141,24 +165,38 @@ func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clientht
 		insecureSkipVerify: cfg.HTTP.TLS.InsecureSkipVerify,
 		serverName:         cfg.HTTP.TLS.ServerName,
 	}
-	mavenClients.Lock()
-	defer mavenClients.Unlock()
-	if client, ok := mavenClients.clients[key]; ok {
+	if s.clients == nil {
+		s.clients = make(map[mavenClientKey]clienthttp.Client)
+	}
+	if client, ok := s.clients[key]; ok {
 		return client, nil
 	}
 	client, err := upstreamhttp.NewClient(factory, cfg, baseURL, "maven.clientx")
 	if err != nil {
 		return nil, wrapError(err, "create maven upstream client")
 	}
-	mavenClients.clients[key] = client
+	s.clients[key] = client
 	return client, nil
 }
 
-func mavenAttemptContext(ctx context.Context, configured time.Duration) (context.Context, context.CancelFunc) {
-	if configured <= 0 {
-		configured = defaultMavenAttemptTimeout
+func (s *Service) Close() error {
+	if s == nil {
+		return nil
 	}
-	return context.WithTimeout(ctx, configured)
+	s.clientMu.Lock()
+	defer s.clientMu.Unlock()
+	if s.closed {
+		return nil
+	}
+	s.closed = true
+	var closeErr error
+	for key, client := range s.clients {
+		if client != nil {
+			closeErr = errors.Join(closeErr, client.Close())
+		}
+		delete(s.clients, key)
+	}
+	return closeErr
 }
 
 func retryableMavenStatus(status int) bool {

@@ -207,6 +207,7 @@
   "field.at": "时间",
   "field.enabled": "启用",
   "field.interval": "间隔",
+  "field.schedule": "执行计划",
   "field.unused_for": "未使用超过",
   "field.max_scan": "最大扫描",
   "field.max_deletes": "最大删除",

@@ -2,6 +2,7 @@
 package pypi
 
 import (
+	"context"
 	"io"
 	"log/slog"
 	"net/http"
@@ -40,16 +41,17 @@ type ServiceDependencies struct {
 }
 
 type Service struct {
-	cfg       config.Config
-	cache     *artifactcache.Store
-	metadata  meta.Store
-	client    *http.Client
-	factory   *clientfactory.Factory
-	logger    *slog.Logger
-	publicURL string
-	fills     *artifactcache.FillTracker
-	now       func() time.Time
-	events    events.Bus
+	cfg        config.Config
+	cache      *artifactcache.Store
+	metadata   meta.Store
+	client     *http.Client
+	factory    *clientfactory.Factory
+	logger     *slog.Logger
+	publicURL  string
+	fills      *artifactcache.FillTracker
+	cacheSlots chan struct{}
+	now        func() time.Time
+	events     events.Bus
 }
 
 type Request struct {
@@ -57,6 +59,10 @@ type Request struct {
 	Tail           string
 	Query          string
 	Method         string
+	Range          string
+	IfRange        string
+	Project        string
+	SHA256         string
 	PublicURL      string
 	SkipPullRecord bool
 }
@@ -97,10 +103,12 @@ type Route struct {
 }
 
 type upstreamFetch struct {
-	status     int
-	headers    http.Header
-	body       io.ReadCloser
-	requestURL string
+	status          int
+	headers         http.Header
+	body            io.ReadCloser
+	requestURL      string
+	expectedSHA256  string
+	transferContext context.Context
 }
 
 type storedResponse struct {

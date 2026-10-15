@@ -40,15 +40,19 @@ func (r *Runtime) registerJobSpec(ctx context.Context, scheduler gocron.Schedule
 		localJob := false
 		options.distributed = &localJob
 	}
-	if _, err := registerDurationJob(
+	job, err := registerDurationJob(
 		scheduler,
 		spec.Interval,
 		func(ctx context.Context) error {
 			return r.runJobSpec(ctx, spec)
 		},
 		options,
-	); err != nil {
+	)
+	if err != nil {
 		return oops.With("job", spec.Name).Wrapf(err, "register ecosystem job")
+	}
+	if spec.Name == sharedCleanupJobName {
+		r.cleanupJob = job
 	}
 	r.logger.InfoContext(ctx,
 		"registered ecosystem job",

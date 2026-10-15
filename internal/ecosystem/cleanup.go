@@ -5,6 +5,8 @@ import "context"
 // CleanupReport summarizes cache cleanup for any ecosystem.
 type CleanupReport struct {
 	Ecosystem              string
+	ScannedPackages        int
+	EvictedPackages        int
 	DryRun                 bool
 	ScannedBlobs           int
 	RecentBlobs            int

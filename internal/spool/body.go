@@ -14,22 +14,30 @@ type TempBody struct {
 	name string
 }
 
-func MaterializeReadCloser(body io.ReadCloser, pattern string) (io.ReadCloser, error) {
-	if body == nil {
-		return http.NoBody, nil
-	}
+// NewTempBody creates a writable spool whose file is removed when it is closed.
+func NewTempBody(pattern string) (*TempBody, error) {
 	tmp, err := os.CreateTemp("", pattern)
 	if err != nil {
 		return nil, wrapError(err, "create temp file")
 	}
-	name := tmp.Name()
+	return &TempBody{File: tmp, name: tmp.Name()}, nil
+}
+
+func MaterializeReadCloser(body io.ReadCloser, pattern string) (io.ReadCloser, error) {
+	if body == nil {
+		return http.NoBody, nil
+	}
+	tmp, err := NewTempBody(pattern)
+	if err != nil {
+		return nil, wrapError(err, "create temp file")
+	}
 	if _, err := io.Copy(tmp, body); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err)
+		return nil, errors.Join(err, tmp.Close())
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return nil, closeAndRemoveTemp(tmp, name, err)
+		return nil, errors.Join(err, tmp.Close())
 	}
-	return &TempBody{File: tmp, name: name}, nil
+	return tmp, nil
 }
 
 func (t *TempBody) Close() error {
@@ -37,10 +45,6 @@ func (t *TempBody) Close() error {
 		return nil
 	}
 	return wrapError(errors.Join(t.File.Close(), os.Remove(t.name)), "close and remove temp body")
-}
-
-func closeAndRemoveTemp(file *os.File, name string, err error) error {
-	return wrapError(errors.Join(err, file.Close(), os.Remove(name)), "close and remove temp file")
 }
 
 func wrapError(err error, message string) error {

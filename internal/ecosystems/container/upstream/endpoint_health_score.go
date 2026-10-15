@@ -81,6 +81,8 @@ func (t *EndpointHealthTracker) combinedSnapshotLocked(endpoint, repo *endpointH
 	snapshot.HasSuccessRate = repoSnapshot.HasSuccessRate
 	snapshot.SuccessRate = repoSnapshot.SuccessRate
 	snapshot.DegradedUntil = maxTime(snapshot.DegradedUntil, repo.degradedUntil)
+	snapshot.CooldownUntil = maxTime(snapshot.CooldownUntil, repo.cooldownUntil)
+	snapshot.InCooldown = now.Before(snapshot.CooldownUntil)
 	snapshot.LastSuccessAt = maxTime(snapshot.LastSuccessAt, repo.lastSuccessAt)
 	snapshot.LastFailureAt = maxTime(snapshot.LastFailureAt, repo.lastFailureAt)
 	snapshot.InDegraded = now.Before(snapshot.DegradedUntil)

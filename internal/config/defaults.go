@@ -127,10 +127,12 @@ func defaultSchedulerConfig() SchedulerConfig {
 		DistributedLock: true,
 		LockTTL:         5 * time.Minute,
 		Cleanup: SchedulerCleanupConfig{
-			Enabled:    true,
-			Interval:   time.Hour,
-			UnusedFor:  168 * time.Hour,
-			MaxDeletes: 1000,
+			Enabled:     true,
+			Cron:        "0 3 * * *",
+			Timezone:    "Asia/Shanghai",
+			UnusedFor:   168 * time.Hour,
+			MaxDeletes:  1000,
+			Distributed: true,
 		},
 		Prefetch: SchedulerPrefetchConfig{
 			Interval:             30 * time.Minute,

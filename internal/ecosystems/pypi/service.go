@@ -45,16 +45,17 @@ func NewService(deps ServiceDependencies) *Service {
 		fills = artifactcache.NewFillTracker()
 	}
 	return &Service{
-		cfg:       deps.Config,
-		cache:     cache,
-		metadata:  deps.Metadata,
-		client:    deps.Client,
-		factory:   factory,
-		logger:    logger.With("component", "pypi"),
-		publicURL: strings.TrimRight(deps.Config.Server.PublicURL, "/"),
-		fills:     fills,
-		now:       now,
-		events:    deps.Events,
+		cfg:        deps.Config,
+		cache:      cache,
+		metadata:   deps.Metadata,
+		client:     deps.Client,
+		factory:    factory,
+		logger:     logger.With("component", "pypi"),
+		publicURL:  strings.TrimRight(deps.Config.Server.PublicURL, "/"),
+		fills:      fills,
+		cacheSlots: make(chan struct{}, 8),
+		now:        now,
+		events:     deps.Events,
 	}
 }
 
@@ -80,6 +81,9 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 	if err := s.checkDependencyPolicy(requestRoute); err != nil {
 		s.recordPolicyDeniedPull(ctx, req, requestRoute, err)
 		return nil, err
+	}
+	if requestRoute.Kind == RoutePackage {
+		return s.getPackage(ctx, req, requestRoute, upstreamCfg, mode)
 	}
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
@@ -179,11 +183,26 @@ func (s *Service) responseFromFetched(ctx context.Context, req Request, requestR
 	if err != nil {
 		return nil, err
 	}
-	stored, err := s.store(ctx, requestRoute, prepared)
+	body, err := upstreamhttp.ReadAllLimited(prepared.body, pypiSimpleIndexMaxBytes)
+	closeReadCloser(prepared.body, s.logger, "close prepared pypi index")
 	if err != nil {
-		return nil, err
+		return nil, wrapError(err, "read prepared pypi index")
 	}
-	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
+	prepared.body = io.NopCloser(bytes.NewReader(body))
+	writeCtx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
+	stored, storeErr := s.store(writeCtx, requestRoute, prepared)
+	cancel()
+	if stored.body != nil {
+		closeReadCloser(stored.body, s.logger, "close pypi cached index copy")
+	}
+	if ctx.Err() != nil {
+		return nil, wrapError(ctx.Err(), "prepare pypi index response")
+	}
+	if storeErr != nil {
+		s.logger.WarnContext(ctx, "pypi index cache write failed; serving upstream", "alias", requestRoute.Alias)
+	}
+	prepared.body = io.NopCloser(bytes.NewReader(body))
+	return s.responseFromUpstream(req, requestRoute, prepared), nil
 }
 
 func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {

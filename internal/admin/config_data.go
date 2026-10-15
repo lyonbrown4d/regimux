@@ -111,6 +111,8 @@ func addSchedulerRows(rows *collectionlist.List[ConfigRow], cfg config.Scheduler
 	addRow(rows, "scheduler.distributed_lock", boolString(cfg.DistributedLock))
 	addRow(rows, "scheduler.lock_ttl", durationString(cfg.LockTTL))
 	addRow(rows, "scheduler.cleanup.enabled", boolString(cfg.Cleanup.Enabled))
+	addRow(rows, "scheduler.cleanup.cron", cfg.Cleanup.Cron)
+	addRow(rows, "scheduler.cleanup.timezone", cfg.Cleanup.Timezone)
 	addRow(rows, "scheduler.cleanup.interval", durationString(cfg.Cleanup.Interval))
 	addRow(rows, "scheduler.cleanup.unused_for", durationString(cfg.Cleanup.UnusedFor))
 	addRow(rows, "scheduler.cleanup.max_scan", strconv.Itoa(cfg.Cleanup.MaxScan))

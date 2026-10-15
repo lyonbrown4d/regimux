@@ -92,7 +92,7 @@ func localPackageHref(alias string, upstreamSimpleURL *url.URL, href string) str
 	if parsed.Fragment != "" {
 		local += "#" + parsed.Fragment
 	}
-	return local
+	return addPackageIdentity(local, upstreamSimpleURL, parsed.Fragment)
 }
 
 type hrefReplacement struct {

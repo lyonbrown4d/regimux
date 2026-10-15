@@ -135,7 +135,6 @@ func TestManifestProxyReturnsStaleOnUpstreamError(t *testing.T) {
 	if first.Cache != cache.CacheBypass {
 		t.Fatalf("first cache status = %s, want bypass", first.Cache)
 	}
-
 	time.Sleep(5 * time.Millisecond)
 	client.manifestErr = distribution.ErrUpstream.WithDetail("registry unavailable")
 	stale, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
@@ -220,6 +219,8 @@ func TestManifestProxyManifestCacheIgnoresAcceptMismatch(t *testing.T) {
 	if first.Cache != cache.CacheBypass {
 		t.Fatalf("first cache status = %s, want bypass", first.Cache)
 	}
+	old := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	digest := seedOldManifestAccess(ctx, t, metadata, old)
 
 	second, err := proxy.Manifests().Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: "hub",
@@ -234,10 +235,31 @@ func TestManifestProxyManifestCacheIgnoresAcceptMismatch(t *testing.T) {
 	if second.Cache != cache.CacheHit {
 		t.Fatalf("second cache status = %s, want hit", second.Cache)
 	}
+	blob, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
+	if err != nil || !ok || !blob.LastAccessAt.After(old) {
+		t.Fatalf("blob access time = %v, want after %s (err=%v)", blob, old, err)
+	}
 	if !bytes.Equal(second.Body, body) {
 		t.Fatalf("unexpected second body: %q", second.Body)
 	}
 	if client.manifestGets != 1 {
 		t.Fatalf("manifest gets = %d, want 1", client.manifestGets)
 	}
+}
+
+func seedOldManifestAccess(ctx context.Context, t *testing.T, metadata meta.Store, old time.Time) string {
+	t.Helper()
+	manifests, err := metadata.ListManifests(ctx)
+	if err != nil || manifests.Len() == 0 {
+		t.Fatalf("ListManifests() = (%v, %v), want manifest", manifests, err)
+	}
+	manifest := manifests.Values()[0]
+	_, err = metadata.UpsertBlob(ctx, meta.BlobRecord{
+		Digest: manifest.Digest, Size: manifest.Size, MediaType: manifest.MediaType,
+		ObjectKey: manifest.ObjectKey, LastAccessAt: old,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return manifest.Digest
 }

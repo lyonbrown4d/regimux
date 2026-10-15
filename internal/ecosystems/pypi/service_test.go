@@ -172,12 +172,26 @@ func TestServiceCachesPackageFileLongTerm(t *testing.T) {
 	t.Cleanup(upstream.Close)
 
 	now := time.Date(2026, 6, 3, 12, 0, 0, 0, time.UTC)
-	service := newTestService(ctx, t, upstream.URL, func() time.Time { return now })
+	service, metadata, _ := newTestServiceWithStores(ctx, t, upstream.URL, func() time.Time { return now })
 	tail := packageTailFor(t, upstream.URL, "/packages/demo-1.0.0.tar.gz")
 	first, err := service.Get(ctx, pypi.Request{Alias: "pypi", Tail: tail})
 	requireNoError(t, "first package get", err)
 	if got := readResponse(t, first); got != "sdist-bytes" {
 		t.Fatalf("first body = %q, want sdist-bytes", got)
+	}
+	blobs, err := metadata.ListBlobs(ctx)
+	requireNoError(t, "list blobs", err)
+	blob := blobs.Values()[0]
+	blob.ID = 0
+	old := now.Add(-30 * 24 * time.Hour)
+	blob.LastAccessAt = old
+	err = metadata.DeleteBlob(ctx, meta.BlobKey{Digest: blob.Digest})
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = metadata.UpsertBlob(ctx, blob)
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	now = now.Add(24 * time.Hour)
@@ -188,6 +202,11 @@ func TestServiceCachesPackageFileLongTerm(t *testing.T) {
 	}
 	if second.Cache != cacheHit {
 		t.Fatalf("second cache = %q, want %q", second.Cache, cacheHit)
+	}
+	blobAfter, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: blob.Digest})
+	requireNoError(t, "get blob metadata", err)
+	if !ok || !blobAfter.LastAccessAt.After(old) {
+		t.Fatalf("blob access time = %v, want after %s", blobAfter, old)
 	}
 	if requests != 1 {
 		t.Fatalf("upstream requests = %d, want 1", requests)

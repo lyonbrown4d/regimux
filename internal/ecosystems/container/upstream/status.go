@@ -1,6 +1,7 @@
 package upstream
 
 import (
+	"errors"
 	"net/http"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -13,6 +14,24 @@ type upstreamHTTPStatusError struct {
 
 type authenticatedUpstreamStatusError struct {
 	err error
+}
+
+type allowlistForbiddenError struct {
+	err error
+}
+
+func (e *allowlistForbiddenError) Error() string {
+	if e == nil || e.err == nil {
+		return "public mirror denied the repository because it is not in the allowlist"
+	}
+	return e.err.Error()
+}
+
+func (e *allowlistForbiddenError) Unwrap() error {
+	if e == nil {
+		return nil
+	}
+	return e.err
 }
 
 func (e *authenticatedUpstreamStatusError) Error() string {
@@ -77,4 +96,13 @@ func withAuthenticatedUpstreamStatus(status int, kind string) error {
 	return &authenticatedUpstreamStatusError{
 		err: withUpstreamStatus(status, MapStatus(status, kind)),
 	}
+}
+
+func withAllowlistForbidden(kind string) error {
+	return &allowlistForbiddenError{err: withUpstreamStatus(http.StatusForbidden, MapStatus(http.StatusForbidden, kind))}
+}
+
+func isAllowlistForbidden(err error) bool {
+	allowlistErr, ok := errors.AsType[*allowlistForbiddenError](err)
+	return ok && allowlistErr != nil
 }

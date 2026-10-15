@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/events"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
@@ -23,19 +24,22 @@ type RuntimeDependencies struct {
 	Runtimes *collectionlist.List[ecosystem.Runtime]
 	Metrics  *observability.Metrics
 	Metadata meta.Store
+	Objects  object.Store
 	Workers  *worker.Pools
 }
 
 var Module = dix.NewModule("scheduler",
 	dix.Providers(
-		dix.Provider6[*Runtime, config.Config, *slog.Logger, *collectionlist.List[ecosystem.Runtime], *observability.Metrics, meta.Store, *worker.Pools](
-			func(cfg config.Config, logger *slog.Logger, runtimes *collectionlist.List[ecosystem.Runtime], metrics *observability.Metrics, metadata meta.Store, workers *worker.Pools) *Runtime {
+		dix.Provider2[cleanupStores, meta.Store, object.Store](newCleanupStores),
+		dix.Provider6[*Runtime, config.Config, *slog.Logger, *collectionlist.List[ecosystem.Runtime], *observability.Metrics, cleanupStores, *worker.Pools](
+			func(cfg config.Config, logger *slog.Logger, runtimes *collectionlist.List[ecosystem.Runtime], metrics *observability.Metrics, stores cleanupStores, workers *worker.Pools) *Runtime {
 				return NewRuntime(RuntimeDependencies{
 					Config:   cfg,
 					Logger:   logger,
 					Runtimes: runtimes,
 					Metrics:  metrics,
-					Metadata: metadata,
+					Metadata: stores.metadata,
+					Objects:  stores.objects,
 					Workers:  workers,
 				})
 			},
@@ -50,6 +54,15 @@ var Module = dix.NewModule("scheduler",
 		dix.OnStop[*Runtime](stopRuntime, dix.LifecycleName("regimux.scheduler_stop"), dix.LifecyclePriority(-50), dix.LifecycleTimeout(20*time.Second)),
 	),
 )
+
+type cleanupStores struct {
+	metadata meta.Store
+	objects  object.Store
+}
+
+func newCleanupStores(metadata meta.Store, objects object.Store) cleanupStores {
+	return cleanupStores{metadata: metadata, objects: objects}
+}
 
 func startRuntime(ctx context.Context, runtime *Runtime) error {
 	if runtime == nil {

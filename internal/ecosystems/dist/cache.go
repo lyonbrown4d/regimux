@@ -20,6 +20,9 @@ func (s *Service) cached(ctx context.Context, req Request, requestRoute Route) (
 	if err != nil || !ok {
 		return storedResponse{}, false, err
 	}
+	if err := artifactcache.Touch(ctx, s.metadata, *manifest, s.now()); err != nil {
+		s.logger.WarnContext(ctx, "touch distribution cache access failed", "digest", manifest.Digest, "error", err)
+	}
 	return s.openCachedObject(ctx, req, *tag, *manifest)
 }
 

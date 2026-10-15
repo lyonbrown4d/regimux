@@ -3,28 +3,10 @@ package container
 import (
 	"context"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/samber/oops"
 )
-
-func (r *Runtime) addCleanupJob(jobs *collectionlist.List[ecosystem.JobSpec]) {
-	cfg := r.cfg.Scheduler.Cleanup
-	jobs.Add(ecosystem.JobSpec{
-		Name:        "regimux." + r.Name() + ".cache.cleanup",
-		Kind:        ecosystem.JobCleanup,
-		Ecosystem:   r.Name(),
-		Tags:        collectionlist.NewList("maintenance", "cleanup", r.Name()),
-		Interval:    cfg.Interval,
-		Enabled:     cfg.Enabled && cfg.Interval > 0,
-		Distributed: cfg.Distributed,
-		Run: func(ctx context.Context) (ecosystem.JobRunResult, error) {
-			report, err := r.Cleanup(ctx)
-			return ecosystem.JobRunResult{CleanupReport: report}, err
-		},
-	})
-}
 
 func (r *Runtime) Cleanup(ctx context.Context) (*ecosystem.CleanupReport, error) {
 	if r == nil || r.cleanup == nil {

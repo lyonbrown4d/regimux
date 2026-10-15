@@ -34,6 +34,9 @@ func startAPIServerWithOptions(t *testing.T, opts api.Options) string {
 		t.Fatalf("start api server: %v", err)
 	}
 	t.Cleanup(func() {
+		// Both the startup probe and auth helpers use the shared transport.
+		// Release idle connections before testing Fiber's graceful shutdown.
+		http.DefaultClient.CloseIdleConnections()
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		if err := server.Stop(ctx); err != nil {

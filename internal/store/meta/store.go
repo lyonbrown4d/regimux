@@ -77,6 +77,12 @@ type BlobRepository interface {
 	ListBlobs(ctx context.Context, opts ...BlobListOption) (*collectionlist.List[BlobRecord], error)
 }
 
+// BlobAccessRepository atomically advances a blob's access time without
+// replacing other blob metadata. Implementations may return nil when no row exists.
+type BlobAccessRepository interface {
+	TouchBlob(ctx context.Context, key BlobKey, at time.Time) error
+}
+
 type RepoBlobRepository interface {
 	RepoBlob(ctx context.Context, key RepoBlobKey) (*RepoBlobRecord, bool, error)
 	UpsertRepoBlob(ctx context.Context, record RepoBlobRecord) (*RepoBlobRecord, error)

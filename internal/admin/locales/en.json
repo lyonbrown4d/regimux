@@ -207,6 +207,7 @@
   "field.at": "At",
   "field.enabled": "Enabled",
   "field.interval": "Interval",
+  "field.schedule": "Schedule",
   "field.unused_for": "Unused for",
   "field.max_scan": "Max scan",
   "field.max_deletes": "Max deletes",

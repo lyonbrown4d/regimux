@@ -3,10 +3,8 @@ package upstream
 import (
 	"context"
 	"net/http"
-	"strconv"
 	"time"
 
-	"github.com/arcgolabs/clientx"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	retry "github.com/sethvargo/go-retry"
 	"resty.dev/v3"
@@ -40,10 +38,27 @@ func (c *Client) do(
 	if err != nil {
 		return upstreamResponse{}, err
 	}
-	if resp.StatusCode != http.StatusUnauthorized {
-		return resp, nil
+	if resp.StatusCode == http.StatusUnauthorized {
+		return c.doBearerChallenge(ctx, runtime, spec, resp)
 	}
+	if resp.StatusCode == http.StatusForbidden {
+		forbiddenEvidence, evidenceErr := c.publicMirrorAllowlistForbidden(ctx, runtime, runtime, spec, resp)
+		if evidenceErr != nil {
+			return upstreamResponse{}, evidenceErr
+		}
+		if forbiddenEvidence {
+			return upstreamResponse{}, withAllowlistForbidden(spec.operation)
+		}
+	}
+	return resp, nil
+}
 
+func (c *Client) doBearerChallenge(
+	ctx context.Context,
+	runtime upstreamRuntime,
+	spec requestSpec,
+	resp upstreamResponse,
+) (upstreamResponse, error) {
 	challenge := parseBearerChallenge(resp.Header.Get(distribution.HeaderWWWAuthenticate))
 	if challenge.Realm == "" {
 		return resp, nil
@@ -62,6 +77,25 @@ func (c *Client) do(
 	if err != nil {
 		return upstreamResponse{}, err
 	}
+	return c.handleBearerRetry(ctx, runtime, retryRuntime, spec, retryResp)
+}
+
+func (c *Client) handleBearerRetry(
+	ctx context.Context,
+	configuredRuntime upstreamRuntime,
+	retryRuntime upstreamRuntime,
+	spec requestSpec,
+	retryResp upstreamResponse,
+) (upstreamResponse, error) {
+	if retryResp.StatusCode == http.StatusForbidden {
+		forbiddenEvidence, evidenceErr := c.publicMirrorAllowlistForbidden(ctx, configuredRuntime, retryRuntime, spec, retryResp)
+		if evidenceErr != nil {
+			return upstreamResponse{}, evidenceErr
+		}
+		if forbiddenEvidence {
+			return upstreamResponse{}, withAllowlistForbidden(spec.operation)
+		}
+	}
 	if retryResp.StatusCode == http.StatusUnauthorized || retryResp.StatusCode == http.StatusForbidden {
 		return upstreamResponse{}, closeBodyWithError(
 			retryResp.Body,
@@ -69,6 +103,19 @@ func (c *Client) do(
 		)
 	}
 	return retryResp, nil
+}
+
+func (c *Client) publicMirrorAllowlistForbidden(
+	ctx context.Context,
+	configuredRuntime upstreamRuntime,
+	requestRuntime upstreamRuntime,
+	spec requestSpec,
+	resp upstreamResponse,
+) (bool, error) {
+	if resp.StatusCode != http.StatusForbidden || !isPublicAnonymousMirror(configuredRuntime) {
+		return false, nil
+	}
+	return c.confirmAllowlistForbidden(ctx, requestRuntime, spec, resp)
 }
 
 func (c *Client) execute(
@@ -210,63 +257,4 @@ func (c *Client) executeOnce(
 		)
 	}
 	return rawUpstreamResponse(resp)
-}
-
-func maxUpstreamAttempts(cfg HTTPRetryConfig) int {
-	if !cfg.Enabled {
-		return 1
-	}
-	return max(1, cfg.MaxRetries+1)
-}
-
-func shouldRetryUpstreamStatus(status int) bool {
-	return status == http.StatusTooManyRequests || status >= http.StatusInternalServerError
-}
-
-func shouldRetryUpstreamError(err error) bool {
-	switch clientx.KindOf(err) {
-	case clientx.ErrorKindTimeout, clientx.ErrorKindTemporary, clientx.ErrorKindConnRefused, clientx.ErrorKindDNS, clientx.ErrorKindNetwork:
-		return true
-	case clientx.ErrorKindUnknown, clientx.ErrorKindCanceled, clientx.ErrorKindTLS, clientx.ErrorKindClosed, clientx.ErrorKindCodec:
-		return false
-	default:
-		return false
-	}
-}
-
-func upstreamRetryBackoff(cfg HTTPRetryConfig) retry.Backoff {
-	wait := cfg.WaitMin
-	if wait <= 0 {
-		wait = 100 * time.Millisecond
-	}
-	backoff := retry.NewExponential(wait)
-	if cfg.WaitMax > 0 {
-		backoff = retry.WithCappedDuration(cfg.WaitMax, backoff)
-	}
-	return retry.WithMaxRetries(safeRetryCount(cfg.MaxRetries), backoff)
-}
-
-func safeRetryCount(maxRetries int) uint64 {
-	if maxRetries <= 0 {
-		return 0
-	}
-	retries, err := strconv.ParseUint(strconv.Itoa(maxRetries), 10, 64)
-	if err != nil {
-		return 0
-	}
-	return retries
-}
-
-func waitRetry(ctx context.Context, wait time.Duration) error {
-	if wait <= 0 {
-		return nil
-	}
-	timer := time.NewTimer(wait)
-	defer timer.Stop()
-	select {
-	case <-timer.C:
-		return nil
-	case <-ctx.Done():
-		return wrapError(ctx.Err(), "wait upstream retry")
-	}
 }

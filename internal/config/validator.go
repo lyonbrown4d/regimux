@@ -121,6 +121,7 @@ func validateSchedulerCleanupStruct(sl validator.StructLevel) {
 	if cleanup.MaxBytes > 0 && cleanup.TargetBytes > cleanup.MaxBytes {
 		sl.ReportError(cleanup.TargetBytes, "target_bytes", "TargetBytes", "ltefield", "max_bytes")
 	}
+	validateCleanupSchedule(sl, cleanup)
 }
 
 func validateContainerRegistryStruct(sl validator.StructLevel) {

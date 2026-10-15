@@ -21,20 +21,45 @@ func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstream
 
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.PyPI, upstreamAlias, cfg)
 	var lastErr error
+	var lastResponse *upstreamFetch
 	for _, endpoint := range endpoints {
 		upstreamTail := upstreamTail(endpoint, requestRoute)
 		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(upstreamTail, "/")
 		requestURL = urlWithQuery(requestURL, requestRoute.Query)
-		resp, err := s.fetchURL(ctx, cfg, requestURL, method)
-		if err == nil {
+		resp, err := s.fetchIndexAttempt(ctx, cfg, requestURL, method)
+		if lastResponse != nil {
+			closeReadCloser(lastResponse.body, s.logger, "close superseded pypi index response")
+		}
+		if err == nil && !retryablePackageStatus(resp.status) {
 			return resp, nil
 		}
+		lastResponse = resp
 		lastErr = err
+		if ctx.Err() != nil {
+			break
+		}
 	}
-	if lastErr == nil {
-		lastErr = errors.New("no pypi upstream endpoint is configured")
+	return finishPyPIFetch(lastResponse, lastErr)
+}
+
+func finishPyPIFetch(last *upstreamFetch, err error) (*upstreamFetch, error) {
+	if last != nil {
+		return last, nil
 	}
-	return nil, wrapError(lastErr, "fetch pypi proxy upstream")
+	if err == nil {
+		err = errors.New("no pypi upstream endpoint is configured")
+	}
+	return nil, wrapError(err, "fetch pypi upstream")
+}
+
+func (s *Service) fetchIndexAttempt(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string) (*upstreamFetch, error) {
+	timeout := cfg.HTTP.AttemptTimeout
+	if timeout <= 0 {
+		timeout = pypiDefaultAttemptTimeout
+	}
+	attemptCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	return s.fetchURL(attemptCtx, cfg, requestURL, method)
 }
 
 func upstreamTail(endpoint string, requestRoute Route) string {

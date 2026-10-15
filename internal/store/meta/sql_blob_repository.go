@@ -3,8 +3,10 @@ package meta
 import (
 	"context"
 	"errors"
+	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
+	"github.com/arcgolabs/dbx/querydsl"
 	"github.com/arcgolabs/dbx/repository"
 )
 
@@ -40,6 +42,7 @@ func (s *SQLStore) UpsertBlob(ctx context.Context, record BlobRecord) (*BlobReco
 	if ok {
 		record.ID = existing.ID
 		record.CreatedAt = existing.CreatedAt
+		record.LastAccessAt = maxTime(record.LastAccessAt, existing.LastAccessAt)
 	}
 	if record.CreatedAt.IsZero() {
 		record.CreatedAt = now
@@ -52,10 +55,61 @@ func (s *SQLStore) UpsertBlob(ctx context.Context, record BlobRecord) (*BlobReco
 	if err := s.writeBlobRow(ctx, &record, row); err != nil {
 		return nil, err
 	}
-	if err := s.refreshRepositoriesForBlob(ctx, key.Digest, record.UpdatedAt); err != nil {
+	if err := s.touchNewerBlobAccess(ctx, key, ok, existing, record.LastAccessAt); err != nil {
 		return nil, err
 	}
-	return &record, nil
+	return s.finishBlobUpsert(ctx, key)
+}
+
+func (s *SQLStore) finishBlobUpsert(ctx context.Context, key BlobKey) (*BlobRecord, error) {
+	persisted, found, err := s.Blob(ctx, key)
+	if err != nil {
+		return nil, err
+	}
+	if !found {
+		return nil, errors.New("upserted blob metadata was not found")
+	}
+	if err := s.refreshRepositoriesForBlob(ctx, key.Digest, persisted.UpdatedAt); err != nil {
+		return nil, err
+	}
+	return persisted, nil
+}
+
+func (s *SQLStore) touchNewerBlobAccess(ctx context.Context, key BlobKey, found bool, existing *BlobRecord, requested time.Time) error {
+	if !found || !requested.After(existing.LastAccessAt) {
+		return nil
+	}
+	return s.TouchBlob(ctx, key, requested)
+}
+
+func (s *SQLStore) TouchBlob(ctx context.Context, key BlobKey, at time.Time) error {
+	key, err := normalizeBlobKey(key)
+	if err != nil {
+		return err
+	}
+	at = metadataTimestamp(at)
+	stamp := unixNano(at)
+	query := querydsl.Update(s.blobs.Schema()).
+		Set(
+			sqlBlobRows.LastAccessAt.Set(stamp),
+			sqlBlobRows.UpdatedAt.Set(unixNano(metadataNow())),
+		).
+		Where(querydsl.And(
+			sqlBlobRows.Digest.Eq(key.Digest),
+			sqlBlobRows.LastAccessAt.Lt(stamp),
+		))
+	result, err := s.blobs.Update(ctx, query)
+	if err != nil {
+		return wrapError(err, "touch blob access metadata")
+	}
+	rows, err := result.RowsAffected()
+	if err != nil {
+		return wrapError(err, "count touched blob metadata rows")
+	}
+	if rows == 0 {
+		return nil
+	}
+	return s.refreshRepositoriesForBlob(ctx, key.Digest, metadataNow())
 }
 
 func (s *SQLStore) writeBlobRow(ctx context.Context, record *BlobRecord, row blobRow) error {
@@ -94,7 +148,13 @@ func (s *SQLStore) updateBlobAfterCreateRace(ctx context.Context, record *BlobRe
 	if err != nil {
 		return false, err
 	}
-	return true, s.updateBlobRow(ctx, row)
+	if err := s.updateBlobRow(ctx, row); err != nil {
+		return false, err
+	}
+	if err := s.TouchBlob(ctx, BlobKey{Digest: digest}, record.LastAccessAt); err != nil {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *SQLStore) DeleteBlob(ctx context.Context, key BlobKey) error {
@@ -171,6 +231,5 @@ func (s *SQLStore) updateBlobRow(ctx context.Context, row blobRow) error {
 		sqlBlobRows.ObjectKey.Set(row.ObjectKey),
 		sqlBlobRows.CreatedAt.Set(row.CreatedAt),
 		sqlBlobRows.UpdatedAt.Set(row.UpdatedAt),
-		sqlBlobRows.LastAccessAt.Set(row.LastAccessAt),
 	)
 }

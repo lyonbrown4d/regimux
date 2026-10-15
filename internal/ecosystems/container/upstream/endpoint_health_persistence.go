@@ -123,9 +123,12 @@ func (c *Client) recordEndpointFailure(ctx context.Context, req failoverRequest,
 	}
 	now := time.Now()
 	var snapshot EndpointHealthSnapshot
-	if isContentInconsistent(err) {
+	switch {
+	case isAllowlistForbidden(err):
+		snapshot = pool.recordRepositoryRequestFailure(runtime, req.repository, now)
+	case isContentInconsistent(err):
 		snapshot = pool.recordContentInconsistent(runtime, req.repository, now)
-	} else {
+	default:
 		snapshot = pool.recordRequestFailure(runtime, req.repository, now)
 	}
 	c.persistEndpointHealthSnapshot(ctx, pool.alias, pool.health.Snapshot(runtime.config.Registry, now))

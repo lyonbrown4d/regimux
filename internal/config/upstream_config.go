@@ -59,29 +59,38 @@ func normalizeUpstreamConfig(alias string, upstreamCfg UpstreamConfig) (Upstream
 
 func normalizeMirrorForbiddenPolicy(alias string, upstreamCfg UpstreamConfig) (string, error) {
 	policy := strings.ToLower(strings.TrimSpace(upstreamCfg.MirrorForbiddenPolicy))
-	if policy == "" {
+	switch policy {
+	case "", "terminal":
 		return "terminal", nil
-	}
-	if policy != "terminal" && policy != "public" {
+	case "public":
+		if err := validatePublicMirrorForbiddenPolicy(alias, upstreamCfg); err != nil {
+			return "", err
+		}
+		return "public", nil
+	default:
 		return "", oops.In("config").With("alias", alias, "mirror_forbidden_policy", policy).
 			Errorf("upstreams.%s.mirror_forbidden_policy must be terminal or public", alias)
 	}
-	if policy != "public" {
-		return policy, nil
-	}
+}
+
+func validatePublicMirrorForbiddenPolicy(alias string, upstreamCfg UpstreamConfig) error {
 	if upstreamCfg.Type != "oci" {
-		return "", oops.In("config").With("alias", alias, "type", upstreamCfg.Type).
+		return oops.In("config").With("alias", alias, "type", upstreamCfg.Type).
 			Errorf("upstreams.%s.mirror_forbidden_policy=public is only supported for OCI upstreams", alias)
 	}
 	if upstreamCfg.Auth.Type != "anonymous" {
-		return "", oops.In("config").With("alias", alias, "auth_type", upstreamCfg.Auth.Type).
+		return oops.In("config").With("alias", alias, "auth_type", upstreamCfg.Auth.Type).
 			Errorf("upstreams.%s.mirror_forbidden_policy=public requires anonymous authentication", alias)
 	}
+	if upstreamCfg.Auth.Username != "" || upstreamCfg.Auth.Password != "" || upstreamCfg.Auth.Token != "" {
+		return oops.In("config").With("alias", alias).
+			Errorf("upstreams.%s.mirror_forbidden_policy=public does not allow configured credentials", alias)
+	}
 	if len(upstreamCfg.Mirrors) == 0 {
-		return "", oops.In("config").With("alias", alias).
+		return oops.In("config").With("alias", alias).
 			Errorf("upstreams.%s.mirror_forbidden_policy=public requires at least one configured mirror", alias)
 	}
-	return policy, nil
+	return nil
 }
 
 func normalizeUpstreamType(value string) string {

@@ -19,6 +19,13 @@ type runtimeAdapter struct {
 	service *Service
 }
 
+func (r *runtimeAdapter) Close() error {
+	if r == nil || r.service == nil {
+		return nil
+	}
+	return r.service.Close()
+}
+
 func newRuntimeAdapter(service *Service, prober *ecosystem.EndpointProber, metadata meta.Store, pools *worker.Pools, logger *slog.Logger) *runtimeAdapter {
 	adapter := &runtimeAdapter{service: service}
 	options := depruntime.AdapterOptions[Upstream]{

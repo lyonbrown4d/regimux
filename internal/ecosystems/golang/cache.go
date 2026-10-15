@@ -21,6 +21,9 @@ func (s *Service) cached(ctx context.Context, requestRoute route) (storedRespons
 	if err != nil || !ok {
 		return storedResponse{}, false, err
 	}
+	if err := artifactcache.Touch(ctx, s.metadata, *metadata.manifest, time.Now()); err != nil {
+		s.logger.WarnContext(ctx, "touch Go cache access failed", "digest", metadata.manifest.Digest, "error", err)
+	}
 	return s.openCachedObject(ctx, metadata)
 }
 

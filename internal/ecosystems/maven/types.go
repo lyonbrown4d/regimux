@@ -5,8 +5,10 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"sync"
 	"time"
 
+	clienthttp "github.com/arcgolabs/clientx/http"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
@@ -49,6 +51,9 @@ type Service struct {
 	fills    *artifactcache.FillTracker
 	now      func() time.Time
 	events   events.Bus
+	clientMu sync.Mutex
+	clients  map[mavenClientKey]clienthttp.Client
+	closed   bool
 }
 
 type Request struct {

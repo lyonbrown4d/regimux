@@ -67,6 +67,21 @@ func (t *EndpointHealthTracker) RecordRequestFailure(registry, repository string
 	return t.combinedSnapshotLocked(endpoint, repo, now)
 }
 
+// RecordRepositoryRequestFailure records a repository-specific coverage failure
+// without placing the whole registry endpoint into cooldown.
+func (t *EndpointHealthTracker) RecordRepositoryRequestFailure(registry, repository string, now time.Time) EndpointHealthSnapshot {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	endpoint := t.stateLocked(registry, "")
+	if repository == "" {
+		return t.snapshotLocked(endpoint, now)
+	}
+	repo := t.stateLocked(registry, repository)
+	t.recordFailureLocked(repo, repository, now)
+	return t.combinedSnapshotLocked(endpoint, repo, now)
+}
+
 func (t *EndpointHealthTracker) RecordContentInconsistent(registry, repository string, now time.Time) EndpointHealthSnapshot {
 	t.mu.Lock()
 	defer t.mu.Unlock()

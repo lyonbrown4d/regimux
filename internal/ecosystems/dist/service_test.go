@@ -10,6 +10,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/dist"
@@ -45,11 +46,26 @@ func TestServiceCachesFullDistArtifact(t *testing.T) {
 		Repository: "dist",
 		Reference:  "gradle-8.7-bin.zip",
 	}, testZIPBody, "application/zip")
+	blobs, err := metadata.ListBlobs(ctx)
+	requireNoError(t, "list blobs", err)
+	blob := blobs.Values()[0]
+	blob.ID = 0 // Reinsert a fresh metadata row after resetting the access timestamp.
+	old := time.Now().UTC().Add(-30 * 24 * time.Hour)
+	blob.LastAccessAt = old
+	err = metadata.DeleteBlob(ctx, meta.BlobKey{Digest: blob.Digest})
+	requireNoError(t, "reset blob access", err)
+	_, err = metadata.UpsertBlob(ctx, blob)
+	requireNoError(t, "seed old blob access", err)
 
 	second, err := service.Get(ctx, dist.Request{Alias: "gradle", Tail: "gradle-8.7-bin.zip", Method: http.MethodGet})
 	requireNoError(t, "second get", err)
 	if second.Cache != artifactcache.CacheHit {
 		t.Fatalf("second cache = %q", second.Cache)
+	}
+	blobAfter, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: blob.Digest})
+	requireNoError(t, "get blob metadata", err)
+	if !ok || !blobAfter.LastAccessAt.After(old) {
+		t.Fatalf("blob access time = %v, want after %s", blobAfter, old)
 	}
 	if body := readResponse(t, second); body != testZIPBody {
 		t.Fatalf("second body = %q", body)

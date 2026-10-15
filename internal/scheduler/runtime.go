@@ -10,10 +10,12 @@ import (
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	redislock "github.com/go-co-op/gocron-redis-lock/v2"
 	"github.com/go-co-op/gocron/v2"
+	"github.com/lyonbrown4d/regimux/internal/cachegc"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/observability"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	goredis "github.com/redis/go-redis/v9"
 	"github.com/samber/lo"
@@ -37,9 +39,14 @@ type Runtime struct {
 	runtimes           *collectionlist.List[ecosystem.Runtime]
 	metrics            *observability.Metrics
 	metadata           meta.Store
+	objects            object.Store
 	workers            *worker.Pools
 	scheduler          gocron.Scheduler
 	redis              goredis.UniversalClient
+	cleanup            *cachegc.Service
+	cleanupNow         func() time.Time
+	cleanupGate        chan struct{}
+	cleanupJob         gocron.Job
 }
 
 func NewRuntime(deps RuntimeDependencies) *Runtime {
@@ -53,14 +60,21 @@ func NewRuntime(deps RuntimeDependencies) *Runtime {
 	if deps.Runtimes != nil {
 		runtimes = collectionlist.NewList(deps.Runtimes.Values()...)
 	}
-	return &Runtime{
-		cfg:      cfg,
-		logger:   logger.With("component", "scheduler"),
-		runtimes: runtimes,
-		metrics:  metrics,
-		metadata: deps.Metadata,
-		workers:  deps.Workers,
+	runtime := &Runtime{
+		cfg:         cfg,
+		logger:      logger.With("component", "scheduler"),
+		runtimes:    runtimes,
+		metrics:     metrics,
+		metadata:    deps.Metadata,
+		objects:     deps.Objects,
+		workers:     deps.Workers,
+		cleanupGate: make(chan struct{}, 1),
+		cleanupNow:  func() time.Time { return time.Now().UTC() },
 	}
+	if deps.Metadata != nil && deps.Objects != nil {
+		runtime.cleanup = cachegc.NewCleanupService(deps.Metadata, deps.Objects)
+	}
+	return runtime
 }
 
 func (r *Runtime) Start(ctx context.Context) error {
@@ -89,6 +103,9 @@ func (r *Runtime) Start(ctx context.Context) error {
 	r.scheduler = scheduler
 
 	if err := r.registerEcosystemJobs(ctx, scheduler); err != nil {
+		return join(err, r.Stop(ctx))
+	}
+	if err := r.registerCleanupJob(ctx, scheduler); err != nil {
 		return join(err, r.Stop(ctx))
 	}
 	if err := r.registerRefreshJob(ctx, scheduler); err != nil {
@@ -129,6 +146,7 @@ func (r *Runtime) Stop(ctx context.Context) (err error) {
 	if r.scheduler != nil {
 		stopErr = r.scheduler.ShutdownWithContext(ctx)
 		r.scheduler = nil
+		r.cleanupJob = nil
 	}
 	if r.redis != nil {
 		if err := r.redis.Close(); err != nil {
@@ -236,65 +254,4 @@ func join(left, right error) error {
 		return nil
 	}
 	return oops.Wrapf(err, "join scheduler errors")
-}
-
-func (r *Runtime) startBackground(parent context.Context, task func(context.Context)) bool {
-	r.initializeBackground()
-	parent = ensureContext(parent)
-	r.backgroundMu.Lock()
-	if r.backgroundStopping {
-		r.backgroundMu.Unlock()
-		return false
-	}
-	r.backgroundTasks.Add(1)
-	runtimeCtx := r.backgroundCtx
-	r.backgroundMu.Unlock()
-
-	taskCtx, cancel := context.WithCancel(context.WithoutCancel(parent))
-	go cancelOnSignal(runtimeCtx.Done(), taskCtx.Done(), cancel)
-	go func() {
-		defer r.backgroundTasks.Done()
-		defer cancel()
-		task(taskCtx)
-	}()
-	return true
-}
-
-func (r *Runtime) initializeBackground() {
-	r.backgroundOnce.Do(func() {
-		r.backgroundCtx, r.backgroundCancel = context.WithCancel(context.Background())
-		r.backgroundDone = make(chan struct{})
-	})
-}
-
-func (r *Runtime) beginBackgroundStop() {
-	r.initializeBackground()
-	r.backgroundStopOnce.Do(func() {
-		r.backgroundMu.Lock()
-		r.backgroundStopping = true
-		r.backgroundCancel()
-		r.backgroundMu.Unlock()
-		go func() {
-			r.backgroundTasks.Wait()
-			close(r.backgroundDone)
-		}()
-	})
-}
-
-func (r *Runtime) waitForBackground(ctx context.Context) error {
-	r.beginBackgroundStop()
-	select {
-	case <-r.backgroundDone:
-		return nil
-	case <-ctx.Done():
-		return oops.Wrapf(ctx.Err(), "wait for scheduler background tasks")
-	}
-}
-
-func cancelOnSignal(stop, completed <-chan struct{}, cancel context.CancelFunc) {
-	select {
-	case <-stop:
-		cancel()
-	case <-completed:
-	}
 }

@@ -15,7 +15,13 @@ func (r *Runtime) TriggerCleanup(ctx context.Context) error {
 	if r == nil {
 		return oops.In("scheduler").Errorf("scheduler is not configured")
 	}
-	return r.runAsync(ctx, "regimux.cache.cleanup.manual", []string{"maintenance", "cleanup", "manual"}, func(ctx context.Context) error {
+	if r.cleanupJob != nil {
+		if err := r.cleanupJob.RunNow(); err != nil {
+			return oops.Wrapf(err, "trigger shared cache cleanup")
+		}
+		return nil
+	}
+	return r.runAsync(context.WithoutCancel(ctx), "regimux.cache.cleanup.manual", []string{"maintenance", "cleanup", "manual"}, func(ctx context.Context) error {
 		return r.runCleanup(ctx)
 	})
 }

@@ -2,21 +2,36 @@ package pypi
 
 import (
 	"context"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
 func (s *Service) cached(ctx context.Context, requestRoute Route) (storedResponse, bool, error) {
 	if s.cache == nil {
 		return storedResponse{}, false, nil
 	}
-	entry, ok, err := s.cache.Get(ctx, artifactKey(requestRoute))
+	cacheCtx, cancel := context.WithCancel(ctx)
+	timer := time.AfterFunc(pypiCacheTimeout, cancel)
+	entry, ok, err := s.cache.Get(cacheCtx, artifactKey(requestRoute))
+	timer.Stop()
 	if err != nil {
-		return storedResponse{}, false, wrapError(err, "lookup cached pypi artifact")
-	}
-	if !ok {
+		cancel()
+		if entry.Body != nil {
+			closeReadCloser(entry.Body, s.logger, "close failed pypi index cache")
+		}
+		if ctx.Err() != nil {
+			return storedResponse{}, false, wrapError(ctx.Err(), "lookup pypi index cache")
+		}
+		s.logger.WarnContext(ctx, "pypi index cache read failed; fetching upstream", "alias", requestRoute.Alias)
 		return storedResponse{}, false, nil
 	}
+	if !ok {
+		cancel()
+		return storedResponse{}, false, nil
+	}
+	entry.Body = upstreamhttp.WithIdleTimeout(entry.Body, cancel, pypiBodyIdleTimeout)
 	return storedResponse{
 		digest:  entry.Digest,
 		size:    entry.Size,

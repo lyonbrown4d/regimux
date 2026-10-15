@@ -63,6 +63,9 @@ func (s *Store) Get(ctx context.Context, key Key) (Entry, bool, error) {
 	if err != nil || !ok {
 		return Entry{}, false, err
 	}
+	if touchErr := Touch(ctx, s.metadata, *manifest, s.now()); touchErr != nil {
+		s.logger.WarnContext(ctx, "touch artifact cache access failed", "digest", manifest.Digest, "error", touchErr)
+	}
 	entry, ok, err := s.open(ctx, *manifest)
 	if err != nil || !ok {
 		return Entry{}, ok, err

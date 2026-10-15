@@ -30,6 +30,13 @@ func (p *upstreamPool) recordRequestFailure(runtime upstreamRuntime, repository 
 	return p.health.RecordRequestFailure(runtime.config.Registry, repository, now)
 }
 
+func (p *upstreamPool) recordRepositoryRequestFailure(runtime upstreamRuntime, repository string, now time.Time) EndpointHealthSnapshot {
+	if p == nil {
+		return EndpointHealthSnapshot{}
+	}
+	return p.health.RecordRepositoryRequestFailure(runtime.config.Registry, repository, now)
+}
+
 func (p *upstreamPool) recordContentInconsistent(runtime upstreamRuntime, repository string, now time.Time) EndpointHealthSnapshot {
 	if p == nil {
 		return EndpointHealthSnapshot{}

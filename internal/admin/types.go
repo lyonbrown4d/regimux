@@ -214,6 +214,9 @@ type SchedulerSummary struct {
 	LockTTL                      string
 	CleanupEnabled               bool
 	CleanupInterval              string
+	CleanupUsesCron              bool
+	CleanupCron                  string
+	CleanupTimezone              string
 	CleanupUnusedFor             string
 	CleanupMaxScan               int
 	CleanupMaxDeletes            int

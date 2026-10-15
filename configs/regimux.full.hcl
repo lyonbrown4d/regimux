@@ -177,15 +177,21 @@ scheduler {
   lock_ttl = "5m"
 
   cleanup {
+    # One scheduled pass cleans the shared cache across configured ecosystems.
+    # `unused_for` is idle-retention age; it is separate from cache freshness TTLs.
+    # This works with local and S3 storage; keep bucket lifecycle expiration off for its prefix.
+    # Default schedule is 03:00 Asia/Shanghai; a positive interval overrides cron.
     enabled = true
-    interval = "1h"
+    distributed = true
+    interval = "0s"
+    cron = "0 3 * * *"
+    timezone = "Asia/Shanghai"
     unused_for = "168h"
     max_scan = 0
     max_deletes = 1000
     max_bytes = 0
     target_bytes = 0
     dry_run = false
-    distributed = false
   }
 
   prefetch {
@@ -274,6 +280,8 @@ container {
       "https://dockerproxy.link",
     ]
     mirror_policy = "ordered"
+    # Opt in to allowlist-only fallback for trusted anonymous public mirrors.
+    # mirror_forbidden_policy = "public"
     default_namespace = "library"
     tag_ttl = "10m"
 
@@ -438,6 +446,10 @@ pypi {
   default {
     registry = "https://pypi.org"
 
+    http {
+      attempt_timeout = "10s"
+    }
+
     probe {
       enabled = false
       interval = "1m"
@@ -456,6 +468,10 @@ maven {
   central {
     registry = "https://repo.maven.apache.org/maven2"
     tag_ttl = "5m"
+
+    http {
+      attempt_timeout = "10s"
+    }
 
     probe {
       enabled = false

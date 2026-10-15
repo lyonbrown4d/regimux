@@ -13,6 +13,9 @@ type SchedulerController interface {
 }
 
 func (s *Service) schedulerCleanupSubmit(c fiber.Ctx) error {
+	if c.Accepts(fiber.MIMETextHTML, fiber.MIMEApplicationJSON) == fiber.MIMEApplicationJSON {
+		return s.schedulerCleanupJSON(c)
+	}
 	data, err := s.pageData(c, "page.scheduler", "scheduler")
 	if err != nil {
 		return err

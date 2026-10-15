@@ -13,7 +13,12 @@ func shouldFailover(req failoverRequest, err error) bool {
 	if err == nil {
 		return false
 	}
-	if _, ok := errors.AsType[*authenticatedUpstreamStatusError](err); ok {
+	allowlistErr, isAllowlist := errors.AsType[*allowlistForbiddenError](err)
+	if isAllowlist && allowlistErr != nil {
+		return req.allowPublicMirrorForbidden && req.endpointIsMirror && !req.endpointAuthenticated
+	}
+	authenticatedErr, isAuthenticated := errors.AsType[*authenticatedUpstreamStatusError](err)
+	if isAuthenticated && authenticatedErr != nil {
 		return false
 	}
 
@@ -44,7 +49,7 @@ func shouldFailoverStatus(req failoverRequest, status int) bool {
 	case http.StatusBadRequest, http.StatusUnauthorized:
 		return false
 	case http.StatusForbidden:
-		return req.allowPublicMirrorForbidden && req.endpointIsMirror && !req.endpointAuthenticated
+		return false
 	case http.StatusNotFound:
 		return shouldFailoverNotFound(req.operation)
 	case http.StatusTooManyRequests:
