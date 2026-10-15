@@ -52,6 +52,7 @@ scheduler {
   }
   prefetch { enabled = false }
   manifest_refresh { enabled = false }
+  refresh { enabled = false }
 }
 worker {
   io_concurrency = 8
