@@ -182,6 +182,9 @@ def snapshot(conn: psycopg.Connection[DictRow], cases: list[Case], tags: list[Di
             state[name] = records[name]
     keys = {row["digest"]: row["object_key"] for row in records["blobs"]}
     target_digests = set(digests)
+    missing_metadata = target_digests - keys.keys()
+    if missing_metadata:
+        raise RuntimeError(f"warm cache-hit reads before aging missing CAS metadata: {sorted(missing_metadata)}")
     state["objects"] = {digest: head_object(s3, keys.get(digest, digest)) for digest in target_digests}
     missing = [digest for digest, info in state["objects"].items() if info is None]
     if missing:

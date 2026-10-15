@@ -232,6 +232,10 @@ def main() -> None:
     ))
     for case in cases:
         warm_case(base, case)
+        if case.ecosystem == "container":
+            # Exercise a manifest cache hit to register CAS access metadata
+            # before aging it; cold manifests may precede reconciliation.
+            warm_case(base, case)
     rows = selected_tags(conn, cases)
     before = snapshot(conn, cases, rows, s3)
     snapshot_path = Path(os.getenv("REGIMUX_ACCEPTANCE_CLEANUP_SNAPSHOT", "/tmp/regimux-cleanup-acceptance.json"))
