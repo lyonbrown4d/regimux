@@ -50,6 +50,13 @@ func NewService(deps ServiceDependencies) *Service {
 	if fills == nil {
 		fills = artifactcache.NewFillTracker()
 	}
+	cache = artifactcache.New(artifactcache.Dependencies{
+		Metadata: metadata,
+		Objects:  objects,
+		Fills:    fills,
+		Logger:   logger,
+		Now:      now,
+	})
 	return &Service{
 		cfg:      deps.Config,
 		metadata: metadata,

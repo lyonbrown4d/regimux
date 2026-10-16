@@ -41,6 +41,7 @@ type Proxy struct {
 	logger               *slog.Logger
 	manifestGroup        singleflightx.Group[string, *CachedManifest]
 	blobGroup            singleflightx.Group[string, bool]
+	accessGroup          singleflightx.Group[string, bool]
 	blobFills            *coalescer.Tracker
 }
 
@@ -115,6 +116,7 @@ func (p *Proxy) Manifests() ManifestService {
 		maxStale:     p.manifestMaxStale,
 		smallCache:   p.blobSmallCache,
 		group:        &p.manifestGroup,
+		accessGroup:  &p.accessGroup,
 	}
 }
 
@@ -132,6 +134,7 @@ func (p *Proxy) Blobs() BlobService {
 		leaseScheduler:   p.blobLeaseScheduler,
 		streamScheduler:  p.blobStreamScheduler,
 		group:            &p.blobGroup,
+		accessGroup:      &p.accessGroup,
 		fills:            p.blobFills,
 	}
 }
@@ -166,6 +169,7 @@ type manifestProxy struct {
 	maxStale     time.Duration
 	smallCache   smallBlobCacheConfig
 	group        *singleflightx.Group[string, *CachedManifest]
+	accessGroup  *singleflightx.Group[string, bool]
 }
 
 type blobProxy struct {
@@ -181,6 +185,7 @@ type blobProxy struct {
 	leaseScheduler   leaseRenewScheduler
 	streamScheduler  blobStreamScheduler
 	group            *singleflightx.Group[string, bool]
+	accessGroup      *singleflightx.Group[string, bool]
 	fills            *coalescer.Tracker
 }
 

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
@@ -162,6 +163,19 @@ func (p blobProxy) touchStoredBlobAccess(ctx context.Context, req BlobRequest, i
 	if p.metadata == nil || info == nil {
 		return nil
 	}
+	if p.accessGroup == nil {
+		return p.touchStoredBlobAccessOnce(ctx, req, info)
+	}
+	_, err, _ := p.accessGroup.DoContext(ctx, blobAccessTouchKey(req, info.Digest), func(sharedCtx context.Context) (bool, error) {
+		return true, p.touchStoredBlobAccessOnce(sharedCtx, req, info)
+	})
+	if err != nil {
+		return wrapError(err, "coalesce blob access metadata")
+	}
+	return nil
+}
+
+func (p blobProxy) touchStoredBlobAccessOnce(ctx context.Context, req BlobRequest, info *object.Info) error {
 	now := time.Now().UTC()
 	blob, ok, err := p.metadata.Blob(ctx, meta.BlobKey{Digest: info.Digest})
 	if err != nil {
@@ -199,4 +213,9 @@ func (p blobProxy) touchStoredBlobAccess(ctx context.Context, req BlobRequest, i
 		return wrapError(err, "touch repository blob access metadata")
 	}
 	return nil
+}
+
+func blobAccessTouchKey(req BlobRequest, digest string) string {
+	return "oci-blob-access:" + strconv.Itoa(len(req.UpstreamAlias)) + ":" + req.UpstreamAlias +
+		":" + strconv.Itoa(len(req.Repo)) + ":" + req.Repo + ":" + digest
 }

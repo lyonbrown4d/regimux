@@ -55,6 +55,8 @@ type SQLStore struct {
 	refreshIntents   *repository.Base[refreshIntentRow, refreshIntentRowSchema]
 	catalogRefreshMu sync.Mutex
 	catalogRefreshes map[catalogRefreshKey]*catalogRefreshState
+	pullWriteBatchMu sync.Mutex
+	pullWriteBatches map[string]*pullWriteBatchState
 }
 
 func OpenSQLite(path string, logger *slog.Logger) (*SQLStore, error) {

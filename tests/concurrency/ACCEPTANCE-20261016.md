@@ -35,6 +35,9 @@
 | 候选 catalog 事务正常提交后仍调用 Rollback，dbx hook 提前输出错误和堆栈 | 成功提交后跳过 rollback；刷新失败、取消和 commit 失败仍清理事务并保留错误链。 | 真 SQLite + hook 的 `catalog-tx-cleanup-red.log` 确认正常提交多一次 rollback；修复后四种清理路径的 race 连续 3 轮通过，包含在 `new-hot-fixes-green.log`。取消测试等待共享后台任务清理完成后再断言。 |
 | Go 热缓存绕过通用读取合并，放大共享 SQL 负载 | 复用 `artifactcache.Store.Get` 的并发元数据快照、Touch、过期判断和独立对象 reader；自定义 metadata 写入后统一使旧 flight 失效。构造参数的覆盖优先级保持一致。 | 最终回归用只读源码 overlay 运行旧实现：128 个命中请求触发 tag/manifest/blob 各 128 次、Touch 57 次（`go-read-fanin-old-source-red.log`）；新实现各 1 次，写后快照失效及 body/header 独立性 race 连续 3 轮通过（Go 10.491s、artifactcache 3.283s、meta 清理 9.714s）。独立设计审查无 Critical/Important。 |
 | Go 缓存复制 ETag 时直接按非 canonical map key 查找，丢失标准库返回的 `Etag` | 复用 `http.CanonicalHeaderKey` 规范化允许复制的 header 名称。 | 同一真实 HTTP 预热/SQLite 缓存回归先测出 ETag 为空；修复后保留 upstream ETag，并确认修改一个 caller 的 header 不影响其他 caller。 |
+| 同一 pull key 逐请求原子 upsert 形成热点行锁与 WAL 写放大 | 同 key 的已登记增量通过现有 singleflight 合并写入；累加 client/policy 次数，保留各类最大时间戳。每个调用保存自己所属批次的成功或失败结果；晚到增量进入下一批次，失败不自动重放。空批次不写 SQL。 | 旧路径 512 次 upsert 的 RED；新路径最多 2 次，同时验证 canonical 总数、每个调用所属批次的确认、取消、独立返回值和失败不重放。`pull-batch-receipts-green.log` 五类回归连续 3 轮 race 通过（8.692s）；独立审查无 Critical/Important。原 ticket 版本在错过失败批次时误报成功并写入空 key，已由 `pull-batch-coverage-red.log` 确定性复现；逐调用结果修复后零空写入，较早批次失败也不会丢掉尚未尝试的晚到增量。 |
+| OCI 热 blob 每请求重复读写 blob/repository-blob；manifest 命中也重复 Touch | Proxy 持有共享访问 flight，blob 按 alias/repository/digest、manifest 按 digest 合并；每请求仍独立打开对象 reader，保留 GET/HEAD/Range 语义及错误链。 | `oci-access-fanin-red.log`：128 请求触发 blob 读取/写入各 128 次、repository-blob 读取 256 次、写入 128 次；`access-fanin-integrated-green.log` 连续 3 轮 race 通过（dist 5.364s、OCI cache 6.355s），包含独立响应、范围、取消及错误链。 |
+| dist 热路径绕过通用 metadata flight | 复用 `artifactcache.LookupMetadata` 的 tag/manifest/Touch 快照；保留 tag 与 manifest 的独立过期判断和每请求 Range reader。 | `dist-read-fanin-red.log`：128 命中分别触发 tag/manifest/blob/Touch 各 128 次；`access-fanin-integrated-green.log` 连续 3 轮 race 通过（dist 5.364s、OCI cache 6.355s），包含独立响应、范围、取消及错误链。 |
 
 ## 压力运行记录（非最终矩阵）
 
@@ -56,8 +59,13 @@
 
 另有早期 SQLite 修复镜像对 13 个冷对象各 512 请求全绿（`sqlite-cold-verification.json`）；该镜像不是最终 source，不能替代当前矩阵。元数据升级跟链与其他 targeted regression 也仅证明对应场景。
 
+候选 `5a87c44` 的全量 Go、全部生态 race 和 49 项 lint 全部通过；其新镜像在 PostgreSQL 的 13 个冷场景与热 512 场景通过，但热 1024 仍失败：3,506 个有效响应、HTTP 错误 0、正文损坏 0、额外回源 4（PyPI wheel 2、Maven POM/JAR 各 1）。诊断复现的热 512 也出现失败，说明不能仅凭一次 512 通过宣称已解决。日志为 `final2-postgres-*`、`diag3-postgres-*`，旧检查归档在 `reports/5a87c44/`。
+
+该候选本地镜像 inspect ID 为 `sha256:9c736e500eb43fa79ea65119bbbad5a64b52cb6468117ce7dbcfaa25a188cc1d`，二进制 SHA-256 为 `5c574ca2d451d8b338fc6c0fed167c220df912d43d28678a95b77cb45e033b8f`。额外回源与热对象的 SQL tag/manifest 读取超时同时出现；只读 `pg_stat_activity` 快照测到 7–9 条连接等待 pull upsert 的事务锁，并有 WALWrite/WALSync 等待。正在处理同 key 计数写入合并，以及 OCI/dist 命中路径的重复元数据操作；保留计数落库语义和原有存储故障降级预算。
+
 ## 待补结果与限制
 
+- 当前整仓 lint 在依赖加载阶段退出（`context loading failed: no go files to analyze`，3m6.348s），随后本机 Docker 引擎的 `exec` / `ps` 请求持续返回 API 500；这次没有产生有效的 lint 结论。已通过的针对性 race 证据保留。恢复容器环境后，仍需验证测试夹具清理调整，重新完成整仓检查、构建新镜像及同镜像 48 项压力矩阵。
 - 最终镜像的 48 项完整矩阵：**待执行 / 待填**；SQLite、PostgreSQL、MySQL 最终汇总及失败项明细：**待填**。
 - 提交 `b11dff8` 的全量 Go：39 个 package 通过、9 个无测试文件、零失败（`go-full-final.log`）；全部生态、缓存与元数据 race 检查通过（`go-race-final.log`）。整仓 49 项 strict lint 零问题（`lint-final.log`，36.159s）；辅助函数拆分后的真实持锁取消/健康重开回归各数据库再连续 3 次通过（`migration-lock-final-postgres.log` 4.139s、MySQL 4.367s）。后续修复需要再验证。
 - PostgreSQL 热流量后的 Go 读合并、ETag 与事务清理修复已通过当前源码全量 Go 和 race 检查（Go 29.222s、Maven 37.021s、npm 37.891s、PyPI 33.508s、meta 25.324s）；整仓 49 项 strict lint 零问题（31.835s），下一候选尚未构建；`b11dff8` 的部分通过不能作为后续候选最终验收。完整 48 项需要同镜像重跑。
