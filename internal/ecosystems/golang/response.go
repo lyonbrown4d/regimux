@@ -65,6 +65,7 @@ func closeResponseBody(resp *Response) {
 func cacheHeaders(headers http.Header, size int64) http.Header {
 	out := http.Header{}
 	for _, key := range cacheHeaderKeys() {
+		key = http.CanonicalHeaderKey(key)
 		if values, ok := headers[key]; ok {
 			out[key] = slices.Clone(values)
 		}

@@ -15,7 +15,11 @@ func (s *SQLStore) withCatalogRefreshTx(ctx context.Context, seed *Repository, a
 	if err != nil {
 		return wrapError(err, "begin repository catalog refresh")
 	}
+	committed := false
 	defer func() {
+		if committed {
+			return
+		}
 		if err := tx.Rollback(); err != nil && !errors.Is(err, sql.ErrTxDone) {
 			resultErr = errors.Join(resultErr, wrapError(err, "rollback repository catalog refresh"))
 		}
@@ -26,6 +30,7 @@ func (s *SQLStore) withCatalogRefreshTx(ctx context.Context, seed *Repository, a
 	if err := tx.CommitContext(ctx); err != nil {
 		return wrapError(err, "commit repository catalog refresh")
 	}
+	committed = true
 	return nil
 }
 
