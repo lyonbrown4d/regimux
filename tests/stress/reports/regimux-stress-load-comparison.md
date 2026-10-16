@@ -1,6 +1,6 @@
 # RegiMux k6 Load Comparison
 
-- generated_at: 2026-07-16T08:23:54.851Z
+- generated_at: 2026-10-15T05:54:31.308Z
 - profile: load
 - base_url: http://regimux:8080
 - stores: sqlite, mysql, postgres
@@ -9,118 +9,122 @@
 
 | metadata store | report | generated_at |
 | --- | --- | --- |
-| sqlite | /stress/reports/regimux-stress-sqlite-load.json | 2026-07-16T07:46:06.683Z |
-| mysql | /stress/reports/regimux-stress-mysql-load.json | 2026-07-16T08:15:05.001Z |
-| postgres | /stress/reports/regimux-stress-postgres-load.json | 2026-07-16T08:23:44.363Z |
+| sqlite | /stress/reports/regimux-stress-sqlite-load.json | 2026-10-15T05:33:20.079Z |
+| mysql | /stress/reports/regimux-stress-mysql-load.json | 2026-10-15T05:45:15.106Z |
+| postgres | /stress/reports/regimux-stress-postgres-load.json | 2026-10-15T05:54:20.079Z |
 
 ## Overall
 
 | metadata store | requests | req/s | failed | avg | p95 | p99 | data received |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sqlite | 375591 | 920.01 | 0.00% | 12.42 ms | 9.69 ms | 419.94 ms | 3.47 GiB |
-| mysql | 387192 | 948.98 | 0.00% | 12.04 ms | 11.38 ms | 339.58 ms | 4.39 GiB |
-| postgres | 376904 | 926.78 | 0.00% | 12.35 ms | 10.31 ms | 381.65 ms | 3.83 GiB |
+| sqlite | 210833 | 477.17 | 0.00% | 23.14 ms | 15.50 ms | 661.64 ms | 2.22 GiB |
+| mysql | 339501 | 785.41 | 0.00% | 14.37 ms | 9.30 ms | 386.77 ms | 2.54 GiB |
+| postgres | 369942 | 860.60 | 0.00% | 13.06 ms | 14.81 ms | 351.54 ms | 4.20 GiB |
 
 ## RegiMux Container Resources
 
 | metadata store | samples | interval |
 | --- | ---: | ---: |
-| sqlite | 184 | 1000 ms |
-| mysql | 179 | 1000 ms |
-| postgres | 176 | 1000 ms |
+| sqlite | 203 | 1000 ms |
+| mysql | 182 | 1000 ms |
+| postgres | 167 | 1000 ms |
 
 ### Gauges
 
 | metadata store | metric | avg | p95 | peak |
 | --- | --- | ---: | ---: | ---: |
-| sqlite | CPU | 30.46% | 65.10% | 352.73% |
-| sqlite | memory usage | 52.42 MiB | 99.41 MiB | 100.00 MiB |
-| sqlite | memory utilization | 0.17% | 0.32% | 0.32% |
-| sqlite | PIDs | 15.63 | 19 | 23 |
-| mysql | CPU | 34.50% | 64.55% | 350.69% |
-| mysql | memory usage | 53.23 MiB | 104.30 MiB | 105.40 MiB |
-| mysql | memory utilization | 0.17% | 0.34% | 0.34% |
-| mysql | PIDs | 15.70 | 19 | 21 |
-| postgres | CPU | 32.02% | 65.10% | 353.63% |
-| postgres | memory usage | 52.10 MiB | 97.01 MiB | 97.66 MiB |
-| postgres | memory utilization | 0.17% | 0.31% | 0.32% |
-| postgres | PIDs | 15.35 | 18 | 18 |
+| sqlite | CPU | 18.77% | 68.49% | 202.58% |
+| sqlite | memory usage | 68.92 MiB | 123.40 MiB | 127.00 MiB |
+| sqlite | memory utilization | 0.22% | 0.40% | 0.41% |
+| sqlite | PIDs | 15.90 | 21 | 21 |
+| mysql | CPU | 26.65% | 68.76% | 347.40% |
+| mysql | memory usage | 52.51 MiB | 101.10 MiB | 105.60 MiB |
+| mysql | memory utilization | 0.17% | 0.33% | 0.34% |
+| mysql | PIDs | 17.21 | 25 | 25 |
+| postgres | CPU | 34.44% | 68.12% | 361.17% |
+| postgres | memory usage | 55.18 MiB | 104.60 MiB | 108.60 MiB |
+| postgres | memory utilization | 0.18% | 0.34% | 0.35% |
+| postgres | PIDs | 16.39 | 19 | 19 |
 
 ### Cumulative Deltas and Status
 
 | metadata store | network received | network sent | block read | block written | restarts | OOM observed | OOM final |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| sqlite | 464.44 MiB | 3.56 GiB | 0 B | 3.92 GiB | 0 | no | no |
-| mysql | 474.93 MiB | 4.47 GiB | 0 B | 5.00 GiB | 0 | no | no |
-| postgres | 461.58 MiB | 3.91 GiB | 0 B | 4.22 GiB | 0 | no | no |
+| sqlite | 242.23 MiB | 2.26 GiB | 10.49 MiB | 2.66 GiB | 0 | no | no |
+| mysql | 423.43 MiB | 2.62 GiB | 0 B | 3.05 GiB | 0 | no | no |
+| postgres | 450.13 MiB | 4.27 GiB | 0 B | 5.00 GiB | 0 | no | no |
 
 ## Scenario p95
 
 | name | sqlite | mysql | postgres |
 | --- | ---: | ---: | ---: |
-| container_blob_cold | 2384.10 ms | 1941.27 ms | 2384.80 ms |
-| container_blob_hot | 267.92 ms | 230.39 ms | 340.47 ms |
-| container_blob_same_digest_concurrent | 706.58 ms | 474.91 ms | 537.95 ms |
-| container_manifest_cold | 2359.41 ms | 508.90 ms | 546.45 ms |
-| container_manifest_hot | 8.82 ms | 7.34 ms | 67.34 ms |
-| container_multi_repo_mixed | 533.71 ms | 407.45 ms | 517.21 ms |
-| container_referrers_tags | 0.71 ms | 0.72 ms | 0.71 ms |
-| health_baseline | 0.26 ms | 0.25 ms | 0.25 ms |
-| maven_release_hot | 263.92 ms | 197.56 ms | 247.41 ms |
-| mixed_ecosystems | 681.40 ms | 466.87 ms | 580.47 ms |
-| npm_metadata_hot | 232.56 ms | 183.33 ms | 220.06 ms |
-| npm_tarball_hot | 248.39 ms | 188.14 ms | 244.55 ms |
-| pypi_simple_hot | 252.06 ms | 187.14 ms | 241.93 ms |
-| pypi_wheel_hot | 250.47 ms | 191.86 ms | 264.46 ms |
+| container_blob_cold | 2123.25 ms | 1914.17 ms | 1575.59 ms |
+| container_blob_hot | 1077.70 ms | 380.85 ms | 306.07 ms |
+| container_blob_same_digest_concurrent | 2078.78 ms | 600.55 ms | 605.23 ms |
+| container_manifest_cold | 324.80 ms | 302.73 ms | 274.79 ms |
+| container_manifest_hot | 171.63 ms | 9.42 ms | 8.84 ms |
+| container_multi_repo_mixed | 863.52 ms | 1262.50 ms | 451.11 ms |
+| container_referrers_tags | 2.79 ms | 0.85 ms | 0.77 ms |
+| health_baseline | 0.46 ms | 0.29 ms | 0.28 ms |
+| maven_pom_hot | 337.25 ms | 448.37 ms | 221.41 ms |
+| maven_release_hot | 701.72 ms | 593.58 ms | 218.23 ms |
+| mixed_ecosystems | 1177.32 ms | 572.15 ms | 519.57 ms |
+| npm_metadata_hot | 269.84 ms | 246.57 ms | 198.09 ms |
+| npm_tarball_hot | 468.24 ms | 286.37 ms | 216.41 ms |
+| pypi_simple_hot | 396.46 ms | 864.97 ms | 212.06 ms |
+| pypi_wheel_hot | 395.58 ms | 1578.25 ms | 214.52 ms |
 
 ## Scenario Throughput
 
 | name | sqlite req/s | mysql req/s | postgres req/s |
 | --- | ---: | ---: | ---: |
 | container_blob_cold | 0.01 | 0.01 | 0.01 |
-| container_blob_hot | 3.03 | 3.79 | 3.09 |
-| container_blob_same_digest_concurrent | 2.88 | 3.86 | 3.30 |
+| container_blob_hot | 1.16 | 2.12 | 3.10 |
+| container_blob_same_digest_concurrent | 1.29 | 2.60 | 2.93 |
 | container_manifest_cold | 0.00 | 0.00 | 0.00 |
-| container_manifest_hot | 34.53 | 47.39 | 36.10 |
-| container_multi_repo_mixed | 26.72 | 35.59 | 29.20 |
-| container_referrers_tags | 630.45 | 622.79 | 626.27 |
-| health_baseline | 185.05 | 188.21 | 188.04 |
-| maven_release_hot | 5.01 | 6.45 | 5.72 |
-| mixed_ecosystems | 10.96 | 14.08 | 12.14 |
-| npm_metadata_hot | 5.58 | 6.41 | 6.22 |
-| npm_tarball_hot | 5.09 | 6.87 | 5.71 |
-| pypi_simple_hot | 5.34 | 6.72 | 5.65 |
-| pypi_wheel_hot | 5.35 | 6.79 | 5.30 |
+| container_manifest_hot | 15.67 | 37.25 | 38.11 |
+| container_multi_repo_mixed | 14.50 | 11.52 | 31.12 |
+| container_referrers_tags | 293.69 | 543.30 | 568.67 |
+| health_baseline | 123.90 | 160.16 | 167.05 |
+| maven_pom_hot | 4.12 | 3.37 | 5.67 |
+| maven_release_hot | 2.79 | 1.88 | 6.06 |
+| mixed_ecosystems | 6.06 | 11.98 | 13.30 |
+| npm_metadata_hot | 4.70 | 4.20 | 6.59 |
+| npm_tarball_hot | 3.30 | 3.66 | 5.93 |
+| pypi_simple_hot | 3.04 | 2.33 | 6.12 |
+| pypi_wheel_hot | 2.92 | 1.04 | 5.93 |
 
 ## Endpoint p95
 
 | name | sqlite | mysql | postgres |
 | --- | ---: | ---: | ---: |
-| container_blob_cold | 2506.06 ms | 2046.22 ms | 2617.99 ms |
-| container_blob_cold_manifest | 1233.17 ms | 957.49 ms | 285.25 ms |
-| container_blob_hot | 267.92 ms | 230.39 ms | 340.47 ms |
-| container_blob_same_digest_concurrent | 706.58 ms | 474.91 ms | 537.95 ms |
-| container_manifest_cold | 2359.41 ms | 508.90 ms | 546.45 ms |
-| container_manifest_hot | 8.82 ms | 7.34 ms | 67.34 ms |
-| container_multi_repo_blob | 782.91 ms | 515.63 ms | 663.20 ms |
-| container_multi_repo_blob_manifest | 214.66 ms | 144.51 ms | 181.23 ms |
-| container_multi_repo_manifest | 460.93 ms | 237.71 ms | 359.61 ms |
-| container_multi_repo_tags | 0.52 ms | 0.50 ms | 0.53 ms |
-| container_referrers | 0.69 ms | 0.69 ms | 0.69 ms |
-| container_tags | 0.73 ms | 0.73 ms | 0.73 ms |
-| health_baseline | 0.26 ms | 0.25 ms | 0.25 ms |
-| maven_release_hot | 263.92 ms | 197.56 ms | 247.41 ms |
-| mixed_container_blob | 808.68 ms | 627.94 ms | 745.54 ms |
-| mixed_container_manifest | 536.58 ms | 381.31 ms | 399.73 ms |
-| mixed_maven_release | 489.22 ms | 442.39 ms | 479.85 ms |
-| mixed_npm_metadata | 529.43 ms | 373.68 ms | 420.79 ms |
-| mixed_npm_tarball | 525.26 ms | 402.14 ms | 470.46 ms |
-| mixed_pypi_simple | 500.29 ms | 419.65 ms | 464.42 ms |
-| mixed_pypi_wheel | 442.33 ms | 393.87 ms | 420.65 ms |
-| npm_metadata_hot | 232.56 ms | 183.33 ms | 220.06 ms |
-| npm_tarball_hot | 248.39 ms | 188.14 ms | 244.55 ms |
-| pypi_simple_hot | 252.06 ms | 187.14 ms | 241.93 ms |
-| pypi_wheel_hot | 250.47 ms | 191.86 ms | 264.46 ms |
+| container_blob_cold | 2330.17 ms | 1524.61 ms | 1717.19 ms |
+| container_blob_cold_manifest | 258.42 ms | 1873.88 ms | 296.89 ms |
+| container_blob_hot | 1077.70 ms | 380.85 ms | 306.07 ms |
+| container_blob_same_digest_concurrent | 2078.78 ms | 600.55 ms | 605.23 ms |
+| container_manifest_cold | 324.80 ms | 302.73 ms | 274.79 ms |
+| container_manifest_hot | 171.63 ms | 9.42 ms | 8.84 ms |
+| container_multi_repo_blob | 1446.71 ms | 1676.33 ms | 631.31 ms |
+| container_multi_repo_blob_manifest | 496.95 ms | 420.75 ms | 151.82 ms |
+| container_multi_repo_manifest | 672.06 ms | 1388.01 ms | 307.51 ms |
+| container_multi_repo_tags | 5.22 ms | 0.72 ms | 0.54 ms |
+| container_referrers | 2.77 ms | 0.83 ms | 0.75 ms |
+| container_tags | 2.80 ms | 0.87 ms | 0.78 ms |
+| health_baseline | 0.46 ms | 0.29 ms | 0.28 ms |
+| maven_pom_hot | 337.25 ms | 448.37 ms | 221.41 ms |
+| maven_release_hot | 701.72 ms | 593.58 ms | 218.23 ms |
+| mixed_container_blob | 1751.18 ms | 750.77 ms | 700.99 ms |
+| mixed_container_manifest | 727.07 ms | 399.75 ms | 358.29 ms |
+| mixed_maven_pom | 998.68 ms | 391.52 ms | 414.83 ms |
+| mixed_maven_release | 1117.17 ms | 413.35 ms | 424.15 ms |
+| mixed_npm_metadata | 1038.76 ms | 455.45 ms | 416.12 ms |
+| mixed_npm_tarball | 1006.29 ms | 433.22 ms | 398.92 ms |
+| mixed_pypi_simple | 1190.36 ms | 435.34 ms | 416.30 ms |
+| mixed_pypi_wheel | 838.74 ms | 454.51 ms | 455.81 ms |
+| npm_metadata_hot | 269.84 ms | 246.57 ms | 198.09 ms |
+| npm_tarball_hot | 468.24 ms | 286.37 ms | 216.41 ms |
+| pypi_simple_hot | 396.46 ms | 864.97 ms | 212.06 ms |
+| pypi_wheel_hot | 395.58 ms | 1578.25 ms | 214.52 ms |
 
 ## Endpoint Throughput
 
@@ -128,29 +132,31 @@
 | --- | ---: | ---: | ---: |
 | container_blob_cold | 0.00 | 0.00 | 0.00 |
 | container_blob_cold_manifest | 0.00 | 0.00 | 0.00 |
-| container_blob_hot | 3.03 | 3.79 | 3.09 |
-| container_blob_same_digest_concurrent | 2.88 | 3.86 | 3.30 |
+| container_blob_hot | 1.16 | 2.12 | 3.10 |
+| container_blob_same_digest_concurrent | 1.29 | 2.60 | 2.93 |
 | container_manifest_cold | 0.00 | 0.00 | 0.00 |
-| container_manifest_hot | 34.53 | 47.39 | 36.10 |
-| container_multi_repo_blob | 5.36 | 7.10 | 5.85 |
-| container_multi_repo_blob_manifest | 10.72 | 14.20 | 11.71 |
-| container_multi_repo_manifest | 5.34 | 7.15 | 5.83 |
-| container_multi_repo_tags | 5.30 | 7.14 | 5.80 |
-| container_referrers | 315.22 | 311.40 | 313.14 |
-| container_tags | 315.23 | 311.39 | 313.13 |
-| health_baseline | 185.05 | 188.21 | 188.04 |
-| maven_release_hot | 5.01 | 6.45 | 5.72 |
-| mixed_container_blob | 1.57 | 2.02 | 1.73 |
-| mixed_container_manifest | 1.58 | 2.02 | 1.72 |
-| mixed_maven_release | 1.57 | 2.02 | 1.73 |
-| mixed_npm_metadata | 1.56 | 1.99 | 1.73 |
-| mixed_npm_tarball | 1.57 | 2.00 | 1.74 |
-| mixed_pypi_simple | 1.56 | 2.01 | 1.73 |
-| mixed_pypi_wheel | 1.56 | 2.02 | 1.75 |
-| npm_metadata_hot | 5.58 | 6.41 | 6.22 |
-| npm_tarball_hot | 5.09 | 6.87 | 5.71 |
-| pypi_simple_hot | 5.34 | 6.72 | 5.65 |
-| pypi_wheel_hot | 5.35 | 6.79 | 5.30 |
+| container_manifest_hot | 15.67 | 37.25 | 38.11 |
+| container_multi_repo_blob | 2.92 | 2.31 | 6.24 |
+| container_multi_repo_blob_manifest | 5.83 | 4.62 | 12.48 |
+| container_multi_repo_manifest | 2.89 | 2.31 | 6.21 |
+| container_multi_repo_tags | 2.86 | 2.28 | 6.19 |
+| container_referrers | 146.85 | 271.65 | 284.34 |
+| container_tags | 146.84 | 271.65 | 284.33 |
+| health_baseline | 123.90 | 160.16 | 167.05 |
+| maven_pom_hot | 4.12 | 3.37 | 5.67 |
+| maven_release_hot | 2.79 | 1.88 | 6.06 |
+| mixed_container_blob | 0.76 | 1.49 | 1.67 |
+| mixed_container_manifest | 0.76 | 1.49 | 1.67 |
+| mixed_maven_pom | 0.74 | 1.52 | 1.68 |
+| mixed_maven_release | 0.74 | 1.51 | 1.67 |
+| mixed_npm_metadata | 0.78 | 1.49 | 1.64 |
+| mixed_npm_tarball | 0.77 | 1.50 | 1.64 |
+| mixed_pypi_simple | 0.76 | 1.49 | 1.66 |
+| mixed_pypi_wheel | 0.76 | 1.50 | 1.67 |
+| npm_metadata_hot | 4.70 | 4.20 | 6.59 |
+| npm_tarball_hot | 3.30 | 3.66 | 5.93 |
+| pypi_simple_hot | 3.04 | 2.33 | 6.12 |
+| pypi_wheel_hot | 2.92 | 1.04 | 5.93 |
 
 ## Notes
 
