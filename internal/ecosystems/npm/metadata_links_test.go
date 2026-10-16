@@ -66,7 +66,7 @@ func runMetadataTarballURLCase(t *testing.T, index int, testCase tarballURLCase)
 	upstream := newNPMTarballServer(t, "/npm/"+packageName, "/npm/"+packageName+"/-/"+filename, metadataBody, "npm-tarball-bytes")
 	registryURL = upstream.URL + "/npm"
 	service := newTestService(t.Context(), t, registryURL, time.Minute)
-	assertMetadataTarballLinkCanBeFollowed(t, service, packageName, filename, "/npm/npmjs/"+packageName+"/-/"+filename, "npm-tarball-bytes")
+	assertMetadataTarballLinkCanBeFollowed(t, service, packageName, "/npm/npmjs/"+packageName+"/-/"+filename, "npm-tarball-bytes")
 }
 
 func newNPMTarballServer(t *testing.T, metadataPath, tarballPath string, metadataBody func() string, tarballBody string) *httptest.Server {
@@ -90,7 +90,7 @@ func newNPMTarballServer(t *testing.T, metadataPath, tarballPath string, metadat
 	return upstream
 }
 
-func assertMetadataTarballLinkCanBeFollowed(t *testing.T, service *npm.Service, packageName, filename, wantPath, wantBody string) {
+func assertMetadataTarballLinkCanBeFollowed(t *testing.T, service *npm.Service, packageName, wantPath, wantBody string) {
 	t.Helper()
 	metadata, err := service.Get(t.Context(), npm.Request{Alias: "npmjs", Tail: packageName, SkipPullRecord: true})
 	requireNoError(t, "get metadata", err)
@@ -145,10 +145,10 @@ func TestScopedMetadataTarballURLsFollowAcrossEncodedPackageRoutes(t *testing.T)
 func runScopedMetadataTarballCase(t *testing.T, tail string) {
 	t.Helper()
 	const filename = "pkg-1.0.0.tgz"
-	metadataBody := fmt.Sprintf(`{"name":"@scope/pkg","versions":{"1.0.0":{"dist":{"tarball":"/npm/@scope/pkg/-/%s?signature=kept"}}}}`, filename)
+	metadataBody := fmt.Sprintf(`{"name":"@scope/pkg","versions":{"1.0.0":{"dist":{"tarball":"/npm/@scope/pkg/-/%s?signature=kept#download-fragment"}}}}`, filename)
 	upstream := newNPMTarballServer(t, "/npm/@scope/pkg", "/npm/@scope/pkg/-/"+filename, func() string { return metadataBody }, "scoped-npm-tarball-bytes")
 	service := newTestService(t.Context(), t, upstream.URL+"/npm", time.Minute)
-	assertMetadataTarballLinkCanBeFollowed(t, service, tail, filename, "/npm/npmjs/@scope/pkg/-/"+filename, "scoped-npm-tarball-bytes")
+	assertMetadataTarballLinkCanBeFollowed(t, service, tail, "/npm/npmjs/@scope/pkg/-/"+filename, "scoped-npm-tarball-bytes")
 }
 
 func metadataTarball(t *testing.T, doc map[string]any, version string) string {

@@ -113,7 +113,7 @@ func TestServiceStores128DistinctNPMMetadataMissesAndServesCachedBodies(t *testi
 
 	responses := run.Wait(t)
 	assertNPMSuccessfulMisses(t, responses, allRequests)
-	assertNPMCacheHits(t, ctx, service, allRequests)
+	assertNPMCacheHits(ctx, t, service, allRequests)
 	assertNPMNoOriginRequests(t, requests)
 }
 
@@ -189,7 +189,7 @@ func assertNPMSuccessfulMisses(t *testing.T, responses []*npm.Response, requests
 	}
 }
 
-func assertNPMCacheHits(t *testing.T, ctx context.Context, service *npm.Service, requests []npm.Request) {
+func assertNPMCacheHits(ctx context.Context, t *testing.T, service *npm.Service, requests []npm.Request) {
 	t.Helper()
 	for i, request := range requests {
 		resp, err := service.Get(ctx, request)

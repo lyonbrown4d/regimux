@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"runtime"
@@ -87,19 +88,25 @@ func assertBlobFollower(t *testing.T, result <-chan blobCancellationResult, body
 		if got.result == nil {
 			t.Fatal("healthy blob follower returned no result")
 		}
-		content, err := io.ReadAll(got.result.Reader)
-		if err != nil {
-			t.Fatalf("read follower blob: %v", err)
-		}
-		if err := got.result.Reader.Close(); err != nil {
-			t.Fatalf("close follower blob: %v", err)
-		}
+		content := readAndCloseFollowerBlob(t, got.result.Reader)
 		if !bytes.Equal(content, body) {
 			t.Fatalf("follower blob = %q, want %q", content, body)
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("healthy blob follower did not finish")
 	}
+}
+
+func readAndCloseFollowerBlob(t *testing.T, reader io.ReadCloser) []byte {
+	t.Helper()
+	content, err := io.ReadAll(reader)
+	if err != nil {
+		t.Fatalf("read follower blob: %v", err)
+	}
+	if err := reader.Close(); err != nil {
+		t.Fatalf("close follower blob: %v", err)
+	}
+	return content
 }
 
 type blobCancellationResult struct {
@@ -136,7 +143,7 @@ func (c *heldBlobCancellationClient) ConsumeBlob(ctx context.Context, _ upstream
 		})
 		return errors.Join(consumeErr, body.Close())
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("wait for blob release: %w", ctx.Err())
 	}
 }
 
@@ -144,22 +151,27 @@ func waitForBlobCancellationFlight(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		var stacks bytes.Buffer
-		if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
-			t.Fatalf("write goroutine profile: %v", err)
-		}
-		waiters := 0
-		for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
-			if strings.Contains(goroutine, ".fetchStored(") && strings.Contains(goroutine, "singleflight") {
-				waiters++
-				if waiters == 2 {
-					return
-				}
-			}
+		if blobCancellationWaiterCount(t) >= 2 {
+			return
 		}
 		runtime.Gosched()
 	}
 	t.Fatal("blob follower did not join the in-flight fill")
+}
+
+func blobCancellationWaiterCount(t *testing.T) int {
+	t.Helper()
+	var stacks bytes.Buffer
+	if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
+		t.Fatalf("write goroutine profile: %v", err)
+	}
+	waiters := 0
+	for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
+		if strings.Contains(goroutine, ".fetchStored(") && strings.Contains(goroutine, "singleflight") {
+			waiters++
+		}
+	}
+	return waiters
 }
 
 var _ upstream.RegistryClient = (*heldBlobCancellationClient)(nil)

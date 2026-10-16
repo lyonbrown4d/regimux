@@ -138,23 +138,28 @@ func waitForManifestCallsToReachFlight(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		var stacks bytes.Buffer
-		if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
-			t.Fatalf("write goroutine profile: %v", err)
-		}
-		inFlightCalls := 0
-		for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
-			coalescedManifestCall := strings.Contains(goroutine, "manifestProxy.Get") || strings.Contains(goroutine, "manifestProxy.coalesce")
-			if coalescedManifestCall && strings.Contains(goroutine, "singleflight") {
-				inFlightCalls++
-			}
-		}
-		if inFlightCalls >= 2 {
+		if manifestInFlightCallCount(t) >= 2 {
 			return
 		}
 		runtime.Gosched()
 	}
 	t.Fatal("both manifest calls did not reach their singleflight requests")
+}
+
+func manifestInFlightCallCount(t *testing.T) int {
+	t.Helper()
+	var stacks bytes.Buffer
+	if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
+		t.Fatalf("write goroutine profile: %v", err)
+	}
+	inFlightCalls := 0
+	for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
+		coalescedManifestCall := strings.Contains(goroutine, "manifestProxy.Get") || strings.Contains(goroutine, "manifestProxy.coalesce")
+		if coalescedManifestCall && strings.Contains(goroutine, "singleflight") {
+			inFlightCalls++
+		}
+	}
+	return inFlightCalls
 }
 
 var _ upstream.RegistryClient = (*heldManifestMethodClient)(nil)

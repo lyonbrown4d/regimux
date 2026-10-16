@@ -114,7 +114,7 @@ func TestServiceStores128DistinctGoProxyMissesAndServesCachedBodies(t *testing.T
 
 	responses := run.Wait(t)
 	assertGoProxySuccessfulMisses(t, responses, allRequests)
-	assertGoProxyCacheHits(t, ctx, service, allRequests)
+	assertGoProxyCacheHits(ctx, t, service, allRequests)
 	assertGoProxyNoOriginRequests(t, requests)
 }
 
@@ -188,7 +188,7 @@ func assertGoProxySuccessfulMisses(t *testing.T, responses []*golang.Response, r
 	}
 }
 
-func assertGoProxyCacheHits(t *testing.T, ctx context.Context, service *golang.Service, requests []golang.Request) {
+func assertGoProxyCacheHits(ctx context.Context, t *testing.T, service *golang.Service, requests []golang.Request) {
 	t.Helper()
 	for i, request := range requests {
 		resp, err := service.Get(ctx, request)

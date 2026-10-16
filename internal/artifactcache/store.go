@@ -56,14 +56,9 @@ func (s *Store) FillTracker() *FillTracker {
 }
 
 func (s *Store) Get(ctx context.Context, key Key) (Entry, bool, error) {
-	if s == nil || s.metadata == nil || s.objects == nil {
-		return Entry{}, false, nil
-	}
-	snapshot, err, _ := s.reads.DoContext(ctx, key, func(sharedCtx context.Context) (readSnapshot, error) {
-		return s.readAndTouch(sharedCtx, key)
-	})
+	snapshot, err := s.readCachedMetadata(ctx, key)
 	if err != nil {
-		return Entry{}, false, wrapError(err, "coalesce artifact cache read")
+		return Entry{}, false, err
 	}
 	if !snapshot.found {
 		return Entry{}, false, nil
@@ -75,6 +70,30 @@ func (s *Store) Get(ctx context.Context, key Key) (Entry, bool, error) {
 	now := s.now()
 	entry.Expired = expiredAt(snapshot.tag.ExpiresAt, now) || snapshot.manifest.Expired(now)
 	return entry, true, nil
+}
+
+// LookupManifest resolves and touches cached metadata without opening the object body.
+// Each caller owns its returned record and header values.
+func LookupManifest(ctx context.Context, s *Store, key Key) (*meta.ManifestRecord, bool, error) {
+	snapshot, err := s.readCachedMetadata(ctx, key)
+	if err != nil || !snapshot.found {
+		return nil, false, err
+	}
+	manifest := cloneManifestHeaders(snapshot.manifest)
+	return &manifest, true, nil
+}
+
+func (s *Store) readCachedMetadata(ctx context.Context, key Key) (readSnapshot, error) {
+	if s == nil || s.metadata == nil || s.objects == nil {
+		return readSnapshot{}, nil
+	}
+	snapshot, err, _ := s.reads.DoContext(ctx, key, func(sharedCtx context.Context) (readSnapshot, error) {
+		return s.readAndTouch(sharedCtx, key)
+	})
+	if err != nil {
+		return readSnapshot{}, wrapError(err, "coalesce artifact cache read")
+	}
+	return snapshot, nil
 }
 
 type readSnapshot struct {

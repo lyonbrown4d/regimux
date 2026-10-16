@@ -61,6 +61,7 @@ services:
       MYSQL_ROOT_PASSWORD: concurrency-root-only
     healthcheck:
       test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      start_period: 180s
       interval: 3s
       timeout: 5s
       retries: 40

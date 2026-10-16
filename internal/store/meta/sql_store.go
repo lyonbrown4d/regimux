@@ -109,12 +109,22 @@ func OpenMetadataDB(ctx context.Context, opts DBOptions) (*dbx.DB, error) {
 		return nil, err
 	}
 
-	if err := MigrateMetadataDB(ctx, core); err != nil {
+	return finishMetadataDBOpen(ctx, core, openConfig)
+}
+
+func finishMetadataDBOpen(ctx context.Context, core *dbx.DB, openConfig dbOpenConfig) (*dbx.DB, error) {
+	var migrateErr error
+	if openConfig.driver == metaDriverMySQL {
+		migrateErr = runMySQLMigrations(ctx, openConfig.dsn, core.Dialect())
+	} else {
+		migrateErr = MigrateMetadataDB(ctx, core)
+	}
+	if migrateErr != nil {
 		closeErr := core.Close()
 		if closeErr != nil {
-			return nil, joinError("migrate metadata db and close after failure", err, wrapError(closeErr, "close metadata db"))
+			return nil, joinError("migrate metadata db and close after failure", migrateErr, wrapError(closeErr, "close metadata db"))
 		}
-		return nil, err
+		return nil, migrateErr
 	}
 	return core, nil
 }
@@ -227,11 +237,17 @@ func configureMetadataDBPool(raw *sql.DB, driver string) {
 	raw.SetConnMaxLifetime(0)
 }
 
+// MigrateMetadataDB migrates a metadata database. Direct MySQL callers must
+// provide a connection configured with multiStatements=true; OpenMetadataDB
+// configures a dedicated migration connection automatically.
 func MigrateMetadataDB(ctx context.Context, db *dbx.DB) error {
 	if err := requireMetadataContext(ctx, "migrate metadata store"); err != nil {
 		return err
 	}
 	if err := runDBMigrations(ctx, db); err != nil {
+		if normalizeDBDriver(db.Dialect().Name()) == metaDriverMySQL {
+			return wrapError(err, "migrate metadata schema; direct MySQL callers must configure multiStatements=true")
+		}
 		return wrapError(err, "migrate metadata schema")
 	}
 	return nil

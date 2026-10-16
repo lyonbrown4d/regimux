@@ -73,7 +73,7 @@ func TestPyPI256PackageWaitersCancelIndependently(t *testing.T) {
 	owner := startPackageOwner(t, service, req)
 	canceledCtx, cancelWaiters := context.WithCancel(t.Context())
 	defer cancelWaiters()
-	canceledRun, canceledEntered := startCanceledPackageWaiters(service, req, canceledCtx, canceledWaiters)
+	canceledRun, canceledEntered := startCanceledPackageWaiters(canceledCtx, service, req, canceledWaiters)
 	activeRun, activeEntered := startActivePackageWaiters(t, service, req, activeWaiters)
 	waitForPackageWaiters(t, canceledEntered, activeEntered, canceledWaiters, activeWaiters)
 	cancelWaiters()
@@ -119,20 +119,24 @@ func startPackageOwner(t *testing.T, service *pypi.Service, req pypi.Request) *p
 	return owner
 }
 
-func startCanceledPackageWaiters(service *pypi.Service, req pypi.Request, ctx context.Context, count int) (*testkit.ConcurrentRun[error], <-chan struct{}) {
+type canceledWaiterResult struct {
+	err error
+}
+
+func startCanceledPackageWaiters(ctx context.Context, service *pypi.Service, req pypi.Request, count int) (*testkit.ConcurrentRun[canceledWaiterResult], <-chan struct{}) {
 	entered := make(chan struct{}, count)
-	run := testkit.StartConcurrent(count, func() (error, error) {
+	run := testkit.StartConcurrent(count, func() (canceledWaiterResult, error) {
 		entered <- struct{}{}
 		response, getErr := service.Get(ctx, req)
 		if response != nil && response.Body != nil {
 			if closeErr := response.Body.Close(); closeErr != nil {
-				return nil, fmt.Errorf("close canceled waiter response: %w", closeErr)
+				return canceledWaiterResult{}, fmt.Errorf("close canceled waiter response: %w", closeErr)
 			}
 		}
 		if getErr != nil {
-			return nil, fmt.Errorf("get canceled waiter response: %w", getErr)
+			return canceledWaiterResult{err: fmt.Errorf("canceled waiter Get: %w", getErr)}, nil
 		}
-		return nil, nil
+		return canceledWaiterResult{}, nil
 	}).WithTimeout(20 * time.Second)
 	return run, entered
 }
@@ -142,25 +146,7 @@ func startActivePackageWaiters(t *testing.T, service *pypi.Service, req pypi.Req
 	entered := make(chan struct{}, count)
 	run := testkit.StartConcurrent(count, func() (string, error) {
 		entered <- struct{}{}
-		resp, getErr := service.Get(t.Context(), req)
-		if getErr != nil {
-			return "", fmt.Errorf("get active waiter response: %w", getErr)
-		}
-		if resp == nil || resp.Body == nil {
-			return "", errors.New("active waiter returned an empty response")
-		}
-		data, readErr := io.ReadAll(resp.Body)
-		closeErr := resp.Body.Close()
-		if readErr != nil {
-			return "", fmt.Errorf("read active waiter body: %w", readErr)
-		}
-		if closeErr != nil {
-			return "", fmt.Errorf("close active waiter body: %w", closeErr)
-		}
-		if resp.Cache != cacheHit {
-			return "", errors.New("active waiter did not read the completed cache fill")
-		}
-		return string(data), nil
+		return readActivePackageWaiter(t, service, req)
 	}).WithTimeout(30 * time.Second)
 	return run, entered
 }
@@ -175,11 +161,34 @@ func waitForPackageWaiters(t *testing.T, canceled, active <-chan struct{}, cance
 	}
 }
 
-func assertCanceledWaiters(t *testing.T, run *testkit.ConcurrentRun[error]) {
+func readActivePackageWaiter(t *testing.T, service *pypi.Service, req pypi.Request) (string, error) {
 	t.Helper()
-	for _, waiterErr := range run.Wait(t) {
-		if !errors.Is(waiterErr, context.Canceled) {
-			t.Fatalf("canceled waiter error = %v, want context.Canceled", waiterErr)
+	resp, getErr := service.Get(t.Context(), req)
+	if getErr != nil {
+		return "", fmt.Errorf("get active waiter response: %w", getErr)
+	}
+	if resp == nil || resp.Body == nil {
+		return "", errors.New("active waiter returned an empty response")
+	}
+	data, readErr := io.ReadAll(resp.Body)
+	closeErr := resp.Body.Close()
+	if readErr != nil {
+		return "", fmt.Errorf("read active waiter body: %w", readErr)
+	}
+	if closeErr != nil {
+		return "", fmt.Errorf("close active waiter body: %w", closeErr)
+	}
+	if resp.Cache != cacheHit {
+		return "", errors.New("active waiter did not read the completed cache fill")
+	}
+	return string(data), nil
+}
+
+func assertCanceledWaiters(t *testing.T, run *testkit.ConcurrentRun[canceledWaiterResult]) {
+	t.Helper()
+	for _, result := range run.Wait(t) {
+		if !errors.Is(result.err, context.Canceled) {
+			t.Fatalf("canceled waiter error = %v, want context.Canceled", result.err)
 		}
 	}
 }

@@ -42,7 +42,7 @@ Repeat with all 13 target names from `__fixtures` to test 512 callers for each i
 
 Run `python /fixture/verify_links.py --wave WAVE` inside the fixture container to follow npm and PyPI metadata links and compare the downloaded bytes with the advertised hashes. Reusing a wave from an older application image checks upgrade behavior with existing metadata cache entries.
 
-Aggregate k6 JSON and optional resource samples with `report.py`, running Python in a container and mounting the reports directory. Pass `--directory`, a case filename `--prefix`, `--markdown`, and `--json` output paths. Reports distinguish configured VUs, completed requests, and observed response rates; missing resource samples remain unavailable. Docker samples are observed maxima, not continuous peak measurements. A report generator exit status only indicates successful aggregation: inspect the recorded thresholds and client exit status to determine acceptance.
+Aggregate k6 JSON and optional resource samples with `report.py`, running Python in a container and mounting the reports directory. Pass `--directory`, a case filename `--prefix`, `--markdown`, and `--json` output paths. Reports distinguish configured VUs, completed requests, and observed response rates; missing resource samples remain unavailable. Docker samples are observed maxima, not continuous peak measurements. A report generator exit status only indicates successful aggregation: inspect the recorded thresholds and client exit status to determine acceptance. The matrix sampler gives each `docker stats --no-stream` call a 10-second timeout and records unavailable or timed-out samples explicitly; missing data remains unavailable in the aggregate. Use `-SampleOnly` to collect a one-time Docker sample without starting a load case.
 
 For the complete matrix on a running backend, PowerShell 7 users can run:
 
@@ -51,6 +51,14 @@ For the complete matrix on a running backend, PowerShell 7 users can run:
 ```
 
 Use `postgres` or `mysql` after switching the active application profile. The script runs 13 separate cold 512-VU objects, sustained 512/1024-VU mixed traffic, and a 512-VU GET/HEAD manifest burst. It samples container resources and retains client logs, threshold summaries, OOM state, and restart counts. It stops at the first failed case and refuses to overwrite existing reports; choose a fresh run ID for a new cold matrix. `-OnlyHot` runs the two sustained cases and the method-mixing case during debugging. Compile, race tests, and static analysis must finish before starting pressure runs so they do not compete for resources.
+
+## Catalog consistency
+
+After traffic drains, run the two read-only queries in [catalog_integrity.sql](catalog_integrity.sql) using a database client inside the test containers. Both queries must return zero rows on a fresh test database: repository totals must match canonical pull rows, and upstream totals must match repository totals. Retain any differences instead of correcting counters before acceptance. Use fresh named volumes for the final matrix if earlier failing candidates left inconsistent historical rows.
+
+The deterministic two-store regression uses `REGIMUX_META_CONCURRENCY_DRIVER=postgres` or `mysql` and `REGIMUX_META_CONCURRENCY_DSN` with the private test database DSN. Run `go test ./internal/store/meta -run '^TestSQLStoreCatalogRefreshSerializesAcrossStores$' -count=3` inside the Go container for each database. Without these variables, the integration regression is explicitly skipped.
+
+Use a new, disposable database for `TestConcurrentMetadataDBInitialization`: it opens eight independent stores simultaneously and then reopens the migrated database. Run this test alone before any other integration test initializes that database. On the same database, `TestMetadataMigrationLockWaitHonorsContext` holds the real database lock, checks that a waiting startup honors its deadline, releases the lock, and verifies a healthy startup. PostgreSQL reuses the existing Goose session locker; MySQL uses a database-scoped named lock. Migration locks cover history creation, hash validation, and DDL execution. MySQL enables multi-statement execution only on the dedicated migration pool; the application pool retains its original DSN options.
 
 ## Artifact scope
 

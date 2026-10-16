@@ -2,6 +2,7 @@ package artifactcache_test
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
@@ -80,14 +81,17 @@ func (m *heldTagRead) unblock() { m.once.Do(func() { close(m.release) }) }
 
 func (m *heldTagRead) Tag(ctx context.Context, key meta.TagKey) (*meta.TagRecord, bool, error) {
 	tag, found, err := m.MetadataStore.Tag(ctx, key)
+	if err != nil {
+		return nil, false, fmt.Errorf("read held tag: %w", err)
+	}
 	if m.calls.Add(1) != 1 {
-		return tag, found, err
+		return tag, found, nil
 	}
 	close(m.started)
 	select {
 	case <-m.release:
-		return tag, found, err
+		return tag, found, nil
 	case <-ctx.Done():
-		return nil, false, ctx.Err()
+		return nil, false, fmt.Errorf("wait for held tag: %w", ctx.Err())
 	}
 }

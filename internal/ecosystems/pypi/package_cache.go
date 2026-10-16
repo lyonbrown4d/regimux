@@ -15,46 +15,43 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
-func (s *Service) cachedPackage(ctx context.Context, req Request, route Route) *Response {
-	manifest, ok := s.packageManifest(ctx, route)
+// The second result distinguishes a failed cache read from a normal miss.
+func (s *Service) cachedPackage(ctx context.Context, req Request, route Route) (*Response, bool) {
+	manifest, ok, err := s.packageManifest(ctx, route)
 	if !ok {
-		return nil
-	}
-	if err := artifactcache.Touch(ctx, s.metadata, *manifest, s.now()); err != nil {
-		s.logger.WarnContext(ctx, "touch PyPI cache access failed", "digest", manifest.Digest, "error", err)
+		return nil, err != nil
 	}
 	if !packageIsMetadata(route) && validSHA256(req.SHA256) && !strings.EqualFold(manifest.Digest, "sha256:"+req.SHA256) {
-		return nil
+		return nil, false
 	}
 	resp, opts := cachedPackageResponse(req, route, manifest)
 	if methodOrGet(req.Method) == http.MethodHead || resp.Status == http.StatusRequestedRangeNotSatisfiable {
-		return resp
+		return resp, false
 	}
 	body, err := s.openCachedPackage(ctx, manifest, opts)
 	if err != nil {
 		s.logger.WarnContext(ctx, "pypi package cache read failed; fetching upstream", "alias", route.Alias)
 		s.observePackageCache(ctx, route.Alias, "read_error")
-		return nil
+		return nil, true
 	}
 	resp.Body = body
-	return resp
+	return resp, false
 }
 
-func (s *Service) packageManifest(ctx context.Context, route Route) (*meta.ManifestRecord, bool) {
+func (s *Service) packageManifest(ctx context.Context, route Route) (*meta.ManifestRecord, bool, error) {
 	if s.cache == nil || s.cache.Metadata() == nil || s.cache.Objects() == nil {
-		return nil, false
+		return nil, false, nil
 	}
 	metadataCtx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
 	defer cancel()
-	tag, ok, err := s.cache.Metadata().Tag(metadataCtx, meta.TagKey{Alias: route.Alias, Repository: route.Repository, Reference: route.Reference})
+	manifest, ok, err := artifactcache.LookupManifest(metadataCtx, s.cache, artifactKey(route))
 	if err != nil || !ok {
 		if err != nil {
 			s.observePackageCache(ctx, route.Alias, "read_error")
 		}
-		return nil, false
+		return nil, false, wrapError(err, "read pypi package manifest")
 	}
-	manifest, ok, err := s.cache.Metadata().Manifest(metadataCtx, meta.ManifestKey{Alias: route.Alias, Repository: route.Repository, Digest: tag.Digest})
-	return manifest, ok && err == nil
+	return manifest, true, nil
 }
 
 func cachedPackageResponse(req Request, route Route, manifest *meta.ManifestRecord) (*Response, object.GetOptions) {

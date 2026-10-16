@@ -135,8 +135,8 @@ func (t *FillTracker) waitForTrackedFill[T any](req CoalesceRequest[T], current 
 		if req.Context != nil && req.Context.Err() != nil {
 			return zero, false, wrapError(req.Context.Err(), "wait for artifact cache fill")
 		}
-		if _, ok := errors.AsType[*fillOwnerCanceledError](err); ok {
-			return zero, true, nil
+		if canceled, ok := errors.AsType[*fillOwnerCanceledError](err); ok && canceled != nil {
+			return zero, true, nil //nolint:nilerr // Healthy followers retry when only the fill owner was canceled.
 		}
 		return zero, false, wrapError(err, "wait for artifact cache fill")
 	}

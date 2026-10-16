@@ -96,13 +96,6 @@ func assertFillWaveErrors(t *testing.T, results <-chan error, count int, want er
 	}
 }
 
-func (w *fillCancellationWave) assertRefills(t *testing.T, want int64) {
-	t.Helper()
-	if got := w.refills.Load(); got != want {
-		t.Fatalf("replacement upstream fills = %d, want %d", got, want)
-	}
-}
-
 type fillCancellationWave struct {
 	tracker *artifactcache.FillTracker
 	key     artifactcache.Key
@@ -110,6 +103,13 @@ type fillCancellationWave struct {
 	ready   sync.WaitGroup
 	cached  atomic.Bool
 	refills atomic.Int64
+}
+
+func (w *fillCancellationWave) assertRefills(t *testing.T, want int64) {
+	t.Helper()
+	if got := w.refills.Load(); got != want {
+		t.Fatalf("replacement upstream fills = %d, want %d", got, want)
+	}
 }
 
 func newFillCancellationWave() *fillCancellationWave {

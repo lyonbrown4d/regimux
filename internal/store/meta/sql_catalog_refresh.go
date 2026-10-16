@@ -5,6 +5,8 @@ import (
 	"errors"
 	"time"
 
+	"github.com/arcgolabs/dbx"
+	"github.com/arcgolabs/dbx/querydsl"
 	"github.com/arcgolabs/dbx/repository"
 	"github.com/samber/lo"
 )
@@ -154,31 +156,13 @@ func (s *SQLStore) refreshRepositoryMetadataOnce(ctx context.Context, alias, nam
 	}
 	defer s.catalogMu.Release(1)
 
-	repo, err := s.ensureRepositoryMetadata(ctx, alias, name, at)
+	// Ensure rows exist before opening the transaction. The upstream lock is the
+	// transaction's first statement so MySQL RR cannot retain a pre-lock snapshot.
+	seed, err := s.ensureRepositoryMetadata(ctx, alias, name, at)
 	if err != nil {
 		return err
 	}
-	stats, err := s.repositoryAggregate(ctx, repo.Alias, repo.Name)
-	if err != nil {
-		return err
-	}
-	repo.PullCount = stats.PullCount
-	repo.PolicyDeniedPullCount = stats.PolicyDeniedPullCount
-	repo.BlobBytes = stats.BlobBytes
-	repo.BlobLinkCount = stats.BlobLinkCount
-	repo.LastPullAt = stats.LastPullAt
-	repo.LastPolicyDeniedAt = stats.LastPolicyDeniedAt
-	repo.LastBlobAccessAt = stats.LastBlobAccessAt
-	repo.LastActivityAt = stats.LastActivityAt
-	repo.UpdatedAt = maxTime(metadataTimestamp(at), repo.UpdatedAt, stats.LastActivityAt)
-	row, err := s.mapper.RepositoryRecordToRow(*repo)
-	if err != nil {
-		return err
-	}
-	if err := s.updateRepositoryRow(ctx, row); err != nil {
-		return err
-	}
-	return s.refreshUpstreamMetadata(ctx, repo.UpstreamID, repo.UpdatedAt)
+	return s.withCatalogRefreshTx(ctx, seed, at)
 }
 
 func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string, at time.Time) error {
@@ -200,15 +184,8 @@ func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string
 	return nil
 }
 
-func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64, at time.Time) error {
-	row, err := s.upstreams.By(sqlUpstreamRows.ID).Get(ctx, upstreamID)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil
-	}
-	if err != nil {
-		return wrapError(err, "get upstream metadata")
-	}
-	stats, err := s.upstreamAggregate(ctx, upstreamID)
+func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, session dbx.Session, upstreamID int64, row upstreamRow, at time.Time) error {
+	stats, err := s.upstreamAggregate(ctx, session, upstreamID)
 	if err != nil {
 		return err
 	}
@@ -228,11 +205,11 @@ func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64
 	if err != nil {
 		return err
 	}
-	return s.updateUpstreamRow(ctx, updateRow)
+	return s.updateUpstreamRow(ctx, session, updateRow)
 }
 
-func (s *SQLStore) updateRepositoryRow(ctx context.Context, row repositoryRow) error {
-	return patchRowByKey(ctx, s.repositories, sqlRepositoryRows.Key, row.Key, "update repository metadata",
+func (s *SQLStore) updateRepositoryRow(ctx context.Context, session dbx.Session, row repositoryRow) error {
+	_, err := dbx.Exec(ctx, session, querydsl.Update(sqlRepositoryRows).Set(
 		sqlRepositoryRows.UpstreamID.Set(row.UpstreamID),
 		sqlRepositoryRows.Alias.Set(row.Alias),
 		sqlRepositoryRows.Name.Set(row.Name),
@@ -246,11 +223,15 @@ func (s *SQLStore) updateRepositoryRow(ctx context.Context, row repositoryRow) e
 		sqlRepositoryRows.LastActivityAt.Set(row.LastActivityAt),
 		sqlRepositoryRows.CreatedAt.Set(row.CreatedAt),
 		sqlRepositoryRows.UpdatedAt.Set(row.UpdatedAt),
-	)
+	).Where(sqlRepositoryRows.Key.Eq(row.Key)))
+	if err != nil {
+		return wrapError(err, "update repository metadata")
+	}
+	return nil
 }
 
-func (s *SQLStore) updateUpstreamRow(ctx context.Context, row upstreamRow) error {
-	return patchRowByKey(ctx, s.upstreams, sqlUpstreamRows.Alias, row.Alias, "update upstream metadata",
+func (s *SQLStore) updateUpstreamRow(ctx context.Context, session dbx.Session, row upstreamRow) error {
+	_, err := dbx.Exec(ctx, session, querydsl.Update(sqlUpstreamRows).Set(
 		sqlUpstreamRows.RepositoryCount.Set(row.RepositoryCount),
 		sqlUpstreamRows.PullCount.Set(row.PullCount),
 		sqlUpstreamRows.PolicyDeniedPullCount.Set(row.PolicyDeniedPullCount),
@@ -260,5 +241,9 @@ func (s *SQLStore) updateUpstreamRow(ctx context.Context, row upstreamRow) error
 		sqlUpstreamRows.LastActivityAt.Set(row.LastActivityAt),
 		sqlUpstreamRows.CreatedAt.Set(row.CreatedAt),
 		sqlUpstreamRows.UpdatedAt.Set(row.UpdatedAt),
-	)
+	).Where(sqlUpstreamRows.Alias.Eq(row.Alias)))
+	if err != nil {
+		return wrapError(err, "update upstream metadata")
+	}
+	return nil
 }

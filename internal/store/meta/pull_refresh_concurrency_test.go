@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/stretchr/testify/require"
 )
 
 func TestSQLStoreRecordPullConcurrentCatalogConsistency(t *testing.T) {
@@ -16,13 +17,13 @@ func TestSQLStoreRecordPullConcurrentCatalogConsistency(t *testing.T) {
 	base := time.Date(2026, 10, 16, 10, 0, 0, 0, time.UTC)
 	key := meta.PullKey{Alias: "hub", Repository: "library/node", Reference: "20"}
 	const workers = 512
-	runConcurrentPullWrites(t, ctx, store, key, base, workers)
+	runConcurrentPullWrites(ctx, t, store, key, base, workers)
 	lastPullAt := base.Add((workers - 1) * time.Second)
-	upstreamAt, deniedAt := recordUpstreamDeniedAndOlder(t, ctx, store, key, lastPullAt)
-	assertPullCatalog(t, ctx, store, key, workers+1, lastPullAt, upstreamAt, deniedAt)
+	upstreamAt, deniedAt := recordUpstreamDeniedAndOlder(ctx, t, store, key, lastPullAt)
+	assertPullCatalog(ctx, t, store, key, workers+1, lastPullAt, upstreamAt, deniedAt)
 }
 
-func runConcurrentPullWrites(t *testing.T, ctx context.Context, store *meta.SQLStore, key meta.PullKey, base time.Time, count int) {
+func runConcurrentPullWrites(ctx context.Context, t *testing.T, store *meta.SQLStore, key meta.PullKey, base time.Time, count int) {
 	t.Helper()
 	start := make(chan struct{})
 	errs := make(chan error, count)
@@ -49,7 +50,7 @@ func runConcurrentPullWrites(t *testing.T, ctx context.Context, store *meta.SQLS
 	}
 }
 
-func recordUpstreamDeniedAndOlder(t *testing.T, ctx context.Context, store *meta.SQLStore, key meta.PullKey, lastPullAt time.Time) (time.Time, time.Time) {
+func recordUpstreamDeniedAndOlder(ctx context.Context, t *testing.T, store *meta.SQLStore, key meta.PullKey, lastPullAt time.Time) (time.Time, time.Time) {
 	t.Helper()
 	upstreamAt := lastPullAt.Add(time.Hour)
 	deniedAt := upstreamAt.Add(time.Hour)
@@ -66,8 +67,8 @@ func recordUpstreamDeniedAndOlder(t *testing.T, ctx context.Context, store *meta
 }
 
 func assertPullCatalog(
-	t *testing.T,
 	ctx context.Context,
+	t *testing.T,
 	store *meta.SQLStore,
 	key meta.PullKey,
 	wantPulls int,
@@ -76,21 +77,26 @@ func assertPullCatalog(
 	t.Helper()
 	pull, ok, err := store.Pull(ctx, key)
 	requireNoError(t, "get final pull record", err)
-	if !ok || pull.Count != int64(wantPulls) || pull.PolicyDeniedCount != 1 || !pull.LastPullAt.Equal(lastPullAt) || !pull.LastUpstreamPullAt.Equal(upstreamAt) || !pull.LastPolicyDeniedAt.Equal(deniedAt) {
-		t.Fatalf("unexpected final pull record: %#v", pull)
-	}
+	require.True(t, ok)
+	require.NotNil(t, pull)
+	require.Equal(t, int64(wantPulls), pull.Count)
+	require.Equal(t, int64(1), pull.PolicyDeniedCount)
+	require.Equal(t, lastPullAt, pull.LastPullAt)
+	require.Equal(t, upstreamAt, pull.LastUpstreamPullAt)
+	require.Equal(t, deniedAt, pull.LastPolicyDeniedAt)
 
 	upstream, err := store.UpstreamByAlias(ctx, key.Alias)
 	requireNoError(t, "get refreshed upstream", err)
+	require.NotNil(t, upstream)
 	repository, err := store.RepositoryByName(ctx, upstream.ID, key.Repository)
 	requireNoError(t, "get refreshed repository", err)
-	if repository.PullCount != int64(wantPulls) || repository.PolicyDeniedPullCount != 1 || !repository.LastActivityAt.Equal(deniedAt) {
-		t.Fatalf("unexpected repository aggregate: %#v", repository)
-	}
-	if !repository.UpdatedAt.Equal(deniedAt) || !upstream.UpdatedAt.Equal(deniedAt) {
-		t.Fatalf("catalog update timestamps regressed: repository=%s upstream=%s want=%s", repository.UpdatedAt, upstream.UpdatedAt, deniedAt)
-	}
-	if upstream.PullCount != int64(wantPulls) || upstream.PolicyDeniedPullCount != 1 || !upstream.LastActivityAt.Equal(deniedAt) {
-		t.Fatalf("unexpected upstream aggregate: %#v", upstream)
-	}
+	require.NotNil(t, repository)
+	require.Equal(t, int64(wantPulls), repository.PullCount)
+	require.Equal(t, int64(1), repository.PolicyDeniedPullCount)
+	require.Equal(t, deniedAt, repository.LastActivityAt)
+	require.Equal(t, deniedAt, repository.UpdatedAt)
+	require.Equal(t, deniedAt, upstream.UpdatedAt)
+	require.Equal(t, int64(wantPulls), upstream.PullCount)
+	require.Equal(t, int64(1), upstream.PolicyDeniedPullCount)
+	require.Equal(t, deniedAt, upstream.LastActivityAt)
 }

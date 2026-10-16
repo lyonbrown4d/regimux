@@ -3,6 +3,7 @@ package suggestion_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
 	"runtime/pprof"
@@ -47,18 +48,30 @@ func TestRefreshTagsCanceledOwnerAllowsHealthyFollowerToFinish(t *testing.T) {
 	waitForTagCancellationFlight(t)
 	cancelOwner()
 
+	assertCanceledTagRefreshOwner(t, ownerResult)
+	client.releaseOnce.Do(func() { close(client.release) })
+	assertHealthyTagRefreshFollower(t, followerResult)
+	if got := client.calls.Load(); got != 1 {
+		t.Fatalf("tag list calls = %d, want 1", got)
+	}
+}
+
+func assertCanceledTagRefreshOwner(t *testing.T, result <-chan tagRefreshCancellationResult) {
+	t.Helper()
 	select {
-	case got := <-ownerResult:
+	case got := <-result:
 		if !errors.Is(got.err, context.Canceled) {
 			t.Fatalf("canceled tag refresh owner error = %v, want context canceled", got.err)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("canceled tag refresh owner did not return")
 	}
-	client.releaseOnce.Do(func() { close(client.release) })
+}
 
+func assertHealthyTagRefreshFollower(t *testing.T, result <-chan tagRefreshCancellationResult) {
+	t.Helper()
 	select {
-	case got := <-followerResult:
+	case got := <-result:
 		if got.err != nil {
 			t.Fatalf("healthy tag refresh follower: %v", got.err)
 		}
@@ -67,9 +80,6 @@ func TestRefreshTagsCanceledOwnerAllowsHealthyFollowerToFinish(t *testing.T) {
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("healthy tag refresh follower did not finish")
-	}
-	if got := client.calls.Load(); got != 1 {
-		t.Fatalf("tag list calls = %d, want 1", got)
 	}
 }
 
@@ -96,7 +106,7 @@ func (c *heldTagCancellationClient) ListTags(ctx context.Context, _ upstream.Lis
 	case <-c.release:
 		return &upstream.TagsResponse{Body: io.NopCloser(strings.NewReader(`{"tags":["stable"]}`))}, nil
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, fmt.Errorf("wait for tag refresh release: %w", ctx.Err())
 	}
 }
 
@@ -104,22 +114,27 @@ func waitForTagCancellationFlight(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		var stacks strings.Builder
-		if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
-			t.Fatalf("write goroutine profile: %v", err)
-		}
-		waiters := 0
-		for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
-			if strings.Contains(goroutine, ".RefreshTags(") && strings.Contains(goroutine, "singleflight") {
-				waiters++
-				if waiters == 2 {
-					return
-				}
-			}
+		if tagCancellationWaiterCount(t) >= 2 {
+			return
 		}
 		runtime.Gosched()
 	}
 	t.Fatal("tag refresh follower did not join the in-flight refresh")
+}
+
+func tagCancellationWaiterCount(t *testing.T) int {
+	t.Helper()
+	var stacks strings.Builder
+	if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
+		t.Fatalf("write goroutine profile: %v", err)
+	}
+	waiters := 0
+	for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
+		if strings.Contains(goroutine, ".RefreshTags(") && strings.Contains(goroutine, "singleflight") {
+			waiters++
+		}
+	}
+	return waiters
 }
 
 var _ suggestion.TagClient = (*heldTagCancellationClient)(nil)

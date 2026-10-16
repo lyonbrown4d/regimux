@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"sync/atomic"
@@ -19,9 +20,8 @@ const concurrentArtifactReaders = 512
 
 func TestGetCoalescesMetadataReadsAndOpensIndependentBodies(t *testing.T) {
 	body := []byte("complete artifact body")
-	digest := "sha256:cached-artifact"
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
-	metadata := newReadMetadata(digest, now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour))
 	objects := &readObjectStore{body: body}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata,
@@ -67,7 +67,7 @@ func TestGetCoalescesMetadataReadsAndOpensIndependentBodies(t *testing.T) {
 
 func TestGetDoesNotCoalesceDifferentKeys(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
-	metadata := newReadMetadata("sha256:cached-artifact", now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour))
 	objects := &readObjectStore{body: []byte("artifact")}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata,
@@ -98,7 +98,7 @@ func TestGetDoesNotCoalesceDifferentKeys(t *testing.T) {
 
 func TestGetCanceledFollowerDoesNotCancelSharedMetadataRead(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
-	metadata := newReadMetadata("sha256:cached-artifact", now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour))
 	objects := &readObjectStore{body: []byte("artifact")}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata,
@@ -123,6 +123,7 @@ func TestGetCanceledFollowerDoesNotCancelSharedMetadataRead(t *testing.T) {
 	ready.Add(1)
 	go func() {
 		ctx := &readWaitContext{Context: followerCtx, ready: &ready}
+		//nolint:contextcheck // The wrapper embeds followerCtx and only observes Done to synchronize the waiter.
 		entry, _, err := store.Get(ctx, key)
 		followerResult <- readResult{entry: entry, err: err}
 	}()
@@ -186,7 +187,8 @@ type readMetadata struct {
 	lastAccess    time.Time
 }
 
-func newReadMetadata(digest string, lastAccess time.Time) *readMetadata {
+func newReadMetadata(lastAccess time.Time) *readMetadata {
+	const digest = "sha256:cached-artifact"
 	return &readMetadata{
 		tag: meta.TagRecord{Digest: digest, ExpiresAt: time.Time{}},
 		manifest: meta.ManifestRecord{
@@ -210,7 +212,7 @@ func (m *readMetadata) Tag(ctx context.Context, _ meta.TagKey) (*meta.TagRecord,
 	case <-m.releaseTag:
 		return &m.tag, true, nil
 	case <-ctx.Done():
-		return nil, false, ctx.Err()
+		return nil, false, fmt.Errorf("await metadata tag read: %w", ctx.Err())
 	}
 }
 

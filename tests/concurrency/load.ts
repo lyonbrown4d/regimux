@@ -99,7 +99,11 @@ function request(base: string, target: Target, measured = true): boolean {
   if (measured && response.headers['X-Mirror-Cache'] === 'miss') {
     cacheMisses.add(1, { ecosystem: target.ecosystem, target: target.name });
   }
-  if (!ok && __ITER === 0) console.error(JSON.stringify({ target: target.name, status: response.status, bodyOK, error: response.error }));
+  if (!ok) console.error(JSON.stringify({
+    target: target.name, status: response.status, bodyOK, error: response.error,
+    errorCode: response.error_code, durationMs: response.timings.duration,
+    vu: __VU, iteration: __ITER, cache: response.headers['X-Mirror-Cache'],
+  }));
   return ok;
 }
 

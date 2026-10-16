@@ -64,20 +64,25 @@ func waitForTokenCancellationFlight(t *testing.T) {
 	t.Helper()
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
-		var stacks strings.Builder
-		if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
-			t.Fatalf("write goroutine profile: %v", err)
-		}
-		waiters := 0
-		for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
-			if strings.Contains(goroutine, ".fetchToken(") && strings.Contains(goroutine, "singleflight") {
-				waiters++
-				if waiters == 2 {
-					return
-				}
-			}
+		if tokenCancellationWaiterCount(t) >= 2 {
+			return
 		}
 		runtime.Gosched()
 	}
 	t.Fatal("token follower did not join the in-flight refresh")
+}
+
+func tokenCancellationWaiterCount(t *testing.T) int {
+	t.Helper()
+	var stacks strings.Builder
+	if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
+		t.Fatalf("write goroutine profile: %v", err)
+	}
+	waiters := 0
+	for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
+		if strings.Contains(goroutine, ".fetchToken(") && strings.Contains(goroutine, "singleflight") {
+			waiters++
+		}
+	}
+	return waiters
 }
