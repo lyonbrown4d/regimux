@@ -13,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
@@ -47,12 +48,14 @@ func TestServiceBoundsCacheReadAndFallsBackToUpstream(t *testing.T) {
 	seededResponse, err := seeded.Get(ctx, maven.Request{Alias: "central", Tail: "com/acme/demo/1.0/demo-1.0.jar"})
 	requireNoError(t, "seed cache", err)
 	assertBody(t, seededResponse, "healthy artifact")
+	requireStoredTag(ctx, t, metadata, meta.TagKey{Alias: "central", Repository: "com/acme/demo/1.0", Reference: "demo-1.0.jar"})
 
 	blocked := &blockedGetsStore{Store: objects}
 	stalledCache := artifactcache.New(artifactcache.Dependencies{Metadata: metadata, Objects: blocked})
 	stalled := maven.NewService(maven.ServiceDependencies{
 		Config: config.Config{Maven: upstreams}, Cache: stalledCache, Metadata: metadata, Objects: blocked,
 	})
+	t.Cleanup(func() { requireNoError(t, "close stalled service", stalled.Close()) })
 	requestCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 	started := time.Now()
@@ -66,7 +69,7 @@ func TestServiceBoundsCacheReadAndFallsBackToUpstream(t *testing.T) {
 	if got := upstreamCalls.Load(); got != 2 {
 		t.Fatalf("upstream calls = %d, want seed plus fallback", got)
 	}
-	if got := blocked.calls.Load(); got < 3 {
-		t.Fatalf("object Get calls = %d, want two blocked cache lookups plus cache reopen", got)
+	if got := blocked.calls.Load(); got < 2 {
+		t.Fatalf("object Get calls = %d, want two blocked cache lookups before replay fallback", got)
 	}
 }

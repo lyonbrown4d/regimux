@@ -30,14 +30,16 @@ func newTestServiceWithStores(ctx context.Context, t *testing.T, upstreams map[s
 		mavenGroups = groups[0]
 	}
 
-	return maven.NewService(maven.ServiceDependencies{
+	service := maven.NewService(maven.ServiceDependencies{
 		Config: config.Config{
 			Maven:       upstreams,
 			MavenGroups: mavenGroups,
 		},
 		Metadata: db,
 		Objects:  objects,
-	}), db, objects
+	})
+	t.Cleanup(func() { requireNoError(t, "close Maven service", service.Close()) })
+	return service, db, objects
 }
 
 func newTestMetadata(ctx context.Context, t *testing.T) meta.Store {
@@ -52,11 +54,7 @@ func newTestMetadata(ctx context.Context, t *testing.T) meta.Store {
 
 func assertTagExpires(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey) {
 	t.Helper()
-	tag, ok, err := metadata.Tag(ctx, key)
-	requireNoError(t, "lookup tag", err)
-	if !ok {
-		t.Fatalf("tag %s was not stored", key.String())
-	}
+	tag := requireStoredTag(ctx, t, metadata, key)
 	if tag.ExpiresAt.IsZero() {
 		t.Fatalf("tag %s expires_at is zero, want short TTL", key.String())
 	}
@@ -120,10 +118,7 @@ func assertPolicyDeniedPull(ctx context.Context, t *testing.T, metadata meta.Sto
 func expireArtifactMetadata(ctx context.Context, t *testing.T, metadata meta.Store, alias, repo, reference string) {
 	t.Helper()
 	expiresAt := time.Now().UTC().Add(-time.Minute)
-	tag, ok, err := metadata.Tag(ctx, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
-	if err != nil || !ok {
-		t.Fatalf("lookup tag for expiration: ok=%v err=%v", ok, err)
-	}
+	tag := requireStoredTag(ctx, t, metadata, meta.TagKey{Alias: alias, Repository: repo, Reference: reference})
 	tag.ExpiresAt = expiresAt
 	if _, updateErr := metadata.UpsertTag(ctx, *tag); updateErr != nil {
 		t.Fatalf("expire tag: %v", updateErr)
@@ -164,12 +159,33 @@ func assertStoredArtifact(ctx context.Context, t *testing.T, metadata meta.Store
 
 func requireStoredTag(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey) *meta.TagRecord {
 	t.Helper()
-	tag, ok, err := metadata.Tag(ctx, key)
-	requireNoError(t, "lookup stored tag", err)
-	if !ok {
-		t.Fatalf("tag %s was not stored", key.String())
+	ticker := time.NewTicker(10 * time.Millisecond)
+	defer ticker.Stop()
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+	for {
+		tag, ok, err := metadata.Tag(ctx, key)
+		requireNoError(t, "lookup stored tag", err)
+		if ok && storedMavenBlobReady(ctx, t, metadata, key, tag.Digest) {
+			return tag
+		}
+		select {
+		case <-ctx.Done():
+			t.Fatalf("await stored artifact %s: %v", key.String(), ctx.Err())
+		case <-timer.C:
+			t.Fatalf("artifact %s did not finish background persistence", key.String())
+		case <-ticker.C:
+		}
 	}
-	return tag
+}
+
+func storedMavenBlobReady(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey, digest string) bool {
+	t.Helper()
+	_, blobOK, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
+	requireNoError(t, "lookup pending stored blob", err)
+	_, repoOK, err := metadata.RepoBlob(ctx, meta.RepoBlobKey{Alias: key.Alias, Repository: key.Repository, Digest: digest})
+	requireNoError(t, "lookup pending stored repository blob", err)
+	return blobOK && repoOK
 }
 
 func requireStoredManifest(ctx context.Context, t *testing.T, metadata meta.Store, key meta.TagKey, digest string) *meta.ManifestRecord {

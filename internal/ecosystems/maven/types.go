@@ -42,18 +42,21 @@ type ServiceDependencies struct {
 }
 
 type Service struct {
-	cfg      config.Config
-	cache    *artifactcache.Store
-	metadata meta.Store
-	client   *http.Client
-	factory  *clientfactory.Factory
-	logger   *slog.Logger
-	fills    *artifactcache.FillTracker
-	now      func() time.Time
-	events   events.Bus
-	clientMu sync.Mutex
-	clients  map[mavenClientKey]clienthttp.Client
-	closed   bool
+	cfg       config.Config
+	cache     *artifactcache.Store
+	metadata  meta.Store
+	client    *http.Client
+	factory   *clientfactory.Factory
+	logger    *slog.Logger
+	fills     *artifactcache.FillTracker
+	now       func() time.Time
+	events    events.Bus
+	clientMu  sync.Mutex
+	clients   map[mavenClientKey]clienthttp.Client
+	fillPool  *mavenFillPool
+	closed    bool
+	closeOnce sync.Once
+	closeErr  error
 }
 
 type Request struct {

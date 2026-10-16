@@ -77,13 +77,11 @@ func TestMavenGroupFallsThroughMissAndCachesResolvedMember(t *testing.T) {
 			centralRequests,
 		)
 	}
-	if _, ok, err := metadata.Tag(ctx, meta.TagKey{
+	requireStoredTag(ctx, t, metadata, meta.TagKey{
 		Alias:      "public",
 		Repository: "com/acme/demo/1.0",
 		Reference:  "demo-1.0.jar",
-	}); err != nil || !ok {
-		t.Fatalf("group cache metadata: ok=%t error=%v", ok, err)
-	}
+	})
 }
 
 func TestMavenGroupStopsOnServerErrorByDefault(t *testing.T) {

@@ -183,20 +183,23 @@ func (s *Service) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.clientMu.Lock()
-	defer s.clientMu.Unlock()
-	if s.closed {
-		return nil
-	}
-	s.closed = true
-	var closeErr error
-	for key, client := range s.clients {
-		if client != nil {
-			closeErr = errors.Join(closeErr, client.Close())
+	s.closeOnce.Do(func() {
+		s.clientMu.Lock()
+		s.closed = true
+		pool := s.fillPool
+		clients := s.clients
+		s.clients = nil
+		s.clientMu.Unlock()
+		if pool != nil {
+			s.closeErr = pool.close()
 		}
-		delete(s.clients, key)
-	}
-	return closeErr
+		for _, client := range clients {
+			if client != nil {
+				s.closeErr = errors.Join(s.closeErr, client.Close())
+			}
+		}
+	})
+	return s.closeErr
 }
 
 func retryableMavenStatus(status int) bool {

@@ -9,15 +9,16 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
-	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"github.com/samber/oops"
 )
 
 const defaultMavenCacheWriteTimeout = 30 * time.Second
 
 type replayableBody struct {
-	path string
-	once sync.Once
+	path            string
+	mu              sync.Mutex
+	readers         int
+	removeRequested bool
 }
 
 func newReplayableBody(ctx context.Context, body io.ReadCloser) (*replayableBody, error) {
@@ -76,10 +77,16 @@ func validateMavenReplay(requestRoute Route, fetched *upstreamFetch, replay *rep
 }
 
 func (b *replayableBody) Open(removeOnClose bool) (io.ReadCloser, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.removeRequested {
+		return nil, wrapError(os.ErrNotExist, "open released maven replay body")
+	}
 	file, err := os.Open(b.path)
 	if err != nil {
 		return nil, wrapError(err, "open maven upstream replay body")
 	}
+	b.readers++
 	return &replayableReadCloser{File: file, body: b, removeOnClose: removeOnClose}, nil
 }
 
@@ -87,87 +94,37 @@ func (b *replayableBody) Remove() {
 	if b == nil {
 		return
 	}
-	b.once.Do(func() { _ = os.Remove(b.path) }) //nolint:errcheck // Removal is best-effort cleanup.
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	b.removeRequested = true
+	b.removeIfUnused()
+}
+
+// Call with b.mu held. Existing readers retain the file on every supported OS.
+func (b *replayableBody) removeIfUnused() {
+	if b.removeRequested && b.readers == 0 {
+		_ = os.Remove(b.path) //nolint:errcheck // Temporary-file cleanup is best-effort.
+	}
 }
 
 type replayableReadCloser struct {
 	*os.File
 	body          *replayableBody
 	removeOnClose bool
+	closeOnce     sync.Once
+	closeErr      error
 }
 
 func (r *replayableReadCloser) Close() error {
-	err := r.File.Close()
-	if r.removeOnClose {
-		r.body.Remove()
-	}
-	return wrapError(err, "close maven replay body")
-}
-
-//nolint:cyclop,gocognit,gocyclo // Storage, timeout, reopen, and body ownership are one transaction.
-func (s *Service) store(ctx context.Context, requestRoute Route, fetched *upstreamFetch) (storedResponse, error) {
-	if s.cache == nil {
-		return storedResponse{}, oops.In("maven").Errorf("maven cache store is not configured")
-	}
-	if fetched == nil || fetched.body == nil {
-		return storedResponse{}, oops.In("maven").Errorf("maven upstream body is empty")
-	}
-	defer closeReadCloser(fetched.body, s.logger, "close maven upstream body")
-	writeCtx, cancel := context.WithTimeout(ctx, defaultMavenCacheWriteTimeout)
-	defer cancel()
-	entry, err := s.cache.Put(writeCtx, artifactcache.PutRequest{
-		Key:         artifactKey(requestRoute),
-		AcceptKey:   acceptKeyMaven,
-		Body:        contextReader{ctx: writeCtx, reader: fetched.body},
-		Headers:     fetched.headers,
-		ContentType: routeContentType(requestRoute, fetched.headers),
-		TTL:         routeTTL(requestRoute),
-		Validator:   mavenBodyValidator(requestRoute),
-	})
-	if err != nil {
-		return storedResponse{}, wrapError(err, "store maven artifact")
-	}
-	s.publishCacheStore(ctx, requestRoute, entry.Digest, entry.Size)
-	if entry.Body != nil {
-		closeReadCloser(entry.Body, s.logger, "close temporary maven cache body")
-	}
-	readCtx, stopReadTimeout, readCancel := mavenCacheReadContext(ctx)
-	refreshed, ok, err := s.cache.Get(readCtx, artifactKey(requestRoute))
-	if err != nil {
-		stopReadTimeout()
-		readCancel()
-		if ctx.Err() != nil {
-			return storedResponse{}, wrapError(ctx.Err(), "reopen stored maven artifact")
+	r.closeOnce.Do(func() {
+		r.closeErr = r.File.Close()
+		r.body.mu.Lock()
+		defer r.body.mu.Unlock()
+		r.body.readers--
+		if r.removeOnClose {
+			r.body.removeRequested = true
 		}
-		return storedResponse{}, wrapError(err, "reopen stored maven artifact")
-	}
-	if err := ctx.Err(); err != nil {
-		stopReadTimeout()
-		readCancel()
-		closeReadCloser(refreshed.Body, s.logger, "close canceled reopened maven artifact")
-		return storedResponse{}, wrapError(err, "reopen stored maven artifact")
-	}
-	if readErr := readCtx.Err(); readErr != nil {
-		stopReadTimeout()
-		readCancel()
-		closeReadCloser(refreshed.Body, s.logger, "close timed out reopened maven artifact")
-		return storedResponse{}, wrapError(readErr, "reopen stored maven artifact")
-	}
-	if !ok {
-		stopReadTimeout()
-		readCancel()
-		return storedResponse{}, oops.In("maven").Errorf("stored maven artifact is not readable")
-	}
-	stopReadTimeout()
-	if refreshed.Body != nil {
-		refreshed.Body = upstreamhttp.WithIdleTimeout(refreshed.Body, readCancel, defaultMavenBodyIdleTimeout)
-	} else {
-		readCancel()
-	}
-	return storedResponse{
-		digest:  refreshed.Digest,
-		size:    refreshed.Size,
-		headers: refreshed.Headers,
-		body:    refreshed.Body,
-	}, nil
+		r.body.removeIfUnused()
+	})
+	return wrapError(r.closeErr, "close maven replay body")
 }

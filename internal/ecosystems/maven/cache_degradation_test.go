@@ -184,6 +184,11 @@ func TestStoredResponseKeepsReadContextUntilBodyClose(t *testing.T) {
 		Metadata: metadata,
 		Objects:  contextBoundObjectStore{Store: objects},
 	})}
+	t.Cleanup(func() {
+		if closeErr := service.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 	response, err := service.responseFromFetched(ctx, Request{Method: http.MethodGet}, Route{
 		Alias: "central", Repository: "com/acme/demo/1.0", Reference: "demo-1.0.jar",
 	}, &upstreamFetch{
@@ -257,5 +262,10 @@ func newCacheDegradationService(t *testing.T) (*Service, meta.Store) {
 		Objects:  objects,
 	})
 	service := &Service{cache: cache}
+	t.Cleanup(func() {
+		if closeErr := service.Close(); closeErr != nil {
+			t.Error(closeErr)
+		}
+	})
 	return service, metadata
 }

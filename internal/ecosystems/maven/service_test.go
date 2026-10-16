@@ -61,15 +61,11 @@ func TestServiceCachesReleaseArtifactByPath(t *testing.T) {
 		t.Fatalf("upstream requests = %d, want 1", requests)
 	}
 
-	tag, ok, err := metadata.Tag(ctx, meta.TagKey{
+	tag := requireStoredTag(ctx, t, metadata, meta.TagKey{
 		Alias:      "central",
 		Repository: "com/acme/demo/1.2.3",
 		Reference:  "demo-1.2.3.jar",
 	})
-	requireNoError(t, "lookup tag", err)
-	if !ok {
-		t.Fatal("release artifact cache metadata was not stored")
-	}
 	if !tag.ExpiresAt.IsZero() {
 		t.Fatalf("release artifact expires_at = %s, want zero", tag.ExpiresAt)
 	}

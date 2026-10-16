@@ -79,6 +79,11 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		s.recordPolicyDeniedPull(ctx, req, requestRoute, err)
 		return nil, err
 	}
+	if shouldCoalesceFill(req, mode) {
+		if pending := s.joinMavenFill(requestRoute); pending != nil {
+			return s.waitMavenFill(ctx, req, requestRoute, pending, false)
+		}
+	}
 	cached, cachedOK, err := s.cached(ctx, requestRoute)
 	if err != nil {
 		return nil, err
@@ -114,35 +119,13 @@ type upstreamFillRequest struct {
 	mode     requestMode
 }
 
-func (s *Service) coalesceFill(fillReq upstreamFillRequest) (*Response, error) {
-	resp, err := s.fills.Coalesce(artifactcache.CoalesceRequest[*Response]{
-		Context: fillReq.ctx,
-		Key:     artifactKey(fillReq.route),
-		Wait: func() (*Response, bool, error) {
-			refreshed, ok, refreshErr := s.cached(fillReq.ctx, fillReq.route)
-			if refreshErr != nil {
-				return nil, true, refreshErr
-			}
-			cachedResp, cachedHit, cacheErr := s.responseFromCached(fillReq.req, fillReq.route, refreshed, ok, fillReq.mode)
-			if cachedHit || cacheErr != nil {
-				return cachedResp, true, cacheErr
-			}
-			return nil, false, nil
-		},
-		Fill: func() (*Response, error) {
-			return s.fetchUncached(fillReq)
-		},
-	})
-	if err != nil {
-		return nil, wrapError(err, "coalesce maven artifact fill")
-	}
-	return resp, nil
-}
-
 func (s *Service) fetchUncached(fillReq upstreamFillRequest) (*Response, error) {
 	fetched, err := s.fetch(fillReq.ctx, fillReq.upstream, fillReq.route.Alias, fillReq.route, fillReq.req.Method)
 	if err != nil {
 		return s.responseFromFetchError(fillReq.req, fillReq.route, fillReq.cached, fillReq.cachedOK, err, fillReq.mode)
+	}
+	if fillReq.mode == requestModeRefresh {
+		return s.responseFromFetchedSync(fillReq.ctx, fillReq.req, fillReq.route, fetched)
 	}
 	return s.responseFromFetched(fillReq.ctx, fillReq.req, fillReq.route, fetched)
 }
@@ -169,66 +152,20 @@ func (s *Service) responseFromFetchError(req Request, requestRoute Route, cached
 	return nil, err
 }
 
-//nolint:cyclop,funlen,gocognit,gocyclo // Validation, storage fallback, and cancellation share replay ownership.
-func (s *Service) responseFromFetched(ctx context.Context, req Request, requestRoute Route, fetched *upstreamFetch) (*Response, error) {
-	if err := ctx.Err(); err != nil {
-		if fetched != nil {
-			closeReadCloser(fetched.body, s.logger, "close canceled maven upstream response body")
-		}
-		return nil, wrapError(err, "check maven request context")
-	}
+// Background refresh waits for persistence, then serves the same validated replay.
+func (s *Service) responseFromFetchedSync(ctx context.Context, req Request, requestRoute Route, fetched *upstreamFetch) (*Response, error) {
 	if shouldPassThrough(req, fetched.status) {
-		return s.responseFromUpstream(req, requestRoute, fetched), nil
+		return s.responseFromFetched(ctx, req, requestRoute, fetched)
 	}
-
-	replay, err := newReplayableBody(ctx, fetched.body)
+	prepared, err := s.prepareMavenResponse(ctx, req, requestRoute, fetched)
 	if err != nil {
 		return nil, err
 	}
-	if validationErr := validateMavenReplay(requestRoute, fetched, replay); validationErr != nil {
-		replay.Remove()
-		return nil, wrapError(validationErr, "validate maven upstream artifact")
+	defer prepared.replay.Remove()
+	if storeErr := s.persistPreparedMaven(ctx, requestRoute, prepared); storeErr != nil && ctx.Err() != nil {
+		return nil, wrapError(ctx.Err(), "persist refreshed maven artifact")
 	}
-	if s.cache == nil {
-		body, openErr := replay.Open(true)
-		if openErr != nil {
-			replay.Remove()
-			return nil, openErr
-		}
-		passthrough := *fetched
-		passthrough.body = body
-		return s.responseFromUpstream(req, requestRoute, &passthrough), nil
-	}
-	storeFetched := *fetched
-	storeFetched.body, err = replay.Open(false)
-	if err != nil {
-		replay.Remove()
-		return nil, err
-	}
-	stored, err := s.store(ctx, requestRoute, &storeFetched)
-	if err != nil {
-		if ctx.Err() != nil {
-			replay.Remove()
-			return nil, wrapError(ctx.Err(), "store maven artifact")
-		}
-		fallbackBody, openErr := replay.Open(true)
-		if openErr != nil {
-			replay.Remove()
-			return nil, errors.Join(err, openErr)
-		}
-		if s.logger != nil {
-			s.logger.WarnContext(ctx, "maven cache write failed; serving upstream response", "alias", requestRoute.Alias, "repository", requestRoute.Repository, "reference", requestRoute.Reference, "error_kind", mavenErrorKind(err))
-		}
-		fallback := *fetched
-		fallback.body = fallbackBody
-		return s.responseFromUpstream(req, requestRoute, &fallback), nil
-	}
-	replay.Remove()
-	if err := ctx.Err(); err != nil {
-		closeReadCloser(stored.body, s.logger, "close canceled cached maven response body")
-		return nil, wrapError(err, "check maven request context")
-	}
-	return s.responseFromStored(req, requestRoute, stored, cacheMiss)
+	return s.responseFromPrepared(ctx, req, requestRoute, prepared)
 }
 
 func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {

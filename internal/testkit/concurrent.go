@@ -18,6 +18,14 @@ type concurrentResult[T any] struct {
 type ConcurrentRun[T any] struct {
 	count   int
 	results <-chan concurrentResult[T]
+	timeout time.Duration
+}
+
+// WithTimeout sets a fixture-specific collection budget, including race instrumentation overhead.
+// Set it before calling Wait or RequireOneMiss. Other tests retain the default budget.
+func (r *ConcurrentRun[T]) WithTimeout(timeout time.Duration) *ConcurrentRun[T] {
+	r.timeout = timeout
+	return r
 }
 
 // StartConcurrent starts count calls together and returns without waiting for their results.
@@ -43,7 +51,11 @@ func StartConcurrent[T any](count int, call func() (T, error)) *ConcurrentRun[T]
 func (r *ConcurrentRun[T]) Wait(tb testing.TB) []T {
 	tb.Helper()
 	values := make([]T, 0, r.count)
-	timer := time.NewTimer(concurrentTimeout)
+	timeout := concurrentTimeout
+	if r.timeout > 0 {
+		timeout = r.timeout
+	}
+	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 	for range r.count {
 		select {

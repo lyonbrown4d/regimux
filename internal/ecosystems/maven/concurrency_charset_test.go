@@ -7,6 +7,7 @@ import (
 	"sync"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
@@ -39,11 +40,11 @@ func TestServiceCoalescesConcurrentLegacyCharsetPOMMiss(t *testing.T) {
 		"central": {Registry: upstream.URL},
 	})
 	run := testkit.StartConcurrent(clients, func() (*maven.Response, error) {
-		return service.Get(context.Background(), maven.Request{
+		return service.Get(t.Context(), maven.Request{
 			Alias: "central",
 			Tail:  "org/apache/commons/commons-parent/28/commons-parent-28.pom",
 		})
-	})
+	}).WithTimeout(10 * time.Second)
 	testkit.WaitForSignal(t, started)
 	releaseOnce.Do(func() { close(release) })
 
