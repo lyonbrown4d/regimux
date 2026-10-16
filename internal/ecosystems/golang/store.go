@@ -7,6 +7,7 @@ import (
 	"os"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	ocidigest "github.com/opencontainers/go-digest"
@@ -118,6 +119,7 @@ func (s *Service) prepareGoProxyArtifact(
 	}, nil
 }
 func (s *Service) storeMetadata(ctx context.Context, requestRoute route, digest string, info *object.Info, headers http.Header, contentType string) error {
+	defer artifactcache.ForgetMetadata(s.cache, artifactKey(requestRoute))
 	if s.metadata == nil || info == nil {
 		return nil
 	}

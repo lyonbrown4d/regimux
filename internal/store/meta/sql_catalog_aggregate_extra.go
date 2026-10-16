@@ -18,6 +18,7 @@ type repositoryUpdateQuery struct {
 
 func (s *SQLStore) repositoryMaxUpdatedAt(
 	ctx context.Context,
+	session dbx.Session,
 	query repositoryUpdateQuery,
 	alias string,
 	name string,
@@ -27,7 +28,7 @@ func (s *SQLStore) repositoryMaxUpdatedAt(
 	repositoryColumn := query.repositoryColumn
 	updatedColumn := query.updatedColumn
 	label := query.label
-	row, err := dbx.GetTyped[sumInt64Row](ctx, s.db, querydsl.SelectInto[sumInt64Row](
+	row, err := dbx.GetTyped[sumInt64Row](ctx, session, querydsl.SelectInto[sumInt64Row](
 		querydsl.Max(updatedColumn).As("value"),
 	).From(source).Where(querydsl.And(
 		querydsl.CompareValue(aliasColumn, querydsl.OpEq, alias),
@@ -39,8 +40,8 @@ func (s *SQLStore) repositoryMaxUpdatedAt(
 	return nullUnixNanoTime(row.Value), nil
 }
 
-func (s *SQLStore) upstreamAggregate(ctx context.Context, upstreamID int64) (upstreamAggregateRow, error) {
-	row, err := dbx.GetTyped[upstreamAggregateRow](ctx, s.db, querydsl.SelectInto[upstreamAggregateRow](
+func (s *SQLStore) upstreamAggregate(ctx context.Context, session dbx.Session, upstreamID int64) (upstreamAggregateRow, error) {
+	row, err := dbx.GetTyped[upstreamAggregateRow](ctx, session, querydsl.SelectInto[upstreamAggregateRow](
 		querydsl.Count(sqlRepositoryRows.ID).As("repository_count"),
 		querydsl.Sum(sqlRepositoryRows.PullCount).As("pull_count"),
 		querydsl.Sum(sqlRepositoryRows.PolicyDeniedPullCount).As("policy_denied_pull_count"),

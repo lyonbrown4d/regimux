@@ -46,16 +46,16 @@ type repositoryAggregate struct {
 	LastActivityAt        time.Time
 }
 
-func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) (repositoryAggregate, error) {
-	pulls, err := s.repositoryPullAggregate(ctx, alias, name)
+func (s *SQLStore) repositoryAggregate(ctx context.Context, session dbx.Session, alias, name string) (repositoryAggregate, error) {
+	pulls, err := s.repositoryPullAggregate(ctx, session, alias, name)
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	blobs, err := s.repositoryBlobAggregate(ctx, alias, name)
+	blobs, err := s.repositoryBlobAggregate(ctx, session, alias, name)
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	manifestAt, err := s.repositoryMaxUpdatedAt(ctx, repositoryUpdateQuery{
+	manifestAt, err := s.repositoryMaxUpdatedAt(ctx, session, repositoryUpdateQuery{
 		source:           sqlManifestRows,
 		aliasColumn:      sqlManifestRows.Alias,
 		repositoryColumn: sqlManifestRows.Repository,
@@ -65,7 +65,7 @@ func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) 
 	if err != nil {
 		return repositoryAggregate{}, err
 	}
-	tagAt, err := s.repositoryMaxUpdatedAt(ctx, repositoryUpdateQuery{
+	tagAt, err := s.repositoryMaxUpdatedAt(ctx, session, repositoryUpdateQuery{
 		source:           sqlTagRows,
 		aliasColumn:      sqlTagRows.Alias,
 		repositoryColumn: sqlTagRows.Repository,
@@ -99,8 +99,8 @@ func (s *SQLStore) repositoryAggregate(ctx context.Context, alias, name string) 
 	}, nil
 }
 
-func (s *SQLStore) repositoryPullAggregate(ctx context.Context, alias, name string) (repositoryPullAggregateRow, error) {
-	row, err := dbx.GetTyped[repositoryPullAggregateRow](ctx, s.db, querydsl.SelectInto[repositoryPullAggregateRow](
+func (s *SQLStore) repositoryPullAggregate(ctx context.Context, session dbx.Session, alias, name string) (repositoryPullAggregateRow, error) {
+	row, err := dbx.GetTyped[repositoryPullAggregateRow](ctx, session, querydsl.SelectInto[repositoryPullAggregateRow](
 		querydsl.Sum(sqlPullRows.Count).As("pull_count"),
 		querydsl.Sum(sqlPullRows.PolicyDeniedCount).As("policy_denied_pull_count"),
 		querydsl.Max(sqlPullRows.LastPullAt).As("last_pull_at"),
@@ -116,8 +116,8 @@ func (s *SQLStore) repositoryPullAggregate(ctx context.Context, alias, name stri
 	return row, nil
 }
 
-func (s *SQLStore) repositoryBlobAggregate(ctx context.Context, alias, name string) (repositoryBlobAggregateRow, error) {
-	row, err := dbx.GetTyped[repositoryBlobAggregateRow](ctx, s.db, querydsl.SelectInto[repositoryBlobAggregateRow](
+func (s *SQLStore) repositoryBlobAggregate(ctx context.Context, session dbx.Session, alias, name string) (repositoryBlobAggregateRow, error) {
+	row, err := dbx.GetTyped[repositoryBlobAggregateRow](ctx, session, querydsl.SelectInto[repositoryBlobAggregateRow](
 		querydsl.Count(sqlRepoBlobRows.ID).As("blob_link_count"),
 		querydsl.Sum(sqlBlobRows.Size).As("blob_bytes"),
 		querydsl.Max(sqlRepoBlobRows.LastAccessAt).As("last_access_at"),

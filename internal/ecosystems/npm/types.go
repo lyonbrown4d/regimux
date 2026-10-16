@@ -94,10 +94,11 @@ type route struct {
 }
 
 type upstreamFetch struct {
-	status     int
-	headers    http.Header
-	body       io.ReadCloser
-	requestURL string
+	status          int
+	headers         http.Header
+	body            io.ReadCloser
+	requestURL      string
+	registryBaseURL string
 }
 
 type storedResponse struct {

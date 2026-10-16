@@ -14,6 +14,7 @@ import (
 	mysqldialect "github.com/arcgolabs/dbx/dialect/mysql"
 	postgresdialect "github.com/arcgolabs/dbx/dialect/postgres"
 	"github.com/arcgolabs/dbx/repository"
+	"golang.org/x/sync/semaphore"
 
 	_ "github.com/go-sql-driver/mysql" // register the database/sql MySQL driver.
 	_ "github.com/lib/pq"              // register the database/sql PostgreSQL driver.
@@ -39,7 +40,7 @@ type SQLStore struct {
 	driver           string
 	db               *dbx.DB
 	mapper           *MetadataMapper
-	catalogMu        sync.Mutex
+	catalogMu        *semaphore.Weighted
 	upstreams        *repository.Base[upstreamRow, upstreamRowSchema]
 	repositories     *repository.Base[repositoryRow, repositoryRowSchema]
 	manifest         *repository.Base[manifestRow, manifestRowSchema]
@@ -52,6 +53,10 @@ type SQLStore struct {
 	prefetchOutcomes *repository.Base[prefetchOutcomeRow, prefetchOutcomeRowSchema]
 	prefetchControls *repository.Base[prefetchControlRow, prefetchControlRowSchema]
 	refreshIntents   *repository.Base[refreshIntentRow, refreshIntentRowSchema]
+	catalogRefreshMu sync.Mutex
+	catalogRefreshes map[catalogRefreshKey]*catalogRefreshState
+	pullWriteBatchMu sync.Mutex
+	pullWriteBatches map[string]*pullWriteBatchState
 }
 
 func OpenSQLite(path string, logger *slog.Logger) (*SQLStore, error) {
@@ -106,12 +111,22 @@ func OpenMetadataDB(ctx context.Context, opts DBOptions) (*dbx.DB, error) {
 		return nil, err
 	}
 
-	if err := MigrateMetadataDB(ctx, core); err != nil {
+	return finishMetadataDBOpen(ctx, core, openConfig)
+}
+
+func finishMetadataDBOpen(ctx context.Context, core *dbx.DB, openConfig dbOpenConfig) (*dbx.DB, error) {
+	var migrateErr error
+	if openConfig.driver == metaDriverMySQL {
+		migrateErr = runMySQLMigrations(ctx, openConfig.dsn, core.Dialect())
+	} else {
+		migrateErr = MigrateMetadataDB(ctx, core)
+	}
+	if migrateErr != nil {
 		closeErr := core.Close()
 		if closeErr != nil {
-			return nil, joinError("migrate metadata db and close after failure", err, wrapError(closeErr, "close metadata db"))
+			return nil, joinError("migrate metadata db and close after failure", migrateErr, wrapError(closeErr, "close metadata db"))
 		}
-		return nil, err
+		return nil, migrateErr
 	}
 	return core, nil
 }
@@ -124,6 +139,7 @@ func NewSQLStore(db *dbx.DB, mapper *MetadataMapper) *SQLStore {
 		driver:           normalizeDBDriver(db.Dialect().Name()),
 		db:               db,
 		mapper:           mapper,
+		catalogMu:        semaphore.NewWeighted(1),
 		upstreams:        repository.New[upstreamRow](db, sqlUpstreamRows),
 		repositories:     repository.New[repositoryRow](db, sqlRepositoryRows),
 		manifest:         repository.New[manifestRow](db, sqlManifestRows),
@@ -223,11 +239,17 @@ func configureMetadataDBPool(raw *sql.DB, driver string) {
 	raw.SetConnMaxLifetime(0)
 }
 
+// MigrateMetadataDB migrates a metadata database. Direct MySQL callers must
+// provide a connection configured with multiStatements=true; OpenMetadataDB
+// configures a dedicated migration connection automatically.
 func MigrateMetadataDB(ctx context.Context, db *dbx.DB) error {
 	if err := requireMetadataContext(ctx, "migrate metadata store"); err != nil {
 		return err
 	}
 	if err := runDBMigrations(ctx, db); err != nil {
+		if normalizeDBDriver(db.Dialect().Name()) == metaDriverMySQL {
+			return wrapError(err, "migrate metadata schema; direct MySQL callers must configure multiStatements=true")
+		}
 		return wrapError(err, "migrate metadata schema")
 	}
 	return nil

@@ -59,6 +59,7 @@ func cacheHeaderKeys() []string {
 		distribution.HeaderETag,
 		"Last-Modified",
 		"X-Regimux-Upstream",
+		"X-Regimux-Metadata-Format",
 	}
 }
 

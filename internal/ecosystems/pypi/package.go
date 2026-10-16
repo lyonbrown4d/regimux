@@ -22,13 +22,14 @@ const (
 
 func (s *Service) getPackage(ctx context.Context, req Request, route Route, cfg config.UpstreamConfig, mode requestMode) (*Response, error) {
 	req, route = packageIdentity(req, route)
-	if resp := s.clientCachedPackage(ctx, req, route, mode); resp != nil {
+	resp, cacheFailed := s.clientCachedPackage(ctx, req, route, mode)
+	if resp != nil {
 		return resp, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, wrapError(err, "request pypi package")
 	}
-	cached, finish, err := s.beginPackageFill(ctx, req, route, mode)
+	cached, finish, err := s.beginPackageFill(ctx, req, route, mode, !cacheFailed)
 	if cached != nil || err != nil {
 		return cached, err
 	}
@@ -37,7 +38,7 @@ func (s *Service) getPackage(ctx context.Context, req Request, route Route, cfg 
 		finish()
 		return nil, err
 	}
-	resp := s.responseFromUpstream(req, route, fetched)
+	resp = s.responseFromUpstream(req, route, fetched)
 	if shouldCachePackage(req, fetched.status) {
 		req.SHA256 = fetched.expectedSHA256
 		if packageIsMetadata(route) {
@@ -50,9 +51,9 @@ func (s *Service) getPackage(ctx context.Context, req Request, route Route, cfg 
 	return resp, nil
 }
 
-func (s *Service) clientCachedPackage(ctx context.Context, req Request, route Route, mode requestMode) *Response {
+func (s *Service) clientCachedPackage(ctx context.Context, req Request, route Route, mode requestMode) (*Response, bool) {
 	if mode != requestModeClient {
-		return nil
+		return nil, false
 	}
 	return s.cachedPackage(ctx, req, route)
 }
@@ -63,24 +64,46 @@ func shouldCachePackage(req Request, status int) bool {
 
 func noPackageFill() {}
 
-func (s *Service) beginPackageFill(ctx context.Context, req Request, route Route, mode requestMode) (*Response, func(), error) {
+func (s *Service) beginPackageFill(ctx context.Context, req Request, route Route, mode requestMode, recheckCache bool) (*Response, func(), error) {
 	if !shouldCachePackage(req, http.StatusOK) {
 		return nil, noPackageFill, nil
 	}
-	fill, owner := s.fills.Begin(artifactKey(route))
-	if owner {
-		return nil, func() { s.fills.Finish(artifactKey(route), fill, nil) }, nil
-	}
+	key := artifactKey(route)
 	waitCtx, cancel := context.WithTimeout(ctx, pypiFillWaitTimeout)
-	err := fill.Wait(waitCtx)
-	cancel()
-	if ctx.Err() != nil {
-		return nil, noPackageFill, wrapError(ctx.Err(), "wait for pypi package fill")
+	defer cancel()
+	// One replacement fill may recover an aborted owner; repeated failures retain the bounded fallback.
+	for range 2 {
+		fill, owner := s.fills.Begin(key)
+		if owner {
+			cached, finish := s.packageFillOwner(ctx, req, route, mode, recheckCache, func() { s.fills.Finish(key, fill, nil) })
+			return cached, finish, nil
+		}
+		err := fill.Wait(waitCtx)
+		if ctx.Err() != nil {
+			return nil, noPackageFill, wrapError(ctx.Err(), "wait for pypi package fill")
+		}
+		if err != nil {
+			return nil, noPackageFill, nil
+		}
+		cached, cacheFailed := s.clientCachedPackage(ctx, req, route, mode)
+		if cached != nil {
+			return cached, noPackageFill, nil
+		}
+		recheckCache = !cacheFailed
 	}
-	if err != nil {
-		return nil, noPackageFill, nil //nolint:nilerr // A bounded fill wait may fall back to its own download while the caller remains active.
+	return nil, noPackageFill, nil
+}
+
+func (s *Service) packageFillOwner(ctx context.Context, req Request, route Route, mode requestMode, recheckCache bool, finish func()) (*Response, func()) {
+	if !recheckCache {
+		return nil, finish
 	}
-	return s.clientCachedPackage(ctx, req, route, mode), noPackageFill, nil
+	cached, _ := s.clientCachedPackage(ctx, req, route, mode)
+	if cached != nil {
+		finish()
+		return cached, noPackageFill
+	}
+	return nil, finish
 }
 
 func packageURLs(route Route, cfg config.UpstreamConfig) []string {

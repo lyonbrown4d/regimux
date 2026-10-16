@@ -27,7 +27,9 @@ func TestPackageBodyCompletesWhenKnownLengthIsReadExactly(t *testing.T) {
 	if err := body.Close(); err != nil {
 		t.Fatalf("close body: %v", err)
 	}
-	if _, ok := service.packageManifest(context.Background(), route); !ok {
+	if _, ok, err := service.packageManifest(context.Background(), route); err != nil {
+		t.Fatalf("read cached manifest: %v", err)
+	} else if !ok {
 		t.Fatal("complete package was not cached after reading exactly Content-Length")
 	}
 }
@@ -42,7 +44,9 @@ func TestPackageBodyRejectsWrongDigest(t *testing.T) {
 	if err := body.Close(); err != nil {
 		t.Fatalf("close body: %v", err)
 	}
-	if _, ok := service.packageManifest(context.Background(), route); ok {
+	if _, ok, err := service.packageManifest(context.Background(), route); err != nil {
+		t.Fatalf("read cached manifest: %v", err)
+	} else if ok {
 		t.Fatal("package with a wrong expected digest was cached")
 	}
 }
@@ -57,7 +61,9 @@ func TestPackageBodyRejectsLengthOverrun(t *testing.T) {
 	if err := body.Close(); err != nil {
 		t.Fatalf("close body: %v", err)
 	}
-	if _, ok := service.packageManifest(context.Background(), route); ok {
+	if _, ok, err := service.packageManifest(context.Background(), route); err != nil {
+		t.Fatalf("read cached manifest: %v", err)
+	} else if ok {
 		t.Fatal("package exceeding Content-Length was cached")
 	}
 }
@@ -74,7 +80,9 @@ func TestPackageBodyDoesNotCacheAfterCancellation(t *testing.T) {
 	if err := body.Close(); err != nil {
 		t.Fatalf("close canceled body: %v", err)
 	}
-	if _, ok := service.packageManifest(context.Background(), route); ok {
+	if _, ok, err := service.packageManifest(context.Background(), route); err != nil {
+		t.Fatalf("read cached manifest: %v", err)
+	} else if ok {
 		t.Fatal("canceled package body was cached")
 	}
 }

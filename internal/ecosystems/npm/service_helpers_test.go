@@ -72,19 +72,7 @@ func readBody(t *testing.T, resp *npm.Response) string {
 
 func assertTarball(t *testing.T, doc map[string]any, version, want string) {
 	t.Helper()
-	versions, ok := doc["versions"].(map[string]any)
-	if !ok {
-		t.Fatalf("versions missing in %#v", doc)
-	}
-	versionDoc, ok := versions[version].(map[string]any)
-	if !ok {
-		t.Fatalf("version %s missing in %#v", version, versions)
-	}
-	dist, ok := versionDoc["dist"].(map[string]any)
-	if !ok {
-		t.Fatalf("dist missing in %#v", versionDoc)
-	}
-	if got := dist["tarball"]; got != want {
+	if got := metadataTarball(t, doc, version); got != want {
 		t.Fatalf("tarball = %q, want %q", got, want)
 	}
 }

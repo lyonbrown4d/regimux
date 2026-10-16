@@ -1,4 +1,3 @@
-//revive:disable:file-length-limit Go service keeps route, cache, and upstream orchestration in one implementation file.
 package golang
 
 import (
@@ -29,16 +28,6 @@ const (
 	cacheStale        = artifactcache.CacheStale
 )
 
-type ServiceDependencies struct {
-	Config   config.Config
-	Cache    *artifactcache.Store
-	Metadata artifactcache.MetadataStore
-	Objects  object.Store
-	Factory  *clientfactory.Factory
-	Logger   *slog.Logger
-	Events   events.Bus
-}
-
 type Service struct {
 	cfg      config.Config
 	metadata artifactcache.MetadataStore
@@ -46,6 +35,7 @@ type Service struct {
 	factory  *clientfactory.Factory
 	logger   *slog.Logger
 	fills    *artifactcache.FillTracker
+	cache    *artifactcache.Store
 	events   events.Bus
 }
 
@@ -95,46 +85,6 @@ const (
 	requestModeClient requestMode = iota
 	requestModeRefresh
 )
-
-func NewService(deps ServiceDependencies) *Service {
-	logger := deps.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	factory := deps.Factory
-	if factory == nil {
-		factory = clientfactory.New(logger)
-	}
-	cache := deps.Cache
-	if cache == nil {
-		cache = artifactcache.New(artifactcache.Dependencies{
-			Metadata: deps.Metadata,
-			Objects:  deps.Objects,
-			Logger:   logger,
-		})
-	}
-	metadata := deps.Metadata
-	if metadata == nil {
-		metadata = cache.Metadata()
-	}
-	objects := deps.Objects
-	if objects == nil {
-		objects = cache.Objects()
-	}
-	fills := cache.FillTracker()
-	if fills == nil {
-		fills = artifactcache.NewFillTracker()
-	}
-	return &Service{
-		cfg:      deps.Config,
-		metadata: metadata,
-		objects:  objects,
-		factory:  factory,
-		logger:   logger.With("component", "go"),
-		fills:    fills,
-		events:   deps.Events,
-	}
-}
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if s == nil {

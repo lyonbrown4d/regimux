@@ -20,36 +20,18 @@ func (s *Service) cached(ctx context.Context, req Request, requestRoute Route) (
 	if err != nil || !ok {
 		return storedResponse{}, false, err
 	}
-	if err := artifactcache.Touch(ctx, s.metadata, *manifest, s.now()); err != nil {
-		s.logger.WarnContext(ctx, "touch distribution cache access failed", "digest", manifest.Digest, "error", err)
-	}
 	return s.openCachedObject(ctx, req, *tag, *manifest)
 }
 
 func (s *Service) cachedMetadata(ctx context.Context, requestRoute Route) (*meta.TagRecord, *meta.ManifestRecord, bool, error) {
-	tag, ok, err := s.metadata.Tag(ctx, meta.TagKey{
-		Alias:      requestRoute.Alias,
-		Repository: requestRoute.Repository,
-		Reference:  requestRoute.Reference,
-	})
+	tag, manifest, ok, err := artifactcache.LookupMetadata(ctx, s.cache, artifactKey(requestRoute))
 	if err != nil {
-		return nil, nil, false, wrapError(err, "lookup dist cache tag")
+		return nil, nil, false, wrapError(err, "lookup dist cache metadata")
 	}
 	if !ok {
 		return nil, nil, false, nil
 	}
-	manifest, ok, err := s.metadata.Manifest(ctx, meta.ManifestKey{
-		Alias:      requestRoute.Alias,
-		Repository: requestRoute.Repository,
-		Digest:     tag.Digest,
-	})
-	if err != nil {
-		return nil, nil, false, wrapError(err, "lookup dist cache manifest")
-	}
-	if !ok {
-		return nil, nil, false, nil
-	}
-	return tag, manifest, true, nil
+	return &tag, &manifest, true, nil
 }
 
 func (s *Service) openCachedObject(ctx context.Context, req Request, tag meta.TagRecord, manifest meta.ManifestRecord) (storedResponse, bool, error) {

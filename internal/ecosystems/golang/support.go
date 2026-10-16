@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"strings"
-	"time"
 
 	"github.com/samber/oops"
 )
@@ -17,10 +16,6 @@ func methodOr(value, fallback string) string {
 		return fallback
 	}
 	return value
-}
-
-func expiredAt(expiresAt, now time.Time) bool {
-	return !expiresAt.IsZero() && !now.Before(expiresAt)
 }
 
 func closeReadCloser(body io.ReadCloser, logger *slog.Logger, message string) {

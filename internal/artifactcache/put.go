@@ -90,6 +90,9 @@ func (s *Store) storeMetadata(
 	if info == nil {
 		return nil
 	}
+	// Reads starting after this write must not join an older metadata snapshot.
+	// Invalidate on errors too: manifest or tag updates may already be committed.
+	defer ForgetMetadata(s, req.Key)
 	now := s.now()
 	expiresAt := time.Time{}
 	if req.TTL > 0 {

@@ -72,20 +72,7 @@ func (s *SQLStore) recordPull(ctx context.Context, key PullKey, at time.Time, ki
 	if err != nil {
 		return nil, err
 	}
-	if upsertErr := s.upsertPullRow(ctx, row); upsertErr != nil {
-		return nil, upsertErr
-	}
-	if refreshErr := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, now); refreshErr != nil {
-		return nil, refreshErr
-	}
-	updated, ok, err := s.Pull(ctx, key)
-	if err != nil {
-		return nil, err
-	}
-	if !ok {
-		return nil, errorf("record pull metadata: %w", ErrNotFound)
-	}
-	return updated, nil
+	return s.recordPullBatch(ctx, key, row)
 }
 
 func (s *SQLStore) ListPulls(ctx context.Context, opts ...PullListOption) (*collectionlist.List[PullRecord], error) {
