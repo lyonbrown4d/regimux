@@ -2,9 +2,11 @@ package artifactcache
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/cache/backend"
 	"github.com/lyonbrown4d/regimux/internal/coalescer"
 )
 
@@ -25,14 +27,11 @@ type FillTracker struct {
 
 type Fill = coalescer.Fill
 
-type FillLease interface {
-	Release(ctx context.Context) error
-	Extend(ctx context.Context, ttl time.Duration) error
-}
+// FillLease reuses the backend lease type so provider method signatures match.
+type FillLease = backend.Lease
 
-type FillLocker interface {
-	AcquireLease(ctx context.Context, key string, ttl time.Duration) (FillLease, bool, error)
-}
+// FillLocker is the optional distributed lease capability of a cache backend.
+type FillLocker = backend.LeaseBackend
 
 type FillLeaseScheduler interface {
 	Submit(func()) error
@@ -133,6 +132,12 @@ func (t *FillTracker) Coalesce[T any](req CoalesceRequest[T]) (T, error) {
 func (t *FillTracker) waitForTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, bool, error) {
 	var zero T
 	if err := current.Wait(req.Context); err != nil {
+		if req.Context != nil && req.Context.Err() != nil {
+			return zero, false, wrapError(req.Context.Err(), "wait for artifact cache fill")
+		}
+		if _, ok := errors.AsType[*fillOwnerCanceledError](err); ok {
+			return zero, true, nil
+		}
 		return zero, false, wrapError(err, "wait for artifact cache fill")
 	}
 	result, ok, err := req.Wait()
@@ -141,9 +146,23 @@ func (t *FillTracker) waitForTrackedFill[T any](req CoalesceRequest[T], current 
 
 func (t *FillTracker) finishTrackedFill[T any](req CoalesceRequest[T], current *Fill) (T, error) {
 	result, err := t.coalesceFillOwner(req)
-	t.Finish(req.Key, current, err)
+	trackedErr := err
+	if err != nil && req.Context != nil && req.Context.Err() != nil {
+		trackedErr = &fillOwnerCanceledError{cause: err}
+	}
+	t.Finish(req.Key, current, trackedErr)
 	return result, err
 }
+
+// Only cancellation of the owner's request permits another caller to take over.
+// Backend timeouts with a live owner still propagate instead of causing a retry wave.
+type fillOwnerCanceledError struct {
+	cause error
+}
+
+func (e *fillOwnerCanceledError) Error() string { return e.cause.Error() }
+
+func (e *fillOwnerCanceledError) Unwrap() error { return e.cause }
 
 func (t *FillTracker) coalesceFillOwner[T any](req CoalesceRequest[T]) (T, error) {
 	var zero T

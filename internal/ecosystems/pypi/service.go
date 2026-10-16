@@ -232,15 +232,16 @@ func (s *Service) prepareFetched(req Request, requestRoute Route, fetched *upstr
 	closeReadCloser(fetched.body, s.logger, "close pypi upstream body")
 
 	rewritten := rewriteSimpleIndexLinks(body, requestRoute.Alias, fetched.requestURL, requestPublicURL(s.publicURL, req.PublicURL))
+	headers := fetched.headers.Clone()
+	headers.Set("X-Regimux-Metadata-Format", pypiSimpleIndexFormat)
 	if bytes.Equal(body, rewritten) {
 		return &upstreamFetch{
 			status:     fetched.status,
-			headers:    fetched.headers,
+			headers:    headers,
 			body:       io.NopCloser(bytes.NewReader(body)),
 			requestURL: fetched.requestURL,
 		}, nil
 	}
-	headers := fetched.headers.Clone()
 	headers.Del("Content-Length")
 	return &upstreamFetch{
 		status:     fetched.status,

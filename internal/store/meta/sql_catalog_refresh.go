@@ -148,9 +148,11 @@ func (s *SQLStore) upstreamMetadataAfterCreateRace(ctx context.Context, alias st
 	return record, true, nil
 }
 
-func (s *SQLStore) refreshRepositoryMetadata(ctx context.Context, alias, name string, at time.Time) error {
-	s.catalogMu.Lock()
-	defer s.catalogMu.Unlock()
+func (s *SQLStore) refreshRepositoryMetadataOnce(ctx context.Context, alias, name string, at time.Time) error {
+	if err := s.catalogMu.Acquire(ctx, 1); err != nil {
+		return wrapError(err, "wait for catalog refresh")
+	}
+	defer s.catalogMu.Release(1)
 
 	repo, err := s.ensureRepositoryMetadata(ctx, alias, name, at)
 	if err != nil {
@@ -168,7 +170,7 @@ func (s *SQLStore) refreshRepositoryMetadata(ctx context.Context, alias, name st
 	repo.LastPolicyDeniedAt = stats.LastPolicyDeniedAt
 	repo.LastBlobAccessAt = stats.LastBlobAccessAt
 	repo.LastActivityAt = stats.LastActivityAt
-	repo.UpdatedAt = metadataTimestamp(at)
+	repo.UpdatedAt = maxTime(metadataTimestamp(at), repo.UpdatedAt, stats.LastActivityAt)
 	row, err := s.mapper.RepositoryRecordToRow(*repo)
 	if err != nil {
 		return err
@@ -221,7 +223,7 @@ func (s *SQLStore) refreshUpstreamMetadata(ctx context.Context, upstreamID int64
 	record.BlobLinkCount = nullInt64(stats.BlobLinkCount)
 	record.LastPolicyDeniedAt = nullUnixNanoTime(stats.LastPolicyDeniedAt)
 	record.LastActivityAt = nullUnixNanoTime(stats.LastActivityAt)
-	record.UpdatedAt = metadataTimestamp(at)
+	record.UpdatedAt = maxTime(metadataTimestamp(at), record.UpdatedAt, record.LastActivityAt)
 	updateRow, err := s.mapper.UpstreamRecordToRow(*record)
 	if err != nil {
 		return err

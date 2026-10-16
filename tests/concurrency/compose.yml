@@ -1,0 +1,257 @@
+name: regimux-concurrency-20261016
+services:
+  fixture:
+    image: python:3.12-alpine
+    init: true
+    mem_limit: 384m
+    cpus: 1.0
+    environment:
+      FIXTURE_HOST: 0.0.0.0
+      FIXTURE_PORT: "8081"
+      FIXTURE_DELAY_MS: ${FIXTURE_DELAY_MS:-100}
+      FIXTURE_PAYLOAD_BYTES: ${FIXTURE_PAYLOAD_BYTES:-131072}
+    working_dir: /fixture
+    command: ["python", "-u", "fixture.py"]
+    volumes:
+      - ./:/fixture:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8081/healthz', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [isolated]
+
+  redis:
+    image: redis:7-alpine
+    mem_limit: 384m
+    cpus: 1.0
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 2s
+      timeout: 2s
+      retries: 30
+    networks: [isolated]
+
+  postgres:
+    image: postgres:16-alpine
+    profiles: [postgres]
+    mem_limit: 768m
+    cpus: 2.0
+    environment:
+      POSTGRES_DB: regimux
+      POSTGRES_USER: regimux
+      POSTGRES_PASSWORD: concurrency-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U regimux -d regimux"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    networks: [isolated]
+
+  mysql:
+    image: mysql:8.4
+    profiles: [mysql]
+    mem_limit: 1024m
+    cpus: 2.0
+    environment:
+      MYSQL_DATABASE: regimux
+      MYSQL_USER: regimux
+      MYSQL_PASSWORD: concurrency-only
+      MYSQL_ROOT_PASSWORD: concurrency-root-only
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u root -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 3s
+      timeout: 5s
+      retries: 40
+    volumes: [mysql-data:/var/lib/mysql]
+    networks: [isolated]
+
+  s3:
+    image: chrislusf/seaweedfs:4.47
+    profiles: [postgres, mysql]
+    mem_limit: 768m
+    cpus: 2.0
+    command: ["server", "-s3", "-s3.port=9000", "-s3.config=/etc/seaweedfs/s3.json", "-dir=/data", "-ip=s3", "-volume.max=8", "-master.volumeSizeLimitMB=128"]
+    volumes:
+      - ./s3.json:/etc/seaweedfs/s3.json:ro
+      - s3-data:/data
+    networks: [isolated]
+
+  s3-bootstrap:
+    image: regimux-concurrency-tools:local
+    build:
+      context: ../integration/acceptance
+      dockerfile: tools.Dockerfile
+      target: tools
+    profiles: [postgres, mysql]
+    mem_limit: 256m
+    cpus: 0.5
+    command: ["python", "/fixture/bootstrap_s3.py"]
+    volumes:
+      - ./bootstrap_s3.py:/fixture/bootstrap_s3.py:ro
+    environment:
+      AWS_ACCESS_KEY_ID: concurrency-only
+      AWS_SECRET_ACCESS_KEY: concurrency-only-secret
+      AWS_DEFAULT_REGION: us-east-1
+    depends_on:
+      s3: {condition: service_started}
+    networks: [isolated]
+
+  regimux-sqlite:
+    image: ${REGIMUX_CONCURRENCY_IMAGE:-ghcr.io/lyonbrown4d/regimux:1.3.5}
+    profiles: [sqlite]
+    init: true
+    mem_limit: 1024m
+    cpus: 2.0
+    environment:
+      GOMEMLIMIT: 768MiB
+    command: ["--config", "/etc/regimux/matrix.hcl"]
+    volumes:
+      - ./config/sqlite.hcl:/etc/regimux/matrix.hcl:ro
+      - regimux-data:/var/lib/regimux
+    depends_on:
+      fixture: {condition: service_healthy}
+      redis: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks:
+      isolated: {aliases: [regimux]}
+
+  regimux-postgres:
+    image: ${REGIMUX_CONCURRENCY_IMAGE:-ghcr.io/lyonbrown4d/regimux:1.3.5}
+    profiles: [postgres]
+    init: true
+    mem_limit: 1024m
+    cpus: 2.0
+    environment:
+      GOMEMLIMIT: 768MiB
+    command: ["--config", "/etc/regimux/matrix.hcl"]
+    volumes:
+      - ./config/postgres-s3.hcl:/etc/regimux/matrix.hcl:ro
+      - regimux-data:/var/lib/regimux
+    depends_on:
+      fixture: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      s3: {condition: service_started}
+      s3-bootstrap: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks:
+      isolated: {aliases: [regimux]}
+
+  regimux-postgres-peer:
+    image: ${REGIMUX_CONCURRENCY_IMAGE:-ghcr.io/lyonbrown4d/regimux:1.3.5}
+    profiles: [postgres]
+    init: true
+    mem_limit: 1024m
+    cpus: 2.0
+    environment: {GOMEMLIMIT: 768MiB}
+    command: ["--config", "/etc/regimux/matrix.hcl"]
+    volumes:
+      - ./config/postgres-s3.hcl:/etc/regimux/matrix.hcl:ro
+      - regimux-data:/var/lib/regimux
+    depends_on:
+      fixture: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      postgres: {condition: service_healthy}
+      s3: {condition: service_started}
+      s3-bootstrap: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks:
+      isolated: {aliases: [regimux-peer]}
+
+  regimux-mysql:
+    image: ${REGIMUX_CONCURRENCY_IMAGE:-ghcr.io/lyonbrown4d/regimux:1.3.5}
+    profiles: [mysql]
+    init: true
+    mem_limit: 1024m
+    cpus: 2.0
+    environment:
+      GOMEMLIMIT: 768MiB
+    command: ["--config", "/etc/regimux/matrix.hcl"]
+    volumes:
+      - ./config/mysql-s3.hcl:/etc/regimux/matrix.hcl:ro
+      - regimux-data:/var/lib/regimux
+    depends_on:
+      fixture: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      mysql: {condition: service_healthy}
+      s3: {condition: service_started}
+      s3-bootstrap: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks:
+      isolated: {aliases: [regimux]}
+
+  regimux-mysql-peer:
+    image: ${REGIMUX_CONCURRENCY_IMAGE:-ghcr.io/lyonbrown4d/regimux:1.3.5}
+    profiles: [mysql]
+    init: true
+    mem_limit: 1024m
+    cpus: 2.0
+    environment: {GOMEMLIMIT: 768MiB}
+    command: ["--config", "/etc/regimux/matrix.hcl"]
+    volumes:
+      - ./config/mysql-s3.hcl:/etc/regimux/matrix.hcl:ro
+      - regimux-data:/var/lib/regimux
+    depends_on:
+      fixture: {condition: service_healthy}
+      redis: {condition: service_healthy}
+      mysql: {condition: service_healthy}
+      s3: {condition: service_started}
+      s3-bootstrap: {condition: service_completed_successfully}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks:
+      isolated: {aliases: [regimux-peer]}
+
+  client:
+    image: ${REGIMUX_CONCURRENCY_K6_IMAGE:-grafana/k6@sha256:e66db15b860113878fa74670e31f5e274830b7b6e42c8bff28b2f2d86a257603}
+    profiles: [clients]
+    init: true
+    mem_limit: 3072m
+    cpus: 4.0
+    entrypoint: ["k6", "run", "/scripts/load.ts"]
+    environment:
+      MODE: ${MODE:-burst}
+      CONCURRENCY: ${CONCURRENCY:-256}
+      TARGET: ${TARGET:-all}
+      WAVE: ${WAVE:-wave-001}
+      BASE_URLS: ${BASE_URLS:-http://regimux:8080}
+      DURATION: ${DURATION:-30s}
+      REPORT: ${REPORT:-concurrency-summary}
+      MIXED_METHODS: ${MIXED_METHODS:-0}
+    volumes:
+      - ./:/scripts:ro
+      - ../../tmp/concurrency-20261016/reports:/reports
+    depends_on:
+      fixture: {condition: service_healthy}
+    networks: [isolated]
+
+networks:
+  isolated:
+    name: regimux-concurrency-20261016
+    internal: true
+volumes:
+  regimux-data:
+  postgres-data:
+  mysql-data:
+  s3-data:

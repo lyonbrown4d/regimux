@@ -200,7 +200,7 @@ func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstream
 	for _, endpoint := range endpoints {
 		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
 		requestURL = urlWithQuery(requestURL, requestRoute.Query)
-		resp, err := s.fetchURL(ctx, cfg, requestURL, method)
+		resp, err := s.fetchURL(ctx, cfg, endpoint, requestURL, method)
 		if err == nil {
 			return resp, nil
 		}
@@ -212,7 +212,7 @@ func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstream
 	return nil, wrapError(lastErr, "fetch npm upstream")
 }
 
-func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string) (*upstreamFetch, error) {
+func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, registryBaseURL, requestURL, method string) (*upstreamFetch, error) {
 	headers := http.Header{}
 	headers.Set("User-Agent", "regimux/dev")
 	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
@@ -230,10 +230,11 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 		return nil, err
 	}
 	return &upstreamFetch{
-		status:     resp.Status,
-		headers:    resp.Headers,
-		body:       body,
-		requestURL: requestURL,
+		status:          resp.Status,
+		headers:         resp.Headers,
+		body:            body,
+		requestURL:      requestURL,
+		registryBaseURL: registryBaseURL,
 	}, nil
 }
 
@@ -271,19 +272,21 @@ func (s *Service) prepareFetched(req Request, requestRoute route, fetched *upstr
 	}
 	closeReadCloser(fetched.body, s.logger, "close npm upstream body")
 
-	rewritten, changed, err := rewriteMetadata(body, localBase(requestPublicURL(s.publicURL, req.ProxyBaseURL), requestRoute.Alias))
+	rewritten, changed, err := rewriteMetadata(body,
+		localBase(requestPublicURL(s.publicURL, req.ProxyBaseURL), requestRoute.Alias), fetched.registryBaseURL, fetched.requestURL)
 	if err != nil {
 		return nil, err
 	}
+	headers := fetched.headers.Clone()
+	headers.Set("X-Regimux-Metadata-Format", npmMetadataFormat)
 	if !changed {
 		return &upstreamFetch{
 			status:     fetched.status,
-			headers:    fetched.headers,
+			headers:    headers,
 			body:       io.NopCloser(bytes.NewReader(body)),
 			requestURL: fetched.requestURL,
 		}, nil
 	}
-	headers := fetched.headers.Clone()
 	headers.Del("Content-Length")
 	return &upstreamFetch{
 		status:     fetched.status,

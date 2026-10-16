@@ -8,6 +8,8 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
+const pypiSimpleIndexFormat = "pypi:2"
+
 func (s *Service) cached(ctx context.Context, requestRoute Route) (storedResponse, bool, error) {
 	if s.cache == nil {
 		return storedResponse{}, false, nil
@@ -29,6 +31,11 @@ func (s *Service) cached(ctx context.Context, requestRoute Route) (storedRespons
 	}
 	if !ok {
 		cancel()
+		return storedResponse{}, false, nil
+	}
+	if requestRoute.Kind == RouteSimple && entry.Headers.Get("X-Regimux-Metadata-Format") != pypiSimpleIndexFormat {
+		cancel()
+		closeReadCloser(entry.Body, s.logger, "close incompatible cached pypi simple index")
 		return storedResponse{}, false, nil
 	}
 	entry.Body = upstreamhttp.WithIdleTimeout(entry.Body, cancel, pypiBodyIdleTimeout)

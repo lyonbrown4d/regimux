@@ -66,6 +66,8 @@ func NewServer(opts Options) *Server {
 	}
 
 	fiberApp := fiber.New(fiber.Config{
+		// Async cache fills retain bound parameters after the HTTP handler returns.
+		Immutable:    true,
 		ReadTimeout:  opts.ReadTimeout,
 		WriteTimeout: opts.WriteTimeout,
 		IdleTimeout:  opts.IdleTimeout,

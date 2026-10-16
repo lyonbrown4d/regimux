@@ -17,17 +17,14 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 	}
 
 	cacheKey := manifestCacheKey(req)
+	flightKey := manifestFlightKey(cacheKey, req.Method)
 	if p.group == nil {
 		return p.get(ctx, req, cacheKey, manifestRequestModeClient)
 	}
 
-	result, err, _ := p.group.Do(cacheKey, func() (*CachedManifest, error) {
-		return p.get(ctx, req, cacheKey, manifestRequestModeClient)
+	return p.coalesce(ctx, flightKey, "coalesce manifest request", func(sharedCtx context.Context) (*CachedManifest, error) {
+		return p.get(sharedCtx, req, cacheKey, manifestRequestModeClient)
 	})
-	if err != nil {
-		return nil, wrapError(err, "coalesce manifest request")
-	}
-	return result, nil
 }
 
 func (p manifestProxy) Refresh(ctx context.Context, req ManifestRequest) (*CachedManifest, error) {
@@ -37,17 +34,29 @@ func (p manifestProxy) Refresh(ctx context.Context, req ManifestRequest) (*Cache
 	req.SkipPullRecord = true
 
 	cacheKey := manifestCacheKey(req)
+	flightKey := manifestFlightKey(cacheKey, req.Method) + "\x00refresh"
 	if p.group == nil {
 		return p.get(ctx, req, cacheKey, manifestRequestModeRefresh)
 	}
 
-	result, err, _ := p.group.Do(cacheKey+"\x00refresh", func() (*CachedManifest, error) {
-		return p.get(ctx, req, cacheKey, manifestRequestModeRefresh)
+	return p.coalesce(ctx, flightKey, "coalesce manifest refresh", func(sharedCtx context.Context) (*CachedManifest, error) {
+		return p.get(sharedCtx, req, cacheKey, manifestRequestModeRefresh)
 	})
+}
+
+func (p manifestProxy) coalesce(ctx context.Context, key, operation string, fill func(context.Context) (*CachedManifest, error)) (*CachedManifest, error) {
+	result, err, _ := p.group.DoContext(ctx, key, fill)
 	if err != nil {
-		return nil, wrapError(err, "coalesce manifest refresh")
+		return nil, wrapError(err, "%s", operation)
 	}
 	return result, nil
+}
+
+func manifestFlightKey(cacheKey, method string) string {
+	if method == "" {
+		method = http.MethodGet
+	}
+	return cacheKey + "\x00" + method
 }
 
 type manifestRequestMode int

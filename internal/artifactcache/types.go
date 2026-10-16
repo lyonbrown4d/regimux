@@ -9,6 +9,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/samber/go-singleflightx"
 )
 
 const (
@@ -41,6 +42,7 @@ type Store struct {
 	fills    *FillTracker
 	logger   *slog.Logger
 	now      func() time.Time
+	reads    singleflightx.Group[Key, readSnapshot]
 }
 
 type Key struct {

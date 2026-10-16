@@ -8,7 +8,7 @@ import (
 	"github.com/samber/oops"
 )
 
-func rewriteMetadata(body []byte, proxyBase string) ([]byte, bool, error) {
+func rewriteMetadata(body []byte, proxyBase, registryBaseURL, metadataURL string) ([]byte, bool, error) {
 	var doc map[string]any
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, false, oops.In("npm").Wrapf(err, "decode npm metadata")
@@ -19,7 +19,7 @@ func rewriteMetadata(body []byte, proxyBase string) ([]byte, bool, error) {
 	}
 	changed := false
 	for _, versionValue := range versions {
-		if rewriteVersionTarball(versionValue, proxyBase) {
+		if rewriteVersionTarball(versionValue, proxyBase, registryBaseURL, metadataURL) {
 			changed = true
 		}
 	}
@@ -33,7 +33,7 @@ func rewriteMetadata(body []byte, proxyBase string) ([]byte, bool, error) {
 	return rewritten, true, nil
 }
 
-func rewriteVersionTarball(versionValue any, proxyBase string) bool {
+func rewriteVersionTarball(versionValue any, proxyBase, registryBaseURL, metadataURL string) bool {
 	version, ok := versionValue.(map[string]any)
 	if !ok {
 		return false
@@ -46,7 +46,7 @@ func rewriteVersionTarball(versionValue any, proxyBase string) bool {
 	if !ok || strings.TrimSpace(tarball) == "" {
 		return false
 	}
-	local, ok := localTarballURL(tarball, proxyBase)
+	local, ok := localTarballURL(tarball, proxyBase, registryBaseURL, metadataURL)
 	if !ok {
 		return false
 	}
@@ -54,20 +54,70 @@ func rewriteVersionTarball(versionValue any, proxyBase string) bool {
 	return true
 }
 
-func localTarballURL(tarballURL, proxyBase string) (string, bool) {
-	parsed, err := url.Parse(tarballURL)
-	if err != nil || parsed.Path == "" {
+func localTarballURL(tarballURL, proxyBase, registryBaseURL, metadataURL string) (string, bool) {
+	resolved, ok := resolveTarballURL(tarballURL, metadataURL)
+	if !ok {
 		return "", false
 	}
-	tail := strings.TrimLeft(parsed.EscapedPath(), "/")
+	registryURL, ok := parseRegistryURL(registryBaseURL)
+	if !ok {
+		return "", false
+	}
+	tail, ok := registryTarballTail(resolved, registryURL)
+	if !ok {
+		return "", false
+	}
+	return formatLocalTarballURL(proxyBase, tail, resolved), true
+}
+
+func resolveTarballURL(tarballURL, metadataURL string) (*url.URL, bool) {
+	parsed, err := url.Parse(tarballURL)
+	if err != nil {
+		return nil, false
+	}
+	if parsed.Scheme != "" && parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return nil, false
+	}
+	baseURL, ok := parseRegistryURL(metadataURL)
+	if !ok {
+		return nil, false
+	}
+	return baseURL.ResolveReference(parsed), true
+}
+
+func parseRegistryURL(value string) (*url.URL, bool) {
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Host == "" {
+		return nil, false
+	}
+	return parsed, parsed.Scheme == "http" || parsed.Scheme == "https"
+}
+
+func registryTarballTail(resolved, registryURL *url.URL) (string, bool) {
+	registryBasePath := strings.TrimRight(registryURL.EscapedPath(), "/")
+	tail := strings.TrimLeft(resolved.EscapedPath(), "/")
+	if registryBasePath != "" && strings.HasPrefix(resolved.EscapedPath(), registryBasePath+"/") {
+		tail = strings.TrimPrefix(resolved.EscapedPath(), registryBasePath+"/")
+	}
 	if tail == "" || !strings.Contains(tail, "/-/") || !strings.HasSuffix(strings.ToLower(tail), ".tgz") {
 		return "", false
 	}
+	return tail, true
+}
+
+func formatLocalTarballURL(proxyBase, tail string, resolved *url.URL) string {
 	base := strings.TrimRight(proxyBase, "/")
+	local := base + "/" + tail
 	if base == "" {
-		return "/npm/" + tail, true
+		local = "/npm/" + tail
 	}
-	return base + "/" + tail, true
+	if resolved.RawQuery != "" {
+		local += "?" + resolved.RawQuery
+	}
+	if fragment := resolved.EscapedFragment(); fragment != "" {
+		local += "#" + fragment
+	}
+	return local
 }
 
 func localBase(proxyBaseURL, alias string) string {

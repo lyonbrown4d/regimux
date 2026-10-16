@@ -174,8 +174,8 @@ func (s *Service) RefreshTags(ctx context.Context, req ManifestRequest) (*TagInd
 		return nil, err
 	}
 
-	index, err, _ := s.group.Do(tagIndexCacheKey(req), func() (*TagIndex, error) {
-		return s.refreshTagsOnce(ctx, req)
+	index, err, _ := s.group.DoContext(ctx, tagIndexCacheKey(req), func(sharedCtx context.Context) (*TagIndex, error) {
+		return s.refreshTagsOnce(sharedCtx, req)
 	})
 	if err != nil {
 		return nil, wrapError(err, "refresh manifest suggestion tags")

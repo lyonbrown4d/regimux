@@ -16,11 +16,11 @@ func (c *Client) fetchToken(ctx context.Context, runtime upstreamRuntime, challe
 		return token, nil
 	}
 
-	token, err, _ := c.tokenGroup.Do(bearerTokenSingleflightKey(tokenReq.CacheKey), func() (string, error) {
+	token, err, _ := c.tokenGroup.DoContext(ctx, bearerTokenSingleflightKey(tokenReq.CacheKey), func(sharedCtx context.Context) (string, error) {
 		if token, ok := c.tokenCache.get(tokenReq.CacheKey); ok {
 			return token, nil
 		}
-		rawResp, fetchErr := fetchTokenResponse(ctx, runtime, tokenReq.URL)
+		rawResp, fetchErr := fetchTokenResponse(sharedCtx, runtime, tokenReq.URL)
 		if fetchErr != nil {
 			return "", fetchErr
 		}

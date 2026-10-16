@@ -14,6 +14,7 @@ import (
 	mysqldialect "github.com/arcgolabs/dbx/dialect/mysql"
 	postgresdialect "github.com/arcgolabs/dbx/dialect/postgres"
 	"github.com/arcgolabs/dbx/repository"
+	"golang.org/x/sync/semaphore"
 
 	_ "github.com/go-sql-driver/mysql" // register the database/sql MySQL driver.
 	_ "github.com/lib/pq"              // register the database/sql PostgreSQL driver.
@@ -39,7 +40,7 @@ type SQLStore struct {
 	driver           string
 	db               *dbx.DB
 	mapper           *MetadataMapper
-	catalogMu        sync.Mutex
+	catalogMu        *semaphore.Weighted
 	upstreams        *repository.Base[upstreamRow, upstreamRowSchema]
 	repositories     *repository.Base[repositoryRow, repositoryRowSchema]
 	manifest         *repository.Base[manifestRow, manifestRowSchema]
@@ -52,6 +53,8 @@ type SQLStore struct {
 	prefetchOutcomes *repository.Base[prefetchOutcomeRow, prefetchOutcomeRowSchema]
 	prefetchControls *repository.Base[prefetchControlRow, prefetchControlRowSchema]
 	refreshIntents   *repository.Base[refreshIntentRow, refreshIntentRowSchema]
+	catalogRefreshMu sync.Mutex
+	catalogRefreshes map[catalogRefreshKey]*catalogRefreshState
 }
 
 func OpenSQLite(path string, logger *slog.Logger) (*SQLStore, error) {
@@ -124,6 +127,7 @@ func NewSQLStore(db *dbx.DB, mapper *MetadataMapper) *SQLStore {
 		driver:           normalizeDBDriver(db.Dialect().Name()),
 		db:               db,
 		mapper:           mapper,
+		catalogMu:        semaphore.NewWeighted(1),
 		upstreams:        repository.New[upstreamRow](db, sqlUpstreamRows),
 		repositories:     repository.New[repositoryRow](db, sqlRepositoryRows),
 		manifest:         repository.New[manifestRow](db, sqlManifestRows),
