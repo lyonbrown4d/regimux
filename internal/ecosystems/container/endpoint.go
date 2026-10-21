@@ -21,19 +21,21 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/mo"
+	"golang.org/x/sync/semaphore"
 )
 
 type RegistryEndpoint struct {
-	manifests   cache.ManifestService
-	blobs       cache.BlobService
-	tags        cache.TagService
-	referrers   cache.ReferrerService
-	logger      *slog.Logger
-	metrics     *observability.Metrics
-	suggestions suggestion.ManifestService
-	metadata    meta.Store
-	events      events.Bus
-	workers     *worker.Pools
+	manifests    cache.ManifestService
+	blobs        cache.BlobService
+	tags         cache.TagService
+	referrers    cache.ReferrerService
+	logger       *slog.Logger
+	metrics      *observability.Metrics
+	suggestions  suggestion.ManifestService
+	metadata     meta.Store
+	events       events.Bus
+	workers      *worker.Pools
+	metadataGate *semaphore.Weighted
 
 	defaultNamespaces     *collectionmapping.Map[string, string]
 	defaultContainerAlias string
@@ -57,6 +59,7 @@ func NewRegistryEndpoint(
 		tags:              tags,
 		referrers:         referrers,
 		logger:            logger,
+		metadataGate:      semaphore.NewWeighted(4),
 		defaultNamespaces: defaultNamespacesFromConfig(config.Config{}),
 	}
 }
@@ -170,13 +173,19 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	case reference.RoutePing:
 		out, err = e.ping(ctx, nil)
 	case reference.RouteManifest:
-		out = e.manifest(ctx, input, route, method)
+		out = e.metadataResponse(ctx, func() (*registryOutput, func()) {
+			return e.manifest(ctx, input, route, method)
+		})
 	case reference.RouteBlob:
 		out = e.blob(ctx, input, route, method)
 	case reference.RouteTags:
-		out = e.tagsRoute(ctx, input, route, method)
+		out = e.metadataResponse(ctx, func() (*registryOutput, func()) {
+			return e.tagsRoute(ctx, input, route, method), nil
+		})
 	case reference.RouteReferrers:
-		out = e.referrersRoute(ctx, input, route, method)
+		out = e.metadataResponse(ctx, func() (*registryOutput, func()) {
+			return e.referrersRoute(ctx, input, route, method), nil
+		})
 	default:
 		out = errorOutput(distribution.ErrNameInvalid.WithDetail("unknown registry route"))
 	}

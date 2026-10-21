@@ -8,12 +8,16 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/lo"
 )
 
 func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]blobDescriptor, int, error) {
+	if err := jsonbudget.Check(manifestBody(manifest), jsonbudget.DefaultLimits()); err != nil {
+		return nil, 0, cacheWrap(err, "check image manifest JSON budget for prefetch")
+	}
 	var payload ocispec.Manifest
 	if err := json.Unmarshal(manifestBody(manifest), &payload); err != nil {
 		return nil, 0, cacheWrap(err, "decode image manifest for prefetch")
@@ -32,6 +36,9 @@ func imageManifestBlobDescriptors(manifest *cache.CachedManifest) ([]blobDescrip
 }
 
 func imageIndexDescriptors(manifest *cache.CachedManifest) ([]ocispec.Descriptor, error) {
+	if err := jsonbudget.Check(manifestBody(manifest), jsonbudget.DefaultLimits()); err != nil {
+		return nil, cacheWrap(err, "check manifest index JSON budget for prefetch")
+	}
 	var payload ocispec.Index
 	if err := json.Unmarshal(manifestBody(manifest), &payload); err != nil {
 		return nil, cacheWrap(err, "decode manifest index for prefetch")
@@ -82,6 +89,9 @@ func cachedManifestMediaType(manifest *cache.CachedManifest) string {
 		return mediaType
 	}
 	var envelope manifestMediaEnvelope
+	if err := jsonbudget.Check(manifest.Body, jsonbudget.DefaultLimits()); err != nil {
+		return ""
+	}
 	if err := json.Unmarshal(manifest.Body, &envelope); err != nil {
 		return ""
 	}

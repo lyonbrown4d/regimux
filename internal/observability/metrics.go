@@ -25,6 +25,7 @@ type Metrics struct {
 	docker     dockerMetrics
 	scheduler  schedulerMetrics
 	upstream   upstreamMetrics
+	object     objectUploadMetrics
 }
 
 func NewMetrics(logger *slog.Logger) *Metrics {
@@ -48,6 +49,7 @@ func NewMetricsFromObservability(obs observabilityx.Observability, handler http.
 		docker:     newDockerMetrics(obs),
 		scheduler:  newSchedulerMetrics(obs),
 		upstream:   newUpstreamMetrics(obs),
+		object:     newObjectUploadMetrics(obs),
 	}
 }
 

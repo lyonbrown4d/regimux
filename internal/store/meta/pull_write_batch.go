@@ -7,10 +7,10 @@ import (
 )
 
 type pullWriteBatchState struct {
-	pending   pullRow
-	mutations []*pullWriteMutation
-	users     int
-	group     singleflightx.Group[struct{}, bool]
+	pending  pullRow
+	mutation *pullWriteMutation
+	users    int
+	group    singleflightx.Group[struct{}, bool]
 }
 
 type pullWriteBatchResult struct {
@@ -34,7 +34,7 @@ func (s *SQLStore) recordPullBatch(ctx context.Context, key PullKey, row pullRow
 			if result.err != nil {
 				return nil, wrapError(result.err, "write batched pull metadata")
 			}
-			return clonePullRecord(result.record), nil
+			return new(result.record), nil
 		}
 		_, err, _ := state.group.DoContext(ctx, struct{}{}, func(sharedCtx context.Context) (bool, error) {
 			s.flushPullWriteBatch(sharedCtx, key, state, mutation)
@@ -56,8 +56,8 @@ func completedPullMutation(mutation *pullWriteMutation) *pullWriteBatchResult {
 }
 
 func (s *SQLStore) flushPullWriteBatch(ctx context.Context, key PullKey, state *pullWriteBatchState, own *pullWriteMutation) {
-	row, mutations := s.snapshotPullWriteBatch(state)
-	if len(mutations) == 0 {
+	row, mutation := s.snapshotPullWriteBatch(state)
+	if mutation == nil {
 		// A caller can miss a completed flight or a canceled callback still finishing.
 		// Wait for its exact receipt; never flush an empty row or retry another batch.
 		select {
@@ -67,10 +67,8 @@ func (s *SQLStore) flushPullWriteBatch(ctx context.Context, key PullKey, state *
 		return
 	}
 	result := s.persistPullWriteBatch(ctx, key, row)
-	for _, mutation := range mutations {
-		mutation.outcome = &result
-		close(mutation.done)
-	}
+	mutation.outcome = &result
+	close(mutation.done)
 }
 
 func (s *SQLStore) persistPullWriteBatch(ctx context.Context, key PullKey, row pullRow) pullWriteBatchResult {
@@ -103,19 +101,22 @@ func (s *SQLStore) beginPullWriteBatch(key string, row pullRow) (*pullWriteBatch
 	}
 	state.users++
 	mergePullWriteRows(&state.pending, row)
-	mutation := &pullWriteMutation{done: make(chan struct{})}
-	state.mutations = append(state.mutations, mutation)
-	return state, mutation
+	// All mutations detached by one flush share the same immutable outcome.
+	// Allocate one receipt per generation rather than one channel per caller.
+	if state.mutation == nil {
+		state.mutation = &pullWriteMutation{done: make(chan struct{})}
+	}
+	return state, state.mutation
 }
 
-func (s *SQLStore) snapshotPullWriteBatch(state *pullWriteBatchState) (pullRow, []*pullWriteMutation) {
+func (s *SQLStore) snapshotPullWriteBatch(state *pullWriteBatchState) (pullRow, *pullWriteMutation) {
 	s.pullWriteBatchMu.Lock()
 	defer s.pullWriteBatchMu.Unlock()
 	row := state.pending
-	mutations := state.mutations
+	mutation := state.mutation
 	state.pending = pullRow{}
-	state.mutations = nil
-	return row, mutations
+	state.mutation = nil
+	return row, mutation
 }
 
 func (s *SQLStore) endPullWriteBatch(key string, state *pullWriteBatchState) {
@@ -139,10 +140,6 @@ func mergePullWriteRows(target *pullRow, incoming pullRow) {
 	target.LastPolicyDeniedAt = max(target.LastPolicyDeniedAt, incoming.LastPolicyDeniedAt)
 	target.CreatedAt = minPullWriteTimestamp(target.CreatedAt, incoming.CreatedAt)
 	target.UpdatedAt = max(target.UpdatedAt, incoming.UpdatedAt)
-}
-
-func clonePullRecord(record PullRecord) *PullRecord {
-	return &record
 }
 
 func minPullWriteTimestamp(left, right int64) int64 {

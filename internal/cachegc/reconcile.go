@@ -19,16 +19,17 @@ type ReconcileOptions struct {
 	Now     time.Time
 }
 type ReconcileReport struct {
-	DryRun                bool
-	ScannedObjects        int
-	ExistingMetadata      int
-	MissingMetadata       int
-	RepairedMetadata      int
-	MissingObjects        int
-	BytesRepaired         int64
-	LimitReached          bool
-	RepairedDigests       []string
-	UnsupportedObjectWalk bool
+	DryRun                 bool
+	ScannedObjects         int
+	ExistingMetadata       int
+	MissingMetadata        int
+	RepairedMetadata       int
+	MissingObjects         int
+	BytesRepaired          int64
+	LimitReached           bool
+	RepairedDigests        []string
+	RepairDetailsTruncated bool
+	UnsupportedObjectWalk  bool
 }
 
 func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*ReconcileReport, error) {
@@ -44,8 +45,9 @@ func (s *Service) Reconcile(ctx context.Context, opts ReconcileOptions) (*Reconc
 		now = time.Now().UTC()
 	}
 	report := &ReconcileReport{DryRun: opts.DryRun}
+	maxRepairDetails := meta.CleanupSnapshotLimitsFromContext(ctx).MaxRecords
 	err = walker.WalkObjects(ctx, func(walked object.Info) error {
-		return s.reconcileObject(ctx, walked, opts, now, report)
+		return s.reconcileObject(ctx, walked, opts, now, maxRepairDetails, report)
 	})
 	if errors.Is(err, errStopWalk) {
 		err = nil
@@ -76,7 +78,7 @@ func validateReconcile(ctx context.Context, s *Service, opts ReconcileOptions) (
 	return walker, ok, nil
 }
 
-func (s *Service) reconcileObject(ctx context.Context, walked object.Info, opts ReconcileOptions, now time.Time, report *ReconcileReport) error {
+func (s *Service) reconcileObject(ctx context.Context, walked object.Info, opts ReconcileOptions, now time.Time, maxRepairDetails int, report *ReconcileReport) error {
 	if opts.MaxScan > 0 && report.ScannedObjects >= opts.MaxScan {
 		report.LimitReached = true
 		return errStopWalk
@@ -98,10 +100,10 @@ func (s *Service) reconcileObject(ctx context.Context, walked object.Info, opts 
 		report.ExistingMetadata++
 		return nil
 	}
-	return s.repairMissingBlob(ctx, info, opts.DryRun, now, report)
+	return s.repairMissingBlob(ctx, info, opts.DryRun, now, maxRepairDetails, report)
 }
 
-func (s *Service) repairMissingBlob(ctx context.Context, info *object.Info, dryRun bool, now time.Time, report *ReconcileReport) error {
+func (s *Service) repairMissingBlob(ctx context.Context, info *object.Info, dryRun bool, now time.Time, maxRepairDetails int, report *ReconcileReport) error {
 	report.MissingMetadata++
 	if dryRun {
 		return nil
@@ -111,7 +113,11 @@ func (s *Service) repairMissingBlob(ctx context.Context, info *object.Info, dryR
 	}
 	report.RepairedMetadata++
 	report.BytesRepaired += info.Size
-	report.RepairedDigests = append(report.RepairedDigests, info.Digest)
+	if len(report.RepairedDigests) < maxRepairDetails {
+		report.RepairedDigests = append(report.RepairedDigests, info.Digest)
+	} else {
+		report.RepairDetailsTruncated = true
+	}
 	return nil
 }
 

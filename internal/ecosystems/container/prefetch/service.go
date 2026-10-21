@@ -192,7 +192,7 @@ func (s *Service) finishCanceledRun(ctx context.Context, run *meta.PrefetchRunRe
 }
 
 func (s *Service) run(ctx context.Context, opts RunOptions, execution *runExecution) (*RunReport, error) {
-	records, err := s.metadata.ListPulls(ctx)
+	records, err := meta.ReadPrefetchPulls(ctx, s.metadata, false)
 	if err != nil {
 		return nil, cacheWrap(err, "list pull records for prefetch")
 	}

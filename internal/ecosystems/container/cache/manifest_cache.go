@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
@@ -63,6 +64,9 @@ func manifestEnvelopeFromRecord(record meta.ManifestRecord, body []byte) ([]byte
 }
 
 func manifestFromEnvelope(data []byte) (*CachedManifest, error) {
+	if err := jsonbudget.Check(data, jsonbudget.DefaultLimits()); err != nil {
+		return nil, wrapError(err, "check manifest cache envelope JSON budget")
+	}
 	var envelope manifestEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, wrapError(err, "unmarshal manifest cache envelope")
@@ -88,6 +92,9 @@ func tagsEnvelopeFromResult(result *TagsResult) ([]byte, error) {
 }
 
 func tagsFromEnvelope(data []byte) (*TagsResult, error) {
+	if err := jsonbudget.Check(data, jsonbudget.DefaultLimits()); err != nil {
+		return nil, wrapError(err, "check tags cache envelope JSON budget")
+	}
 	var envelope responseEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, wrapError(err, "unmarshal tags cache envelope")
@@ -111,6 +118,9 @@ func referrersEnvelopeFromResult(result *ReferrersResult) ([]byte, error) {
 }
 
 func referrersFromEnvelope(data []byte) (*ReferrersResult, error) {
+	if err := jsonbudget.Check(data, jsonbudget.DefaultLimits()); err != nil {
+		return nil, wrapError(err, "check referrers cache envelope JSON budget")
+	}
 	var envelope responseEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, wrapError(err, "unmarshal referrers cache envelope")

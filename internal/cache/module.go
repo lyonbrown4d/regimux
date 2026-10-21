@@ -37,9 +37,10 @@ func newBackend(cfg config.CacheConfig, logger *slog.Logger) (backend.Backend, e
 	case "memory":
 		cache := backend.NewMemory(backend.MemoryOptions{
 			MaxItems: cfg.Memory.MaxItems,
+			MaxBytes: cfg.Memory.MaxBytes,
 			Prefix:   cfg.Prefix,
 		})
-		logger.Info("cache backend opened", "backend", "memory", "max_items", cfg.Memory.MaxItems)
+		logger.Info("cache backend opened", "backend", "memory", "max_items", cfg.Memory.MaxItems, "max_bytes", cfg.Memory.MaxBytes)
 		return cache, nil
 	case "redis":
 		cache, err := backend.NewRedis(backend.KVOptions{

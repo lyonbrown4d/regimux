@@ -203,5 +203,14 @@ func (m *s3CleanupDeleteTagMetadata) DeleteTag(ctx context.Context, key meta.Tag
 	return nil
 }
 
+func (m *s3CleanupDeleteTagMetadata) ReadCleanupSnapshot(ctx context.Context) (meta.CleanupSnapshot, error) {
+	snapshot, err := meta.ReadCleanupSnapshot(ctx, m.Store)
+	if err != nil {
+		return meta.CleanupSnapshot{}, fmt.Errorf("read cleanup snapshot through tag-delete wrapper: %w", err)
+	}
+	return snapshot, nil
+}
+
 var _ object.S3Client = (*s3CleanupDeleteClient)(nil)
 var _ meta.Store = (*s3CleanupDeleteTagMetadata)(nil)
+var _ meta.CleanupSnapshotReader = (*s3CleanupDeleteTagMetadata)(nil)

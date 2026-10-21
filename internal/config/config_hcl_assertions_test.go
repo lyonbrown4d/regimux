@@ -25,6 +25,9 @@ func assertLoadedHCLAuth(t *testing.T, auth config.RegistryAuthConfig) {
 func assertLoadedHCLCache(t *testing.T, cache config.CacheConfig) {
 	t.Helper()
 
+	if cache.Memory.MaxItems != 27 || cache.Memory.MaxBytes != 2048 {
+		t.Fatalf("unexpected memory cache config: %#v", cache.Memory)
+	}
 	small := cache.Blob.SmallCache
 	if !small.Enabled || small.MaxSizeBytes != 1024 || small.TTL != 2*time.Hour {
 		t.Fatalf("unexpected small blob cache config: %#v", small)

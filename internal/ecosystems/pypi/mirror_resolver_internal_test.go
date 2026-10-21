@@ -1,4 +1,3 @@
-//nolint:testpackage // White-box tests exercise the unexported resolver contract.
 package pypi
 
 import (
@@ -23,7 +22,7 @@ func TestResolvePackageMirrorsReturnsOnlyExactTrustedArtifacts(t *testing.T) {
 	mirror := httptest.NewServer(mirrorResolverMatchingIndex(t, &mirrorHits, digest))
 	defer mirror.Close()
 
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	cfg := config.UpstreamConfig{
 		Registry: primary.URL + "/simple",
 		Mirrors:  []string{mirror.URL},
@@ -50,7 +49,7 @@ func TestResolvePackageMirrorsRejectsUntrustedOrMismatchedLinks(t *testing.T) {
 	}))
 	defer index.Close()
 
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	got := service.resolvePackageMirrors(context.Background(), config.UpstreamConfig{Registry: index.URL}, "pypi", "demo", "demo-1.0.whl", digest)
 	if len(got) != 0 {
 		t.Fatalf("resolvePackageMirrors() = %#v, want no untrusted artifacts", got)
@@ -65,7 +64,7 @@ func TestResolvePackageMirrorsRequiresTrustedIdentityAndBoundsIndexes(t *testing
 	}))
 	defer index.Close()
 
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	cfg := config.UpstreamConfig{Registry: index.URL}
 	for i := range 10 {
 		cfg.Mirrors = append(cfg.Mirrors, index.URL+"/mirror-"+url.PathEscape(strings.Repeat("x", i+1)))
@@ -88,7 +87,7 @@ func TestResolvePackageMirrorsRequiresTrustedIdentityAndBoundsIndexes(t *testing
 }
 
 func TestResolvePackageMirrorsRejectsInvalidConfiguredIndexes(t *testing.T) {
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	cfg := config.UpstreamConfig{
 		Registry: "file:///etc/passwd",
 		Mirrors:  []string{"https://user:secret@example.test/simple"},
@@ -109,7 +108,7 @@ func TestResolvePackageMirrorsStopsWhenContextIsCanceled(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	got := service.resolvePackageMirrors(ctx, config.UpstreamConfig{Registry: index.URL}, "pypi", "demo", "demo-1.0.whl", "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef")
 	if len(got) != 0 || hits.Load() != 0 {
 		t.Fatalf("resolvePackageMirrors() with canceled context = %#v and %d requests, want none", got, hits.Load())

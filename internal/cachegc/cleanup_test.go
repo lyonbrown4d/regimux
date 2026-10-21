@@ -10,7 +10,6 @@ import (
 	"testing"
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/cachegc"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -142,6 +141,9 @@ func TestPruneReferencesRechecksBlobAccessBeforeDeleting(t *testing.T) {
 	if report.DeletedBlobs != 0 || (report.RecentBlobs == 0 && report.ProtectedBlobs == 0) {
 		t.Fatalf("updated blob was not skipped: %#v", report)
 	}
+	if calls < 2 {
+		t.Fatal("cleanup did not recheck references after the initial snapshot")
+	}
 	assertExists(ctx, t, objects, digestValue)
 }
 
@@ -231,13 +233,15 @@ type touchAfterBlobSnapshot struct {
 	calls  *int
 }
 
-func (s touchAfterBlobSnapshot) ListBlobs(ctx context.Context, opts ...meta.BlobListOption) (*collectionlist.List[meta.BlobRecord], error) {
-	rows, err := s.Store.ListBlobs(ctx, opts...)
+func (s touchAfterBlobSnapshot) ReadCleanupSnapshot(ctx context.Context) (meta.CleanupSnapshot, error) {
+	rows, err := meta.ReadCleanupSnapshot(ctx, s.Store)
 	if err != nil {
-		return nil, fmt.Errorf("list blob snapshot: %w", err)
+		return meta.CleanupSnapshot{}, fmt.Errorf("read cleanup snapshot: %w", err)
 	}
 	*s.calls++
-	if *s.calls != 2 {
+	// The initial bounded snapshot now combines the old blob and reference reads.
+	// Touch after that snapshot so deletion must observe the newer access time.
+	if *s.calls != 1 {
 		return rows, nil
 	}
 	blob, ok, err := s.Blob(ctx, meta.BlobKey{Digest: s.digest})
@@ -250,7 +254,7 @@ func (s touchAfterBlobSnapshot) ListBlobs(ctx context.Context, opts ...meta.Blob
 	blob.LastAccessAt = s.at
 	_, err = s.UpsertBlob(ctx, *blob)
 	if err != nil {
-		return nil, fmt.Errorf("update blob access after snapshot: %w", err)
+		return meta.CleanupSnapshot{}, fmt.Errorf("update blob access after snapshot: %w", err)
 	}
 	return rows, nil
 }

@@ -242,14 +242,14 @@ services:
       MIXED_METHODS: ${MIXED_METHODS:-0}
     volumes:
       - ./:/scripts:ro
-      - ../../tmp/concurrency-20261016/reports:/reports
+      - ${REGIMUX_CONCURRENCY_REPORTS:-../../tmp/concurrency-20261016/reports}:/reports
     depends_on:
       fixture: {condition: service_healthy}
     networks: [isolated]
 
 networks:
   isolated:
-    name: regimux-concurrency-20261016
+    name: ${REGIMUX_CONCURRENCY_NETWORK:-regimux-concurrency-20261016}
     internal: true
 volumes:
   regimux-data:

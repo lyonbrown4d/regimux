@@ -3,6 +3,7 @@ package meta
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -112,12 +113,10 @@ type pullCoverageMutationResult struct {
 
 func startPullCoverageMutation(ctx context.Context, wg *sync.WaitGroup, store *SQLStore, key PullKey, at time.Time) <-chan pullCoverageMutationResult {
 	result := make(chan pullCoverageMutationResult, 1)
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		record, err := store.RecordPull(ctx, key, at)
 		result <- pullCoverageMutationResult{record: record, err: err}
-	}()
+	})
 	return result
 }
 
@@ -163,7 +162,14 @@ func (c *pullCoverageContext) Err() error {
 			<-c.release
 		})
 	}
-	return c.Context.Err()
+	err := c.Context.Err()
+	if errors.Is(err, context.Canceled) {
+		return context.Canceled
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return context.DeadlineExceeded
+	}
+	return nil
 }
 
 func (c *pullCoverageContext) armPause() {
@@ -204,8 +210,8 @@ func (h *pullCoverageHook) dbHook() dbx.Hook {
 
 func (h *pullCoverageHook) before(ctx context.Context, event *dbx.HookEvent) (context.Context, error) {
 	sql := strings.ToLower(event.SQL)
-	if strings.Contains(sql, "meta_upstreams") && h.failRefresh.CompareAndSwap(true, false) {
-		return ctx, errPullCoverageInjected
+	if err := h.refreshError(sql); err != nil {
+		return ctx, err
 	}
 	if event.Operation != dbx.OperationExec || !isPullWriteBatchInsert(event.SQL) {
 		return ctx, nil
@@ -217,7 +223,7 @@ func (h *pullCoverageHook) before(ctx context.Context, event *dbx.HookEvent) (co
 		case <-h.firstRelease:
 			return ctx, nil
 		case <-ctx.Done():
-			return ctx, ctx.Err()
+			return ctx, fmt.Errorf("wait for first pull write: %w", ctx.Err())
 		}
 	case 2:
 		if err := h.waitForRetry(ctx); err != nil {
@@ -227,6 +233,13 @@ func (h *pullCoverageHook) before(ctx context.Context, event *dbx.HookEvent) (co
 	default:
 		return ctx, nil
 	}
+}
+
+func (h *pullCoverageHook) refreshError(sql string) error {
+	if strings.Contains(sql, "meta_upstreams") && h.failRefresh.CompareAndSwap(true, false) {
+		return errPullCoverageInjected
+	}
+	return nil
 }
 
 func (h *pullCoverageHook) waitForRetry(ctx context.Context) error {
@@ -239,7 +252,7 @@ func (h *pullCoverageHook) waitForRetry(ctx context.Context) error {
 	case <-h.retryRelease:
 		return nil
 	case <-ctx.Done():
-		return ctx.Err()
+		return fmt.Errorf("wait for pull write retry: %w", ctx.Err())
 	}
 }
 

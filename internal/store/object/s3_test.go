@@ -184,6 +184,12 @@ func TestNewS3StoreRejectsInvalidUploadTuning(t *testing.T) {
 		UploadConcurrency: -1,
 	})
 	require.Error(t, err)
+
+	_, err = object.NewS3WithClient(client, object.S3Options{
+		Bucket:               "bucket",
+		MaxConcurrentUploads: -1,
+	})
+	require.Error(t, err)
 }
 
 func testS3Key(prefix, digest string) string {

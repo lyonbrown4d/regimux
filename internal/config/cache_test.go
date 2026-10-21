@@ -27,6 +27,9 @@ func TestLoadCacheDefaults(t *testing.T) {
 	if cfg.Cache.Memory.MaxItems != 10000 {
 		t.Fatalf("unexpected memory max items %d", cfg.Cache.Memory.MaxItems)
 	}
+	if cfg.Cache.Memory.MaxBytes != 64*1024*1024 {
+		t.Fatalf("unexpected memory max bytes %d", cfg.Cache.Memory.MaxBytes)
+	}
 	assertDefaultSmallBlobCache(t, cfg.Cache.Blob.SmallCache)
 	if len(cfg.Cache.Redis.Addrs) == 0 {
 		t.Fatal("expected redis default addrs")

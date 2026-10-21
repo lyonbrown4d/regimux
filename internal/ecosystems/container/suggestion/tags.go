@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/upstream"
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/lo"
 	"go.uber.org/multierr"
@@ -82,6 +83,9 @@ func readResponseBody(resp *upstream.TagsResponse) ([]byte, error) {
 }
 
 func decodeTagList(data []byte) (tagListBody, error) {
+	if err := jsonbudget.Check(data, jsonbudget.DefaultLimits()); err != nil {
+		return tagListBody{}, wrapError(err, "check tags response JSON budget")
+	}
 	var body tagListBody
 	if err := json.Unmarshal(data, &body); err != nil {
 		return tagListBody{}, wrapError(err, "decode tags response body")

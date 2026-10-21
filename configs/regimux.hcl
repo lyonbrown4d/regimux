@@ -58,7 +58,10 @@ cache {
   default_ttl = "10m"
 
   memory {
+    # Zero uses the bounded default of 10000 entries; positive values override it.
     max_items = 10000
+    # Zero uses the bounded default of 64 MiB; positive values override it.
+    max_bytes = 67108864
   }
 
   redis {
@@ -130,6 +133,7 @@ store {
     #   force_path_style = true
     #   part_size = 16777216
     #   upload_concurrency = 4
+    #   max_concurrent_uploads = 16 # Shared across objects; parts stream from seekable sources.
     # }
   }
 }
@@ -149,6 +153,9 @@ scheduler {
     max_deletes = 1000
     max_bytes = 0
     target_bytes = 0
+    # The cleanup pass skips safely if either full metadata snapshot limit is exceeded.
+    metadata_max_records = 100000
+    metadata_max_bytes = 33554432
     dry_run = false
     distributed = true
   }

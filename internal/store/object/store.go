@@ -43,17 +43,19 @@ type Options struct {
 }
 
 type S3Options struct {
-	Bucket            string
-	Prefix            string
-	Region            string
-	Endpoint          string
-	AccessKeyID       string
-	SecretAccessKey   string
-	SessionToken      string
-	Profile           string
-	ForcePathStyle    bool
-	PartSize          int64
-	UploadConcurrency int
+	Bucket               string
+	Prefix               string
+	Region               string
+	Endpoint             string
+	AccessKeyID          string
+	SecretAccessKey      string
+	SessionToken         string
+	Profile              string
+	ForcePathStyle       bool
+	PartSize             int64
+	UploadConcurrency    int
+	MaxConcurrentUploads int
+	ObserveUpload        func(context.Context, S3UploadEvent)
 }
 
 func NewWithOptions(ctx context.Context, opts Options) (Store, error) {

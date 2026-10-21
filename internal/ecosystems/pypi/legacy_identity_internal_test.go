@@ -1,4 +1,3 @@
-//nolint:testpackage // White-box tests exercise the unexported legacy identity lookup.
 package pypi
 
 import (
@@ -53,7 +52,7 @@ func TestLegacyPackageIdentityFindsExactFreshTrustedIndexLink(t *testing.T) {
 	}))
 	defer index.Close()
 
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	cfg := config.UpstreamConfig{Registry: index.URL}
 	route := directPackageRoute(t, "https://files.example.test/demo-1.0-py3-none-any.whl", "token=abc&__regimux_trace=proxy")
 	project, gotDigest := service.legacyPackageIdentity(context.Background(), cfg, route)
@@ -72,7 +71,7 @@ func TestLegacyPackageIdentityRejectsSameFilenameFromDifferentURLOrMissingHash(t
 	}))
 	defer index.Close()
 
-	service := &Service{client: http.DefaultClient}
+	service := &Service{client: http.DefaultClient, metadataSlots: make(chan struct{}, metadataTransformConcurrency)}
 	route := directPackageRoute(t, "https://files.example.test/demo-1.0-py3-none-any.whl", "")
 	project, digest := service.legacyPackageIdentity(context.Background(), config.UpstreamConfig{Registry: index.URL}, route)
 	if project != "" || digest != "" {

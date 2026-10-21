@@ -2,11 +2,11 @@ package cachegc
 
 import (
 	"context"
+	"slices"
 	"strconv"
 	"testing"
 	"time"
 
-	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
@@ -23,16 +23,16 @@ func BenchmarkCleanupPlanCapacityReclaim(b *testing.B) {
 		DryRun:      true,
 		Now:         now,
 	}
-	blobs := collectionlist.NewList(benchmarkBlobRecords(now, 1000)...)
+	blobs := benchmarkBlobRecords(now, 1000)
 	service := &Service{}
 	refs := &referenceSnapshot{protected: set.NewSet[string]()}
 
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
-		report := newReport(opts, blobs)
-		ordered := orderBlobs(blobs, report.CapacityExceeded)
-		if err := service.cleanupCandidates(ctx, opts, now.Add(-opts.UnusedFor), ordered.Values(), refs, report); err != nil {
+		report := newReportFromRecords(opts, blobs)
+		ordered := orderBlobRecords(slices.Clone(blobs), report.CapacityExceeded)
+		if err := service.cleanupCandidates(ctx, opts, now.Add(-opts.UnusedFor), ordered, refs, report); err != nil {
 			b.Fatalf("plan cleanup: %v", err)
 		}
 		if !report.CapacityExceeded || report.DeletedBlobs == 0 {

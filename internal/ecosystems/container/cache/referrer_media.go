@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/json"
 
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -18,6 +19,9 @@ func supportedReferrersMediaType(mediaType string) bool {
 }
 
 func validateReferrersBody(body []byte) error {
+	if err := jsonbudget.Check(body, jsonbudget.DefaultLimits()); err != nil {
+		return distribution.ErrUpstream.WithDetail("invalid upstream referrers index JSON: " + err.Error())
+	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
 		return distribution.ErrUpstream.WithDetail("invalid upstream referrers index JSON: " + err.Error())

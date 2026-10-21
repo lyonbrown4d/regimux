@@ -2,15 +2,19 @@ param(
     [Parameter(Mandatory)][ValidateSet('sqlite','postgres','mysql')][string]$Backend,
     [ValidateRange(1,2048)][int]$ColdVUs = 512,
     [ValidatePattern('^[a-z0-9][a-z0-9-]{0,15}$')][string]$RunId = 'run',
+    [ValidatePattern('^[a-z0-9][a-z0-9-]*$')][string]$Project = 'regimux-concurrency-20261016',
+    [string]$ReportsPath = 'tmp/concurrency-20261016/reports',
     [switch]$OnlyHot,
     [switch]$SampleOnly
 )
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'container-state.ps1')
 $compose = Join-Path $PSScriptRoot 'compose.yml'
 $repositoryRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$reports = Join-Path $repositoryRoot 'tmp/concurrency-20261016/reports'
+$reports = Join-Path $repositoryRoot $ReportsPath
 New-Item -ItemType Directory -Path $reports -Force | Out-Null
-$project = 'regimux-concurrency-20261016'
+$env:REGIMUX_CONCURRENCY_REPORTS = $reports
+$project = $Project
 $app = "$project-regimux-$Backend-1"
 $names = @($app, "$project-fixture-1", "$project-redis-1")
 $bases = 'http://regimux:8080'
@@ -57,7 +61,7 @@ function Run-Case([string]$Case, [string]$Mode, [int]$VUs, [string]$Target, [str
     if (Test-Path -LiteralPath "$reports/$Case.json") { throw "Report already exists: $Case" }
     $client = "$project-$Case"
     $start = [DateTimeOffset]::UtcNow
-    $id = docker compose -f $compose --profile clients run -d --no-deps --name $client -e "MODE=$Mode" -e "CONCURRENCY=$VUs" -e "TARGET=$Target" -e "WAVE=$Wave" -e "BASE_URLS=$bases" -e 'DURATION=30s' -e "REPORT=$Case" -e "MIXED_METHODS=$([int]$Mixed)" client
+    $id = docker compose -p $project -f $compose --profile clients run -d --no-deps --name $client -e "MODE=$Mode" -e "CONCURRENCY=$VUs" -e "TARGET=$Target" -e "WAVE=$Wave" -e "BASE_URLS=$bases" -e 'DURATION=30s' -e "REPORT=$Case" -e "MIXED_METHODS=$([int]$Mixed)" client
     if ($LASTEXITCODE -ne 0) { throw "Cannot start $Case" }
     $sampleNames = $names + @($client)
     do {
@@ -80,6 +84,7 @@ function Run-Case([string]$Case, [string]$Mode, [int]$VUs, [string]$Target, [str
     docker rm $client | Out-Null
     Write-Output "$Case exit=$code elapsed=$([Math]::Round(([DateTimeOffset]::UtcNow-$start).TotalSeconds,1))s"
     if ($code -ne '0') { throw "Load assertions failed: $Case; inspect retained reports" }
+    Assert-ContainerRunningWithoutRestart -ContainerNames $names
 }
 $index = 0
 foreach ($target in $(if ($OnlyHot) { @() } else { $targets })) {

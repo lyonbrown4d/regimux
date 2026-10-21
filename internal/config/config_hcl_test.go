@@ -122,6 +122,11 @@ auth {
 
 const testHCLCache = `
 cache {
+  memory {
+    max_items = 27
+    max_bytes = 2048
+  }
+
   blob {
     small_cache {
       enabled = true

@@ -140,7 +140,8 @@ type CacheConfig struct {
 }
 
 type MemoryCacheConfig struct {
-	MaxItems int `json:"max_items" koanf:"max_items" mapstructure:"max_items" validate:"min=0"`
+	MaxItems int   `json:"max_items" koanf:"max_items" mapstructure:"max_items" validate:"min=0"`
+	MaxBytes int64 `json:"max_bytes" koanf:"max_bytes" mapstructure:"max_bytes" validate:"min=0"`
 }
 
 type ExternalCacheConfig struct {

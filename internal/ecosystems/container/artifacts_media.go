@@ -1,8 +1,15 @@
 package container
 
-import "encoding/json"
+import (
+	"encoding/json"
+
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
+)
 
 func manifestBodyMediaType(body []byte) string {
+	if jsonbudget.Check(body, jsonbudget.DefaultLimits()) != nil {
+		return ""
+	}
 	var fields map[string]json.RawMessage
 	if err := json.Unmarshal(body, &fields); err != nil {
 		return ""

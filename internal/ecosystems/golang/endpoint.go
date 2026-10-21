@@ -2,12 +2,13 @@ package golang
 
 import (
 	"context"
-	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/lyonbrown4d/regimux/internal/artifactstream"
 )
 
 type Endpoint struct {
@@ -105,7 +106,7 @@ func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*out
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
 	}
-	return outputFromResponse(method, resp), nil
+	return outputFromResponse(ctx, in.Alias, in.Tail.String(), method, resp, e.service.logger), nil
 }
 
 func (e *Endpoint) dispatchRoot(ctx context.Context, in *rootInput, method string) (*output, error) {
@@ -122,10 +123,10 @@ func (e *Endpoint) dispatchRoot(ctx context.Context, in *rootInput, method strin
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
 	}
-	return outputFromResponse(method, resp), nil
+	return outputFromResponse(ctx, "", in.Tail.String(), method, resp, e.service.logger), nil
 }
 
-func outputFromResponse(method string, resp *Response) *output {
+func outputFromResponse(ctx context.Context, alias, reference, method string, resp *Response, logger *slog.Logger) *output {
 	if resp == nil {
 		return plainError(http.StatusBadGateway, "go proxy response is empty")
 	}
@@ -147,12 +148,10 @@ func outputFromResponse(method string, resp *Response) *output {
 	if method == http.MethodHead || resp.Body == nil || resp.Body == http.NoBody {
 		return out
 	}
-	out.Body = streamWithStatus(resp.Status, httpx.StreamWriter(func(writer io.Writer) {
-		defer closeReadCloser(resp.Body, nil, "close go proxy response body")
-		if _, err := io.Copy(writer, resp.Body); err != nil {
-			return
-		}
-	}))
+	out.Body = artifactstream.Response(ctx, artifactstream.ResponseRequest{
+		Status: resp.Status, Size: resp.Size, Body: resp.Body, Logger: logger,
+		Ecosystem: "golang", Alias: alias, Reference: reference, Cache: resp.Cache,
+	})
 	return out
 }
 

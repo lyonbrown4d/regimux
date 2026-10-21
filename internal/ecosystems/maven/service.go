@@ -1,17 +1,12 @@
-//revive:disable:file-length-limit Maven service keeps route, cache, and pull-record orchestration in one implementation file.
 package maven
 
 import (
 	"context"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
-	"github.com/lyonbrown4d/regimux/internal/artifactcache"
-	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/events"
@@ -20,45 +15,6 @@ import (
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
-
-func NewService(deps ServiceDependencies) *Service {
-	logger := deps.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	now := deps.Now
-	if now == nil {
-		now = func() time.Time { return time.Now().UTC() }
-	}
-	factory := deps.Factory
-	if factory == nil {
-		factory = clientfactory.New(logger)
-	}
-	cache := deps.Cache
-	if cache == nil {
-		cache = artifactcache.New(artifactcache.Dependencies{
-			Metadata: deps.Metadata,
-			Objects:  deps.Objects,
-			Logger:   logger,
-			Now:      now,
-		})
-	}
-	fills := cache.FillTracker()
-	if fills == nil {
-		fills = artifactcache.NewFillTracker()
-	}
-	return &Service{
-		cfg:      deps.Config,
-		cache:    cache,
-		metadata: deps.Metadata,
-		client:   deps.Client,
-		factory:  factory,
-		logger:   logger.With("component", "maven"),
-		fills:    fills,
-		now:      now,
-		events:   deps.Events,
-	}
-}
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	requestRoute, err := ParseTail(req.Alias, req.Tail)

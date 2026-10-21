@@ -3,14 +3,10 @@ package cache_test
 import (
 	"bytes"
 	"context"
-	"fmt"
 	"io"
 	"net/http"
-	"runtime"
-	"runtime/pprof"
-	"strings"
+	"strconv"
 	"sync"
-	"sync/atomic"
 	"testing"
 	"time"
 
@@ -32,7 +28,7 @@ func TestBlobAccessMetadataIsFannedInWithoutSharingReaders(t *testing.T) {
 		assertBlobFanInResult(t, got, body)
 	}
 	assertBlobAccessFanInCounts(t, fixture.metadata, requests)
-	assertBlobAccessFanInTimes(t, t.Context(), fixture.base, digest, fixture.old)
+	assertBlobAccessFanInTimes(t.Context(), t, fixture.base, digest, fixture.old)
 }
 
 type blobAccessFanInFixture struct {
@@ -129,7 +125,7 @@ func assertBlobAccessFanInCounts(t *testing.T, counted *countingBlobAccessMetada
 	}
 }
 
-func assertBlobAccessFanInTimes(t *testing.T, ctx context.Context, metadata meta.Store, digest string, old time.Time) {
+func assertBlobAccessFanInTimes(ctx context.Context, t *testing.T, metadata meta.Store, digest string, old time.Time) {
 	t.Helper()
 	updated, ok, err := metadata.Blob(ctx, meta.BlobKey{Digest: digest})
 	if err != nil || !ok {
@@ -177,80 +173,30 @@ func assertBlobFanInResult(t *testing.T, got blobAccessFanInResult, body []byte)
 		t.Fatalf("read %s blob result: %v", got.request.Method, err)
 	}
 	if got.request.Method == http.MethodHead {
-		if len(content) != 0 || got.result.Status != http.StatusOK || got.result.Headers.Get(distribution.HeaderContentLength) != fmt.Sprint(len(body)) {
+		if len(content) != 0 || got.result.Status != http.StatusOK || got.result.Headers.Get(distribution.HeaderContentLength) != strconv.Itoa(len(body)) {
 			t.Errorf("HEAD response = status %d, length %q, body %q", got.result.Status, got.result.Headers.Get(distribution.HeaderContentLength), content)
 		}
 		return
 	}
 	if got.request.Range != nil {
-		if got.result.Status != http.StatusPartialContent || string(content) != string(body[2:6]) || got.result.Headers.Get(distribution.HeaderContentRange) != "bytes 2-5/16" {
-			t.Errorf("range response = status %d, content-range %q, body %q", got.result.Status, got.result.Headers.Get(distribution.HeaderContentRange), content)
-		}
+		assertBlobFanInRange(t, got.result, content, body)
 		return
 	}
-	if got.result.Status != http.StatusOK || !bytes.Equal(content, body) {
-		t.Errorf("GET response = status %d, body %q, want %q", got.result.Status, content, body)
+	assertBlobFanInGet(t, got.result, content, body)
+}
+
+func assertBlobFanInRange(t *testing.T, result *cache.BlobReadResult, content, body []byte) {
+	t.Helper()
+	if result.Status != http.StatusPartialContent || !bytes.Equal(content, body[2:6]) || result.Headers.Get(distribution.HeaderContentRange) != "bytes 2-5/16" {
+		t.Errorf("range response = status %d, content-range %q, body %q", result.Status, result.Headers.Get(distribution.HeaderContentRange), content)
 	}
 }
 
-type countingBlobAccessMetadata struct {
-	meta.Store
-	releaseBlobRead chan struct{}
-	releaseOnce     sync.Once
-	blobReadEntered chan struct{}
-	blobReadErr     error
-	blobReads       atomic.Int64
-	blobUpserts     atomic.Int64
-	repoBlobReads   atomic.Int64
-	repoBlobUpserts atomic.Int64
-}
-
-func (m *countingBlobAccessMetadata) Blob(ctx context.Context, key meta.BlobKey) (*meta.BlobRecord, bool, error) {
-	m.blobReads.Add(1)
-	m.blobReadEntered <- struct{}{}
-	<-m.releaseBlobRead
-	if m.blobReadErr != nil {
-		return nil, false, m.blobReadErr
+func assertBlobFanInGet(t *testing.T, result *cache.BlobReadResult, content, body []byte) {
+	t.Helper()
+	if result.Status != http.StatusOK || !bytes.Equal(content, body) {
+		t.Errorf("GET response = status %d, body %q, want %q", result.Status, content, body)
 	}
-	return m.Store.Blob(ctx, key)
-}
-
-func (m *countingBlobAccessMetadata) release() {
-	m.releaseOnce.Do(func() { close(m.releaseBlobRead) })
-}
-
-func (m *countingBlobAccessMetadata) UpsertBlob(ctx context.Context, record meta.BlobRecord) (*meta.BlobRecord, error) {
-	m.blobUpserts.Add(1)
-	return m.Store.UpsertBlob(ctx, record)
-}
-
-func (m *countingBlobAccessMetadata) RepoBlob(ctx context.Context, key meta.RepoBlobKey) (*meta.RepoBlobRecord, bool, error) {
-	m.repoBlobReads.Add(1)
-	return m.Store.RepoBlob(ctx, key)
-}
-
-func (m *countingBlobAccessMetadata) UpsertRepoBlob(ctx context.Context, record meta.RepoBlobRecord) (*meta.RepoBlobRecord, error) {
-	m.repoBlobUpserts.Add(1)
-	return m.Store.UpsertRepoBlob(ctx, record)
-}
-
-type blobStatBarrier struct {
-	object.Store
-	entered     chan struct{}
-	release     chan struct{}
-	releaseOnce sync.Once
-	count       atomic.Int64
-}
-
-func (s *blobStatBarrier) Stat(ctx context.Context, digest string) (*object.Info, error) {
-	s.count.Add(1)
-	s.entered <- struct{}{}
-	<-s.release
-	return s.Store.Stat(ctx, digest)
-}
-
-func (s *blobStatBarrier) releaseStat() {
-	s.releaseOnce.Do(func() { close(s.release) })
 }
 
 func waitForBlobStatBarrier(t *testing.T, entered <-chan struct{}, count int) {
@@ -263,30 +209,3 @@ func waitForBlobStatBarrier(t *testing.T, entered <-chan struct{}, count int) {
 		}
 	}
 }
-
-func waitForBlobTouchCallers(t *testing.T, count int) {
-	t.Helper()
-	deadline := time.Now().Add(10 * time.Second)
-	for time.Now().Before(deadline) {
-		var stacks bytes.Buffer
-		if err := pprof.Lookup("goroutine").WriteTo(&stacks, 2); err != nil {
-			t.Fatalf("write goroutine profile: %v", err)
-		}
-		found := 0
-		for goroutine := range strings.SplitSeq(stacks.String(), "\n\n") {
-			touching := strings.Contains(goroutine, "blobProxy.touchStoredBlobAccess(")
-			waiting := strings.Contains(goroutine, "singleflightx") || strings.Contains(goroutine, "countingBlobAccessMetadata).Blob(")
-			if touching && waiting {
-				found++
-			}
-		}
-		if found >= count {
-			return
-		}
-		runtime.Gosched()
-	}
-	t.Fatalf("blob touch callers in metadata or singleflight wait = fewer than %d", count)
-}
-
-var _ meta.Store = (*countingBlobAccessMetadata)(nil)
-var _ object.Store = (*blobStatBarrier)(nil)

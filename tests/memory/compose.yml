@@ -1,0 +1,81 @@
+name: regimux-memory-20261021
+
+services:
+  fixture:
+    environment:
+      FIXTURE_PAYLOAD_BYTES: "1024"
+
+  s3-proxy:
+    image: python:3.12-alpine
+    profiles: [postgres, mysql]
+    init: true
+    mem_limit: 128m
+    cpus: 0.5
+    working_dir: /memory
+    command: ["python", "-u", "s3_proxy.py"]
+    environment:
+      S3_PROXY_HOST: 0.0.0.0
+      S3_PROXY_PORT: "9000"
+      S3_PROXY_TARGET_HOST: s3
+      S3_PROXY_TARGET_PORT: "9000"
+      S3_PROXY_PUT_DELAY_MS: "100"
+    volumes:
+      - ../memory/s3_proxy.py:/memory/s3_proxy.py:ro
+    depends_on:
+      s3: {condition: service_started}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9000/__healthz', timeout=2)"]
+      interval: 2s
+      timeout: 3s
+      retries: 30
+    networks: [isolated]
+
+  regimux-postgres:
+    mem_limit: 512m
+    environment:
+      GOMEMLIMIT: 384MiB
+    volumes:
+      - ../memory/config/postgres-s3.hcl:/etc/regimux/matrix.hcl:ro
+    depends_on:
+      s3-proxy: {condition: service_healthy}
+
+  regimux-postgres-peer:
+    mem_limit: 512m
+    environment:
+      GOMEMLIMIT: 384MiB
+    volumes:
+      - ../memory/config/postgres-s3.hcl:/etc/regimux/matrix.hcl:ro
+    depends_on:
+      s3-proxy: {condition: service_healthy}
+
+  regimux-mysql:
+    mem_limit: 512m
+    environment:
+      GOMEMLIMIT: 384MiB
+    volumes:
+      - ../memory/config/mysql-s3.hcl:/etc/regimux/matrix.hcl:ro
+    depends_on:
+      s3-proxy: {condition: service_healthy}
+
+  regimux-mysql-peer:
+    mem_limit: 512m
+    environment:
+      GOMEMLIMIT: 384MiB
+    volumes:
+      - ../memory/config/mysql-s3.hcl:/etc/regimux/matrix.hcl:ro
+    depends_on:
+      s3-proxy: {condition: service_healthy}
+
+  client:
+    entrypoint: ["k6", "run", "/memory/distinct-burst.ts"]
+    environment:
+      DISTINCT_CONCURRENCY: ${DISTINCT_CONCURRENCY:-512}
+      DISTINCT_TARGET: ${DISTINCT_TARGET:-go-zip}
+      WAVE_PREFIX: ${WAVE_PREFIX:-memory-20261021}
+    volumes:
+      - ../memory:/memory:ro
+
+networks:
+  isolated:
+    name: ${REGIMUX_CONCURRENCY_NETWORK:-regimux-memory-20261021}
+    internal: true

@@ -2,11 +2,10 @@ package container
 
 import (
 	"context"
-	"io"
 	"net/http"
 	"strconv"
 
-	"github.com/arcgolabs/httpx"
+	"github.com/lyonbrown4d/regimux/internal/artifactstream"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/cache"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/container/reference"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
@@ -14,7 +13,12 @@ import (
 	"github.com/samber/lo"
 )
 
-func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
+func (e *RegistryEndpoint) manifest(
+	ctx context.Context,
+	input *registryInput,
+	route reference.Route,
+	method string,
+) (*registryOutput, func()) {
 	result, err := e.manifests.Get(ctx, cache.ManifestRequest{
 		UpstreamAlias: route.Alias,
 		Repo:          route.Repo,
@@ -23,7 +27,7 @@ func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, r
 		Method:        method,
 	})
 	if err != nil {
-		return e.manifestError(ctx, route, err)
+		return e.manifestError(ctx, route, err), nil
 	}
 	e.observeManifest(ctx, route)
 
@@ -35,10 +39,14 @@ func (e *RegistryEndpoint) manifest(ctx context.Context, input *registryInput, r
 		out.ContentLength = strconv.FormatInt(result.Size, 10)
 	}
 	if method != http.MethodHead {
-		out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
-		e.fillManifestBlobsAsync(ctx, route, result)
+		stream, streamErr := e.streamMetadata(ctx, result.Body)
+		if streamErr != nil {
+			return errorOutput(distribution.FromError(streamErr)), nil
+		}
+		out.Body = streamWithStatus(out.Status, stream)
+		return out, e.prepareManifestBlobFill(ctx, route, result)
 	}
-	return out
+	return out, nil
 }
 
 func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {
@@ -68,19 +76,11 @@ func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route
 		}
 		return out
 	}
-	out.Body = streamWithStatus(out.Status, httpx.StreamWriter(func(writer io.Writer) {
-		e.writeBlobBody(writer, result.Reader)
-	}))
+	out.Body = artifactstream.Response(ctx, artifactstream.ResponseRequest{
+		Status: out.Status, Size: result.Size, Body: result.Reader, Logger: e.logger,
+		Ecosystem: "oci", Alias: route.Alias, Reference: route.Digest, Cache: string(result.Cache),
+	})
 	return out
-}
-
-func (e *RegistryEndpoint) writeBlobBody(writer io.Writer, reader io.ReadCloser) {
-	if _, err := io.Copy(writer, reader); err != nil {
-		e.logger.Error("write blob response failed", "error", err)
-	}
-	if err := reader.Close(); err != nil {
-		e.logger.Error("close blob response reader failed", "error", err)
-	}
 }
 
 func (e *RegistryEndpoint) tagList(ctx context.Context, input *registryInput, route reference.Route) *registryOutput {
@@ -97,7 +97,11 @@ func (e *RegistryEndpoint) tagList(ctx context.Context, input *registryInput, ro
 	out := newRegistryOutput(http.StatusOK, result.Headers)
 	out.ContentType = distribution.MediaTypeJSON
 	out.XMirrorCache = string(result.Cache)
-	out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
+	stream, err := e.streamMetadata(ctx, result.Body)
+	if err != nil {
+		return errorOutput(distribution.FromError(err))
+	}
+	out.Body = streamWithStatus(out.Status, stream)
 	return out
 }
 
@@ -121,7 +125,11 @@ func (e *RegistryEndpoint) referrersList(ctx context.Context, route reference.Ro
 	out := newRegistryOutput(http.StatusOK, result.Headers)
 	out.ContentType = result.MediaType
 	out.XMirrorCache = string(result.Cache)
-	out.Body = streamWithStatus(out.Status, httpx.StreamBytes(result.Body))
+	stream, err := e.streamMetadata(ctx, result.Body)
+	if err != nil {
+		return errorOutput(distribution.FromError(err))
+	}
+	out.Body = streamWithStatus(out.Status, stream)
 	return out
 }
 

@@ -56,11 +56,11 @@ func (s *Service) cachedLegacyPackageDigest(ctx context.Context, alias, project 
 		return ""
 	}
 	defer closeReadCloser(cached.body, s.logger, "close cached pypi index during legacy identity lookup")
-	body, err := upstreamhttp.ReadAllLimited(cached.body, pypiSimpleIndexMaxBytes)
-	if err != nil {
-		return ""
-	}
-	return cachedLegacyIdentity(body, alias, requestedURL, filename)
+	var digest string
+	s.withSimpleIndexAdmission(ctx, cached.body, func(body []byte) {
+		digest = cachedLegacyIdentity(body, alias, requestedURL, filename)
+	})
+	return digest
 }
 
 func (s *Service) fetchLegacyPackageDigest(ctx context.Context, cfg config.UpstreamConfig, project string, requestedURL *url.URL, filename string) string {
@@ -92,11 +92,11 @@ func (s *Service) fetchLegacyIndexDigest(ctx context.Context, cfg config.Upstrea
 	if err != nil || resp.Status != http.StatusOK {
 		return ""
 	}
-	body, err := upstreamhttp.ReadAllLimited(resp.Body, pypiSimpleIndexMaxBytes)
-	if err != nil {
-		return ""
-	}
-	return rawIndexLegacyIdentity(body, indexURL, requestedURL, filename)
+	var digest string
+	s.withSimpleIndexAdmission(attemptCtx, resp.Body, func(body []byte) {
+		digest = rawIndexLegacyIdentity(body, indexURL, requestedURL, filename)
+	})
+	return digest
 }
 
 func legacyRequestedURL(route Route) (*url.URL, bool) {

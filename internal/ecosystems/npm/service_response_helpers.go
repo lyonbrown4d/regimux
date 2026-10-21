@@ -18,9 +18,27 @@ func (s *Service) responseFromFetched(ctx context.Context, req Request, requestR
 	if shouldPassThrough(req, fetched.status) || !cacheable(requestRoute) {
 		return s.responseFromUpstream(req, requestRoute, fetched), nil
 	}
+	var release func()
+	if requestRoute.Kind == routeMetadata {
+		var err error
+		release, err = acquireMetadataSlot(ctx, s.metadataSlots)
+		if err != nil {
+			closeReadCloser(fetched.body, s.logger, "close npm metadata after admission cancellation")
+			return nil, wrapError(err, "admit npm metadata transformation")
+		}
+		defer func() {
+			if release != nil {
+				release()
+			}
+		}()
+	}
 	prepared, err := s.prepareFetched(req, requestRoute, fetched)
 	if err != nil {
 		return nil, err
+	}
+	if release != nil {
+		release()
+		release = nil
 	}
 	return s.storeFetchedResponse(ctx, req, requestRoute, prepared)
 }

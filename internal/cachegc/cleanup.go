@@ -88,18 +88,24 @@ func (s *Service) Cleanup(ctx context.Context, opts CleanupOptions) (*CleanupRep
 	if now.IsZero() {
 		now = time.Now().UTC()
 	}
-	blobs, err := s.metadata.ListBlobs(ctx)
+	snapshot, err := meta.ReadCleanupSnapshot(ctx, s.metadata)
 	if err != nil {
-		return nil, fmt.Errorf("list blob metadata for cleanup: %w", err)
+		return nil, fmt.Errorf("read metadata for cleanup: %w", err)
 	}
-	refs, err := s.loadReferences(ctx, now.Add(-opts.UnusedFor), opts.PruneReferences)
+	refs, err := s.loadReferencesFromSnapshot(ctx, now.Add(-opts.UnusedFor), opts.PruneReferences, snapshot)
 	if err != nil {
 		return nil, err
 	}
-	report := newReport(opts, blobs)
-	ordered := orderBlobs(blobs, report.CapacityExceeded)
+	report := newReportFromRecords(opts, snapshot.Blobs)
+	ordered := orderBlobRecords(snapshot.Blobs, report.CapacityExceeded)
+	// Keep only the blob rows used by this pass. Reference handling has moved
+	// the needed roots and stale rows into refs, so the raw inventory can go.
+	snapshot.Manifests = nil
+	snapshot.Tags = nil
+	snapshot.RepoBlobs = nil
+	snapshot.Pulls = nil
 	cutoff := now.Add(-opts.UnusedFor)
-	if err := s.cleanupCandidates(ctx, opts, cutoff, ordered.Values(), refs, report); err != nil {
+	if err := s.cleanupCandidates(ctx, opts, cutoff, ordered, refs, report); err != nil {
 		return nil, err
 	}
 	return report, nil

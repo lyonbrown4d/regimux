@@ -56,26 +56,31 @@ func TestDistSharedMetadataPreservesTagAndManifestExpiry(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
 	for _, source := range []string{"tag", "manifest", "fresh"} {
 		t.Run(source, func(t *testing.T) {
-			metadata, objects := newDistReadFixture(t, []byte("dist expiry body"))
-			close(metadata.release)
-			if source == "tag" {
-				metadata.tag.ExpiresAt = now.Add(-time.Second)
-			}
-			if source == "manifest" {
-				metadata.manifest.ExpiresAt = now.Add(-time.Second)
-			}
-			service := NewService(ServiceDependencies{Metadata: metadata, Objects: objects, Now: func() time.Time { return now }})
-			response, found, err := service.cached(t.Context(), Request{Method: http.MethodGet}, Route{})
-			if err != nil || !found {
-				t.Fatalf("dist expiry cache read found/error = %v/%v", found, err)
-			}
-			if err := response.body.Close(); err != nil {
-				t.Fatalf("close dist expiry body: %v", err)
-			}
-			if response.expired != (source != "fresh") {
-				t.Fatalf("dist cached expiry = %v for %s", response.expired, source)
-			}
+			assertDistSharedMetadataExpiry(t, source, now)
 		})
+	}
+}
+
+func assertDistSharedMetadataExpiry(t *testing.T, source string, now time.Time) {
+	t.Helper()
+	metadata, objects := newDistReadFixture(t, []byte("dist expiry body"))
+	close(metadata.release)
+	if source == "tag" {
+		metadata.tag.ExpiresAt = now.Add(-time.Second)
+	}
+	if source == "manifest" {
+		metadata.manifest.ExpiresAt = now.Add(-time.Second)
+	}
+	service := NewService(ServiceDependencies{Metadata: metadata, Objects: objects, Now: func() time.Time { return now }})
+	response, found, err := service.cached(t.Context(), Request{Method: http.MethodGet}, Route{})
+	if err != nil || !found {
+		t.Fatalf("dist expiry cache read found/error = %v/%v", found, err)
+	}
+	if err := response.body.Close(); err != nil {
+		t.Fatalf("close dist expiry body: %v", err)
+	}
+	if response.expired != (source != "fresh") {
+		t.Fatalf("dist cached expiry = %v for %s", response.expired, source)
 	}
 }
 

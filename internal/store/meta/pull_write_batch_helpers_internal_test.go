@@ -3,6 +3,7 @@ package meta
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -149,7 +150,7 @@ func (h *pullWriteBatchHook) before(ctx context.Context, event *dbx.HookEvent) (
 	case <-h.release:
 		return ctx, nil
 	case <-ctx.Done():
-		return ctx, ctx.Err()
+		return ctx, fmt.Errorf("wait for pull batch test hook: %w", ctx.Err())
 	}
 }
 

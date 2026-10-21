@@ -2,9 +2,7 @@ package prefetch
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
-	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -235,24 +233,6 @@ func (s *Service) prefetchPool() *ants.Pool {
 		return nil
 	}
 	return s.workers.IOPool()
-}
-
-func (s *Service) availableTags(ctx context.Context, route repoKey, pageSize int) (*collectionlist.List[string], error) {
-	result, err := s.tags.List(ctx, cache.TagRequest{
-		UpstreamAlias: route.alias,
-		Repo:          route.repo,
-		N:             strconv.Itoa(pageSize),
-	})
-	if err != nil {
-		return nil, cacheWrap(err, "list tags for prefetch")
-	}
-	var body struct {
-		Tags []string `json:"tags"`
-	}
-	if err := json.Unmarshal(result.Body, &body); err != nil {
-		return nil, cacheWrap(err, "decode tags response for prefetch")
-	}
-	return collectionlist.NewList(body.Tags...), nil
 }
 
 type prefetchTaskState struct {

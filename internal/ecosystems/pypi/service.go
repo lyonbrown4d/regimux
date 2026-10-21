@@ -3,8 +3,7 @@ package pypi
 import (
 	"bytes"
 	"context"
-	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
-	"io"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -14,6 +13,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
@@ -45,17 +45,18 @@ func NewService(deps ServiceDependencies) *Service {
 		fills = artifactcache.NewFillTracker()
 	}
 	return &Service{
-		cfg:        deps.Config,
-		cache:      cache,
-		metadata:   deps.Metadata,
-		client:     deps.Client,
-		factory:    factory,
-		logger:     logger.With("component", "pypi"),
-		publicURL:  strings.TrimRight(deps.Config.Server.PublicURL, "/"),
-		fills:      fills,
-		cacheSlots: make(chan struct{}, 8),
-		now:        now,
-		events:     deps.Events,
+		cfg:           deps.Config,
+		cache:         cache,
+		metadata:      deps.Metadata,
+		client:        deps.Client,
+		factory:       factory,
+		logger:        logger.With("component", "pypi"),
+		publicURL:     strings.TrimRight(deps.Config.Server.PublicURL, "/"),
+		fills:         fills,
+		cacheSlots:    make(chan struct{}, 8),
+		metadataSlots: make(chan struct{}, metadataTransformConcurrency),
+		now:           now,
+		events:        deps.Events,
 	}
 }
 
@@ -179,30 +180,21 @@ func (s *Service) responseFromFetched(ctx context.Context, req Request, requestR
 	if shouldPassThrough(req, fetched.status) {
 		return s.responseFromUpstream(req, requestRoute, fetched), nil
 	}
+	if requestRoute.Kind != RouteSimple {
+		return s.responseFromUpstream(req, requestRoute, fetched), nil
+	}
+	release, err := acquireMetadataSlot(ctx, s.metadataSlots)
+	if err != nil {
+		closeReadCloser(fetched.body, s.logger, "close pypi index after admission cancellation")
+		return nil, wrapError(err, "admit pypi index transformation")
+	}
+	defer release()
 	prepared, err := s.prepareFetched(req, requestRoute, fetched)
 	if err != nil {
 		return nil, err
 	}
-	body, err := upstreamhttp.ReadAllLimited(prepared.body, pypiSimpleIndexMaxBytes)
-	closeReadCloser(prepared.body, s.logger, "close prepared pypi index")
-	if err != nil {
-		return nil, wrapError(err, "read prepared pypi index")
-	}
-	prepared.body = io.NopCloser(bytes.NewReader(body))
-	writeCtx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
-	stored, storeErr := s.store(writeCtx, requestRoute, prepared)
-	cancel()
-	if stored.body != nil {
-		closeReadCloser(stored.body, s.logger, "close pypi cached index copy")
-	}
-	if ctx.Err() != nil {
-		return nil, wrapError(ctx.Err(), "prepare pypi index response")
-	}
-	if storeErr != nil {
-		s.logger.WarnContext(ctx, "pypi index cache write failed; serving upstream", "alias", requestRoute.Alias)
-	}
-	prepared.body = io.NopCloser(bytes.NewReader(body))
-	return s.responseFromUpstream(req, requestRoute, prepared), nil
+	release()
+	return s.responseFromPreparedSimpleIndex(ctx, req, requestRoute, prepared)
 }
 
 func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
@@ -227,26 +219,43 @@ func (s *Service) prepareFetched(req Request, requestRoute Route, fetched *upstr
 	}
 	body, err := upstreamhttp.ReadAllLimited(fetched.body, pypiSimpleIndexMaxBytes)
 	if err != nil {
+		closeReadCloser(fetched.body, s.logger, "close oversized pypi upstream index")
 		return nil, wrapError(err, "read pypi upstream body")
 	}
 	closeReadCloser(fetched.body, s.logger, "close pypi upstream body")
 
-	rewritten := rewriteSimpleIndexLinks(body, requestRoute.Alias, fetched.requestURL, requestPublicURL(s.publicURL, req.PublicURL))
-	headers := fetched.headers.Clone()
-	headers.Set("X-Regimux-Metadata-Format", pypiSimpleIndexFormat)
-	if bytes.Equal(body, rewritten) {
-		return &upstreamFetch{
-			status:     fetched.status,
-			headers:    headers,
-			body:       io.NopCloser(bytes.NewReader(body)),
-			requestURL: fetched.requestURL,
-		}, nil
+	rewritten, err := rewriteSimpleIndexLinksLimited(
+		body,
+		requestRoute.Alias,
+		fetched.requestURL,
+		requestPublicURL(s.publicURL, req.PublicURL),
+		pypiSimpleIndexMaxBytes,
+	)
+	if err != nil {
+		return nil, err
 	}
-	headers.Del("Content-Length")
+	headers := fetched.headers.Clone()
+	if headers == nil {
+		headers = make(http.Header)
+	}
+	headers.Set("X-Regimux-Metadata-Format", pypiSimpleIndexFormat)
+	payload := rewritten
+	if bytes.Equal(body, rewritten) {
+		payload = body
+	} else {
+		headers.Del("Content-Length")
+	}
+	if int64(len(payload)) > pypiSimpleIndexMaxBytes {
+		return nil, errors.New("rewritten pypi simple index exceeds body limit")
+	}
+	materialized, err := materializeSimpleIndexBody(payload)
+	if err != nil {
+		return nil, wrapError(err, "spool rewritten pypi simple index")
+	}
 	return &upstreamFetch{
 		status:     fetched.status,
 		headers:    headers,
-		body:       io.NopCloser(bytes.NewReader(rewritten)),
+		body:       materialized,
 		requestURL: fetched.requestURL,
 	}, nil
 }

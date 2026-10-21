@@ -7,13 +7,19 @@ import (
 	"io"
 	"net/http"
 	"strconv"
+	"sync"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/spool"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocidigest "github.com/opencontainers/go-digest"
+	"golang.org/x/sync/semaphore"
 )
 
-const smallBlobCacheVersion = 1
+const (
+	smallBlobCacheVersion    = 1
+	smallBlobCacheMaxReaders = 4
+)
 
 type smallBlobCacheConfig struct {
 	enabled      bool
@@ -30,9 +36,10 @@ type smallBlobCacheEnvelope struct {
 }
 
 func (p blobProxy) lookupSmallBlobCache(ctx context.Context, req BlobRequest) (*BlobReadResult, bool, error) {
-	if !p.canUseSmallBlobCache(req) {
+	if !p.canUseSmallBlobCache(req) || p.smallBlobGate == nil || !p.smallBlobGate.TryAcquire(1) {
 		return nil, false, nil
 	}
+	defer p.smallBlobGate.Release(1)
 	data, ok, err := p.cache.Get(ctx, smallBlobCacheKey(req.Digest))
 	if err != nil {
 		return nil, false, wrapError(err, "get small blob cache")
@@ -156,8 +163,12 @@ func smallBlobCacheResult(req BlobRequest, envelope smallBlobCacheEnvelope) (*Bl
 	if err != nil {
 		return nil, err
 	}
+	reader, err := spoolSmallBlobBody(req.Method == http.MethodHead, body)
+	if err != nil {
+		return nil, err
+	}
 	return &BlobReadResult{
-		Reader:  io.NopCloser(bytes.NewReader(body)),
+		Reader:  reader,
 		Digest:  envelope.Digest,
 		Size:    size,
 		Range:   req.Range,
@@ -165,6 +176,23 @@ func smallBlobCacheResult(req BlobRequest, envelope smallBlobCacheEnvelope) (*Bl
 		Headers: headers,
 		Cache:   CacheHit,
 	}, nil
+}
+
+func spoolSmallBlobBody(head bool, body []byte) (io.ReadCloser, error) {
+	if head {
+		return io.NopCloser(bytes.NewReader(nil)), nil
+	}
+	temp, err := spool.NewTempBody("regimux-small-blob-cache-*")
+	if err != nil {
+		return nil, wrapError(err, "spool small blob cache body")
+	}
+	if _, err := io.Copy(temp, bytes.NewReader(body)); err != nil {
+		return nil, joinError("spool small blob cache body", err, temp.Close())
+	}
+	if _, err := temp.Seek(0, io.SeekStart); err != nil {
+		return nil, joinError("rewind small blob cache body", err, temp.Close())
+	}
+	return temp, nil
 }
 
 func smallBlobHeaders(envelope smallBlobCacheEnvelope) http.Header {
@@ -192,28 +220,29 @@ func smallBlobBodyForRequest(req BlobRequest, body []byte) ([]byte, error) {
 }
 
 type smallBlobRecorder struct {
-	buffer   bytes.Buffer
-	limit    int64
-	overflow bool
+	buffer      bytes.Buffer
+	limit       int64
+	overflow    bool
+	gate        *semaphore.Weighted
+	releaseOnce sync.Once
 }
 
-func newSmallBlobRecorder(limit int64) *smallBlobRecorder {
-	return &smallBlobRecorder{limit: limit}
+func newSmallBlobRecorder(limit int64, gate *semaphore.Weighted) *smallBlobRecorder {
+	if limit <= 0 || gate == nil || !gate.TryAcquire(1) {
+		return nil
+	}
+	return &smallBlobRecorder{limit: limit, gate: gate}
 }
 
 func (r *smallBlobRecorder) Write(data []byte) (int, error) {
 	written := len(data)
-	if r == nil || r.limit <= 0 {
+	if r == nil || r.overflow || len(data) == 0 {
 		return written, nil
 	}
 	remaining := r.limit - int64(r.buffer.Len())
-	if remaining <= 0 {
-		r.overflow = true
+	if remaining <= 0 || int64(len(data)) > remaining {
+		r.drop()
 		return written, nil
-	}
-	if int64(len(data)) > remaining {
-		r.overflow = true
-		data = data[:remaining]
 	}
 	if _, err := r.buffer.Write(data); err != nil {
 		return 0, wrapError(err, "record small blob body")
@@ -226,6 +255,19 @@ func (r *smallBlobRecorder) Bytes(infoSize int64) []byte {
 		return nil
 	}
 	return r.buffer.Bytes()
+}
+
+func (r *smallBlobRecorder) drop() {
+	r.overflow = true
+	r.buffer = bytes.Buffer{}
+	r.releaseSlot()
+}
+
+func (r *smallBlobRecorder) releaseSlot() {
+	if r == nil || r.gate == nil {
+		return
+	}
+	r.releaseOnce.Do(func() { r.gate.Release(1) })
 }
 
 func smallBlobRecordingReader(reader io.Reader, recorder *smallBlobRecorder) io.Reader {

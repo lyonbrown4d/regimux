@@ -12,6 +12,7 @@ import (
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/clientfactory"
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/samber/oops"
 	"go.uber.org/multierr"
@@ -238,6 +239,9 @@ func readAndCloseManifest(rc io.ReadCloser) ([]byte, error) {
 	closeErr := rc.Close()
 	if err != nil || closeErr != nil {
 		return nil, oops.In("registrytool").Wrapf(multierr.Combine(err, closeErr), "read registry manifest")
+	}
+	if err := jsonbudget.Check(content, jsonbudget.DefaultLimits()); err != nil {
+		return nil, oops.In("registrytool").Wrapf(err, "check registry manifest JSON budget")
 	}
 	return content, nil
 }

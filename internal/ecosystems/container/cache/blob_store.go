@@ -69,6 +69,7 @@ func validateStoredBlobDigest(expected, actual string) error {
 
 func (p blobProxy) putBlobObject(ctx context.Context, req BlobRequest, resp *upstream.BlobResponse, mediaType string) (*object.Info, error) {
 	recorder := p.newSmallBlobRecorder(resp)
+	defer recorder.releaseSlot()
 	reader := smallBlobRecordingReader(resp.Body, recorder)
 	info, err := p.objects.Put(ctx, req.Digest, reader, object.PutOptions{ContentType: mediaType})
 	if err == nil {
@@ -91,7 +92,7 @@ func (p blobProxy) newSmallBlobRecorder(resp *upstream.BlobResponse) *smallBlobR
 	if resp.Size > p.smallCache.maxSizeBytes {
 		return nil
 	}
-	return newSmallBlobRecorder(p.smallCache.maxSizeBytes)
+	return newSmallBlobRecorder(p.smallCache.maxSizeBytes, p.smallBlobGate)
 }
 
 func (p blobProxy) upsertBlobRecords(ctx context.Context, req BlobRequest, info *object.Info, mediaType string) error {

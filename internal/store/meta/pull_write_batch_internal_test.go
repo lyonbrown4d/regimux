@@ -18,18 +18,16 @@ func TestSQLStoreRecordPullBatchesConcurrentMutations(t *testing.T) {
 	errs := make([]error, workers)
 	base := time.Date(2026, 5, 26, 10, 0, 0, 0, time.UTC)
 	var group sync.WaitGroup
-	group.Add(workers)
 	defer func() {
 		hook.releaseGate()
 		group.Wait()
 	}()
 	for index := range workers {
-		go func() {
-			defer group.Done()
+		group.Go(func() {
 			<-started
 			at := base.Add(time.Duration(index) * time.Nanosecond)
 			results[index], errs[index] = recordPullKind(t.Context(), store, key, at, index%4)
-		}()
+		})
 	}
 	close(started)
 	waitForPullWriteBatchHook(t, hook.entered)
@@ -37,35 +35,13 @@ func TestSQLStoreRecordPullBatchesConcurrentMutations(t *testing.T) {
 	hook.releaseGate()
 	group.Wait()
 
-	for index, err := range errs {
-		if err != nil {
-			t.Fatalf("record pull %d: %v", index, err)
-		}
-	}
-	if got := hook.writes.Load(); got > 2 {
-		t.Fatalf("pull upsert statements = %d, want at most two batches for %d calls", got, workers)
-	}
-	if results[0] == results[1] {
-		t.Fatal("callers shared a mutable PullRecord pointer")
-	}
-	for index, record := range results {
-		at := base.Add(time.Duration(index) * time.Nanosecond)
-		if record == nil || !pullBatchRecordCovers(record, index%4, at) {
-			t.Fatalf("caller %d received a record that does not cover its mutation: %#v", index, record)
-		}
-	}
+	assertPullBatchResults(t, errs, results, base)
+	assertPullBatchWriteCount(t, hook, workers)
 	results[0].Count = -1
 	if results[1].Count < 1 {
 		t.Fatalf("mutating one caller result changed another result: count=%d", results[1].Count)
 	}
-	stored, ok, err := store.Pull(t.Context(), key)
-	if err != nil || !ok {
-		t.Fatalf("read canonical pull row: found=%v error=%v", ok, err)
-	}
-	assertPullBatchRecord(t, stored, 256, 128, base.Add(509*time.Nanosecond), base.Add(510*time.Nanosecond), base.Add(511*time.Nanosecond))
-	if len(store.pullWriteBatches) != 0 {
-		t.Fatalf("pull batch state retained after callers completed: %d entries", len(store.pullWriteBatches))
-	}
+	assertPersistedPullBatch(t, store, key, base)
 }
 
 func TestSQLStoreRecordPullBatchCancellationDoesNotPoisonFollower(t *testing.T) {
@@ -77,28 +53,24 @@ func TestSQLStoreRecordPullBatchCancellationDoesNotPoisonFollower(t *testing.T) 
 	base := time.Date(2026, 5, 26, 11, 0, 0, 0, time.UTC)
 	leaderErr := make(chan error, 1)
 	var group sync.WaitGroup
-	group.Add(1)
 	defer func() {
 		hook.releaseGate()
 		group.Wait()
 	}()
-	go func() {
-		defer group.Done()
+	group.Go(func() {
 		_, err := store.RecordPull(leaderCtx, key, base)
 		leaderErr <- err
-	}()
+	})
 	waitForPullWriteBatchHook(t, hook.entered)
 	followerResult := make(chan *PullRecord, 1)
 	followerErr := make(chan error, 1)
 	followerJoined := make(chan struct{})
 	followerCtx := &pullBatchJoinedContext{Context: t.Context(), joined: followerJoined}
-	group.Add(1)
-	go func() {
-		defer group.Done()
+	group.Go(func() {
 		record, err := store.RecordPolicyDeniedPull(followerCtx, key, base.Add(time.Second))
 		followerResult <- record
 		followerErr <- err
-	}()
+	})
 	if !waitForPullWriteBatchUsers(t, store, key.String(), 2) {
 		hook.releaseGate()
 		<-leaderErr
@@ -109,28 +81,64 @@ func TestSQLStoreRecordPullBatchCancellationDoesNotPoisonFollower(t *testing.T) 
 	}
 	waitForPullWriteBatchHook(t, followerJoined)
 	cancelLeader()
-	select {
-	case err := <-leaderErr:
-		if !errors.Is(err, context.Canceled) {
-			t.Fatalf("canceled leader error = %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("canceled caller did not leave the shared batch")
-	}
+	assertPullBatchError(t, leaderErr, context.Canceled, "canceled caller did not leave the shared batch", "canceled leader")
 	hook.releaseGate()
-	select {
-	case err := <-followerErr:
-		if err != nil {
-			t.Fatalf("healthy follower failed after leader cancellation: %v", err)
-		}
-	case <-time.After(5 * time.Second):
-		t.Fatal("healthy follower did not finish the shared batch")
-	}
+	assertPullBatchError(t, followerErr, nil, "healthy follower did not finish the shared batch", "healthy follower")
 	if record := <-followerResult; record == nil || record.Count != 1 || record.PolicyDeniedCount != 1 {
 		t.Fatalf("healthy follower returned incomplete persisted record: %#v", record)
 	}
 	if got := hook.writes.Load(); got < 1 || got > 2 {
 		t.Fatalf("pull upsert statements after cancellation = %d, want one or two", got)
+	}
+}
+
+func assertPullBatchResults(t *testing.T, errs []error, results []*PullRecord, base time.Time) {
+	t.Helper()
+	for index, err := range errs {
+		if err != nil {
+			t.Fatalf("record pull %d: %v", index, err)
+		}
+		at := base.Add(time.Duration(index) * time.Nanosecond)
+		if results[index] == nil || !pullBatchRecordCovers(results[index], index%4, at) {
+			t.Fatalf("caller %d received a record that does not cover its mutation: %#v", index, results[index])
+		}
+	}
+	if results[0] == results[1] {
+		t.Fatal("callers shared a mutable PullRecord pointer")
+	}
+}
+
+func assertPullBatchWriteCount(t *testing.T, hook *pullWriteBatchHook, workers int) {
+	t.Helper()
+	if got := hook.writes.Load(); got > 2 {
+		t.Fatalf("pull upsert statements = %d, want at most two batches for %d calls", got, workers)
+	}
+}
+
+func assertPersistedPullBatch(t *testing.T, store *SQLStore, key PullKey, base time.Time) {
+	t.Helper()
+	stored, ok, err := store.Pull(t.Context(), key)
+	if err != nil || !ok {
+		t.Fatalf("read canonical pull row: found=%v error=%v", ok, err)
+	}
+	assertPullBatchRecord(t, stored, 256, 128, base.Add(509*time.Nanosecond), base.Add(510*time.Nanosecond), base.Add(511*time.Nanosecond))
+	if len(store.pullWriteBatches) != 0 {
+		t.Fatalf("pull batch state retained after callers completed: %d entries", len(store.pullWriteBatches))
+	}
+}
+
+func assertPullBatchError(t *testing.T, result <-chan error, want error, timeoutMessage, label string) {
+	t.Helper()
+	select {
+	case err := <-result:
+		if want == nil && err != nil {
+			t.Fatalf("%s error = %v", label, err)
+		}
+		if want != nil && !errors.Is(err, want) {
+			t.Fatalf("%s error = %v, want %v", label, err, want)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal(timeoutMessage)
 	}
 }
 

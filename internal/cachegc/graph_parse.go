@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -12,14 +13,12 @@ import (
 func manifestReferences(mediaType string, body []byte) ([]string, error) {
 	mediaType = distribution.NormalizeMediaType(mediaType)
 	if mediaType == "" {
-		var envelope struct {
-			MediaType string `json:"mediaType"`
-		}
-		if err := json.Unmarshal(body, &envelope); err != nil {
+		envelopeMediaType, validJSON := manifestEnvelopeMediaType(body)
+		if !validJSON {
 			// Opaque package files may be stored without a media type.
-			return nil, nil //nolint:nilerr // Non-JSON opaque cache payloads are not OCI manifests.
+			return nil, nil
 		}
-		mediaType = distribution.NormalizeMediaType(envelope.MediaType)
+		mediaType = distribution.NormalizeMediaType(envelopeMediaType)
 	}
 	if len(body) == 0 && isOCIManifestType(mediaType) {
 		return nil, errors.New("manifest object is unavailable")
@@ -30,7 +29,20 @@ func manifestReferences(mediaType string, body []byte) ([]string, error) {
 	return decodeManifestReferences(mediaType, body)
 }
 
+func manifestEnvelopeMediaType(body []byte) (string, bool) {
+	var envelope struct {
+		MediaType string `json:"mediaType"`
+	}
+	if err := json.Unmarshal(body, &envelope); err != nil {
+		return "", false
+	}
+	return envelope.MediaType, true
+}
+
 func decodeManifestReferences(mediaType string, body []byte) ([]string, error) {
+	if err := jsonbudget.Check(body, jsonbudget.DefaultLimits()); err != nil {
+		return nil, fmt.Errorf("check manifest graph JSON budget: %w", err)
+	}
 	if mediaType == distribution.MediaTypeOCIManifest || mediaType == distribution.MediaTypeDockerManifest {
 		return decodeOCIManifest(body)
 	}

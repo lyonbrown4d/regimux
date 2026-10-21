@@ -9,6 +9,7 @@ import (
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/service/s3"
 	"github.com/aws/aws-sdk-go-v2/service/s3/types"
+	"golang.org/x/sync/semaphore"
 )
 
 // S3Client is the subset of the native AWS S3 client used by S3Store.
@@ -43,6 +44,8 @@ type S3Store struct {
 	prefix            string
 	partSize          int64
 	uploadConcurrency int
+	uploadGate        *semaphore.Weighted
+	observeUpload     func(context.Context, S3UploadEvent)
 }
 
 func NewS3(ctx context.Context, rawOptions S3Options) (*S3Store, error) {
@@ -83,6 +86,8 @@ func NewS3WithClient(client S3Client, rawOptions S3Options) (*S3Store, error) {
 		prefix:            options.Prefix,
 		partSize:          options.PartSize,
 		uploadConcurrency: options.UploadConcurrency,
+		uploadGate:        semaphore.NewWeighted(int64(options.MaxConcurrentUploads)),
+		observeUpload:     options.ObserveUpload,
 	}, nil
 }
 
@@ -206,7 +211,7 @@ func (s *S3Store) Put(
 		return nil, err
 	}
 
-	upload, err := s.upload(ctx, normalized, key, reader, opts)
+	upload, err := s.uploadAdmitted(ctx, normalized, key, reader, opts)
 	if err != nil {
 		return nil, wrapS3OperationError("put", normalized, err)
 	}

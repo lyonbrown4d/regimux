@@ -1,41 +1,38 @@
 package cachegc
 
 import (
+	"slices"
 	"time"
 
-	"github.com/arcgolabs/collectionx/list"
 	"github.com/arcgolabs/collectionx/set"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 )
 
-func newReport(opts CleanupOptions, blobs *list.List[meta.BlobRecord]) *CleanupReport {
+func newReportFromRecords(opts CleanupOptions, blobs []meta.BlobRecord) *CleanupReport {
 	r := &CleanupReport{DryRun: opts.DryRun, BytesTarget: opts.MaxBytes}
 	if opts.TargetBytes > 0 {
 		r.BytesTarget = opts.TargetBytes
 	}
-	if blobs != nil {
-		blobs.Range(func(_ int, b meta.BlobRecord) bool {
-			if opts.Candidates != nil && !opts.Candidates[b.Digest] {
-				return true
-			}
-			if b.Size > 0 {
-				r.BytesBefore += b.Size
-			}
-			return true
-		})
+	for i := range blobs {
+		b := &blobs[i]
+		if opts.Candidates != nil && !opts.Candidates[b.Digest] {
+			continue
+		}
+		if b.Size > 0 {
+			r.BytesBefore += b.Size
+		}
 	}
 	r.BytesAfter = r.BytesBefore
 	r.CapacityExceeded = opts.MaxBytes > 0 && r.BytesBefore > opts.MaxBytes
 	return r
 }
-func orderBlobs(blobs *list.List[meta.BlobRecord], capacity bool) *list.List[meta.BlobRecord] {
-	if blobs == nil {
-		return list.NewList[meta.BlobRecord]()
-	}
+func orderBlobRecords(blobs []meta.BlobRecord, capacity bool) []meta.BlobRecord {
 	if capacity {
-		return blobs.Sort(compareCapacity)
+		slices.SortFunc(blobs, compareCapacity)
+		return blobs
 	}
-	return blobs.Sort(compareAge)
+	slices.SortFunc(blobs, compareAge)
+	return blobs
 }
 func compareCapacity(a, b meta.BlobRecord) int {
 	if a.LastAccessAt.IsZero() != b.LastAccessAt.IsZero() {

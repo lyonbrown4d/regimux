@@ -10,6 +10,13 @@ log {
 
 cache {
   backend = "memory"
+
+  memory {
+    # Zero uses the bounded default of 10000 entries; positive values override it.
+    max_items = 10000
+    # Zero uses the bounded default of 64 MiB; positive values override it.
+    max_bytes = 67108864
+  }
 }
 
 store {

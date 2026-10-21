@@ -9,6 +9,7 @@ import (
 	"github.com/go-co-op/gocron/v2"
 	"github.com/lyonbrown4d/regimux/internal/cachegc"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/samber/oops"
 )
 
@@ -69,6 +70,10 @@ func (r *Runtime) runSharedCleanup(ctx context.Context) (*ecosystem.CleanupRepor
 		return &ecosystem.CleanupReport{Ecosystem: "all", DryRun: r.cfg.Scheduler.Cleanup.DryRun}, nil
 	}
 	cfg := r.cfg.Scheduler.Cleanup
+	ctx = meta.WithCleanupSnapshotLimits(ctx, meta.CleanupSnapshotLimits{
+		MaxRecords: cfg.MetadataMaxRecords,
+		MaxBytes:   cfg.MetadataMaxBytes,
+	})
 	now := r.cleanupNow()
 	if _, err := r.cleanup.ReconcileBlobs(ctx, cachegc.ReconcileOptions{
 		MaxScan: cfg.MaxScan,

@@ -1,72 +1,9 @@
 package pypi
 
 import (
-	"bytes"
-	"errors"
-	"io"
 	"net/url"
 	"strings"
-
-	"golang.org/x/net/html"
 )
-
-func RewriteSimpleIndexLinks(body []byte, alias, upstreamSimpleURL string) []byte {
-	return rewriteSimpleIndexLinks(body, alias, upstreamSimpleURL, "")
-}
-
-func rewriteSimpleIndexLinks(body []byte, alias, upstreamSimpleURL, publicURL string) []byte {
-	if len(body) == 0 {
-		return body
-	}
-	upstreamURL, err := url.Parse(upstreamSimpleURL)
-	if err != nil {
-		return body
-	}
-	rewritten, changed, ok := rewriteSimpleIndexHrefs(body, alias, upstreamURL, publicURL)
-	if !ok || !changed {
-		return body
-	}
-	return rewritten
-}
-
-func rewriteSimpleIndexHrefs(body []byte, alias string, upstreamURL *url.URL, publicURL string) ([]byte, bool, bool) {
-	tokenizer := html.NewTokenizer(bytes.NewReader(body))
-	var rewritten bytes.Buffer
-	changed := false
-	for {
-		tokenType := tokenizer.Next()
-		if tokenType == html.ErrorToken {
-			return rewritten.Bytes(), changed, errors.Is(tokenizer.Err(), io.EOF)
-		}
-		token, tokenChanged := rewriteSimpleIndexToken(tokenType, tokenizer.Raw(), alias, upstreamURL, publicURL)
-		changed = changed || tokenChanged
-		if !writeToken(&rewritten, token) {
-			return nil, false, false
-		}
-	}
-}
-
-func rewriteSimpleIndexToken(
-	tokenType html.TokenType,
-	raw []byte,
-	alias string,
-	upstreamURL *url.URL,
-	publicURL string,
-) ([]byte, bool) {
-	if !tokenCanHaveHref(tokenType) {
-		return raw, false
-	}
-	return rewriteTagHrefs(raw, alias, upstreamURL, publicURL)
-}
-
-func tokenCanHaveHref(tokenType html.TokenType) bool {
-	return tokenType == html.StartTagToken || tokenType == html.SelfClosingTagToken
-}
-
-func writeToken(buf *bytes.Buffer, raw []byte) bool {
-	_, err := buf.Write(raw)
-	return err == nil
-}
 
 func localPackageHref(alias string, upstreamSimpleURL *url.URL, href string) string {
 	href = strings.TrimSpace(href)
@@ -97,43 +34,6 @@ func localPackageHref(alias string, upstreamSimpleURL *url.URL, href string) str
 		local += "#" + parsed.Fragment
 	}
 	return addPackageIdentity(local, upstreamSimpleURL, parsed.Fragment)
-}
-
-type hrefReplacement struct {
-	start int
-	end   int
-	value string
-}
-
-func rewriteTagHrefs(raw []byte, alias string, upstreamURL *url.URL, publicURL string) ([]byte, bool) {
-	replacements := tagHrefReplacements(raw, alias, upstreamURL, publicURL)
-	if len(replacements) == 0 {
-		return raw, false
-	}
-	out := make([]byte, 0, len(raw))
-	last := 0
-	for _, replacement := range replacements {
-		out = append(out, raw[last:replacement.start]...)
-		out = append(out, replacement.value...)
-		last = replacement.end
-	}
-	out = append(out, raw[last:]...)
-	return out, true
-}
-
-func tagHrefReplacements(raw []byte, alias string, upstreamURL *url.URL, publicURL string) []hrefReplacement {
-	scanner := newTagAttrScanner(raw)
-	replacements := make([]hrefReplacement, 0, 1)
-	for {
-		attr, ok := scanner.next()
-		if !ok {
-			break
-		}
-		if replacement, replace := hrefReplacementForAttr(attr, alias, upstreamURL, publicURL); replace {
-			replacements = append(replacements, replacement)
-		}
-	}
-	return replacements
 }
 
 type tagAttr struct {
@@ -226,20 +126,6 @@ func scanQuotedValueEnd(raw []byte, start int, quote byte) int {
 		end++
 	}
 	return end
-}
-
-func hrefReplacementForAttr(attr tagAttr, alias string, upstreamURL *url.URL, publicURL string) (hrefReplacement, bool) {
-	if !attr.quotedValue || !isHrefAttrName(attr.name) {
-		return hrefReplacement{}, false
-	}
-	local := localPackageHref(alias, upstreamURL, string(attr.value))
-	if local == "" {
-		return hrefReplacement{}, false
-	}
-	if publicURL != "" {
-		local = strings.TrimRight(publicURL, "/") + local
-	}
-	return hrefReplacement{start: attr.valueStart, end: attr.valueEnd, value: local}, true
 }
 
 func skipTagName(raw []byte) int {

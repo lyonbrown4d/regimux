@@ -1,66 +1,19 @@
-//revive:disable:file-length-limit npm service keeps route, rewrite, cache, and upstream orchestration in one implementation file.
 package npm
 
 import (
-	"bytes"
 	"context"
 	"errors"
-	"io"
-	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
-	"github.com/lyonbrown4d/regimux/internal/clientfactory"
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
-
-func NewService(deps ServiceDependencies) *Service {
-	logger := deps.Logger
-	if logger == nil {
-		logger = slog.Default()
-	}
-	now := deps.Now
-	if now == nil {
-		now = func() time.Time { return time.Now().UTC() }
-	}
-	factory := deps.Factory
-	if factory == nil {
-		factory = clientfactory.New(logger)
-	}
-	cache := deps.Cache
-	if cache == nil {
-		cache = artifactcache.New(artifactcache.Dependencies{
-			Metadata: deps.Metadata,
-			Objects:  deps.Objects,
-			Logger:   logger,
-			Now:      now,
-		})
-	}
-	fills := cache.FillTracker()
-	if fills == nil {
-		fills = artifactcache.NewFillTracker()
-	}
-	return &Service{
-		cfg:         deps.Config,
-		metadata:    deps.Metadata,
-		cache:       cache,
-		client:      deps.Client,
-		factory:     factory,
-		logger:      logger.With("component", "npm"),
-		publicURL:   strings.TrimRight(deps.Config.Server.PublicURL, "/"),
-		metadataTTL: deps.MetadataTTL,
-		fills:       fills,
-		now:         now,
-		events:      deps.Events,
-	}
-}
 
 func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 	if s == nil {
@@ -255,45 +208,6 @@ func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseUR
 		return nil, wrapError(err, "send npm upstream clientx request")
 	}
 	return resp, nil
-}
-
-const npmMetadataMaxBytes int64 = 64 << 20
-
-func (s *Service) prepareFetched(req Request, requestRoute route, fetched *upstreamFetch) (*upstreamFetch, error) {
-	if fetched == nil || fetched.body == nil {
-		return fetched, nil
-	}
-	if requestRoute.Kind != routeMetadata {
-		return fetched, nil
-	}
-	body, err := upstreamhttp.ReadAllLimited(fetched.body, npmMetadataMaxBytes)
-	if err != nil {
-		return nil, wrapError(err, "read npm upstream body")
-	}
-	closeReadCloser(fetched.body, s.logger, "close npm upstream body")
-
-	rewritten, changed, err := rewriteMetadata(body,
-		localBase(requestPublicURL(s.publicURL, req.ProxyBaseURL), requestRoute.Alias), fetched.registryBaseURL, fetched.requestURL)
-	if err != nil {
-		return nil, err
-	}
-	headers := fetched.headers.Clone()
-	headers.Set("X-Regimux-Metadata-Format", npmMetadataFormat)
-	if !changed {
-		return &upstreamFetch{
-			status:     fetched.status,
-			headers:    headers,
-			body:       io.NopCloser(bytes.NewReader(body)),
-			requestURL: fetched.requestURL,
-		}, nil
-	}
-	headers.Del("Content-Length")
-	return &upstreamFetch{
-		status:     fetched.status,
-		headers:    headers,
-		body:       io.NopCloser(bytes.NewReader(rewritten)),
-		requestURL: fetched.requestURL,
-	}, nil
 }
 
 func (s *Service) storeFetchedResponse(ctx context.Context, req Request, requestRoute route, fetched *upstreamFetch) (*Response, error) {

@@ -2,7 +2,6 @@
 package cache
 
 import (
-	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"io"
 	"log/slog"
 	"mime"
@@ -19,6 +18,7 @@ import (
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/go-singleflightx"
 	"github.com/samber/lo"
+	"golang.org/x/sync/semaphore"
 )
 
 type Proxy struct {
@@ -36,6 +36,7 @@ type Proxy struct {
 	blobStreamAndCache   bool
 	blobVerifyTTL        time.Duration
 	blobSmallCache       smallBlobCacheConfig
+	smallBlobGate        *semaphore.Weighted
 	blobLeaseScheduler   leaseRenewScheduler
 	blobStreamScheduler  blobStreamScheduler
 	logger               *slog.Logger
@@ -68,7 +69,8 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 			maxSizeBytes: deps.CacheConfig.Blob.SmallCache.MaxSizeBytes,
 			ttl:          deps.CacheConfig.Blob.SmallCache.TTL,
 		},
-		blobFills: coalescer.NewTracker(),
+		smallBlobGate: semaphore.NewWeighted(smallBlobCacheMaxReaders),
+		blobFills:     coalescer.NewTracker(),
 	}
 	if deps.CacheConfig.Manifest.TagTTL > 0 {
 		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
@@ -131,6 +133,7 @@ func (p *Proxy) Blobs() BlobService {
 		streamAndCache:   p.blobStreamAndCache,
 		verifyMembership: p.blobVerifyTTL,
 		smallCache:       p.blobSmallCache,
+		smallBlobGate:    p.smallBlobGate,
 		leaseScheduler:   p.blobLeaseScheduler,
 		streamScheduler:  p.blobStreamScheduler,
 		group:            &p.blobGroup,
@@ -182,6 +185,7 @@ type blobProxy struct {
 	streamAndCache   bool
 	verifyMembership time.Duration
 	smallCache       smallBlobCacheConfig
+	smallBlobGate    *semaphore.Weighted
 	leaseScheduler   leaseRenewScheduler
 	streamScheduler  blobStreamScheduler
 	group            *singleflightx.Group[string, bool]
@@ -206,24 +210,6 @@ type referrerProxy struct {
 
 func defaultManifestTTL() time.Duration {
 	return 10 * time.Minute
-}
-
-const maxProxyMetadataBodyBytes int64 = 16 << 20
-
-func readHTTPBody(body io.ReadCloser, label string) ([]byte, error) {
-	if body == nil {
-		return nil, nil
-	}
-
-	data, readErr := upstreamhttp.ReadAllLimited(body, maxProxyMetadataBodyBytes)
-	closeErr := body.Close()
-	if readErr != nil {
-		return nil, wrapError(readErr, "read %s", label)
-	}
-	if closeErr != nil {
-		return nil, wrapError(closeErr, "close %s", label)
-	}
-	return data, nil
 }
 
 func closeHTTPBody(body io.Closer, label string) error {

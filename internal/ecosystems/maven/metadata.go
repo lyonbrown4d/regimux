@@ -1,14 +1,11 @@
 package maven
 
 import (
-	"bytes"
 	"encoding/xml"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
-
-	"golang.org/x/net/html/charset"
 
 	collectionmapping "github.com/arcgolabs/collectionx/mapping"
 	collectionset "github.com/arcgolabs/collectionx/set"
@@ -53,40 +50,19 @@ type metadataMergeState struct {
 	releaseCandidates []string
 }
 
-func parseMavenMetadata(data []byte) (mavenMetadataDocument, error) {
-	var document mavenMetadataDocument
-	decoder := xml.NewDecoder(bytes.NewReader(data))
-	decoder.CharsetReader = charset.NewReaderLabel
-	if err := decoder.Decode(&document); err != nil {
-		return mavenMetadataDocument{}, fmt.Errorf("unmarshal Maven metadata: %w", err)
-	}
-	if document.XMLName.Local != "metadata" {
-		return mavenMetadataDocument{}, fmt.Errorf(
-			"unexpected Maven metadata root %q",
-			document.XMLName.Local,
-		)
-	}
-	return document, nil
-}
-
-func mergeMavenMetadata(documents []mavenMetadataDocument) ([]byte, error) {
+func buildMergedMavenMetadata(documents []mavenMetadataDocument) (mavenMetadataDocument, error) {
 	if len(documents) == 0 {
-		return nil, errors.New("merge Maven metadata: no documents")
+		return mavenMetadataDocument{}, errors.New("merge Maven metadata: no documents")
 	}
 
 	state := newMetadataMergeState()
 	for _, document := range documents {
 		if err := state.mergeDocument(document); err != nil {
-			return nil, err
+			return mavenMetadataDocument{}, err
 		}
 	}
 	state.finalize()
-
-	payload, err := xml.MarshalIndent(state.document, "", "  ")
-	if err != nil {
-		return nil, fmt.Errorf("marshal merged Maven metadata: %w", err)
-	}
-	return append([]byte(xml.Header), payload...), nil
+	return state.document, nil
 }
 
 func newMetadataMergeState() *metadataMergeState {

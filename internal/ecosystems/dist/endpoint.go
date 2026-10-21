@@ -100,18 +100,9 @@ func (e *Endpoint) outputFromResponse(ctx context.Context, in *input, method str
 		return out
 	}
 	logger := e.service.logger
-	out.Body = streamWithStatus(resp.Status, func(streamCtx huma.Context) {
-		defer closeReadCloser(resp.Body, logger, "close dist response body")
-		artifactstream.Copy(ctx, artifactstream.CopyRequest{
-			Destination:   streamCtx.BodyWriter(),
-			Source:        resp.Body,
-			Logger:        logger,
-			Ecosystem:     "dist",
-			Alias:         in.Alias,
-			Reference:     in.Tail.String(),
-			Cache:         resp.Cache,
-			ExpectedBytes: resp.Size,
-		})
+	out.Body = artifactstream.Response(ctx, artifactstream.ResponseRequest{
+		Status: resp.Status, Size: resp.Size, Body: resp.Body, Logger: logger,
+		Ecosystem: "dist", Alias: in.Alias, Reference: in.Tail.String(), Cache: resp.Cache,
 	})
 	return out
 }

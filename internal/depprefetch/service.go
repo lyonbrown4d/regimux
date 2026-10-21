@@ -59,7 +59,7 @@ func (s *Service) Prefetch(ctx context.Context, opts ecosystem.PrefetchOptions) 
 }
 
 func (s *Service) run(ctx context.Context, opts ecosystem.PrefetchOptions, runID int64) (*ecosystem.PrefetchReport, error) {
-	records, err := s.metadata.ListPulls(ctx, meta.PullListRecentFirst())
+	records, err := meta.ReadPrefetchPulls(ctx, s.metadata, true)
 	if err != nil {
 		return nil, oops.In("dependency-prefetch").Wrapf(err, "list dependency pull records")
 	}

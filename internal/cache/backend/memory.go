@@ -3,33 +3,47 @@ package backend
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
-	lru "github.com/hashicorp/golang-lru/v2"
+	"github.com/hashicorp/golang-lru/v2/simplelru"
 )
 
 type MemoryOptions struct {
 	MaxItems int
+	MaxBytes int64
 	Prefix   string
 }
 
+const (
+	defaultMemoryMaxItems = 10_000
+	defaultMemoryMaxBytes = 64 << 20
+)
+
 type Memory struct {
-	cache  *lru.Cache[string, memoryEntry]
-	prefix string
+	mu           sync.Mutex
+	cache        *simplelru.LRU[string, memoryEntry]
+	maxBytes     int64
+	currentBytes int64
+	prefix       string
 }
 
 var _ Backend = (*Memory)(nil)
 var _ PrefixDeleter = (*Memory)(nil)
 
 func NewMemory(opts MemoryOptions) *Memory {
-	cache, err := lru.New[string, memoryEntry](memoryMaxItems(opts.MaxItems))
+	memory := &Memory{
+		maxBytes: memoryMaxBytes(opts.MaxBytes),
+		prefix:   normalizePrefix(opts.Prefix),
+	}
+	cache, err := simplelru.NewLRU[string, memoryEntry](memoryMaxItems(opts.MaxItems), func(_ string, entry memoryEntry) {
+		memory.currentBytes -= entry.weight
+	})
 	if err != nil {
 		panic(err)
 	}
-	return &Memory{
-		cache:  cache,
-		prefix: normalizePrefix(opts.Prefix),
-	}
+	memory.cache = cache
+	return memory
 }
 
 func (m *Memory) Get(_ context.Context, key string) ([]byte, bool, error) {
@@ -37,6 +51,8 @@ func (m *Memory) Get(_ context.Context, key string) ([]byte, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	entry, ok := m.cache.Get(key)
 	if !ok {
 		return nil, false, nil
@@ -53,7 +69,22 @@ func (m *Memory) Set(_ context.Context, key string, value []byte, ttl time.Durat
 	if err != nil {
 		return err
 	}
-	m.cache.Add(key, newMemoryEntry(value, ttl))
+	weight := int64(len(key)) + int64(len(value))
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// Replacing with an uncacheable value must also remove the old entry.
+	m.cache.Remove(key)
+	if m.maxBytes > 0 && weight > m.maxBytes {
+		return nil
+	}
+	for m.maxBytes > 0 && m.currentBytes+weight > m.maxBytes {
+		if _, _, ok := m.cache.RemoveOldest(); !ok {
+			break
+		}
+	}
+	entry := newMemoryEntry(value, ttl, weight)
+	m.currentBytes += weight
+	m.cache.Add(key, entry)
 	return nil
 }
 
@@ -62,6 +93,8 @@ func (m *Memory) Delete(_ context.Context, key string) error {
 	if err != nil {
 		return err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.cache.Remove(key)
 	return nil
 }
@@ -77,6 +110,8 @@ func (m *Memory) DeletePrefix(ctx context.Context, prefix string) error {
 	if err != nil {
 		return err
 	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	for _, key := range m.cache.Keys() {
 		if err := ctx.Err(); err != nil {
 			return wrapError(err, "delete memory cache prefix")
@@ -89,6 +124,8 @@ func (m *Memory) DeletePrefix(ctx context.Context, prefix string) error {
 }
 
 func (m *Memory) Close() error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	m.cache.Purge()
 	return nil
 }
@@ -100,14 +137,22 @@ func (m *Memory) key(key string) (string, error) {
 type memoryEntry struct {
 	value     []byte
 	expiresAt time.Time
+	weight    int64
 }
 
-func newMemoryEntry(value []byte, ttl time.Duration) memoryEntry {
-	entry := memoryEntry{value: cloneBytes(value)}
+func newMemoryEntry(value []byte, ttl time.Duration, weight int64) memoryEntry {
+	entry := memoryEntry{value: cloneBytes(value), weight: weight}
 	if ttl > 0 {
 		entry.expiresAt = time.Now().Add(ttl)
 	}
 	return entry
+}
+
+func memoryMaxBytes(maxBytes int64) int64 {
+	if maxBytes > 0 {
+		return maxBytes
+	}
+	return defaultMemoryMaxBytes
 }
 
 func (e memoryEntry) expired(now time.Time) bool {
@@ -118,5 +163,5 @@ func memoryMaxItems(maxItems int) int {
 	if maxItems > 0 {
 		return maxItems
 	}
-	return int(^uint(0) >> 1)
+	return defaultMemoryMaxItems
 }

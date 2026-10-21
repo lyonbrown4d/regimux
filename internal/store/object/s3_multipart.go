@@ -1,7 +1,6 @@
 package object
 
 import (
-	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -35,9 +34,8 @@ type multipartUpload struct {
 func (s *S3Store) uploadMultipart(
 	ctx context.Context,
 	key string,
-	source io.Reader,
+	source io.ReaderAt,
 	verifier *digestVerifier,
-	firstPart, carry []byte,
 	opts PutOptions,
 ) (result *s3UploadResult, resultErr error) {
 	upload, err := s.startMultipart(ctx, key, verifier, opts)
@@ -48,7 +46,7 @@ func (s *S3Store) uploadMultipart(
 		resultErr = upload.abort(ctx, resultErr)
 	}()
 
-	if uploadErr := upload.uploadParts(source, firstPart, carry); uploadErr != nil {
+	if uploadErr := upload.uploadParts(source); uploadErr != nil {
 		return nil, uploadErr
 	}
 	if verifyErr := verifier.verify(); verifyErr != nil {
@@ -99,64 +97,39 @@ func (s *S3Store) startMultipart(
 }
 
 func (u *multipartUpload) uploadParts(
-	source io.Reader,
-	firstPart, carry []byte,
+	source io.ReaderAt,
 ) error {
-	u.submit(1, firstPart)
-	readErr := u.readRemaining(source, carry)
+	readErr := u.submitParts(source)
 	waitErr := u.wait()
 
 	return errors.Join(readErr, waitErr)
 }
 
-func (u *multipartUpload) readRemaining(source io.Reader, carry []byte) error {
-	partNumber := int32(2)
-
-	for {
-		exhausted, err := u.readPart(source, carry, partNumber)
-		carry = nil
-		if err != nil {
-			return err
+func (u *multipartUpload) submitParts(source io.ReaderAt) error {
+	partNumber := int32(1)
+	for offset := int64(0); offset < u.verifier.sizeValue(); offset += u.store.partSize {
+		if err := u.groupCtx.Err(); err != nil {
+			return fmt.Errorf("upload S3 parts: %w", err)
 		}
-		if exhausted {
-			return nil
+		if partNumber > maxS3UploadParts {
+			return fmt.Errorf("S3 multipart upload exceeds %d parts", maxS3UploadParts)
 		}
-
+		size := min(u.store.partSize, u.verifier.sizeValue()-offset)
+		u.submit(partNumber, io.NewSectionReader(source, offset, size), size)
 		partNumber++
 	}
+	return nil
 }
 
-func (u *multipartUpload) readPart(
-	source io.Reader,
-	carry []byte,
-	partNumber int32,
-) (bool, error) {
-	if err := u.groupCtx.Err(); err != nil {
-		return false, fmt.Errorf("upload S3 parts: %w", err)
-	}
-	if partNumber > maxS3UploadParts {
-		return false, fmt.Errorf("S3 multipart upload exceeds %d parts", maxS3UploadParts)
-	}
-
-	chunk, exhausted, err := readS3Chunk(source, u.store.partSize, carry)
-	if err != nil {
-		return false, err
-	}
-	if len(chunk) > 0 {
-		u.submit(partNumber, chunk)
-	}
-
-	return exhausted, nil
-}
-
-func (u *multipartUpload) submit(number int32, data []byte) {
+func (u *multipartUpload) submit(number int32, body io.Reader, size int64) {
 	u.group.Go(func() error {
 		output, err := u.store.client.UploadPart(u.groupCtx, &s3.UploadPartInput{
-			Body:       bytes.NewReader(data),
-			Bucket:     aws.String(u.store.bucket),
-			Key:        aws.String(u.key),
-			PartNumber: aws.Int32(number),
-			UploadId:   aws.String(u.uploadID),
+			Body:          body,
+			ContentLength: aws.Int64(size),
+			Bucket:        aws.String(u.store.bucket),
+			Key:           aws.String(u.key),
+			PartNumber:    aws.Int32(number),
+			UploadId:      aws.String(u.uploadID),
 		})
 		if err != nil {
 			return fmt.Errorf("upload S3 part %d: %w", number, err)

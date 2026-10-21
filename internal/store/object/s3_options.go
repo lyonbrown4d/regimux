@@ -15,11 +15,12 @@ import (
 )
 
 const (
-	minS3PartSize            int64 = 5 * 1024 * 1024
-	defaultS3PartSize        int64 = 16 * 1024 * 1024
-	maxS3PartSize            int64 = 5 * 1024 * 1024 * 1024
-	maxS3UploadParts               = 10_000
-	defaultUploadConcurrency       = 4
+	minS3PartSize               int64 = 5 * 1024 * 1024
+	defaultS3PartSize           int64 = 16 * 1024 * 1024
+	maxS3PartSize               int64 = 5 * 1024 * 1024 * 1024
+	maxS3UploadParts                  = 10_000
+	defaultUploadConcurrency          = 4
+	defaultMaxConcurrentUploads       = 16
 )
 
 func normalizeS3Options(options S3Options) (S3Options, error) {
@@ -75,6 +76,12 @@ func normalizeS3UploadOptions(options S3Options) (S3Options, error) {
 	}
 	if options.UploadConcurrency < 0 {
 		return S3Options{}, errors.New("S3 upload concurrency cannot be negative")
+	}
+	if options.MaxConcurrentUploads == 0 {
+		options.MaxConcurrentUploads = defaultMaxConcurrentUploads
+	}
+	if options.MaxConcurrentUploads < 0 {
+		return S3Options{}, errors.New("S3 maximum concurrent uploads cannot be negative")
 	}
 
 	return options, nil

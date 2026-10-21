@@ -31,7 +31,7 @@ func (s *Store) Put(ctx context.Context, req PutRequest) (Entry, error) {
 	}
 
 	headers := cacheHeaders(req.Headers, size)
-	info, err := s.objects.Put(ctx, digest, tmp, object.PutOptions{ContentType: req.ContentType})
+	info, err := s.objects.Put(ctx, digest, object.ImmutableFileReader(tmp), object.PutOptions{ContentType: req.ContentType})
 	if err != nil {
 		return Entry{}, closeAndRemoveTemp(tmp, tmpName, err, "store artifact object")
 	}

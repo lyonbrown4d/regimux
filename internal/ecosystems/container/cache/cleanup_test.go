@@ -51,7 +51,8 @@ func TestCleanupServiceKeepsRecentAndManifestProtectedBlobs(t *testing.T) {
 	metadata, objects := newTestStores(t)
 	recentDigest := putCleanupBlob(ctx, t, metadata, objects, []byte("recent"), now.Add(-time.Hour))
 	repoOnlyDigest := putCleanupBlob(ctx, t, metadata, objects, []byte("repo only"), now.Add(-48*time.Hour))
-	manifestProtectedDigest := putCleanupBlob(ctx, t, metadata, objects, []byte("manifest protected"), now.Add(-48*time.Hour))
+	manifestBody := []byte(`{"schemaVersion":2,"config":{},"layers":[]}`)
+	manifestProtectedDigest := putCleanupBlob(ctx, t, metadata, objects, manifestBody, now.Add(-48*time.Hour))
 
 	_, err := metadata.UpsertRepoBlob(ctx, meta.RepoBlobRecord{
 		Alias:      "hub",
@@ -66,7 +67,7 @@ func TestCleanupServiceKeepsRecentAndManifestProtectedBlobs(t *testing.T) {
 		Repository: "library/alpine",
 		Digest:     manifestProtectedDigest,
 		MediaType:  distribution.MediaTypeOCIManifest,
-		Size:       int64(len("manifest protected")),
+		Size:       int64(len(manifestBody)),
 		ObjectKey:  manifestProtectedDigest,
 	})
 	if err != nil {

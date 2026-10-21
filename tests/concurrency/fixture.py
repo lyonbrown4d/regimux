@@ -162,6 +162,13 @@ class FixtureHandler(BaseHTTPRequestHandler):
         if parsed.path in ("/healthz", "/health"):
             self._write(HTTPStatus.OK, b"ok\n", "text/plain", send_body)
             return
+        for prefix, status in (("/maven-missing", HTTPStatus.NOT_FOUND),
+                               ("/maven-unavailable", HTTPStatus.SERVICE_UNAVAILABLE),
+                               ("/maven-denied", HTTPStatus.UNAUTHORIZED)):
+            if parsed.path.startswith(prefix + "/"):
+                self._count(self.command, parsed.path)
+                self._write(status, f"synthetic Maven {status.value}\n".encode(), "text/plain", send_body)
+                return
         if parsed.path == "/oci/v2/":
             artifact = artifact_for(parsed.path, "", PAYLOAD_BYTES)
             if artifact is not None:

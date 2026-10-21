@@ -143,6 +143,69 @@ type cleanupMetadataView struct {
 	retired   packageRetirement
 }
 
+func (v *cleanupMetadataView) ReadCleanupSnapshot(ctx context.Context) (meta.CleanupSnapshot, error) {
+	if err := ctx.Err(); err != nil {
+		return meta.CleanupSnapshot{}, fmt.Errorf("read dry-run cleanup snapshot: %w", err)
+	}
+	snapshot := meta.CleanupSnapshot{
+		Blobs: append([]meta.BlobRecord(nil), v.inventory.Blobs...),
+		Pulls: append([]meta.PullRecord(nil), v.inventory.Pulls...),
+	}
+	var err error
+	if snapshot.Manifests, err = remainingManifests(ctx, v); err != nil {
+		return meta.CleanupSnapshot{}, err
+	}
+	if snapshot.Tags, err = remainingTags(ctx, v); err != nil {
+		return meta.CleanupSnapshot{}, err
+	}
+	if snapshot.RepoBlobs, err = remainingRepoBlobs(ctx, v); err != nil {
+		return meta.CleanupSnapshot{}, err
+	}
+	return snapshot, nil
+}
+
+func remainingManifests(ctx context.Context, view *cleanupMetadataView) ([]meta.ManifestRecord, error) {
+	var result []meta.ManifestRecord
+	for i := range view.inventory.Manifests {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("read dry-run manifests: %w", err)
+		}
+		manifest := view.inventory.Manifests[i]
+		if _, removed := view.retired.manifests[cleanupManifestKey(manifest)]; !removed {
+			result = append(result, manifest)
+		}
+	}
+	return result, nil
+}
+
+func remainingTags(ctx context.Context, view *cleanupMetadataView) ([]meta.TagRecord, error) {
+	var result []meta.TagRecord
+	for i := range view.inventory.Tags {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("read dry-run tags: %w", err)
+		}
+		tag := view.inventory.Tags[i]
+		if _, removed := view.retired.tags[cleanupTagKey(tag)]; !removed {
+			result = append(result, tag)
+		}
+	}
+	return result, nil
+}
+
+func remainingRepoBlobs(ctx context.Context, view *cleanupMetadataView) ([]meta.RepoBlobRecord, error) {
+	var result []meta.RepoBlobRecord
+	for i := range view.inventory.RepoBlobs {
+		if err := ctx.Err(); err != nil {
+			return nil, fmt.Errorf("read dry-run repository links: %w", err)
+		}
+		link := view.inventory.RepoBlobs[i]
+		if _, removed := view.retired.links[cleanupLinkKey(link)]; !removed {
+			result = append(result, link)
+		}
+	}
+	return result, nil
+}
+
 func (v *cleanupMetadataView) ListManifests(ctx context.Context) (*collectionlist.List[meta.ManifestRecord], error) {
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("read dry-run manifests: %w", err)
@@ -174,7 +237,11 @@ func (v *cleanupMetadataView) ListTags(ctx context.Context) (*collectionlist.Lis
 func (v *cleanupMetadataView) ListRepoBlobs(ctx context.Context, opts ...meta.RepoBlobListOption) (*collectionlist.List[meta.RepoBlobRecord], error) {
 	// Preserve option handling for callers other than the global collector.
 	if len(opts) > 0 {
-		return v.Store.ListRepoBlobs(ctx, opts...) //nolint:wrapcheck // Delegates the existing metadata contract.
+		list, err := v.Store.ListRepoBlobs(ctx, opts...)
+		if err != nil {
+			return nil, fmt.Errorf("list repository blobs for cleanup metadata view: %w", err)
+		}
+		return list, nil
 	}
 	if err := ctx.Err(); err != nil {
 		return nil, fmt.Errorf("read dry-run repository links: %w", err)

@@ -21,8 +21,9 @@ type MetadataStoreDependencies struct {
 }
 
 type ObjectStoreDependencies struct {
-	Config config.StoreObjectConfig
-	Logger *slog.Logger
+	Config  config.StoreObjectConfig
+	Logger  *slog.Logger
+	Metrics *observability.Metrics
 }
 
 var Module = dix.NewModule("store",
@@ -34,7 +35,7 @@ var Module = dix.NewModule("store",
 			return cfg.Store.Object
 		}),
 		dix.Provider3[MetadataStoreDependencies, config.StoreMetaConfig, *slog.Logger, *observability.Metrics](newMetadataStoreDependencies),
-		dix.Provider2[ObjectStoreDependencies, config.StoreObjectConfig, *slog.Logger](newObjectStoreDependencies),
+		dix.Provider3[ObjectStoreDependencies, config.StoreObjectConfig, *slog.Logger, *observability.Metrics](newObjectStoreDependencies),
 		dix.Provider0[*meta.MetadataMapper](meta.NewMetadataMapper),
 		dix.ProviderErr1[*dbx.DB, MetadataStoreDependencies](NewMetadataDB, dix.Eager()),
 		dix.Provider2[meta.Store, *dbx.DB, *meta.MetadataMapper](NewMetadataStore, dix.Eager()),
@@ -62,10 +63,11 @@ func newMetadataStoreDependencies(cfg config.StoreMetaConfig, logger *slog.Logge
 	}
 }
 
-func newObjectStoreDependencies(cfg config.StoreObjectConfig, logger *slog.Logger) ObjectStoreDependencies {
+func newObjectStoreDependencies(cfg config.StoreObjectConfig, logger *slog.Logger, metrics *observability.Metrics) ObjectStoreDependencies {
 	return ObjectStoreDependencies{
-		Config: cfg,
-		Logger: logger,
+		Config:  cfg,
+		Logger:  logger,
+		Metrics: metrics,
 	}
 }
 
@@ -111,17 +113,19 @@ func NewObjectStore(deps ObjectStoreDependencies) (object.Store, error) {
 		Driver: cfg.Driver,
 		Path:   cfg.Path,
 		S3: object.S3Options{
-			Bucket:            cfg.S3.Bucket,
-			Prefix:            cfg.S3.Prefix,
-			Region:            cfg.S3.Region,
-			Endpoint:          cfg.S3.Endpoint,
-			AccessKeyID:       cfg.S3.AccessKeyID,
-			SecretAccessKey:   cfg.S3.SecretAccessKey,
-			SessionToken:      cfg.S3.SessionToken,
-			Profile:           cfg.S3.Profile,
-			ForcePathStyle:    cfg.S3.ForcePathStyle,
-			PartSize:          cfg.S3.PartSize,
-			UploadConcurrency: cfg.S3.UploadConcurrency,
+			Bucket:               cfg.S3.Bucket,
+			Prefix:               cfg.S3.Prefix,
+			Region:               cfg.S3.Region,
+			Endpoint:             cfg.S3.Endpoint,
+			AccessKeyID:          cfg.S3.AccessKeyID,
+			SecretAccessKey:      cfg.S3.SecretAccessKey,
+			SessionToken:         cfg.S3.SessionToken,
+			Profile:              cfg.S3.Profile,
+			ForcePathStyle:       cfg.S3.ForcePathStyle,
+			PartSize:             cfg.S3.PartSize,
+			UploadConcurrency:    cfg.S3.UploadConcurrency,
+			MaxConcurrentUploads: cfg.S3.MaxConcurrentUploads,
+			ObserveUpload:        deps.Metrics.ObserveS3Upload,
 		},
 	})
 	if err != nil {

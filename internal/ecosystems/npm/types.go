@@ -46,17 +46,18 @@ type ServiceDependencies struct {
 }
 
 type Service struct {
-	cfg         config.Config
-	metadata    meta.Store
-	cache       *artifactcache.Store
-	client      *http.Client
-	factory     *clientfactory.Factory
-	logger      *slog.Logger
-	publicURL   string
-	metadataTTL time.Duration
-	fills       *artifactcache.FillTracker
-	now         func() time.Time
-	events      events.Bus
+	cfg           config.Config
+	metadata      meta.Store
+	cache         *artifactcache.Store
+	client        *http.Client
+	factory       *clientfactory.Factory
+	logger        *slog.Logger
+	publicURL     string
+	metadataTTL   time.Duration
+	fills         *artifactcache.FillTracker
+	metadataSlots chan struct{}
+	now           func() time.Time
+	events        events.Bus
 }
 
 type Request struct {

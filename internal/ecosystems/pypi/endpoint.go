@@ -7,6 +7,7 @@ import (
 
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
+	"github.com/lyonbrown4d/regimux/internal/artifactstream"
 )
 
 type Endpoint struct {
@@ -80,10 +81,10 @@ func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*out
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
 	}
-	return outputFromResponse(method, resp), nil
+	return outputFromResponse(ctx, method, resp), nil
 }
 
-func outputFromResponse(method string, resp *Response) *output {
+func outputFromResponse(ctx context.Context, method string, resp *Response) *output {
 	if resp == nil {
 		return plainError(http.StatusBadGateway, "pypi proxy response is empty")
 	}
@@ -107,7 +108,9 @@ func outputFromResponse(method string, resp *Response) *output {
 	if method == http.MethodHead || resp.Body == nil || resp.Body == http.NoBody {
 		return out
 	}
-	out.Body = streamResponseBody(resp.Status, resp.Size, resp.Body)
+	out.Body = artifactstream.Response(ctx, artifactstream.ResponseRequest{
+		Status: resp.Status, Size: resp.Size, Body: resp.Body, Ecosystem: "pypi", Cache: resp.Cache,
+	})
 	return out
 }
 

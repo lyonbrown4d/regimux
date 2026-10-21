@@ -20,17 +20,18 @@ type StoreObjectConfig struct {
 }
 
 type StoreObjectS3Config struct {
-	Bucket            string `json:"bucket"             koanf:"bucket"             mapstructure:"bucket"`
-	Prefix            string `json:"prefix"             koanf:"prefix"             mapstructure:"prefix"`
-	Region            string `json:"region"             koanf:"region"             mapstructure:"region"`
-	Endpoint          string `json:"endpoint"           koanf:"endpoint"           mapstructure:"endpoint"           validate:"omitempty,url"`
-	AccessKeyID       string `json:"access_key_id"      koanf:"access_key_id"      mapstructure:"access_key_id"`
-	SecretAccessKey   string `json:"secret_access_key"  koanf:"secret_access_key"  mapstructure:"secret_access_key"`
-	SessionToken      string `json:"session_token"      koanf:"session_token"      mapstructure:"session_token"`
-	Profile           string `json:"profile"            koanf:"profile"            mapstructure:"profile"`
-	ForcePathStyle    bool   `json:"force_path_style"   koanf:"force_path_style"   mapstructure:"force_path_style"`
-	PartSize          int64  `json:"part_size"          koanf:"part_size"          mapstructure:"part_size"          validate:"omitempty,min=5242880,max=5368709120"`
-	UploadConcurrency int    `json:"upload_concurrency" koanf:"upload_concurrency" mapstructure:"upload_concurrency" validate:"omitempty,min=1"`
+	Bucket               string `json:"bucket"                 koanf:"bucket"                 mapstructure:"bucket"`
+	Prefix               string `json:"prefix"                 koanf:"prefix"                 mapstructure:"prefix"`
+	Region               string `json:"region"                 koanf:"region"                 mapstructure:"region"`
+	Endpoint             string `json:"endpoint"               koanf:"endpoint"               mapstructure:"endpoint"               validate:"omitempty,url"`
+	AccessKeyID          string `json:"access_key_id"          koanf:"access_key_id"          mapstructure:"access_key_id"`
+	SecretAccessKey      string `json:"secret_access_key"      koanf:"secret_access_key"      mapstructure:"secret_access_key"`
+	SessionToken         string `json:"session_token"          koanf:"session_token"          mapstructure:"session_token"`
+	Profile              string `json:"profile"                koanf:"profile"                mapstructure:"profile"`
+	ForcePathStyle       bool   `json:"force_path_style"       koanf:"force_path_style"       mapstructure:"force_path_style"`
+	PartSize             int64  `json:"part_size"              koanf:"part_size"              mapstructure:"part_size"              validate:"omitempty,min=5242880,max=5368709120"`
+	UploadConcurrency    int    `json:"upload_concurrency"     koanf:"upload_concurrency"     mapstructure:"upload_concurrency"     validate:"omitempty,min=1"`
+	MaxConcurrentUploads int    `json:"max_concurrent_uploads" koanf:"max_concurrent_uploads" mapstructure:"max_concurrent_uploads" validate:"omitempty,min=1"`
 }
 
 type SchedulerConfig struct {
@@ -44,17 +45,19 @@ type SchedulerConfig struct {
 }
 
 type SchedulerCleanupConfig struct {
-	Enabled     bool          `json:"enabled"      koanf:"enabled"      mapstructure:"enabled"`
-	Cron        string        `json:"cron"         koanf:"cron"         mapstructure:"cron"`
-	Timezone    string        `json:"timezone"     koanf:"timezone"     mapstructure:"timezone"`
-	Interval    time.Duration `json:"interval"     koanf:"interval"     mapstructure:"interval"     validate:"min=0"`
-	MaxScan     int           `json:"max_scan"     koanf:"max_scan"     mapstructure:"max_scan"     validate:"min=0"`
-	UnusedFor   time.Duration `json:"unused_for"   koanf:"unused_for"   mapstructure:"unused_for"   validate:"min=0"`
-	MaxDeletes  int           `json:"max_deletes"  koanf:"max_deletes"  mapstructure:"max_deletes"  validate:"min=0"`
-	MaxBytes    int64         `json:"max_bytes"    koanf:"max_bytes"    mapstructure:"max_bytes"    validate:"min=0"`
-	TargetBytes int64         `json:"target_bytes" koanf:"target_bytes" mapstructure:"target_bytes" validate:"min=0"`
-	DryRun      bool          `json:"dry_run"      koanf:"dry_run"      mapstructure:"dry_run"`
-	Distributed bool          `json:"distributed"  koanf:"distributed"  mapstructure:"distributed"`
+	Enabled            bool          `json:"enabled"              koanf:"enabled"              mapstructure:"enabled"`
+	Cron               string        `json:"cron"                 koanf:"cron"                 mapstructure:"cron"`
+	Timezone           string        `json:"timezone"             koanf:"timezone"             mapstructure:"timezone"`
+	Interval           time.Duration `json:"interval"             koanf:"interval"             mapstructure:"interval"             validate:"min=0"`
+	MaxScan            int           `json:"max_scan"             koanf:"max_scan"             mapstructure:"max_scan"             validate:"min=0"`
+	UnusedFor          time.Duration `json:"unused_for"           koanf:"unused_for"           mapstructure:"unused_for"           validate:"min=0"`
+	MaxDeletes         int           `json:"max_deletes"          koanf:"max_deletes"          mapstructure:"max_deletes"          validate:"min=0"`
+	MaxBytes           int64         `json:"max_bytes"            koanf:"max_bytes"            mapstructure:"max_bytes"            validate:"min=0"`
+	TargetBytes        int64         `json:"target_bytes"         koanf:"target_bytes"         mapstructure:"target_bytes"         validate:"min=0"`
+	MetadataMaxRecords int           `json:"metadata_max_records" koanf:"metadata_max_records" mapstructure:"metadata_max_records" validate:"omitempty,min=1"`
+	MetadataMaxBytes   int64         `json:"metadata_max_bytes"   koanf:"metadata_max_bytes"   mapstructure:"metadata_max_bytes"   validate:"omitempty,min=1"`
+	DryRun             bool          `json:"dry_run"              koanf:"dry_run"              mapstructure:"dry_run"`
+	Distributed        bool          `json:"distributed"          koanf:"distributed"          mapstructure:"distributed"`
 }
 
 type SchedulerPrefetchConfig struct {

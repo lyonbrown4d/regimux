@@ -97,11 +97,11 @@ func (s *Service) fetchPackageMirrorLinks(ctx context.Context, cfg config.Upstre
 	if err != nil || resp.Status != http.StatusOK {
 		return nil
 	}
-	body, err := upstreamhttp.ReadAllLimited(resp.Body, pypiSimpleIndexMaxBytes)
-	if err != nil {
-		return nil
-	}
-	return pypiMirrorLinks(body, indexURL, filename, sha256)
+	var links []string
+	s.withSimpleIndexAdmission(attemptCtx, resp.Body, func(body []byte) {
+		links = pypiMirrorLinks(body, indexURL, filename, sha256)
+	})
+	return links
 }
 
 func pypiMirrorIndexURL(endpoint, project string) (string, bool) {

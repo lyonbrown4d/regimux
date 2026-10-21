@@ -1,0 +1,33 @@
+services:
+  regimux-maven8:
+    image: ${REGIMUX_CONCURRENCY_IMAGE:-regimux-memory:20261021}
+    profiles: [maven8]
+    init: true
+    mem_limit: 512m
+    cpus: 2.0
+    environment: {GOMEMLIMIT: 384MiB}
+    command: ["--config", "/etc/regimux/maven.hcl"]
+    volumes:
+      - ../memory/config/maven-fallback.hcl:/etc/regimux/maven.hcl:ro
+      - maven8-data:/var/lib/regimux
+    depends_on:
+      fixture: {condition: service_healthy}
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1:8080/livez >/dev/null"]
+      interval: 2s
+      timeout: 3s
+      retries: 60
+    networks: [isolated]
+  maven8-client:
+    image: python:3.12-alpine
+    profiles: [maven8]
+    init: true
+    mem_limit: 128m
+    command: ["python", "/memory/maven_mirror_acceptance.py"]
+    volumes:
+      - ../memory/maven_mirror_acceptance.py:/memory/maven_mirror_acceptance.py:ro
+    depends_on:
+      regimux-maven8: {condition: service_healthy}
+    networks: [isolated]
+volumes:
+  maven8-data:

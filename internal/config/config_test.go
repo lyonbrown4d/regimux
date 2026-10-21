@@ -144,6 +144,9 @@ func assertDefaultCleanup(t *testing.T, cleanup config.SchedulerCleanupConfig) {
 	if cleanup.MaxScan != 0 {
 		t.Fatalf("unexpected cleanup max_scan default: %d", cleanup.MaxScan)
 	}
+	if cleanup.MetadataMaxRecords != 100_000 || cleanup.MetadataMaxBytes != 32<<20 {
+		t.Fatalf("unexpected cleanup metadata snapshot defaults: records=%d bytes=%d", cleanup.MetadataMaxRecords, cleanup.MetadataMaxBytes)
+	}
 }
 
 func assertDefaultPrefetch(t *testing.T, prefetch config.SchedulerPrefetchConfig) {

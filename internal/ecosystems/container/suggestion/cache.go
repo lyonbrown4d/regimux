@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/jsonbudget"
 	"github.com/samber/lo"
 )
 
@@ -185,6 +186,9 @@ func tagIndexToCache(index *TagIndex) ([]byte, error) {
 }
 
 func tagIndexFromCache(data []byte) (*TagIndex, error) {
+	if err := jsonbudget.Check(data, jsonbudget.DefaultLimits()); err != nil {
+		return nil, wrapError(err, "check manifest suggestion tag cache JSON budget")
+	}
 	var envelope tagIndexEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, wrapError(err, "unmarshal manifest suggestion tag cache")
@@ -212,6 +216,9 @@ func repositoryIndexToCache(index *repositoryIndex) ([]byte, error) {
 }
 
 func repositoryIndexFromCache(data []byte) (*repositoryIndex, error) {
+	if err := jsonbudget.Check(data, jsonbudget.DefaultLimits()); err != nil {
+		return nil, wrapError(err, "check repository suggestion cache JSON budget")
+	}
 	var envelope repositoryIndexEnvelope
 	if err := json.Unmarshal(data, &envelope); err != nil {
 		return nil, wrapError(err, "unmarshal repository suggestion cache")
