@@ -33,11 +33,11 @@ type mavenClientKey struct {
 	serverName         string
 }
 
-//nolint:cyclop,funlen,gocognit,gocyclo // Endpoint failover is one stateful attempt loop.
+//nolint:cyclop,gocognit,gocyclo // Endpoint failover is one stateful attempt loop.
 func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Maven, upstreamAlias, cfg)
-	var lastErr error
-	var lastRetryable *upstreamFetch
+	state := mavenEndpointResult{}
+	defer state.close(s.logger)
 	for index, endpoint := range endpoints {
 		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
 		requestURL = urlWithQuery(requestURL, requestRoute.Query)
@@ -58,40 +58,22 @@ func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, 
 			eventErr = ctx.Err()
 		}
 		s.publishUpstreamRequest(ctx, requestRoute, endpoint, methodOrGet(method), status, time.Since(started), eventErr)
-		if err != nil || retryableMavenStatus(status) {
+		canFailOver := status == http.StatusNotFound || retryableMavenStatus(status)
+		if err != nil || canFailOver {
 			s.publishUpstreamFailover(ctx, requestRoute, endpoint, methodOrGet(method), status, eventErr, index+1 < len(endpoints))
 		}
 		if ctx.Err() != nil {
 			if resp != nil {
 				closeReadCloser(resp.body, s.logger, "close canceled maven endpoint response body")
 			}
-			if lastRetryable != nil {
-				closeReadCloser(lastRetryable.body, s.logger, "close canceled maven retryable response body")
-			}
 			return nil, wrapError(ctx.Err(), "fetch maven upstream")
 		}
-		if err == nil {
-			if retryableMavenStatus(resp.status) {
-				if lastRetryable != nil {
-					closeReadCloser(lastRetryable.body, s.logger, "close superseded maven retryable response body")
-				}
-				lastRetryable = resp
-				continue
-			}
-			if lastRetryable != nil {
-				closeReadCloser(lastRetryable.body, s.logger, "close superseded maven retryable response body")
-			}
-			return resp, nil
+		if state.remember(resp, err, s.logger) {
+			continue
 		}
-		lastErr = err
+		return resp, nil
 	}
-	if lastRetryable != nil {
-		return lastRetryable, nil
-	}
-	if lastErr == nil {
-		lastErr = errors.New("no maven upstream endpoint is configured")
-	}
-	return nil, wrapError(lastErr, "fetch maven upstream")
+	return state.take(cfg, endpoints)
 }
 
 func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string, cancel context.CancelFunc, stopAttemptTimeout func() bool) (*upstreamFetch, error) {
