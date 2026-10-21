@@ -19,13 +19,15 @@ const mirrorMissingPOM = `<project><modelVersion>4.0.0</modelVersion>` +
 	`<groupId>com.acme</groupId><artifactId>mirror-demo</artifactId><version>1.0</version></project>`
 const mirrorMissingTail = "com/acme/mirror-demo/1.0/mirror-demo-1.0.pom"
 
+type missingMirrorScenario struct {
+	name       string
+	statuses   []int
+	wantStatus int
+	wantCalls  int
+}
+
 func TestMavenEquivalentMirrorsResolveMissingArtifacts(t *testing.T) {
-	tests := []struct {
-		name       string
-		statuses   []int
-		wantStatus int
-		wantCalls  int
-	}{
+	tests := []missingMirrorScenario{
 		{name: "missing then available", statuses: []int{404, 200}, wantStatus: 200, wantCalls: 2},
 		{name: "missing and unavailable then available", statuses: []int{404, 503, 200}, wantStatus: 200, wantCalls: 3},
 		{name: "all mirrors missing", statuses: []int{404, 404}, wantStatus: 404, wantCalls: 2},
@@ -38,31 +40,34 @@ func TestMavenEquivalentMirrorsResolveMissingArtifacts(t *testing.T) {
 	for _, test := range tests {
 		for _, method := range []string{http.MethodGet, http.MethodHead} {
 			t.Run(test.name+"/"+method, func(t *testing.T) {
-				ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
-				defer cancel()
-				upstream, calls := newMissingMirrorUpstream(t, method, test.statuses)
-				service, metadata := newTestService(ctx, t, map[string]config.DependencyUpstreamConfig{
-					"central": upstream,
-				})
-				req := maven.Request{Alias: "central", Tail: mirrorMissingTail, Method: method}
-				resp, err := service.Get(ctx, req)
-				requireNoError(t, "resolve artifact across mirrors", err)
-				assertMissingMirrorResponse(t, resp, method, test.wantStatus)
-				if method == http.MethodGet && test.wantStatus == http.StatusOK {
-					requireStoredTag(ctx, t, metadata, meta.TagKey{
-						Alias: "central", Repository: "com/acme/mirror-demo/1.0", Reference: "mirror-demo-1.0.pom",
-					})
-					cached, cacheErr := service.Get(ctx, req)
-					requireNoError(t, "read artifact cached from fallback mirror", cacheErr)
-					assertBody(t, cached, mirrorMissingPOM)
-					if cached.Cache != cacheHit {
-						t.Fatalf("cache = %q, want hit", cached.Cache)
-					}
-				}
-				assertMissingMirrorCalls(t, calls, test.wantCalls)
+				runMissingMirrorScenario(t, test, method)
 			})
 		}
 	}
+}
+
+func runMissingMirrorScenario(t *testing.T, test missingMirrorScenario, method string) {
+	t.Helper()
+	ctx, cancel := context.WithTimeout(t.Context(), 5*time.Second)
+	defer cancel()
+	upstream, calls := newMissingMirrorUpstream(t, method, test.statuses)
+	service, metadata := newTestService(ctx, t, map[string]config.DependencyUpstreamConfig{"central": upstream})
+	req := maven.Request{Alias: "central", Tail: mirrorMissingTail, Method: method}
+	resp, err := service.Get(ctx, req)
+	requireNoError(t, "resolve artifact across mirrors", err)
+	assertMissingMirrorResponse(t, resp, method, test.wantStatus)
+	if method == http.MethodGet && test.wantStatus == http.StatusOK {
+		requireStoredTag(ctx, t, metadata, meta.TagKey{
+			Alias: "central", Repository: "com/acme/mirror-demo/1.0", Reference: "mirror-demo-1.0.pom",
+		})
+		cached, cacheErr := service.Get(ctx, req)
+		requireNoError(t, "read artifact cached from fallback mirror", cacheErr)
+		assertBody(t, cached, mirrorMissingPOM)
+		if cached.Cache != cacheHit {
+			t.Fatalf("cache = %q, want hit", cached.Cache)
+		}
+	}
+	assertMissingMirrorCalls(t, calls, test.wantCalls)
 }
 
 func TestMavenMissingDoesNotClaimSkippedMirrorsAreMissing(t *testing.T) {

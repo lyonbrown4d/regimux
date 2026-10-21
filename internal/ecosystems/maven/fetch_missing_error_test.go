@@ -1,5 +1,4 @@
-//nolint:testpackage // Transport error assertions inspect the physical endpoint boundary.
-package maven
+package maven_test
 
 import (
 	"errors"
@@ -10,6 +9,8 @@ import (
 	"testing"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
+	"github.com/lyonbrown4d/regimux/internal/ecosystems/maven"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
 func TestMavenMissingDoesNotHideMirrorTransportErrors(t *testing.T) {
@@ -17,20 +18,26 @@ func TestMavenMissingDoesNotHideMirrorTransportErrors(t *testing.T) {
 		t.Run(failedHost, func(t *testing.T) {
 			failure := errors.New("synthetic mirror transport failure")
 			transport := &missingMirrorTransport{failedHost: failedHost, failure: failure}
-			service := &Service{client: &http.Client{Transport: transport}}
-			fetched, err := service.fetchPhysical(
-				t.Context(),
-				config.UpstreamConfig{
-					Registry: "https://primary.invalid",
-					Mirrors:  []string{"https://mirror.invalid"},
+			objects, err := object.NewLocal(t.TempDir())
+			requireNoError(t, "open objects", err)
+			service := maven.NewService(maven.ServiceDependencies{
+				Config: config.Config{
+					Maven: map[string]config.DependencyUpstreamConfig{
+						"central": {
+							Registry: "https://primary.invalid",
+							Mirrors:  []string{"https://mirror.invalid"},
+						},
+					},
 				},
-				"central",
-				Route{UpstreamTail: "com/acme/demo/1.0/demo-1.0.pom"},
-				http.MethodGet,
-			)
-			if fetched != nil {
-				closeReadCloser(fetched.body, nil, "close unexpected mirror response")
-				t.Fatalf("status = %d, want transport error", fetched.status)
+				Metadata: newTestMetadata(t.Context(), t),
+				Objects:  objects,
+				Client:   &http.Client{Transport: transport},
+			})
+			t.Cleanup(func() { requireNoError(t, "close Maven service", service.Close()) })
+			resp, err := service.Get(t.Context(), maven.Request{Alias: "central", Tail: mirrorMissingTail})
+			if resp != nil {
+				closeBody(t, resp.Body)
+				t.Fatalf("status = %d, want transport error", resp.Status)
 			}
 			if !errors.Is(err, failure) {
 				t.Fatalf("error = %v, want wrapped mirror transport failure", err)
