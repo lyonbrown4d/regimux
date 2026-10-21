@@ -33,65 +33,77 @@ type mavenClientKey struct {
 	serverName         string
 }
 
-//nolint:cyclop,funlen,gocognit,gocyclo // Endpoint failover is one stateful attempt loop.
-func (s *Service) fetchPhysical(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute Route, method string) (*upstreamFetch, error) {
+type mavenEndpointAttempt struct {
+	route    Route
+	endpoint string
+	method   string
+	hasNext  bool
+}
+
+func (s *Service) fetchPhysical(
+	ctx context.Context,
+	cfg config.UpstreamConfig,
+	upstreamAlias string,
+	requestRoute Route,
+	method string,
+) (*upstreamFetch, error) {
 	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.Maven, upstreamAlias, cfg)
-	var lastErr error
-	var lastRetryable *upstreamFetch
+	state := mavenEndpointResult{}
+	defer state.close(s.logger)
 	for index, endpoint := range endpoints {
-		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
-		requestURL = urlWithQuery(requestURL, requestRoute.Query)
-		started := time.Now()
-		attemptTimeout := cfg.HTTP.AttemptTimeout
-		if attemptTimeout <= 0 {
-			attemptTimeout = defaultMavenAttemptTimeout
-		}
-		attemptCtx, cancel := context.WithCancel(ctx)
-		attemptTimer := time.AfterFunc(attemptTimeout, cancel)
-		resp, err := s.fetchURL(attemptCtx, cfg, requestURL, method, cancel, attemptTimer.Stop)
-		status := 0
-		if resp != nil {
-			status = resp.status
-		}
-		eventErr := err
-		if ctx.Err() != nil {
-			eventErr = ctx.Err()
-		}
-		s.publishUpstreamRequest(ctx, requestRoute, endpoint, methodOrGet(method), status, time.Since(started), eventErr)
-		if err != nil || retryableMavenStatus(status) {
-			s.publishUpstreamFailover(ctx, requestRoute, endpoint, methodOrGet(method), status, eventErr, index+1 < len(endpoints))
-		}
+		resp, err := s.fetchEndpoint(ctx, cfg, mavenEndpointAttempt{
+			route:    requestRoute,
+			endpoint: endpoint,
+			method:   methodOrGet(method),
+			hasNext:  index+1 < len(endpoints),
+		})
 		if ctx.Err() != nil {
 			if resp != nil {
 				closeReadCloser(resp.body, s.logger, "close canceled maven endpoint response body")
 			}
-			if lastRetryable != nil {
-				closeReadCloser(lastRetryable.body, s.logger, "close canceled maven retryable response body")
-			}
 			return nil, wrapError(ctx.Err(), "fetch maven upstream")
 		}
-		if err == nil {
-			if retryableMavenStatus(resp.status) {
-				if lastRetryable != nil {
-					closeReadCloser(lastRetryable.body, s.logger, "close superseded maven retryable response body")
-				}
-				lastRetryable = resp
-				continue
-			}
-			if lastRetryable != nil {
-				closeReadCloser(lastRetryable.body, s.logger, "close superseded maven retryable response body")
-			}
-			return resp, nil
+		if state.remember(resp, err, s.logger) {
+			continue
 		}
-		lastErr = err
+		return resp, nil
 	}
-	if lastRetryable != nil {
-		return lastRetryable, nil
+	return state.take(cfg, endpoints)
+}
+
+func (s *Service) fetchEndpoint(
+	ctx context.Context,
+	cfg config.UpstreamConfig,
+	attempt mavenEndpointAttempt,
+) (*upstreamFetch, error) {
+	requestURL := strings.TrimRight(attempt.endpoint, "/") + "/" + strings.TrimLeft(attempt.route.UpstreamTail, "/")
+	requestURL = urlWithQuery(requestURL, attempt.route.Query)
+	started := time.Now()
+	attemptTimeout := cfg.HTTP.AttemptTimeout
+	if attemptTimeout <= 0 {
+		attemptTimeout = defaultMavenAttemptTimeout
 	}
-	if lastErr == nil {
-		lastErr = errors.New("no maven upstream endpoint is configured")
+	attemptCtx, cancel := context.WithCancel(ctx)
+	attemptTimer := time.AfterFunc(attemptTimeout, cancel)
+	resp, err := s.fetchURL(attemptCtx, cfg, requestURL, attempt.method, cancel, attemptTimer.Stop)
+	status := 0
+	if resp != nil {
+		status = resp.status
 	}
-	return nil, wrapError(lastErr, "fetch maven upstream")
+	eventErr := err
+	if ctx.Err() != nil {
+		eventErr = ctx.Err()
+	}
+	s.publishUpstreamRequest(
+		ctx, attempt.route, attempt.endpoint, attempt.method, status, time.Since(started), eventErr,
+	)
+	canFailOver := status == http.StatusNotFound || retryableMavenStatus(status)
+	if err != nil || canFailOver {
+		s.publishUpstreamFailover(
+			ctx, attempt.route, attempt.endpoint, attempt.method, status, eventErr, attempt.hasNext,
+		)
+	}
+	return resp, err
 }
 
 func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string, cancel context.CancelFunc, stopAttemptTimeout func() bool) (*upstreamFetch, error) {
