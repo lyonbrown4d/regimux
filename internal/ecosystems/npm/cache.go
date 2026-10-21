@@ -7,6 +7,8 @@ import (
 	"github.com/samber/oops"
 )
 
+const npmMetadataFormat = "npm:2"
+
 func (s *Service) cached(ctx context.Context, requestRoute route) (storedResponse, bool, error) {
 	if s.cache == nil {
 		return storedResponse{}, false, nil
@@ -16,6 +18,10 @@ func (s *Service) cached(ctx context.Context, requestRoute route) (storedRespons
 		return storedResponse{}, false, wrapError(err, "lookup cached npm artifact")
 	}
 	if !ok {
+		return storedResponse{}, false, nil
+	}
+	if requestRoute.Kind == routeMetadata && entry.Headers.Get("X-Regimux-Metadata-Format") != npmMetadataFormat {
+		closeReadCloser(entry.Body, s.logger, "close incompatible cached npm metadata")
 		return storedResponse{}, false, nil
 	}
 	return storedResponse{

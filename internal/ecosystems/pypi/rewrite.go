@@ -70,11 +70,15 @@ func writeToken(buf *bytes.Buffer, raw []byte) bool {
 
 func localPackageHref(alias string, upstreamSimpleURL *url.URL, href string) string {
 	href = strings.TrimSpace(href)
-	if href == "" || strings.HasPrefix(href, "#") || strings.HasPrefix(href, "/pypi/") {
+	if href == "" || strings.HasPrefix(href, "#") {
 		return ""
 	}
 	parsed, err := url.Parse(href)
 	if err != nil {
+		return ""
+	}
+	localPackagePrefix := "/pypi/" + url.PathEscape(alias) + "/packages/"
+	if strings.HasPrefix(parsed.Path, localPackagePrefix) {
 		return ""
 	}
 	resolved := upstreamSimpleURL.ResolveReference(parsed)

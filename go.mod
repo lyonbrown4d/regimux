@@ -23,6 +23,7 @@ require (
 	github.com/arcgolabs/eventx v0.1.3
 	github.com/arcgolabs/httpx v0.1.9
 	github.com/arcgolabs/httpx/adapter/fiber v0.1.9
+	github.com/arcgolabs/httpx/adapter/std v0.1.9
 	github.com/arcgolabs/kvx v0.3.2
 	github.com/arcgolabs/kvx/adapter/redis v0.2.3
 	github.com/arcgolabs/kvx/adapter/valkey v0.2.3
@@ -53,6 +54,7 @@ require (
 	github.com/opencontainers/go-digest v1.0.0
 	github.com/opencontainers/image-spec v1.1.1
 	github.com/panjf2000/ants/v2 v2.12.1
+	github.com/pressly/goose/v3 v3.28.0
 	github.com/redis/go-redis/v9 v9.22.0
 	github.com/samber/go-singleflightx v1.0.0
 	github.com/samber/lo v1.53.0
@@ -82,7 +84,6 @@ require (
 	github.com/apparentlymart/go-textseg/v17 v17.0.1 // indirect
 	github.com/arcgolabs/collectionx/graph v1.0.0 // indirect
 	github.com/arcgolabs/collectionx/stream v1.0.0 // indirect
-	github.com/arcgolabs/httpx/adapter/std v0.1.9 // indirect
 	github.com/arcgolabs/pkg/option v0.0.3 // indirect
 	github.com/aws/aws-sdk-go-v2/aws/protocol/eventstream v1.7.22 // indirect
 	github.com/aws/aws-sdk-go-v2/feature/ec2/imds v1.20.3 // indirect
@@ -150,7 +151,6 @@ require (
 	github.com/ncruces/go-strftime v1.0.0 // indirect
 	github.com/oklog/ulid/v2 v2.1.2 // indirect
 	github.com/philhofer/fwd v1.2.0 // indirect
-	github.com/pressly/goose/v3 v3.28.0 // indirect
 	github.com/prometheus/client_golang v1.24.1 // indirect
 	github.com/prometheus/client_model v0.6.3 // indirect
 	github.com/prometheus/common v0.71.0 // indirect

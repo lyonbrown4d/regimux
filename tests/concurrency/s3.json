@@ -1,0 +1,11 @@
+{
+  "identities": [
+    {
+      "name": "concurrency-fixture-only",
+      "credentials": [
+        {"accessKey": "concurrency-only", "secretKey": "concurrency-only-secret"}
+      ],
+      "actions": ["Admin", "Read", "Write", "List", "Tagging"]
+    }
+  ]
+}
