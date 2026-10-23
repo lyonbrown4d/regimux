@@ -32,11 +32,13 @@ type registryOutput struct {
 	AcceptRanges                 string `header:"Accept-Ranges"`
 	ContentRange                 string `header:"Content-Range"`
 	ETag                         string `header:"ETag"`
+	LastModified                 string `header:"Last-Modified"`
 	Link                         string `header:"Link"`
 	Location                     string `header:"Location"`
 	Warning                      string `header:"Warning"`
 	XMirrorCache                 string `header:"X-Mirror-Cache"`
 	Body                         httpx.ResponseStream
+	cleanup                      func() error
 }
 
 func newRegistryOutput(status int, header http.Header) *registryOutput {
@@ -51,6 +53,7 @@ func newRegistryOutput(status int, header http.Header) *registryOutput {
 	out.ContentLength = header.Get(distribution.HeaderContentLength)
 	out.ContentRange = header.Get(distribution.HeaderContentRange)
 	out.ETag = header.Get(distribution.HeaderETag)
+	out.LastModified = header.Get("Last-Modified")
 	out.Link = header.Get(distribution.HeaderLink)
 	out.Location = header.Get(distribution.HeaderLocation)
 	out.Warning = header.Get(distribution.HeaderWarning)

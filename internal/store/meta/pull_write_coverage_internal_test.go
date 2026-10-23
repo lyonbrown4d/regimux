@@ -17,7 +17,7 @@ import (
 func TestPullWriteBatchLateCallerDoesNotSucceedAfterMissedFailedRetry(t *testing.T) {
 	hook := newPullCoverageHook()
 	store := openPullCoverageStore(t, hook)
-	hook.failRefresh.Store(true)
+	hook.failRefresh.Store(2)
 	key := PullKey{Alias: "hub", Repository: "library/node", Reference: "missed-failed-retry"}
 	at := time.Date(2026, time.October, 16, 13, 0, 0, 0, time.UTC)
 
@@ -57,6 +57,9 @@ func TestPullWriteBatchLateCallerDoesNotSucceedAfterMissedFailedRetry(t *testing
 	followerResult := receivePullCoverageMutation(t, follower)
 	if !errors.Is(followerResult.err, errPullCoverageInjected) {
 		t.Fatalf("retry follower error = %v, want second upsert failure", followerResult.err)
+	}
+	if got := hook.refreshFailures.Load(); got != 2 {
+		t.Fatalf("catalog refresh failures = %d, want both bounded attempts", got)
 	}
 
 	lateCtx.releaseErr()
@@ -185,15 +188,16 @@ func (c *pullCoverageContext) releaseErr() {
 }
 
 type pullCoverageHook struct {
-	firstStarted chan struct{}
-	firstRelease chan struct{}
-	startOnce    sync.Once
-	releaseOnce  sync.Once
-	attempts     atomic.Int64
-	writes       atomic.Int64
-	failRefresh  atomic.Bool
-	retryPause   <-chan struct{}
-	retryRelease chan struct{}
+	firstStarted    chan struct{}
+	firstRelease    chan struct{}
+	startOnce       sync.Once
+	releaseOnce     sync.Once
+	attempts        atomic.Int64
+	writes          atomic.Int64
+	failRefresh     atomic.Int32
+	refreshFailures atomic.Int64
+	retryPause      <-chan struct{}
+	retryRelease    chan struct{}
 }
 
 func newPullCoverageHook() *pullCoverageHook {
@@ -236,8 +240,12 @@ func (h *pullCoverageHook) before(ctx context.Context, event *dbx.HookEvent) (co
 }
 
 func (h *pullCoverageHook) refreshError(sql string) error {
-	if strings.Contains(sql, "meta_upstreams") && h.failRefresh.CompareAndSwap(true, false) {
-		return errPullCoverageInjected
+	if strings.Contains(sql, "meta_upstreams") {
+		remaining := h.failRefresh.Load()
+		if remaining > 0 && h.failRefresh.CompareAndSwap(remaining, remaining-1) {
+			h.refreshFailures.Add(1)
+			return errPullCoverageInjected
+		}
 	}
 	return nil
 }

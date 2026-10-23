@@ -2,22 +2,28 @@ package pypi_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystems/pypi"
+	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
 type stalledPackageStore struct {
 	object.Store
-	stallRead bool
+	stallRead    bool
+	writeStarted chan struct{}
+	readCanceled *atomic.Int64
 }
 
 func (s stalledPackageStore) Get(ctx context.Context, key string, opts object.GetOptions) (io.ReadCloser, *object.Info, error) {
@@ -29,6 +35,9 @@ func (s stalledPackageStore) Get(ctx context.Context, key string, opts object.Ge
 		return body, info, nil
 	}
 	<-ctx.Done()
+	if s.readCanceled != nil {
+		s.readCanceled.Add(1)
+	}
 	return nil, nil, fmt.Errorf("stalled object read: %w", ctx.Err())
 }
 
@@ -55,34 +64,29 @@ func (s stalledPackageStore) Put(ctx context.Context, key string, body io.Reader
 		}
 		return info, nil
 	}
+	if s.writeStarted != nil {
+		close(s.writeStarted)
+	}
 	<-ctx.Done()
 	return nil, fmt.Errorf("stalled object write: %w", ctx.Err())
 }
 
 func TestPackageStorageStallsHaveIndependentBudget(t *testing.T) {
-	for _, read := range []bool{false, true} {
-		t.Run(map[bool]string{false: "write", true: "read"}[read], func(t *testing.T) { checkPackageStorageStall(t, read) })
-	}
-}
-
-func checkPackageStorageStall(t *testing.T, stallRead bool) {
-	t.Helper()
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { writeResponse(t, w, "healthy-wheel") }))
 	defer upstream.Close()
 	seed, metadata, objects := newTestServiceWithStores(t.Context(), t, upstream.URL, nil)
 	req := pypi.Request{Alias: "pypi", Tail: packageTailFor(t, upstream.URL, "/packages/demo.bin"), SkipPullRecord: true}
-	if stallRead {
-		resp, err := seed.Get(t.Context(), req)
-		requireNoError(t, "seed", err)
-		if got := readResponse(t, resp); got != "healthy-wheel" {
-			t.Fatal(got)
-		}
+	resp, err := seed.Get(t.Context(), req)
+	requireNoError(t, "seed", err)
+	if got := readResponse(t, resp); got != "healthy-wheel" {
+		t.Fatal(got)
 	}
-	service := pypi.NewService(pypi.ServiceDependencies{Config: config.Config{PyPI: config.DependencyEcosystemConfig{"pypi": {Registry: upstream.URL}}}, Metadata: metadata, Objects: stalledPackageStore{Store: objects, stallRead: stallRead}})
+	var readCanceled atomic.Int64
+	service := pypi.NewService(pypi.ServiceDependencies{Config: config.Config{PyPI: config.DependencyEcosystemConfig{"pypi": {Registry: upstream.URL}}}, Metadata: metadata, Objects: stalledPackageStore{Store: objects, stallRead: true, readCanceled: &readCanceled}})
 	ctx, cancel := context.WithTimeout(t.Context(), 7*time.Second)
 	defer cancel()
 	started := time.Now()
-	resp, err := service.Get(ctx, req)
+	resp, err = service.Get(ctx, req)
 	requireNoError(t, "headers with stalled storage", err)
 	if elapsed := time.Since(started); elapsed > 3*time.Second {
 		t.Fatalf("headers blocked by storage for %s", elapsed)
@@ -92,5 +96,59 @@ func checkPackageStorageStall(t *testing.T, stallRead bool) {
 	}
 	if ctx.Err() != nil {
 		t.Fatal("cache consumed caller deadline")
+	}
+	if readCanceled.Load() == 0 {
+		t.Fatal("test did not exercise a blocked object read canceled by its independent budget")
+	}
+}
+
+func TestPackageCacheWriteHonorsParentCancellation(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { writeResponse(t, w, "healthy-wheel") }))
+	defer upstream.Close()
+	_, metadata, objects := newTestServiceWithStores(t.Context(), t, upstream.URL, nil)
+	started := make(chan struct{})
+	service := pypi.NewService(pypi.ServiceDependencies{
+		Config:   config.Config{PyPI: config.DependencyEcosystemConfig{"pypi": {Registry: upstream.URL}}},
+		Metadata: metadata, Objects: stalledPackageStore{Store: objects, writeStarted: started},
+	})
+	ctx, cancel := context.WithCancel(t.Context())
+	defer cancel()
+	req := pypi.Request{Alias: "pypi", Tail: packageTailFor(t, upstream.URL, "/packages/demo.bin"), SkipPullRecord: true}
+	resp, err := service.Get(ctx, req)
+	requireNoError(t, "cold headers", err)
+	body, err := io.ReadAll(resp.Body)
+	requireNoError(t, "complete cold body", err)
+	if string(body) != "healthy-wheel" {
+		t.Fatalf("cold body=%q", body)
+	}
+	closed := make(chan error, 1)
+	go func() { closed <- resp.Body.Close() }()
+	select {
+	case <-started:
+	case <-time.After(time.Second):
+		t.Fatal("cache write did not start")
+	}
+	cancel()
+	select {
+	case err := <-closed:
+		requireNoError(t, "close canceled cache write", err)
+	case <-time.After(time.Second):
+		t.Fatal("cache write ignored parent cancellation")
+	}
+	assertCanceledPackageUnpublished(t, metadata, objects, req, body)
+}
+
+func assertCanceledPackageUnpublished(t *testing.T, metadata meta.Store, objects object.Store, req pypi.Request, body []byte) {
+	t.Helper()
+	route, err := pypi.ParseTail(req.Alias, req.Tail)
+	requireNoError(t, "parse canceled route", err)
+	_, found, err := metadata.Tag(t.Context(), meta.TagKey{Alias: route.Alias, Repository: route.Repository, Reference: route.Reference})
+	if err != nil || found {
+		t.Errorf("canceled cache write published tag: found=%t error=%v", found, err)
+	}
+	digest := sha256.Sum256(body)
+	found, err = objects.Exists(t.Context(), "sha256:"+hex.EncodeToString(digest[:]))
+	if err != nil || found {
+		t.Errorf("canceled cache write published CAS: found=%t error=%v", found, err)
 	}
 }

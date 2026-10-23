@@ -43,6 +43,9 @@ func (s *Service) responseFromStored(req Request, requestRoute Route, stored sto
 func (s *Service) responseFromUpstream(req Request, requestRoute Route, fetched *upstreamFetch) *Response {
 	headers := cacheHeaders(fetched.headers, -1)
 	headers.Set(headerMirrorCache, cacheMiss)
+	if value := fetched.headers.Get("Accept-Ranges"); value != "" {
+		headers.Set("Accept-Ranges", value)
+	}
 	body := fetched.body
 	if methodOrGet(req.Method) == http.MethodHead && body != nil {
 		closeReadCloser(body, s.logger, "close dist upstream body for head")
@@ -61,6 +64,7 @@ func (s *Service) responseFromUpstream(req Request, requestRoute Route, fetched 
 func cacheHeaders(headers http.Header, size int64) http.Header {
 	out := http.Header{}
 	for _, key := range cacheHeaderKeys() {
+		key = http.CanonicalHeaderKey(key)
 		if values, ok := headers[key]; ok {
 			out[key] = slices.Clone(values)
 		}

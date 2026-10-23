@@ -18,6 +18,9 @@ func (p manifestProxy) Get(ctx context.Context, req ManifestRequest) (*CachedMan
 
 	cacheKey := manifestCacheKey(req)
 	flightKey := manifestFlightKey(cacheKey, req.Method)
+	if req.deferMetadata {
+		flightKey += "\x00prepare"
+	}
 	if p.group == nil {
 		return p.get(ctx, req, cacheKey, manifestRequestModeClient)
 	}
@@ -84,9 +87,25 @@ func (p manifestProxy) get(ctx context.Context, req ManifestRequest, cacheKey st
 		}
 		return p.lookupStaleOrError(ctx, req, err)
 	}
+	p.storeFetchedManifest(ctx, req, cacheKey, result)
+	return p.finishManifestResult(ctx, req, result), nil
+}
+
+func (p manifestProxy) storeFetchedManifest(ctx context.Context, req ManifestRequest, cacheKey string, result *CachedManifest) {
+	if req.deferMetadata {
+		result.preparedMetadata = p.storePrepared(ctx, req, cacheKey, result)
+		if result.preparedMetadata == nil {
+			result.preparedMetadata = p.preparedUpstreamMetadata(req, nil, nil, false, true)
+		}
+		return
+	}
 	p.recordManifestUpstreamPull(ctx, req)
 	p.store(ctx, req, cacheKey, result)
-	return p.finishManifestResult(ctx, req, result), nil
+}
+
+func (p manifestProxy) preparedUpstreamMetadata(req ManifestRequest, record *meta.ManifestRecord, tag *meta.TagRecord, propagateSaveError, upstreamPull bool) *preparedManifestMetadata {
+	key, ok := manifestPullKey(req)
+	return newPreparedManifestMetadata(p.metadata, p.logger, key, ok && upstreamPull, record, tag, propagateSaveError)
 }
 
 func (p manifestProxy) lookupClientCache(ctx context.Context, req ManifestRequest, cacheKey string, mode manifestRequestMode) (*CachedManifest, bool, error) {
@@ -108,6 +127,9 @@ func (p manifestProxy) lookupClientCache(ctx context.Context, req ManifestReques
 }
 
 func (p manifestProxy) finishManifestResult(ctx context.Context, req ManifestRequest, result *CachedManifest) *CachedManifest {
+	if req.deferMetadata {
+		return result
+	}
 	p.recordManifestPull(ctx, req, result)
 	p.publishCacheAccess(ctx, req, result)
 	return result

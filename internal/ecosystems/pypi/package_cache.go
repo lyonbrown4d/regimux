@@ -12,7 +12,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
-	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 )
 
 // The second result distinguishes a failed cache read from a normal miss.
@@ -44,9 +44,12 @@ func (s *Service) packageManifest(ctx context.Context, route Route) (*meta.Manif
 	}
 	metadataCtx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
 	defer cancel()
+	started := time.Now()
 	manifest, ok, err := artifactcache.LookupManifest(metadataCtx, s.cache, artifactKey(route))
 	if err != nil || !ok {
 		if err != nil {
+			s.logger.WarnContext(ctx, "pypi package metadata read failed; fetching upstream",
+				"alias", route.Alias, "duration", time.Since(started), "error", err)
 			s.observePackageCache(ctx, route.Alias, "read_error")
 		}
 		return nil, false, wrapError(err, "read pypi package manifest")
@@ -85,37 +88,20 @@ func applyCachedRange(header string, resp *Response) *object.HTTPRange {
 }
 
 func (s *Service) openCachedPackage(ctx context.Context, manifest *meta.ManifestRecord, opts object.GetOptions) (io.ReadCloser, error) {
-	objectCtx, cancel := context.WithCancel(ctx)
-	timer := time.AfterFunc(pypiCacheTimeout, cancel)
 	key := manifest.ObjectKey
 	if key == "" {
 		key = manifest.Digest
 	}
-	body, _, err := s.cache.Objects().Get(objectCtx, key, opts)
-	timer.Stop()
-	if err == nil {
-		err = objectCtx.Err()
-	}
+	body, _, err := transfer.OpenObject(ctx, s.cache.Objects(), transfer.ObjectRequest{
+		Key: key, Digest: manifest.Digest, Size: manifest.Size, Options: opts,
+		OpenTimeout: pypiCacheTimeout, IdleTimeout: pypiBodyIdleTimeout,
+	})
 	if err != nil {
-		cancel()
-		closeReadCloser(body, s.logger, "close failed pypi cache body")
 		return nil, wrapError(err, "open cached pypi package")
 	}
-	return upstreamhttp.WithIdleTimeout(body, cancel, pypiBodyIdleTimeout), nil
+	return body, nil
 }
 
 func matchesIfRange(value string, headers http.Header) bool {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return true
-	}
-	if strings.HasPrefix(value, `W/`) {
-		return false
-	}
-	if strings.HasPrefix(value, `"`) {
-		return value == headers.Get("ETag")
-	}
-	modified, err := http.ParseTime(headers.Get("Last-Modified"))
-	when, whenErr := http.ParseTime(value)
-	return err == nil && whenErr == nil && modified.Equal(when)
+	return transfer.MatchesIfRange(value, headers)
 }

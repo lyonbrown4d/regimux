@@ -3,53 +3,65 @@ package artifactcache
 import (
 	"context"
 	"errors"
+	"fmt"
+	"io"
 	"net/http"
-	"os"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/spool"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 )
 
-func (s *Store) Put(ctx context.Context, req PutRequest) (Entry, error) {
-	if err := s.validatePutRequest(req); err != nil {
-		return Entry{}, err
+func (s *Store) Put(ctx context.Context, req PutRequest) (entry Entry, err error) {
+	if validationErr := s.validatePutRequest(req); validationErr != nil {
+		return Entry{}, validationErr
 	}
-	tmp, tmpName, err := createArtifactTemp()
+	tmp, err := spool.NewTempBody("regimux-artifact-cache-*")
 	if err != nil {
-		return Entry{}, err
+		return Entry{}, wrapError(err, "create artifact temporary body")
 	}
-	defer removePath(tmpName, s.logger)
+	transferred := false
+	defer func() {
+		if !transferred {
+			err = errors.Join(err, tmp.Close())
+		}
+	}()
+	entry, err = s.persistPutBody(ctx, req, tmp)
+	// The caller owns the verified spool after persistence succeeds.
+	transferred = err == nil
+	return entry, err
+}
 
-	digest, size, err := hashToTemp(tmp, tmpName, req.Body)
+func (s *Store) persistPutBody(ctx context.Context, req PutRequest, tmp *spool.TempBody) (Entry, error) {
+	digest, size, err := hashToTemp(tmp, req.Body)
 	if err != nil {
 		return Entry{}, err
 	}
 	validationErr := ValidateBody(tmp, size, req.Headers, req.Validator)
 	if validationErr != nil {
-		return Entry{}, closeAndRemoveTemp(tmp, tmpName, validationErr, "validate artifact body")
+		return Entry{}, wrapError(validationErr, "validate artifact body")
 	}
 
 	headers := cacheHeaders(req.Headers, size)
-	info, err := s.objects.Put(ctx, digest, object.ImmutableFileReader(tmp), object.PutOptions{ContentType: req.ContentType})
+	info, err := s.objects.Put(ctx, digest, object.ImmutableFileReader(tmp.File), object.PutOptions{ContentType: req.ContentType})
 	if err != nil {
-		return Entry{}, closeAndRemoveTemp(tmp, tmpName, err, "store artifact object")
+		return Entry{}, wrapError(err, "store artifact object")
 	}
-	if closeErr := closeArtifactTemp(tmp, tmpName); closeErr != nil {
-		return Entry{}, closeErr
+	if info != nil && info.Size != size {
+		return Entry{}, fmt.Errorf("stored artifact object size %d does not match verified size %d", info.Size, size)
 	}
 	if metadataErr := s.storeMetadata(ctx, req, digest, info, headers); metadataErr != nil {
 		return Entry{}, metadataErr
 	}
-	reader, _, err := s.objects.Get(ctx, digest, object.GetOptions{})
-	if err != nil {
-		return Entry{}, wrapError(err, "open stored artifact object")
+	if _, seekErr := tmp.Seek(0, io.SeekStart); seekErr != nil {
+		return Entry{}, wrapError(seekErr, "rewind stored artifact body")
 	}
 	return Entry{
 		Digest:  digest,
 		Size:    size,
 		Headers: headers,
-		Body:    reader,
+		Body:    tmp,
 	}, nil
 }
 
@@ -59,23 +71,6 @@ func (s *Store) validatePutRequest(req PutRequest) error {
 	}
 	if req.Body == nil {
 		return wrapError(errEmptyBody, "artifact body is empty")
-	}
-	return nil
-}
-
-func createArtifactTemp() (*os.File, string, error) {
-	tmp, err := os.CreateTemp("", "regimux-artifact-cache-*")
-	if err != nil {
-		return nil, "", wrapError(err, "create artifact temp file")
-	}
-	name := tmp.Name()
-	return tmp, name, nil
-}
-
-func closeArtifactTemp(tmp *os.File, tmpName string) error {
-	if closeErr := tmp.Close(); closeErr != nil {
-		removeErr := os.Remove(tmpName)
-		return wrapError(errors.Join(closeErr, removeErr), "close artifact temp file")
 	}
 	return nil
 }

@@ -2,15 +2,11 @@ package npm
 
 import (
 	"context"
-	"errors"
 	"net/http"
-	"strings"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/config"
-	"github.com/lyonbrown4d/regimux/internal/ecosystem"
-	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 	"github.com/samber/lo"
 	"github.com/samber/oops"
 )
@@ -145,69 +141,6 @@ func (s *Service) refresh(ctx context.Context, req Request) (*Response, error) {
 	}
 	req.SkipPullRecord = true
 	return s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeRefresh)
-}
-
-func (s *Service) fetch(ctx context.Context, cfg config.UpstreamConfig, upstreamAlias string, requestRoute route, method string) (*upstreamFetch, error) {
-	endpoints := ecosystem.UpstreamEndpoints(ctx, s.metadata, ecosystem.NPM, upstreamAlias, cfg)
-	var lastErr error
-	for _, endpoint := range endpoints {
-		requestURL := strings.TrimRight(endpoint, "/") + "/" + strings.TrimLeft(requestRoute.UpstreamTail, "/")
-		requestURL = urlWithQuery(requestURL, requestRoute.Query)
-		resp, err := s.fetchURL(ctx, cfg, endpoint, requestURL, method)
-		if err == nil {
-			return resp, nil
-		}
-		lastErr = err
-	}
-	if lastErr == nil {
-		lastErr = errors.New("no npm upstream endpoint is configured")
-	}
-	return nil, wrapError(lastErr, "fetch npm upstream")
-}
-
-func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, registryBaseURL, requestURL, method string) (*upstreamFetch, error) {
-	headers := http.Header{}
-	headers.Set("User-Agent", "regimux/dev")
-	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
-		Method:  requestMethod(method),
-		URL:     requestURL,
-		Headers: headers,
-		Auth:    cfg.Auth,
-	})
-	if err != nil {
-		return nil, wrapError(err, "send npm upstream request")
-	}
-	defer closeReadCloser(resp.Body, s.logger, "close npm upstream response body")
-	body, err := materializeBody(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	return &upstreamFetch{
-		status:          resp.Status,
-		headers:         resp.Headers,
-		body:            body,
-		requestURL:      requestURL,
-		registryBaseURL: registryBaseURL,
-	}, nil
-}
-
-func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseURL string, req upstreamhttp.Request) (*upstreamhttp.Response, error) {
-	if s.client != nil {
-		resp, err := upstreamhttp.RawDo(ctx, s.client, req)
-		if err != nil {
-			return nil, wrapError(err, "send npm upstream raw request")
-		}
-		return resp, nil
-	}
-	client, err := s.clientFor(cfg, baseURL)
-	if err != nil {
-		return nil, err
-	}
-	resp, err := upstreamhttp.Do(ctx, client, req)
-	if err != nil {
-		return nil, wrapError(err, "send npm upstream clientx request")
-	}
-	return resp, nil
 }
 
 func (s *Service) storeFetchedResponse(ctx context.Context, req Request, requestRoute route, fetched *upstreamFetch) (*Response, error) {

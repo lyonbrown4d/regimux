@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/coalescer"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/samber/go-singleflightx"
@@ -34,15 +35,19 @@ type Dependencies struct {
 	Fills    *FillTracker
 	Logger   *slog.Logger
 	Now      func() time.Time
+	// SubmitAccess schedules a best-effort access update and must not block when full.
+	SubmitAccess func(func()) error
 }
 
 type Store struct {
-	metadata MetadataStore
-	objects  object.Store
-	fills    *FillTracker
-	logger   *slog.Logger
-	now      func() time.Time
-	reads    singleflightx.Group[Key, readSnapshot]
+	metadata     MetadataStore
+	objects      object.Store
+	fills        *FillTracker
+	logger       *slog.Logger
+	now          func() time.Time
+	reads        singleflightx.Group[Key, readSnapshot]
+	accesses     *coalescer.Tracker
+	submitAccess func(func()) error
 }
 
 type Key struct {

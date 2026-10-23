@@ -38,8 +38,8 @@ func TestCatalogRefreshFailureRollsBack(t *testing.T) {
 	if !errors.Is(err, errCatalogRefreshInjected) {
 		t.Fatalf("record pull error = %v, want forced catalog refresh failure", err)
 	}
-	if got := hook.rollbacks.Load(); got != 1 {
-		t.Fatalf("rollback transactions after failure = %d, want 1", got)
+	if got := hook.rollbacks.Load(); got != 2 {
+		t.Fatalf("rollback transactions after two failed attempts = %d, want 2", got)
 	}
 	if got := hook.commits.Load(); got != 0 {
 		t.Fatalf("commit transactions after failure = %d, want 0", got)
@@ -49,8 +49,8 @@ func TestCatalogRefreshFailureRollsBack(t *testing.T) {
 	}
 }
 
-func TestCatalogRefreshCancellationRollsBack(t *testing.T) {
-	hook := &catalogTxCleanupHook{rollbackDone: make(chan struct{})}
+func TestCatalogRefreshCompletesAfterCallerCancellation(t *testing.T) {
+	hook := &catalogTxCleanupHook{commitDone: make(chan struct{})}
 	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	hook.cancelRequest = cancel
@@ -60,11 +60,11 @@ func TestCatalogRefreshCancellationRollsBack(t *testing.T) {
 		t.Fatalf("record pull error = %v, want context canceled", err)
 	}
 	select {
-	case <-hook.rollbackDone:
+	case <-hook.commitDone:
 	case <-time.After(5 * time.Second):
-		t.Fatal("canceled catalog refresh did not finish transaction cleanup")
+		t.Fatal("post-commit catalog refresh did not finish after caller cancellation")
 	}
-	assertCatalogTxCounts(t, hook, 0, 1)
+	assertCatalogTxCounts(t, hook, 1, 0)
 	assertCatalogPullPersisted(t, store)
 }
 
@@ -75,7 +75,7 @@ func TestCatalogRefreshCommitFailureRollsBack(t *testing.T) {
 	if !errors.Is(err, errCatalogCommitInjected) {
 		t.Fatalf("record pull error = %v, want forced catalog commit failure", err)
 	}
-	assertCatalogTxCounts(t, hook, 1, 1)
+	assertCatalogTxCounts(t, hook, 2, 2)
 	assertCatalogPullPersisted(t, store)
 }
 
@@ -103,13 +103,14 @@ func catalogCleanupPullKey() meta.PullKey {
 type catalogTxCleanupHook struct {
 	commits                atomic.Int32
 	rollbacks              atomic.Int32
-	locked                 atomic.Bool
-	failureInjected        atomic.Bool
+	aggregateAttempts      atomic.Int32
+	commitAttempts         atomic.Int32
 	failLockedUpstreamRead bool
 	failCommit             bool
 	cancelRequest          context.CancelFunc
 	cancelOnce             sync.Once
-	rollbackDone           chan struct{}
+	commitDone             chan struct{}
+	commitDoneOnce         sync.Once
 }
 
 func (h *catalogTxCleanupHook) dbHook() dbx.Hook {
@@ -117,18 +118,14 @@ func (h *catalogTxCleanupHook) dbHook() dbx.Hook {
 }
 
 func (h *catalogTxCleanupHook) before(ctx context.Context, event *dbx.HookEvent) (context.Context, error) {
-	if h.failCommit && event.Operation == dbx.OperationCommitTx &&
-		h.failureInjected.CompareAndSwap(false, true) {
+	if h.failCommit && event.Operation == dbx.OperationCommitTx && h.commitAttempts.Add(1) <= 2 {
 		return ctx, errCatalogCommitInjected
 	}
-	if !h.locked.Load() || !isCatalogUpstreamQuery(event) {
-		return ctx, nil
-	}
-	if h.cancelRequest != nil {
-		h.cancelOnce.Do(h.cancelRequest)
-	}
-	if h.failLockedUpstreamRead && h.failureInjected.CompareAndSwap(false, true) {
+	if h.failLockedUpstreamRead && isCatalogQuery(event) && isCatalogAggregateQuery(event.SQL) && h.aggregateAttempts.Add(1) <= 2 {
 		return ctx, errCatalogRefreshInjected
+	}
+	if isCatalogUpstreamQuery(event) && h.cancelRequest != nil {
+		h.cancelOnce.Do(h.cancelRequest)
 	}
 	return ctx, nil
 }
@@ -136,6 +133,16 @@ func (h *catalogTxCleanupHook) before(ctx context.Context, event *dbx.HookEvent)
 func isCatalogUpstreamQuery(event *dbx.HookEvent) bool {
 	return (event.Operation == dbx.OperationQuery || event.Operation == dbx.OperationQueryRow) &&
 		strings.Contains(strings.ToLower(event.SQL), "meta_upstreams")
+}
+
+func isCatalogQuery(event *dbx.HookEvent) bool {
+	return event.Operation == dbx.OperationQuery || event.Operation == dbx.OperationQueryRow
+}
+
+func isCatalogAggregateQuery(statement string) bool {
+	sql := strings.ToLower(statement)
+	return strings.Contains(sql, "meta_repositories") &&
+		strings.Contains(sql, "count(") && strings.Contains(sql, "sum(")
 }
 
 func assertCatalogTxCounts(t *testing.T, hook *catalogTxCleanupHook, commits, rollbacks int32) {
@@ -150,28 +157,26 @@ func assertCatalogTxCounts(t *testing.T, hook *catalogTxCleanupHook, commits, ro
 
 func assertCatalogPullPersisted(t *testing.T, store *meta.SQLStore) {
 	t.Helper()
-	if _, ok, err := store.Pull(t.Context(), catalogCleanupPullKey()); err != nil || !ok {
+	record, ok, err := store.Pull(t.Context(), catalogCleanupPullKey())
+	if err != nil || !ok {
 		t.Errorf("pull upsert should remain committed before catalog refresh: found=%v error=%v", ok, err)
+		return
+	}
+	if record.Count != 1 {
+		t.Errorf("canonical pull count = %d, want exactly one after refresh retries", record.Count)
 	}
 }
 
 func (h *catalogTxCleanupHook) after(_ context.Context, event *dbx.HookEvent) {
 	if event.Operation == dbx.OperationCommitTx {
 		h.commits.Add(1)
-		return
-	}
-	if event.Operation == dbx.OperationRollbackTx {
-		if h.rollbacks.Add(1) == 1 && h.rollbackDone != nil {
-			close(h.rollbackDone)
+		if h.commitDone != nil {
+			h.commitDoneOnce.Do(func() { close(h.commitDone) })
 		}
 		return
 	}
-	if event.Operation == dbx.OperationExec && isCatalogUpstreamUpdate(event.SQL) {
-		h.locked.Store(true)
+	if event.Operation == dbx.OperationRollbackTx {
+		h.rollbacks.Add(1)
+		return
 	}
-}
-
-func isCatalogUpstreamUpdate(statement string) bool {
-	sql := strings.ToLower(strings.TrimSpace(statement))
-	return strings.HasPrefix(sql, "update") && strings.Contains(sql, "meta_upstreams")
 }

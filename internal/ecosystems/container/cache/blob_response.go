@@ -19,7 +19,7 @@ func blobReadOptions(req BlobRequest, fullSize int64, headers http.Header) (int,
 	status := http.StatusOK
 	size := fullSize
 	opts := object.GetOptions{}
-	if req.Range == nil {
+	if req.Range == nil || req.Method == http.MethodHead {
 		return status, size, opts, nil
 	}
 

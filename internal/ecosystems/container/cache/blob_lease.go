@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/cache/backend"
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
 const (
@@ -36,18 +37,17 @@ func (p blobProxy) startBlobFillLease(ctx context.Context, req BlobRequest, leas
 	if lease == nil {
 		return func() {}
 	}
-	stop := make(chan struct{})
 	var once sync.Once
-	p.scheduleBlobFillLeaseRenewal(ctx, req, lease, stop)
+	stop := p.scheduleBlobFillLeaseRenewal(ctx, req, lease)
 	return func() {
 		once.Do(func() {
-			close(stop)
+			stop()
 			p.releaseBlobFillLease(ctx, req, lease)
 		})
 	}
 }
 
-func (p blobProxy) scheduleBlobFillLeaseRenewal(ctx context.Context, req BlobRequest, lease backend.Lease, stop <-chan struct{}) {
+func (p blobProxy) scheduleBlobFillLeaseRenewal(ctx context.Context, req BlobRequest, lease backend.Lease) func() {
 	if p.leaseScheduler == nil {
 		p.logBlobStreamCacheError(
 			ctx,
@@ -55,13 +55,13 @@ func (p blobProxy) scheduleBlobFillLeaseRenewal(ctx context.Context, req BlobReq
 			"blob fill lease renewal scheduler unavailable",
 			errors.New("lease renewal scheduler unavailable"),
 		)
-		return
+		return func() {}
 	}
-	if err := p.leaseScheduler.Submit(func() {
-		p.renewBlobFillLease(ctx, req, lease, stop)
-	}); err != nil {
+	return worker.StartLeaseRenewal(ctx, p.leaseScheduler, blobFillLeaseTTL/2, func(renewCtx context.Context) {
+		p.renewBlobFillLease(renewCtx, req, lease)
+	}, func(err error) {
 		p.logBlobStreamCacheError(ctx, req, "submit blob fill lease renewal failed", err)
-	}
+	})
 }
 
 func (p blobProxy) releaseBlobFillLease(ctx context.Context, req BlobRequest, lease backend.Lease) {
@@ -75,28 +75,11 @@ func (p blobProxy) releaseBlobFillLease(ctx context.Context, req BlobRequest, le
 	}
 }
 
-func (p blobProxy) renewBlobFillLease(ctx context.Context, req BlobRequest, lease backend.Lease, stop <-chan struct{}) {
-	interval := blobFillLeaseTTL / 2
-	if interval <= 0 {
-		return
-	}
-	timer := time.NewTimer(interval)
-	defer timer.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-			extendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), blobFillLeaseReleaseTimeout)
-			err := lease.Extend(extendCtx, blobFillLeaseTTL)
-			cancel()
-			if err != nil {
-				p.logBlobStreamCacheError(ctx, req, "extend blob fill lease failed", err)
-			}
-			timer.Reset(interval)
-		}
+func (p blobProxy) renewBlobFillLease(ctx context.Context, req BlobRequest, lease backend.Lease) {
+	extendCtx, cancel := context.WithTimeout(ctx, blobFillLeaseReleaseTimeout)
+	defer cancel()
+	if err := lease.Extend(extendCtx, blobFillLeaseTTL); err != nil {
+		p.logBlobStreamCacheError(ctx, req, "extend blob fill lease failed", err)
 	}
 }
 

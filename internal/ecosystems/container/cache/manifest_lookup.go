@@ -42,10 +42,12 @@ func (p manifestProxy) lookupEnvelope(ctx context.Context, req ManifestRequest, 
 	if !supportedManifestMediaType(manifest.MediaType) {
 		return p.deleteInvalidManifestCache(ctx, cacheKey)
 	}
-	p.touchManifestAccess(ctx, meta.ManifestRecord{
-		Digest: manifest.Digest, MediaType: manifest.MediaType, Size: manifest.Size,
-		ObjectKey: manifest.Digest,
-	})
+	if !req.deferMetadata {
+		p.touchManifestAccess(ctx, meta.ManifestRecord{
+			Digest: manifest.Digest, MediaType: manifest.MediaType, Size: manifest.Size,
+			ObjectKey: manifest.Digest,
+		})
+	}
 	return manifestForMethod(manifest, req.Method), true, nil
 }
 
@@ -214,7 +216,9 @@ func (p manifestProxy) manifestFromRecord(ctx context.Context, req ManifestReque
 	if !supportedManifestMediaType(record.MediaType) {
 		return nil, false, nil
 	}
-	p.touchManifestAccess(ctx, *record)
+	if !req.deferMetadata {
+		p.touchManifestAccess(ctx, *record)
+	}
 
 	body, ok, err := p.storedManifestBody(ctx, req, record)
 	if err != nil || !ok {
@@ -247,51 +251,4 @@ func (p manifestProxy) storedManifestBody(ctx context.Context, req ManifestReque
 		return nil, false, err
 	}
 	return body, true, nil
-}
-
-func (p manifestProxy) lookupMetadata(ctx context.Context, req ManifestRequest) (*meta.ManifestRecord, bool, error) {
-	now := time.Now()
-	if reference.IsDigest(req.Reference) {
-		digest, err := digestFromReference(req.Reference, nil)
-		if err != nil {
-			return nil, false, err
-		}
-		return p.lookupManifestRecord(ctx, meta.ManifestKey{
-			Alias:      req.UpstreamAlias,
-			Repository: req.Repo,
-			Digest:     digest,
-		}, now)
-	}
-
-	tag, ok, err := p.metadata.Tag(ctx, meta.TagKey{
-		Alias:      req.UpstreamAlias,
-		Repository: req.Repo,
-		Reference:  req.Reference,
-	})
-	if err != nil {
-		return nil, false, wrapError(err, "lookup manifest tag")
-	}
-	if !ok || tagExpired(tag, now) {
-		return nil, false, nil
-	}
-	return p.lookupManifestRecord(ctx, meta.ManifestKey{
-		Alias:      req.UpstreamAlias,
-		Repository: req.Repo,
-		Digest:     tag.Digest,
-	}, now)
-}
-
-func tagExpired(tag *meta.TagRecord, now time.Time) bool {
-	return !tag.ExpiresAt.IsZero() && !now.Before(tag.ExpiresAt)
-}
-
-func (p manifestProxy) lookupManifestRecord(ctx context.Context, key meta.ManifestKey, now time.Time) (*meta.ManifestRecord, bool, error) {
-	record, ok, err := p.metadata.Manifest(ctx, key)
-	if err != nil {
-		return nil, false, wrapError(err, "lookup manifest record")
-	}
-	if !ok || record.Expired(now) {
-		return nil, false, nil
-	}
-	return record, true, nil
 }

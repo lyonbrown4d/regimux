@@ -74,6 +74,8 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 		return nil, oops.In("pypi").With("alias", requestRoute.Alias).Errorf("pypi upstream is not configured")
 	}
 	resp, err := s.getFromUpstream(ctx, req, requestRoute, upstreamCfg, requestModeClient)
+	resumeReadLease := suspendResponseReadLease(resp)
+	defer resumeReadLease()
 	s.recordPull(ctx, req, requestRoute, resp, err)
 	return resp, err
 }

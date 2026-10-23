@@ -11,6 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/spool"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
@@ -34,33 +35,59 @@ func (s *Service) fetchEndpoint(ctx context.Context, cfg config.UpstreamConfig, 
 	requestURL := strings.TrimRight(endpoint, "/") + "/" + tail
 	headers := http.Header{}
 	headers.Set("User-Agent", "regimux/dev")
+	headers.Set("Accept-Encoding", "identity")
 	client, err := s.clientFor(cfg, endpoint)
 	if err != nil {
 		return nil, err
 	}
-	resp, err := upstreamhttp.Do(ctx, client, upstreamhttp.Request{
-		Method:  methodOr(method, http.MethodGet),
+	attemptCtx, cancel := context.WithCancel(ctx)
+	resp, err := upstreamhttp.Do(attemptCtx, client, upstreamhttp.Request{
+		Method:  methodOrGet(method),
 		URL:     requestURL,
 		Headers: headers,
 		Auth:    cfg.Auth,
 	})
 	if err != nil {
+		cancel()
 		return nil, wrapError(err, "send go proxy upstream request")
 	}
+	upstreamBody := upstreamhttp.WithIdleTimeout(resp.Body, cancel, upstreamhttp.DefaultBodyIdleTimeout)
+	if resp.Status == http.StatusOK {
+		upstreamBody = transfer.HTTPRecovery(ctx, methodOrGet(method), resp.Headers, upstreamBody, "", func(retryCtx context.Context, retryHeaders http.Header) (*transfer.Response, error) {
+			requestHeaders := headers.Clone()
+			mergeHeaders(requestHeaders, retryHeaders)
+			continued, fetchErr := upstreamhttp.OpenStream(retryCtx, cfg.HTTP.AttemptTimeout, upstreamhttp.DefaultBodyIdleTimeout,
+				func(attemptCtx context.Context) (*upstreamhttp.Response, error) {
+					return upstreamhttp.Do(attemptCtx, client, upstreamhttp.Request{
+						Method: methodOrGet(method), URL: requestURL, Headers: requestHeaders, Auth: cfg.Auth,
+					})
+				})
+			if fetchErr != nil {
+				return nil, wrapError(fetchErr, "resume go proxy upstream request")
+			}
+			return &transfer.Response{Status: continued.Status, Headers: continued.Headers, Body: continued.Body, Size: contentLength(continued.Headers)}, nil
+		})
+	}
 	defer func() {
-		if closeErr := resp.Body.Close(); closeErr != nil {
+		if closeErr := upstreamBody.Close(); closeErr != nil {
 			s.logger.Warn("close go proxy upstream response body failed", "error", closeErr)
 		}
 	}()
-	body, err := materializeHTTPBody(resp.Body)
+	materialized, err := materializeHTTPBody(upstreamBody)
 	if err != nil {
 		return nil, err
 	}
 	return &upstreamFetch{
 		status:  resp.Status,
 		headers: resp.Headers,
-		body:    body,
+		body:    materialized,
 	}, nil
+}
+
+func mergeHeaders(target, source http.Header) {
+	for key, values := range source {
+		target[key] = append([]string(nil), values...)
+	}
 }
 
 func (s *Service) clientFor(cfg config.UpstreamConfig, baseURL string) (clienthttp.Client, error) {

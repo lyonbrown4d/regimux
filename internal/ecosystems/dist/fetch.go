@@ -11,6 +11,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/spool"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
@@ -49,34 +50,28 @@ func canFallbackDistStatus(status int) bool {
 }
 
 func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL string, distReq Request) (*upstreamFetch, error) {
-	headers := http.Header{}
-	headers.Set("User-Agent", defaultUserAgent)
-	if rangeHeader := strings.TrimSpace(distReq.Range); rangeHeader != "" && methodOrGet(distReq.Method) == http.MethodGet {
-		headers.Set("Range", rangeHeader)
-	}
-	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
-		Method:  methodOrGet(distReq.Method),
-		URL:     requestURL,
-		Headers: headers,
-		Auth:    cfg.Auth,
-	})
+	transferCtx, cancel := context.WithCancel(ctx)
+	resp, err := s.fetchDistAttempt(transferCtx, cfg, requestURL, distReq)
 	if err != nil {
+		cancel()
 		return nil, wrapError(err, "send dist upstream request")
 	}
+	resp.Body = transfer.CancelOnClose(s.recoverDistHTTP(transferCtx, cfg, requestURL, distReq, resp), cancel)
 	defer func() {
 		if closeErr := resp.Body.Close(); closeErr != nil {
 			s.logger.Warn("close dist upstream response body failed", "error", closeErr)
 		}
 	}()
+	if resp.Status == http.StatusPartialContent && !transfer.MatchesIfRange(distReq.IfRange, resp.Headers) {
+		distReq.Range, distReq.IfRange = "", ""
+		closeReadCloser(resp.Body, s.logger, "close dist mismatched If-Range response")
+		return s.fetchURL(ctx, cfg, requestURL, distReq)
+	}
 	body, err := materializeHTTPBody(resp.Body)
 	if err != nil {
 		return nil, err
 	}
-	return &upstreamFetch{
-		status:  resp.Status,
-		headers: resp.Headers,
-		body:    body,
-	}, nil
+	return selectDistRange(distReq, resp, body)
 }
 
 func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseURL string, req upstreamhttp.Request) (*upstreamhttp.Response, error) {

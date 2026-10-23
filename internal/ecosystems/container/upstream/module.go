@@ -132,7 +132,8 @@ func ConfigFromUpstreamConfig(alias string, cfg config.UpstreamConfig) Config {
 			Token:    cfg.Auth.Token,
 		},
 		HTTP: HTTPConfig{
-			Timeout: cfg.HTTP.Timeout,
+			AttemptTimeout: cfg.HTTP.AttemptTimeout,
+			Timeout:        cfg.HTTP.Timeout,
 			HTTP2: HTTP2Config{
 				Enabled: cfg.HTTP.HTTP2.Enabled,
 			},

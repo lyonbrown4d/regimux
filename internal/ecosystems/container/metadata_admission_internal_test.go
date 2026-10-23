@@ -18,7 +18,7 @@ func TestRegistryMetadataAdmissionCancelsBeforeLoading(t *testing.T) {
 	var called atomic.Bool
 	done := make(chan *registryOutput, 1)
 	go func() {
-		done <- endpoint.metadataResponse(ctx, func() (*registryOutput, func()) {
+		done <- endpoint.metadataResponse(ctx, func() (*registryOutput, func() error) {
 			called.Store(true)
 			return nil, nil
 		})
@@ -37,12 +37,13 @@ func TestRegistryMetadataAdmissionCancelsBeforeLoading(t *testing.T) {
 func TestRegistryMetadataAfterCallbackRunsAfterAdmissionRelease(t *testing.T) {
 	endpoint := NewRegistryEndpoint(nil, nil, nil, nil, nil)
 	var acquired atomic.Bool
-	endpoint.metadataResponse(t.Context(), func() (*registryOutput, func()) {
-		return &registryOutput{}, func() {
+	endpoint.metadataResponse(t.Context(), func() (*registryOutput, func() error) {
+		return &registryOutput{}, func() error {
 			if endpoint.metadataGate.TryAcquire(4) {
 				acquired.Store(true)
 				endpoint.metadataGate.Release(4)
 			}
+			return nil
 		}
 	})
 	if !acquired.Load() {

@@ -2,7 +2,6 @@ package meta
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"testing"
 	"time"
@@ -24,8 +23,8 @@ func TestPullWriteBatchLateMutationSurvivesEarlierRefreshFailure(t *testing.T) {
 	hook.releaseGate()
 	first := receivePullBatchMutation(t, owner)
 	second := receivePullBatchMutation(t, follower)
-	if !errors.Is(first.err, errPullWriteBatchInjected) {
-		t.Fatalf("first batch error = %v, want injected refresh error", first.err)
+	if first.err != nil || first.record == nil {
+		t.Fatalf("first batch did not recover from injected refresh error: record=%#v error=%v", first.record, first.err)
 	}
 	if second.err != nil || second.record == nil || second.record.Count != 2 {
 		t.Fatalf("unattempted late mutation lost after earlier refresh failure: record=%#v error=%v", second.record, second.err)

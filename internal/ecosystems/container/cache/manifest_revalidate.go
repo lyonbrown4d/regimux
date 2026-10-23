@@ -23,19 +23,37 @@ func (p manifestProxy) revalidate(ctx context.Context, req ManifestRequest, cach
 	if !sameRevalidatedDigest(req, record.Digest, resp.Digest) {
 		return nil, false, nil
 	}
-	p.recordManifestUpstreamPull(ctx, req)
-
 	p.refreshRevalidatedRecord(record, resp)
-	if saveErr := p.saveRevalidatedRecords(ctx, tag, record); saveErr != nil {
-		return nil, false, saveErr
+	if !req.deferMetadata {
+		p.recordManifestUpstreamPull(ctx, req)
+		if saveErr := p.saveRevalidatedRecords(ctx, tag, record); saveErr != nil {
+			return nil, false, saveErr
+		}
 	}
+	return p.finishRevalidation(ctx, req, cacheKey, tag, record)
+}
 
+func (p manifestProxy) finishRevalidation(ctx context.Context, req ManifestRequest, cacheKey string, tag *meta.TagRecord, record *meta.ManifestRecord) (*CachedManifest, bool, error) {
 	result, ok, err := p.manifestFromRecord(ctx, req, record, CacheHit)
 	if err != nil || !ok {
 		return nil, false, err
 	}
-	p.setManifestCache(ctx, cacheKey, *record, result.Body, p.effectiveTTL())
+	if req.deferMetadata {
+		recordCopy := copyManifestRecord(record)
+		tagCopy := *tag
+		tagCopy.ExpiresAt = record.ExpiresAt
+		result.preparedMetadata = p.preparedUpstreamMetadata(req, &recordCopy, &tagCopy, true, true)
+	}
+	if !req.deferMetadata {
+		p.setManifestCache(ctx, cacheKey, *record, result.Body, p.effectiveTTL())
+	}
 	return result, true, nil
+}
+
+func copyManifestRecord(record *meta.ManifestRecord) meta.ManifestRecord {
+	cloned := *record
+	cloned.Headers = meta.NormalizeManifestHeaders(record.Headers)
+	return cloned
 }
 
 func (p manifestProxy) revalidationCandidate(ctx context.Context, req ManifestRequest, mode manifestRequestMode) (*meta.TagRecord, *meta.ManifestRecord, bool, error) {

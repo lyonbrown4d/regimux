@@ -15,9 +15,10 @@ type Endpoint struct {
 }
 
 type input struct {
-	Alias string         `path:"alias"`
-	Tail  httpx.PathTail `path:"tail"`
-	Range string         `header:"Range"`
+	Alias   string         `path:"alias"`
+	Tail    httpx.PathTail `path:"tail"`
+	Range   string         `header:"Range"`
+	IfRange string         `header:"If-Range"`
 }
 
 type output struct {
@@ -64,10 +65,11 @@ func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*out
 		return plainError(http.StatusBadRequest, "dist proxy input is required"), nil
 	}
 	resp, err := e.service.Get(ctx, Request{
-		Alias:  in.Alias,
-		Tail:   in.Tail.String(),
-		Method: method,
-		Range:  in.Range,
+		Alias:   in.Alias,
+		Tail:    in.Tail.String(),
+		Method:  method,
+		Range:   in.Range,
+		IfRange: in.IfRange,
 	})
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil

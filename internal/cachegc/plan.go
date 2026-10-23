@@ -72,6 +72,7 @@ func compareCleanupGroups(a, b ecosystem.CacheCleanupGroup) int {
 func (s *Service) selectPackages(ctx context.Context, inventory ecosystem.CacheCleanupInventory, groups []ecosystem.CacheCleanupGroup, opts ecosystem.CacheCleanupOptions, result *PackageCleanupResult) ([]bool, error) {
 	selected := make([]bool, len(groups))
 	blobs := make(map[string]meta.BlobRecord, len(inventory.Blobs))
+	recentPulls := make(map[meta.PullKey]struct{})
 	for i := range inventory.Blobs {
 		blob := &inventory.Blobs[i]
 		blobs[blob.Digest] = *blob
@@ -83,7 +84,7 @@ func (s *Service) selectPackages(ctx context.Context, inventory ecosystem.CacheC
 			break
 		}
 		result.ScannedPackages++
-		accepted, err := s.selectPackage(ctx, blobs, group, opts, result)
+		accepted, err := s.selectPackage(ctx, blobs, recentPulls, group, opts, result)
 		if err != nil {
 			return nil, err
 		}
@@ -93,7 +94,7 @@ func (s *Service) selectPackages(ctx context.Context, inventory ecosystem.CacheC
 	return selected, nil
 }
 
-func (s *Service) selectPackage(ctx context.Context, blobs map[string]meta.BlobRecord, group *ecosystem.CacheCleanupGroup, opts ecosystem.CacheCleanupOptions, result *PackageCleanupResult) (bool, error) {
+func (s *Service) selectPackage(ctx context.Context, blobs map[string]meta.BlobRecord, recentPulls map[meta.PullKey]struct{}, group *ecosystem.CacheCleanupGroup, opts ecosystem.CacheCleanupOptions, result *PackageCleanupResult) (bool, error) {
 	if group.LastAccessAt.IsZero() || !group.LastAccessAt.Before(opts.Now.Add(-opts.UnusedFor)) {
 		return false, nil
 	}
@@ -102,7 +103,7 @@ func (s *Service) selectPackage(ctx context.Context, blobs map[string]meta.BlobR
 		result.LimitReached = true
 		return false, nil
 	}
-	unchanged, err := s.packageUnchanged(ctx, blobs, group)
+	unchanged, err := s.packageUnchanged(ctx, blobs, recentPulls, group, opts.Now.Add(-opts.UnusedFor))
 	if err != nil || !unchanged {
 		return false, err
 	}
@@ -130,7 +131,7 @@ func packageFitsBudget(digests []string, limit int, result *PackageCleanupResult
 	return count <= limit
 }
 
-func (s *Service) packageUnchanged(ctx context.Context, blobs map[string]meta.BlobRecord, group *ecosystem.CacheCleanupGroup) (bool, error) {
+func (s *Service) packageUnchanged(ctx context.Context, blobs map[string]meta.BlobRecord, recentPulls map[meta.PullKey]struct{}, group *ecosystem.CacheCleanupGroup, pullCutoff time.Time) (bool, error) {
 	tagsMatch, err := s.packageTagsUnchanged(ctx, group.Tags)
 	if err != nil || !tagsMatch {
 		return false, err
@@ -139,7 +140,15 @@ func (s *Service) packageUnchanged(ctx context.Context, blobs map[string]meta.Bl
 	if err != nil || !manifestsMatch {
 		return false, err
 	}
-	return s.packageBlobsUnchanged(ctx, blobs, group.Digests)
+	blobsMatch, err := s.packageBlobsUnchanged(ctx, blobs, group.Digests)
+	if err != nil || !blobsMatch {
+		return false, err
+	}
+	recentPull, err := s.packageHasRecentPull(ctx, recentPulls, group, pullCutoff)
+	if err != nil || recentPull {
+		return false, err
+	}
+	return true, nil
 }
 
 func (s *Service) packageTagsUnchanged(ctx context.Context, tags []meta.TagRecord) (bool, error) {

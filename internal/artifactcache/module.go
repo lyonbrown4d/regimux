@@ -13,13 +13,14 @@ import (
 var Module = dix.NewModule("artifact-cache",
 	dix.Providers(
 		dix.Provider3[*FillTracker, backend.Backend, *worker.Pools, *slog.Logger](newFillTracker),
-		dix.Provider4[*Store, meta.Store, object.Store, *FillTracker, *slog.Logger](
-			func(metadata meta.Store, objects object.Store, fills *FillTracker, logger *slog.Logger) *Store {
+		dix.Provider5[*Store, meta.Store, object.Store, *FillTracker, *slog.Logger, *worker.Pools](
+			func(metadata meta.Store, objects object.Store, fills *FillTracker, logger *slog.Logger, pools *worker.Pools) *Store {
 				return New(Dependencies{
-					Metadata: metadata,
-					Objects:  objects,
-					Fills:    fills,
-					Logger:   logger,
+					Metadata:     metadata,
+					Objects:      objects,
+					Fills:        fills,
+					Logger:       logger,
+					SubmitAccess: pools.SubmitAccess,
 				})
 			},
 		),

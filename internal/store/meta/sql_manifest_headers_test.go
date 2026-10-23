@@ -24,6 +24,7 @@ func TestSQLStoreManifestHeadersAreAllowlisted(t *testing.T) {
 			distribution.HeaderContentLength:                {"2"},
 			distribution.HeaderDockerContentDigest:          {testDigest},
 			"etag":                                          {`"manifest"`},
+			"last-modified":                                 {"Wed, 21 Oct 2026 00:00:00 GMT"},
 			"x-regimux-metadata-format":                     {"npm:2"},
 			distribution.HeaderAuthorization:                {"Bearer secret-token"},
 			distribution.HeaderWWWAuthenticate:              {"Bearer realm=secret"},
@@ -51,8 +52,8 @@ func TestSQLStoreManifestHeadersAreAllowlisted(t *testing.T) {
 func assertManifestHeadersAllowlisted(t *testing.T, headers map[string][]string) {
 	t.Helper()
 
-	if len(headers) != 5 {
-		t.Fatalf("manifest headers len = %d, want 5: %#v", len(headers), headers)
+	if len(headers) != 6 {
+		t.Fatalf("manifest headers len = %d, want 6: %#v", len(headers), headers)
 	}
 	header := http.Header(headers)
 	if got := header.Get("X-Regimux-Metadata-Format"); got != "npm:2" {
@@ -69,6 +70,9 @@ func assertManifestHeadersAllowlisted(t *testing.T, headers map[string][]string)
 	}
 	if got := header.Get(distribution.HeaderETag); got != `"manifest"` {
 		t.Fatalf("etag = %q", got)
+	}
+	if got := header.Get("Last-Modified"); got != "Wed, 21 Oct 2026 00:00:00 GMT" {
+		t.Fatalf("last-modified = %q", got)
 	}
 	for _, key := range []string{
 		distribution.HeaderAuthorization,

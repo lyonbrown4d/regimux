@@ -45,7 +45,7 @@ func (s *Service) responseFromFetchError(req Request, cached storedResponse, cac
 func shouldPassThrough(req Request, requestRoute route, status int) bool {
 	return status < http.StatusOK ||
 		status >= http.StatusMultipleChoices ||
-		methodOr(req.Method, http.MethodGet) == http.MethodHead ||
+		methodOrGet(req.Method) == http.MethodHead ||
 		!routeCacheable(requestRoute)
 }
 

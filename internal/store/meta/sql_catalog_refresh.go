@@ -3,6 +3,7 @@ package meta
 import (
 	"context"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/arcgolabs/dbx"
@@ -10,50 +11,6 @@ import (
 	"github.com/arcgolabs/dbx/repository"
 	"github.com/samber/lo"
 )
-
-func (s *SQLStore) ensureRepositoryMetadata(ctx context.Context, alias, name string, at time.Time) (*Repository, error) {
-	upstream, err := s.ensureUpstreamMetadata(ctx, alias, at)
-	if err != nil {
-		return nil, err
-	}
-	name, err = normalizeRepositoryName(name)
-	if err != nil {
-		return nil, err
-	}
-	key := repositoryMetadataKey(upstream.Alias, name)
-	row, err := s.repositories.By(sqlRepositoryRows.Key).Get(ctx, key)
-	if err == nil {
-		record, mapErr := s.mapper.RepositoryRowToRecord(row)
-		if mapErr != nil {
-			return nil, mapErr
-		}
-		return record, nil
-	}
-	if !errors.Is(err, repository.ErrNotFound) {
-		return nil, wrapError(err, "get repository metadata")
-	}
-	now := metadataTimestamp(at)
-	record := Repository{
-		UpstreamID: upstream.ID,
-		Alias:      upstream.Alias,
-		Name:       name,
-		CreatedAt:  now,
-		UpdatedAt:  now,
-	}
-	row, err = s.mapper.RepositoryRecordToRow(record)
-	if err != nil {
-		return nil, err
-	}
-	recovered, ok, err := s.createRepositoryMetadataRow(ctx, key, &row)
-	if err != nil {
-		return nil, err
-	}
-	if ok {
-		return recovered, nil
-	}
-	record.ID = row.ID
-	return &record, nil
-}
 
 func (s *SQLStore) ensureUpstreamMetadata(ctx context.Context, alias string, at time.Time) (*Upstream, error) {
 	alias, err := normalizeUpstreamAlias(alias)
@@ -92,20 +49,6 @@ func (s *SQLStore) ensureUpstreamMetadata(ctx context.Context, alias string, at 
 	return &record, nil
 }
 
-func (s *SQLStore) createRepositoryMetadataRow(ctx context.Context, key string, row *repositoryRow) (*Repository, bool, error) {
-	if err := s.repositories.Create(ctx, row); err != nil {
-		recovered, ok, recoverErr := s.repositoryMetadataAfterCreateRace(ctx, key)
-		if recoverErr != nil {
-			return nil, false, recoverErr
-		}
-		if ok {
-			return recovered, true, nil
-		}
-		return nil, false, wrapError(err, "create repository metadata")
-	}
-	return nil, false, nil
-}
-
 func (s *SQLStore) createUpstreamMetadataRow(ctx context.Context, alias string, row *upstreamRow) (*Upstream, bool, error) {
 	if err := s.upstreams.Create(ctx, row); err != nil {
 		recovered, ok, recoverErr := s.upstreamMetadataAfterCreateRace(ctx, alias)
@@ -118,21 +61,6 @@ func (s *SQLStore) createUpstreamMetadataRow(ctx context.Context, alias string, 
 		return nil, false, wrapError(err, "create upstream metadata")
 	}
 	return nil, false, nil
-}
-
-func (s *SQLStore) repositoryMetadataAfterCreateRace(ctx context.Context, key string) (*Repository, bool, error) {
-	row, err := s.repositories.By(sqlRepositoryRows.Key).Get(ctx, key)
-	if errors.Is(err, repository.ErrNotFound) {
-		return nil, false, nil
-	}
-	if err != nil {
-		return nil, false, wrapError(err, "get repository metadata after create race")
-	}
-	record, err := s.mapper.RepositoryRowToRecord(row)
-	if err != nil {
-		return nil, false, err
-	}
-	return record, true, nil
 }
 
 func (s *SQLStore) upstreamMetadataAfterCreateRace(ctx context.Context, alias string) (*Upstream, bool, error) {
@@ -150,22 +78,41 @@ func (s *SQLStore) upstreamMetadataAfterCreateRace(ctx context.Context, alias st
 	return record, true, nil
 }
 
-func (s *SQLStore) refreshRepositoryMetadataOnce(ctx context.Context, alias, name string, at time.Time) error {
-	if err := s.catalogMu.Acquire(ctx, 1); err != nil {
-		return wrapError(err, "wait for catalog refresh")
+func (s *SQLStore) acquireCatalogRefresh(ctx context.Context) (func(), error) {
+	if s.driver != metaDriverSQLite {
+		return func() {}, nil
 	}
-	defer s.catalogMu.Release(1)
+	if err := s.catalogMu.Acquire(ctx, 1); err != nil {
+		return nil, wrapError(err, "wait for catalog refresh")
+	}
+	return func() { s.catalogMu.Release(1) }, nil
+}
 
-	// Ensure rows exist before opening the transaction. The upstream lock is the
-	// transaction's first statement so MySQL RR cannot retain a pre-lock snapshot.
-	seed, err := s.ensureRepositoryMetadata(ctx, alias, name, at)
-	if err != nil {
+func (s *SQLStore) refreshRepositoryMetadataBatchOnce(ctx context.Context, alias string, updates map[string]time.Time) error {
+	if len(updates) == 0 {
+		return nil
+	}
+
+	// Only the upstream must exist before taking its transaction lock. Repository
+	// rows are inserted in batches under that lock without per-row commits.
+	var latestAt time.Time
+	for _, at := range updates {
+		latestAt = maxTime(latestAt, at)
+	}
+	if _, err := s.ensureUpstreamMetadata(ctx, alias, latestAt); err != nil {
 		return err
 	}
-	return s.withCatalogRefreshTx(ctx, seed, at)
+	return s.withCatalogRefreshTx(ctx, alias, updates)
 }
 
 func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string, at time.Time) error {
+	key := catalogRefreshKey{Digest: digest}
+	return s.refreshCatalogMetadata(ctx, key, at, func(sharedCtx context.Context, latestAt time.Time) error {
+		return s.refreshRepositoriesForBlobOnce(sharedCtx, digest, latestAt)
+	})
+}
+
+func (s *SQLStore) refreshRepositoriesForBlobOnce(ctx context.Context, digest string, at time.Time) error {
 	rows, err := repository.Query(s.repoBlobs).
 		Where(sqlRepoBlobRows.Digest.Eq(digest)).
 		List(ctx)
@@ -175,9 +122,23 @@ func (s *SQLStore) refreshRepositoriesForBlob(ctx context.Context, digest string
 	uniqueRows := lo.UniqBy(rows.Values(), func(row repoBlobRow) string {
 		return repositoryMetadataKey(row.Alias, row.Repository)
 	})
+	updatesByAlias := make(map[string]map[string]time.Time)
 	for i := range uniqueRows {
 		row := uniqueRows[i]
-		if err := s.refreshRepositoryMetadata(ctx, row.Alias, row.Repository, at); err != nil {
+		updates := updatesByAlias[row.Alias]
+		if updates == nil {
+			updates = make(map[string]time.Time)
+			updatesByAlias[row.Alias] = updates
+		}
+		updates[row.Repository] = metadataTimestamp(at)
+	}
+	aliases := make([]string, 0, len(updatesByAlias))
+	for alias := range updatesByAlias {
+		aliases = append(aliases, alias)
+	}
+	sort.Strings(aliases)
+	for _, alias := range aliases {
+		if err := s.refreshRepositoryMetadataBatch(ctx, alias, updatesByAlias[alias]); err != nil {
 			return err
 		}
 	}

@@ -53,6 +53,7 @@ type Request struct {
 	Tail           string
 	Method         string
 	Range          string
+	IfRange        string
 	SkipPullRecord bool
 }
 

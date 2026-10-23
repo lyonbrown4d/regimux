@@ -24,6 +24,17 @@ type ManifestService interface {
 	Get(ctx context.Context, req ManifestRequest) (*CachedManifest, error)
 }
 
+// ManifestPreparer separates payload preparation from synchronous bookkeeping.
+// Call the returned completion after releasing payload admission, before replying.
+type ManifestPreparer interface {
+	Prepare(ctx context.Context, req ManifestRequest) (*CachedManifest, ManifestCompletion, error)
+}
+
+type ManifestCompletion interface {
+	Finalize(ctx context.Context) error
+	CompleteResponse(ctx context.Context) error
+}
+
 type ManifestRefresher interface {
 	Refresh(ctx context.Context, req ManifestRequest) (*CachedManifest, error)
 }
@@ -51,15 +62,17 @@ type ManifestRequest struct {
 	Accept         string
 	Method         string
 	SkipPullRecord bool
+	deferMetadata  bool
 }
 
 type CachedManifest struct {
-	Digest    string
-	MediaType string
-	Size      int64
-	Body      []byte
-	Headers   http.Header
-	Cache     CacheStatus
+	Digest           string
+	MediaType        string
+	Size             int64
+	Body             []byte
+	Headers          http.Header
+	Cache            CacheStatus
+	preparedMetadata *preparedManifestMetadata
 }
 
 func (m CachedManifest) SizeString() string {

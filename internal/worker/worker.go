@@ -12,9 +12,10 @@ import (
 )
 
 type Pools struct {
-	logger    *slog.Logger
-	ioPool    *ants.Pool
-	leasePool *ants.Pool
+	logger     *slog.Logger
+	ioPool     *ants.Pool
+	leasePool  *ants.Pool
+	accessPool *ants.Pool
 }
 
 func NewPoolsConfig(ioConcurrency, leaseConcurrency int, logger *slog.Logger) *Pools {
@@ -27,9 +28,10 @@ func NewPoolsConfig(ioConcurrency, leaseConcurrency int, logger *slog.Logger) *P
 		"lease_concurrency", leaseConcurrency,
 	)
 	return &Pools{
-		logger:    logger,
-		ioPool:    newPool(ioConcurrency, logger.With("type", "io")),
-		leasePool: newPool(leaseConcurrency, logger.With("type", "lease")),
+		logger:     logger,
+		ioPool:     newPool(ioConcurrency, logger.With("type", "io")),
+		leasePool:  newPool(leaseConcurrency, logger.With("type", "lease"), ants.WithNonblocking(true)),
+		accessPool: newPool(min(ioConcurrency, 4), logger.With("type", "access"), ants.WithNonblocking(true)),
 	}
 }
 
@@ -58,6 +60,7 @@ func (p *Pools) Close() {
 		return
 	}
 	p.logger.Info("closing worker pools")
+	p.closeAccessPool()
 	if p.ioPool != nil {
 		p.ioPool.Release()
 		p.ioPool = nil
@@ -68,19 +71,20 @@ func (p *Pools) Close() {
 	}
 }
 
-func newPool(size int, logger *slog.Logger) *ants.Pool {
+func newPool(size int, logger *slog.Logger, options ...ants.Option) *ants.Pool {
 	if size <= 0 {
 		if logger != nil {
 			logger.Info("worker pool disabled", "size", size)
 		}
 		return nil
 	}
-	pool, err := ants.NewPool(size, ants.WithPanicHandler(func(recovered any) {
+	options = append(options, ants.WithPanicHandler(func(recovered any) {
 		if logger == nil {
 			return
 		}
 		logger.Error("worker pool task panicked", "panic", recovered)
 	}))
+	pool, err := ants.NewPool(size, options...)
 	if err != nil {
 		if logger != nil {
 			logger.Error("create worker pool failed", "size", size, "error", err)

@@ -36,6 +36,7 @@ type RegistryEndpoint struct {
 	events       events.Bus
 	workers      *worker.Pools
 	metadataGate *semaphore.Weighted
+	prewarmGate  *semaphore.Weighted
 
 	defaultNamespaces     *collectionmapping.Map[string, string]
 	defaultContainerAlias string
@@ -60,6 +61,7 @@ func NewRegistryEndpoint(
 		referrers:         referrers,
 		logger:            logger,
 		metadataGate:      semaphore.NewWeighted(4),
+		prewarmGate:       semaphore.NewWeighted(4),
 		defaultNamespaces: defaultNamespacesFromConfig(config.Config{}),
 	}
 }
@@ -173,17 +175,17 @@ func (e *RegistryEndpoint) dispatch(ctx context.Context, input *registryInput, m
 	case reference.RoutePing:
 		out, err = e.ping(ctx, nil)
 	case reference.RouteManifest:
-		out = e.metadataResponse(ctx, func() (*registryOutput, func()) {
+		out = e.metadataResponse(ctx, func() (*registryOutput, func() error) {
 			return e.manifest(ctx, input, route, method)
 		})
 	case reference.RouteBlob:
-		out = e.blob(ctx, input, route, method)
+		out = e.blobTransfer(ctx, input, route, method)
 	case reference.RouteTags:
-		out = e.metadataResponse(ctx, func() (*registryOutput, func()) {
+		out = e.metadataResponse(ctx, func() (*registryOutput, func() error) {
 			return e.tagsRoute(ctx, input, route, method), nil
 		})
 	case reference.RouteReferrers:
-		out = e.metadataResponse(ctx, func() (*registryOutput, func()) {
+		out = e.metadataResponse(ctx, func() (*registryOutput, func() error) {
 			return e.referrersRoute(ctx, input, route, method), nil
 		})
 	default:
@@ -273,12 +275,13 @@ func (e *RegistryEndpoint) defaultNamespace(alias string) mo.Option[string] {
 }
 
 type registryInput struct {
-	Alias  string         `path:"alias"`
-	Tail   httpx.PathTail `path:"tail"`
-	Accept string         `header:"Accept"`
-	Range  string         `header:"Range"`
-	N      string         `query:"n"`
-	Last   string         `query:"last"`
+	Alias   string         `path:"alias"`
+	Tail    httpx.PathTail `path:"tail"`
+	Accept  string         `header:"Accept"`
+	Range   string         `header:"Range"`
+	IfRange string         `header:"If-Range"`
+	N       string         `query:"n"`
+	Last    string         `query:"last"`
 }
 
 var (

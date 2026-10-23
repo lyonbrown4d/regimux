@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
+	awshttp "github.com/aws/aws-sdk-go-v2/aws/transport/http"
 	awsconfig "github.com/aws/aws-sdk-go-v2/config"
 	"github.com/aws/aws-sdk-go-v2/credentials"
 	"github.com/aws/smithy-go"
@@ -15,12 +16,14 @@ import (
 )
 
 const (
-	minS3PartSize               int64 = 5 * 1024 * 1024
-	defaultS3PartSize           int64 = 16 * 1024 * 1024
-	maxS3PartSize               int64 = 5 * 1024 * 1024 * 1024
-	maxS3UploadParts                  = 10_000
-	defaultUploadConcurrency          = 4
-	defaultMaxConcurrentUploads       = 16
+	minS3PartSize                int64 = 5 * 1024 * 1024
+	defaultS3PartSize            int64 = 16 * 1024 * 1024
+	maxS3PartSize                int64 = 5 * 1024 * 1024 * 1024
+	maxS3UploadParts                   = 10_000
+	defaultUploadConcurrency           = 4
+	defaultMaxConcurrentUploads        = 16
+	defaultS3MaxIdleConns              = 2048
+	defaultS3MaxIdleConnsPerHost       = 1024
 )
 
 func normalizeS3Options(options S3Options) (S3Options, error) {
@@ -90,6 +93,12 @@ func normalizeS3UploadOptions(options S3Options) (S3Options, error) {
 func loadAWSConfig(ctx context.Context, options S3Options) (aws.Config, error) {
 	loadOptions := []func(*awsconfig.LoadOptions) error{
 		awsconfig.WithRegion(options.Region),
+		// Retain a concurrent CI wave for reuse without changing the SDK's
+		// active connection limit, proxy, TLS settings or timeout defaults.
+		awsconfig.WithHTTPClient(awshttp.NewBuildableClient().WithTransportOptions(func(transport *http.Transport) {
+			transport.MaxIdleConns = defaultS3MaxIdleConns
+			transport.MaxIdleConnsPerHost = defaultS3MaxIdleConnsPerHost
+		})),
 	}
 	if options.Profile != "" {
 		loadOptions = append(loadOptions, awsconfig.WithSharedConfigProfile(options.Profile))

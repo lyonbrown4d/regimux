@@ -119,6 +119,7 @@ func (p *Proxy) Manifests() ManifestService {
 		smallCache:   p.blobSmallCache,
 		group:        &p.manifestGroup,
 		accessGroup:  &p.accessGroup,
+		logger:       p.logger,
 	}
 }
 
@@ -173,6 +174,7 @@ type manifestProxy struct {
 	smallCache   smallBlobCacheConfig
 	group        *singleflightx.Group[string, *CachedManifest]
 	accessGroup  *singleflightx.Group[string, bool]
+	logger       *slog.Logger
 }
 
 type blobProxy struct {

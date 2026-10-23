@@ -2,9 +2,12 @@ package meta
 
 import (
 	"context"
+	"time"
 
 	"github.com/samber/go-singleflightx"
 )
+
+const pullCatalogCompletionTimeout = 30 * time.Second
 
 type pullWriteBatchState struct {
 	pending  pullRow
@@ -75,10 +78,12 @@ func (s *SQLStore) persistPullWriteBatch(ctx context.Context, key PullKey, row p
 	if err := s.upsertPullRow(ctx, row); err != nil {
 		return pullWriteBatchResult{err: err}
 	}
-	if err := s.refreshRepositoryMetadata(ctx, key.Alias, key.Repository, timeFromUnixNano(row.UpdatedAt)); err != nil {
+	completionCtx, cancel := postCommitCatalogContext(ctx, pullCatalogCompletionTimeout)
+	defer cancel()
+	if err := s.refreshRepositoryMetadata(completionCtx, key.Alias, key.Repository, timeFromUnixNano(row.UpdatedAt)); err != nil {
 		return pullWriteBatchResult{err: err}
 	}
-	record, ok, err := s.Pull(ctx, key)
+	record, ok, err := s.Pull(completionCtx, key)
 	if err != nil {
 		return pullWriteBatchResult{err: err}
 	}
@@ -86,6 +91,10 @@ func (s *SQLStore) persistPullWriteBatch(ctx context.Context, key PullKey, row p
 		return pullWriteBatchResult{err: errorf("record pull metadata: %w", ErrNotFound)}
 	}
 	return pullWriteBatchResult{record: *record}
+}
+
+func postCommitCatalogContext(ctx context.Context, timeout time.Duration) (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.WithoutCancel(ctx), timeout)
 }
 
 func (s *SQLStore) beginPullWriteBatch(key string, row pullRow) (*pullWriteBatchState, *pullWriteMutation) {

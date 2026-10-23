@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"time"
+
+	"github.com/lyonbrown4d/regimux/internal/worker"
 )
 
 func acquireFillLease(ctx context.Context, tracker *FillTracker, key Key) (FillLease, bool) {
@@ -32,31 +34,28 @@ func acquireFillLease(ctx context.Context, tracker *FillTracker, key Key) (FillL
 
 func (t *FillTracker) fillWithLease[T any](ctx context.Context, lease FillLease, fill FillOwnerFunc[T]) (T, error) {
 	stopRenew := startFillLeaseRenewal(ctx, t, lease)
+	defer releaseFillLease(ctx, t, lease)
+	defer stopRenew()
 	result, err := fill()
-	stopRenew()
-	releaseFillLease(ctx, t, lease)
 	return result, err
 }
 
 func startFillLeaseRenewal(ctx context.Context, tracker *FillTracker, lease FillLease) func() {
-	stop := make(chan struct{})
 	interval, ok := fillLeaseRenewInterval(tracker, lease)
 	if !ok {
-		return func() { close(stop) }
+		return func() {}
 	}
 	if tracker == nil || tracker.leaseScheduler == nil {
 		logFillLeaseSchedulerUnavailable(ctx, tracker)
-		return func() { close(stop) }
+		return func() {}
 	}
-	if err := tracker.leaseScheduler.Submit(func() {
-		runFillLeaseRenewer(ctx, tracker, lease, interval, stop)
-	}); err != nil {
+	return worker.StartLeaseRenewal(ctx, tracker.leaseScheduler, interval, func(renewCtx context.Context) {
+		extendFillLease(renewCtx, tracker, lease)
+	}, func(err error) {
 		if tracker.logger != nil {
 			tracker.logger.WarnContext(ctx, "artifact cache fill lease renewal scheduling failed", "error", err)
 		}
-		return func() { close(stop) }
-	}
-	return func() { close(stop) }
+	})
 }
 
 func logFillLeaseSchedulerUnavailable(ctx context.Context, tracker *FillTracker) {
@@ -73,24 +72,8 @@ func fillLeaseRenewInterval(tracker *FillTracker, lease FillLease) (time.Duratio
 	return interval, interval > 0
 }
 
-func runFillLeaseRenewer(ctx context.Context, tracker *FillTracker, lease FillLease, interval time.Duration, stop <-chan struct{}) {
-	timer := time.NewTimer(interval)
-	defer timer.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case <-ctx.Done():
-			return
-		case <-timer.C:
-			extendFillLease(ctx, tracker, lease)
-			timer.Reset(interval)
-		}
-	}
-}
-
 func extendFillLease(ctx context.Context, tracker *FillTracker, lease FillLease) {
-	extendCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fillLeaseReleaseTimeout)
+	extendCtx, cancel := context.WithTimeout(ctx, fillLeaseReleaseTimeout)
 	defer cancel()
 	if err := lease.Extend(extendCtx, tracker.leaseTTL); err != nil && tracker.logger != nil {
 		tracker.logger.WarnContext(ctx, "artifact cache fill lease extend failed", "error", err)

@@ -3,9 +3,7 @@ package artifactcache
 import (
 	"errors"
 	"io"
-	"log/slog"
 	"net/http"
-	"os"
 	"slices"
 	"strconv"
 
@@ -18,14 +16,14 @@ var (
 	errEmptyBody          = errors.New("artifact body is empty")
 )
 
-func hashToTemp(tmp *os.File, tmpName string, source io.Reader) (string, int64, error) {
+func hashToTemp(tmp io.ReadWriteSeeker, source io.Reader) (string, int64, error) {
 	digester := ocidigest.SHA256.Digester()
 	size, err := io.Copy(io.MultiWriter(tmp, digester.Hash()), source)
 	if err != nil {
-		return "", 0, closeAndRemoveTemp(tmp, tmpName, err, "write artifact temp file")
+		return "", 0, wrapError(err, "write artifact temp file")
 	}
 	if _, err := tmp.Seek(0, io.SeekStart); err != nil {
-		return "", 0, closeAndRemoveTemp(tmp, tmpName, err, "rewind artifact temp file")
+		return "", 0, wrapError(err, "rewind artifact temp file")
 	}
 	return digester.Digest().String(), size, nil
 }
@@ -60,20 +58,5 @@ func cacheHeaderKeys() []string {
 		"Last-Modified",
 		"X-Regimux-Upstream",
 		"X-Regimux-Metadata-Format",
-	}
-}
-
-func closeAndRemoveTemp(file *os.File, name string, err error, message string) error {
-	closeErr := file.Close()
-	removeErr := os.Remove(name)
-	return wrapError(errors.Join(err, closeErr, removeErr), message)
-}
-
-func removePath(path string, logger *slog.Logger) {
-	if path == "" {
-		return
-	}
-	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) && logger != nil {
-		logger.Warn("remove temporary file failed", "path", path, "error", err)
 	}
 }

@@ -2,7 +2,6 @@ package upstream
 
 import (
 	"context"
-	"net/http"
 
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
@@ -11,8 +10,8 @@ func (c *Client) ConsumeBlob(ctx context.Context, req GetBlobRequest, consume Bl
 	if consume == nil {
 		return newError("blob consumer is not configured")
 	}
-	release, err := c.doWithFailover(ctx, blobConsumerFailoverRequest(req), func(runtime upstreamRuntime) error {
-		blob, err := c.fetchBlob(ctx, runtime, req)
+	release, err := c.doWithFailover(ctx, blobConsumerFailoverRequest(req), func(attemptCtx context.Context, runtime upstreamRuntime) error {
+		blob, err := c.fetchBlob(attemptCtx, runtime, req)
 		if err != nil {
 			return err
 		}
@@ -26,20 +25,7 @@ func (c *Client) ConsumeBlob(ctx context.Context, req GetBlobRequest, consume Bl
 }
 
 func (c *Client) fetchBlob(ctx context.Context, runtime upstreamRuntime, req GetBlobRequest) (*BlobResponse, error) {
-	method := methodOr(req.Method, http.MethodGet)
-	requestURL := registryURL(runtime.config.Registry, req.Repo, endpointBlob, req.Digest)
-	opts := blobRequestOptions(req)
-	resp, err := c.do(ctx, runtime, requestSpec{
-		operation: operationBlob,
-		method:    method,
-		endpoint:  requestURL,
-		scope:     pullRepositoryScope(req.Repo),
-		options:   opts,
-	})
-	if err != nil {
-		return nil, err
-	}
-	return blobResponseFromUpstream(resp, req.Digest)
+	return c.fetchRecoverableBlob(ctx, runtime, req)
 }
 
 func blobFailoverRequest(req GetBlobRequest) failoverRequest {
@@ -58,10 +44,12 @@ func blobConsumerFailoverRequest(req GetBlobRequest) failoverRequest {
 }
 
 func blobRequestOptions(req GetBlobRequest) []requestOption {
+	opts := make([]requestOption, 0, 2)
+	opts = append(opts, withHeader("Accept-Encoding", "identity"))
 	if req.Range == nil {
-		return nil
+		return opts
 	}
-	return []requestOption{withHeader(distribution.HeaderRange, req.Range.String())}
+	return append(opts, withHeader(distribution.HeaderRange, req.Range.String()))
 }
 
 func consumeBlobResponse(blob *BlobResponse, consume BlobConsumeFunc) error {

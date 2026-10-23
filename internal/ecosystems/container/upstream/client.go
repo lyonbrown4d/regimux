@@ -16,7 +16,6 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/worker"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	"github.com/samber/go-singleflightx"
-	"github.com/samber/lo"
 )
 
 type Client struct {
@@ -123,9 +122,9 @@ func NewClientFromConfigs(
 }
 
 func (c *Client) Ping(ctx context.Context, alias string) error {
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: alias, operation: operationPing}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: alias, operation: operationPing}, func(attemptCtx context.Context, runtime upstreamRuntime) error {
 		requestURL := strings.TrimRight(runtime.config.Registry, "/") + registryAPIVersionPath
-		resp, err := c.do(ctx, runtime, requestSpec{
+		resp, err := c.do(attemptCtx, runtime, requestSpec{
 			operation: operationPing,
 			method:    http.MethodGet,
 			endpoint:  requestURL,
@@ -147,14 +146,14 @@ func (c *Client) Ping(ctx context.Context, alias string) error {
 
 func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*ManifestResponse, error) {
 	var out *ManifestResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationManifest, repository: req.Repo}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationManifest, repository: req.Repo}, func(attemptCtx context.Context, runtime upstreamRuntime) error {
 		method := methodOr(req.Method, http.MethodGet)
 		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointManifest, req.Reference)
 		var opts []requestOption
 		if req.Accept != "" {
 			opts = append(opts, withHeader(distribution.HeaderAccept, req.Accept))
 		}
-		resp, err := c.do(ctx, runtime, requestSpec{
+		resp, err := c.do(attemptCtx, runtime, requestSpec{
 			operation: operationManifest,
 			method:    method,
 			endpoint:  requestURL,
@@ -188,18 +187,28 @@ func (c *Client) GetManifest(ctx context.Context, req GetManifestRequest) (*Mani
 }
 
 func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse, error) {
-	var out *BlobResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationBlob, repository: req.Repo, digest: req.Digest}, func(runtime upstreamRuntime) error {
-		blob, err := c.fetchBlob(ctx, runtime, req)
+	var selectedBlob blobResponseSelection
+	failoverReq := failoverRequest{
+		alias:                req.UpstreamAlias,
+		operation:            operationBlob,
+		repository:           req.Repo,
+		digest:               req.Digest,
+		hasConcurrentSuccess: selectedBlob.hasResponse,
+	}
+	release, err := c.doWithFailover(ctx, failoverReq, func(attemptCtx context.Context, runtime upstreamRuntime) error {
+		blob, err := c.fetchBlob(attemptCtx, runtime, req)
 		if err != nil {
 			return err
 		}
-		out = blob
+		if !selectedBlob.selectResponse(blob) {
+			return closeUnselectedBlob(blob)
+		}
 		return nil
 	})
 	if err != nil {
-		return nil, err
+		return nil, joinError(err, selectedBlob.abort())
 	}
+	out := selectedBlob.response()
 	if out == nil || out.Body == nil {
 		release()
 		return out, nil
@@ -210,13 +219,13 @@ func (c *Client) GetBlob(ctx context.Context, req GetBlobRequest) (*BlobResponse
 
 func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsResponse, error) {
 	var out *TagsResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationTags, repository: req.Repo}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationTags, repository: req.Repo}, func(attemptCtx context.Context, runtime upstreamRuntime) error {
 		requestURL, err := tagsURL(runtime.config.Registry, req)
 		if err != nil {
 			return err
 		}
 
-		resp, err := c.do(ctx, runtime, requestSpec{
+		resp, err := c.do(attemptCtx, runtime, requestSpec{
 			operation: operationTags,
 			method:    http.MethodGet,
 			endpoint:  requestURL,
@@ -238,28 +247,11 @@ func (c *Client) ListTags(ctx context.Context, req ListTagsRequest) (*TagsRespon
 	return out, nil
 }
 
-func blobResponseFromUpstream(resp upstreamResponse, expectedDigest string) (*BlobResponse, error) {
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, closeBodyWithError(resp.Body, mapStatus(resp.StatusCode, operationBlob))
-	}
-	actualDigest := resp.Header.Get(distribution.HeaderDockerContentDigest)
-	if err := validateUpstreamContentDigest(expectedDigest, actualDigest); err != nil {
-		return nil, closeBodyWithError(resp.Body, err)
-	}
-	return &BlobResponse{
-		Body:       resp.Body,
-		Digest:     lo.CoalesceOrEmpty(actualDigest, expectedDigest),
-		Size:       contentLength(resp.Header),
-		StatusCode: resp.StatusCode,
-		Headers:    resp.Header.Clone(),
-	}, nil
-}
-
 func (c *Client) GetReferrers(ctx context.Context, req ReferrersRequest) (*ReferrersResponse, error) {
 	var out *ReferrersResponse
-	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationReferrers, repository: req.Repo}, func(runtime upstreamRuntime) error {
+	release, err := c.doWithFailover(ctx, failoverRequest{alias: req.UpstreamAlias, operation: operationReferrers, repository: req.Repo}, func(attemptCtx context.Context, runtime upstreamRuntime) error {
 		requestURL := registryURL(runtime.config.Registry, req.Repo, endpointReferrers, req.Digest)
-		resp, err := c.do(ctx, runtime, requestSpec{
+		resp, err := c.do(attemptCtx, runtime, requestSpec{
 			operation: operationReferrers,
 			method:    http.MethodGet,
 			endpoint:  requestURL,

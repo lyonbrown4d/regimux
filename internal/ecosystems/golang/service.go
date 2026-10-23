@@ -296,5 +296,5 @@ func (s *Service) fetchUncached(fillReq upstreamFillRequest) (*Response, error) 
 }
 
 func shouldCoalesceFill(req Request, mode requestMode) bool {
-	return mode == requestModeClient && methodOr(req.Method, http.MethodGet) == http.MethodGet
+	return mode == requestModeClient && methodOrGet(req.Method) == http.MethodGet
 }

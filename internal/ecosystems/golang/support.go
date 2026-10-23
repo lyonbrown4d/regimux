@@ -4,16 +4,17 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
 
 	"github.com/samber/oops"
 )
 
-func methodOr(value, fallback string) string {
+func methodOrGet(value string) string {
 	value = strings.ToUpper(strings.TrimSpace(value))
 	if value == "" {
-		return fallback
+		return http.MethodGet
 	}
 	return value
 }

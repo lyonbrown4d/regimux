@@ -27,18 +27,37 @@ func TestToUpstreamConfigMapsBlobAndProbe(t *testing.T) {
 			Cooldown: 2 * time.Minute,
 		},
 		HTTP: config.HTTPConfig{
-			HTTP2: config.HTTP2Config{Enabled: true},
+			AttemptTimeout: 100 * time.Millisecond,
+			HTTP2:          config.HTTP2Config{Enabled: true},
 		},
 	}
 
 	got := upstream.ConfigFromUpstreamConfig("hub", cfg)
-	if got.Blob.MirrorPolicy != "latency" || got.Blob.TopN != 3 || got.Blob.MaxConcurrencyPerEndpoint != 4 || got.Blob.MaxConcurrentAttempts != 2 {
-		t.Fatalf("unexpected blob mapping: %#v", got.Blob)
+	assertUpstreamBlobConfig(t, got.Blob)
+	assertUpstreamProbeConfig(t, got.Probe)
+	assertUpstreamHTTPConfig(t, got.HTTP)
+}
+
+func assertUpstreamBlobConfig(t *testing.T, got upstream.BlobConfig) {
+	t.Helper()
+	if got.MirrorPolicy != "latency" || got.TopN != 3 || got.MaxConcurrencyPerEndpoint != 4 || got.MaxConcurrentAttempts != 2 {
+		t.Fatalf("unexpected blob mapping: %#v", got)
 	}
-	if !got.Probe.Enabled || got.Probe.Interval != 30*time.Second || got.Probe.Timeout != 3*time.Second || got.Probe.Cooldown != 2*time.Minute {
-		t.Fatalf("unexpected probe mapping: %#v", got.Probe)
+}
+
+func assertUpstreamProbeConfig(t *testing.T, got upstream.ProbeConfig) {
+	t.Helper()
+	if !got.Enabled || got.Interval != 30*time.Second || got.Timeout != 3*time.Second || got.Cooldown != 2*time.Minute {
+		t.Fatalf("unexpected probe mapping: %#v", got)
 	}
-	if !got.HTTP.HTTP2.Enabled {
-		t.Fatalf("unexpected http2 mapping: %#v", got.HTTP.HTTP2)
+}
+
+func assertUpstreamHTTPConfig(t *testing.T, got upstream.HTTPConfig) {
+	t.Helper()
+	if !got.HTTP2.Enabled {
+		t.Fatalf("unexpected http2 mapping: %#v", got.HTTP2)
+	}
+	if got.AttemptTimeout != 100*time.Millisecond {
+		t.Fatalf("unexpected header attempt timeout mapping: %s", got.AttemptTimeout)
 	}
 }

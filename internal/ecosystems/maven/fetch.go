@@ -13,11 +13,12 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/config"
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/spool"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
 )
 
 const defaultMavenAttemptTimeout = 10 * time.Second
-const defaultMavenBodyIdleTimeout = 30 * time.Second
+const defaultMavenBodyIdleTimeout = upstreamhttp.DefaultBodyIdleTimeout
 
 type mavenClientKey struct {
 	factory            *clientfactory.Factory
@@ -85,7 +86,7 @@ func (s *Service) fetchEndpoint(
 	}
 	attemptCtx, cancel := context.WithCancel(ctx)
 	attemptTimer := time.AfterFunc(attemptTimeout, cancel)
-	resp, err := s.fetchURL(attemptCtx, cfg, requestURL, attempt.method, cancel, attemptTimer.Stop)
+	resp, err := s.fetchURL(attemptCtx, ctx, cfg, requestURL, attempt.method, cancel, attemptTimer.Stop)
 	status := 0
 	if resp != nil {
 		status = resp.status
@@ -106,9 +107,10 @@ func (s *Service) fetchEndpoint(
 	return resp, err
 }
 
-func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, requestURL, method string, cancel context.CancelFunc, stopAttemptTimeout func() bool) (*upstreamFetch, error) {
+func (s *Service) fetchURL(ctx, parentCtx context.Context, cfg config.UpstreamConfig, requestURL, method string, cancel context.CancelFunc, stopAttemptTimeout func() bool) (*upstreamFetch, error) {
 	headers := http.Header{}
 	headers.Set("User-Agent", defaultUserAgent)
+	headers.Set("Accept-Encoding", "identity")
 	resp, err := s.doFetch(ctx, cfg, requestURL, upstreamhttp.Request{
 		Method:  methodOrGet(method),
 		URL:     requestURL,
@@ -121,17 +123,39 @@ func (s *Service) fetchURL(ctx context.Context, cfg config.UpstreamConfig, reque
 		return nil, wrapError(err, "send maven upstream request")
 	}
 	stopAttemptTimeout()
-	resp.Body = upstreamhttp.WithIdleTimeout(resp.Body, cancel, defaultMavenBodyIdleTimeout)
-	defer closeReadCloser(resp.Body, s.logger, "close maven upstream response body")
-	body, err := materializeHTTPBody(resp.Body)
+	upstreamBody := upstreamhttp.WithIdleTimeout(resp.Body, cancel, defaultMavenBodyIdleTimeout)
+	if resp.Status == http.StatusOK {
+		upstreamBody = transfer.HTTPRecovery(parentCtx, methodOrGet(method), resp.Headers, upstreamBody, "", func(retryCtx context.Context, retryHeaders http.Header) (*transfer.Response, error) {
+			requestHeaders := headers.Clone()
+			mergeMavenHeaders(requestHeaders, retryHeaders)
+			continued, fetchErr := upstreamhttp.OpenStream(retryCtx, cfg.HTTP.AttemptTimeout, defaultMavenBodyIdleTimeout,
+				func(attemptCtx context.Context) (*upstreamhttp.Response, error) {
+					return s.doFetch(attemptCtx, cfg, requestURL, upstreamhttp.Request{
+						Method: methodOrGet(method), URL: requestURL, Headers: requestHeaders, Auth: cfg.Auth,
+					})
+				})
+			if fetchErr != nil {
+				return nil, wrapError(fetchErr, "resume maven upstream request")
+			}
+			return &transfer.Response{Status: continued.Status, Headers: continued.Headers, Body: continued.Body, Size: contentLength(continued.Headers)}, nil
+		})
+	}
+	defer closeReadCloser(upstreamBody, s.logger, "close maven upstream response body")
+	materialized, err := materializeHTTPBody(upstreamBody)
 	if err != nil {
 		return nil, err
 	}
 	return &upstreamFetch{
 		status:  resp.Status,
 		headers: resp.Headers,
-		body:    body,
+		body:    materialized,
 	}, nil
+}
+
+func mergeMavenHeaders(target, source http.Header) {
+	for key, values := range source {
+		target[key] = append([]string(nil), values...)
+	}
 }
 
 func (s *Service) doFetch(ctx context.Context, cfg config.UpstreamConfig, baseURL string, req upstreamhttp.Request) (*upstreamhttp.Response, error) {

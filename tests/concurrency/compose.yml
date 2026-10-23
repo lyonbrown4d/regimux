@@ -42,7 +42,7 @@ services:
       POSTGRES_USER: regimux
       POSTGRES_PASSWORD: concurrency-only
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U regimux -d regimux"]
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U regimux -d regimux"]
       interval: 2s
       timeout: 3s
       retries: 30

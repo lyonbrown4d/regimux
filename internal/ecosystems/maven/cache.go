@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
-	"github.com/lyonbrown4d/regimux/internal/upstreamhttp"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 )
 
 const defaultMavenCacheReadTimeout = time.Second
@@ -63,7 +63,7 @@ func (s *Service) cached(ctx context.Context, requestRoute Route) (storedRespons
 	}
 	stopTimeout()
 	if entry.Body != nil {
-		entry.Body = upstreamhttp.WithIdleTimeout(entry.Body, cancel, defaultMavenBodyIdleTimeout)
+		entry.Body = transfer.CancelOnClose(entry.Body, cancel)
 	} else {
 		cancel()
 	}

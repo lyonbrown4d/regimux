@@ -20,9 +20,10 @@ type failoverRequest struct {
 	allowPublicMirrorForbidden bool
 	endpointIsMirror           bool
 	endpointAuthenticated      bool
+	hasConcurrentSuccess       func() bool
 }
 
-func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn func(upstreamRuntime) error) (func(), error) {
+func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn func(context.Context, upstreamRuntime) error) (func(), error) {
 	pool, err := c.upstream(req.alias)
 	if err != nil {
 		return nil, err
@@ -36,21 +37,30 @@ func (c *Client) doWithFailover(ctx context.Context, req failoverRequest, fn fun
 		return nil, distribution.ErrNameUnknown.WithDetail("upstream alias has no registry endpoints: " + req.alias)
 	}
 	c.logUpstreamSelectionPlan(ctx, req, pool, runtimes)
-	var failoverErr error
-	if req.operation == operationBlob {
-		if !req.sequential && pool.blobAttemptConcurrency() > 1 && runtimes.Len() > 1 {
-			failoverErr = c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
-		} else {
-			failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
-		}
-	} else {
-		failoverErr = c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
-	}
+	winnerCancel, failoverErr := c.runFailover(ctx, req, pool, runtimes, fn)
 	if failoverErr != nil {
 		selection.Release()
 		return nil, failoverErr
 	}
-	return selection.Release, nil
+	return func() {
+		if winnerCancel != nil {
+			winnerCancel()
+		}
+		selection.Release()
+	}, nil
+}
+
+func (c *Client) runFailover(
+	ctx context.Context,
+	req failoverRequest,
+	pool *upstreamPool,
+	runtimes *collectionlist.List[upstreamRuntime],
+	fn func(context.Context, upstreamRuntime) error,
+) (context.CancelFunc, error) {
+	if req.operation == operationBlob && !req.sequential && pool.blobAttemptConcurrency() > 1 && runtimes.Len() > 1 {
+		return c.doWithConcurrentFailover(ctx, req, pool, runtimes, fn)
+	}
+	return nil, c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 }
 
 func (c *Client) logUpstreamSelectionPlan(ctx context.Context, req failoverRequest, pool *upstreamPool, runtimes *collectionlist.List[upstreamRuntime]) {
@@ -124,7 +134,7 @@ func (c *Client) doWithSequentialFailover(
 	req failoverRequest,
 	pool *upstreamPool,
 	runtimes *collectionlist.List[upstreamRuntime],
-	fn func(upstreamRuntime) error,
+	fn func(context.Context, upstreamRuntime) error,
 ) error {
 	if pool == nil || runtimes == nil || runtimes.Len() == 0 {
 		return nil
@@ -212,7 +222,7 @@ func (c *Client) logBlobEndpointSelected(ctx context.Context, req failoverReques
 	)
 }
 
-func runAgainstRuntime(ctx context.Context, pool *upstreamPool, operation string, runtime upstreamRuntime, fn func(upstreamRuntime) error) error {
+func runAgainstRuntime(ctx context.Context, pool *upstreamPool, operation string, runtime upstreamRuntime, fn func(context.Context, upstreamRuntime) error) error {
 	if runtime.err != nil {
 		return distribution.ErrUpstream.WithDetail(runtime.err.Error())
 	}
@@ -221,7 +231,7 @@ func runAgainstRuntime(ctx context.Context, pool *upstreamPool, operation string
 		return err
 	}
 	defer release()
-	return fn(runtime)
+	return fn(ctx, runtime)
 }
 
 func (c *Client) publishFailover(ctx context.Context, req failoverRequest, runtime upstreamRuntime, err error, hasNext bool) {

@@ -15,7 +15,7 @@ func (s *Service) recordPull(ctx context.Context, req Request, requestRoute Rout
 	if !s.shouldRecordPull(req, resp, err) {
 		return
 	}
-	ctx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
+	ctx, cancel := context.WithTimeout(ctx, pypiCacheWriteTimeout)
 	defer cancel()
 	key := pypiPullKey(requestRoute)
 	if s.metadata != nil {

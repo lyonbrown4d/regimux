@@ -43,12 +43,28 @@ func testCatalogRefreshCancellation(t *testing.T, deadline bool) {
 	case <-time.After(time.Second):
 		t.Fatal("canceled refresh waited for the catalog gate to be released")
 	}
-	store.catalogRefreshMu.Lock()
-	active := len(store.catalogRefreshes)
-	store.catalogRefreshMu.Unlock()
-	if active != 0 {
-		t.Fatalf("canceled refresh retained %d inactive repository states", active)
+	waitForCatalogRefreshStatesReleased(t, store)
+}
+
+func waitForCatalogRefreshStatesReleased(t *testing.T, store *SQLStore) {
+	t.Helper()
+	cleanupDeadline := time.Now().Add(time.Second)
+	for {
+		active := activeCatalogRefreshStates(store)
+		if active == 0 {
+			return
+		}
+		if time.Now().After(cleanupDeadline) {
+			t.Fatalf("canceled refresh retained %d inactive repository states", active)
+		}
+		time.Sleep(time.Millisecond)
 	}
+}
+
+func activeCatalogRefreshStates(store *SQLStore) int {
+	store.catalogRefreshMu.Lock()
+	defer store.catalogRefreshMu.Unlock()
+	return len(store.catalogRefreshes)
 }
 
 func catalogWaitContext(t *testing.T, deadline bool) (context.Context, context.CancelFunc, error) {

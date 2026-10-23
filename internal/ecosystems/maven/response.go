@@ -50,8 +50,12 @@ func (s *Service) responseFromUpstream(req Request, requestRoute Route, fetched 
 func cacheHeaders(headers http.Header, size int64) http.Header {
 	out := http.Header{}
 	for _, key := range cacheHeaderKeys() {
-		if values, ok := headers[key]; ok {
-			out[key] = slices.Clone(values)
+		values := headers.Values(key)
+		if len(values) == 0 {
+			values = headers[key]
+		}
+		if len(values) != 0 {
+			out[http.CanonicalHeaderKey(key)] = slices.Clone(values)
 		}
 	}
 	if size >= 0 {

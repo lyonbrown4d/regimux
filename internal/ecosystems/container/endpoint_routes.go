@@ -2,6 +2,7 @@ package container
 
 import (
 	"context"
+	"errors"
 	"net/http"
 	"strconv"
 
@@ -18,8 +19,8 @@ func (e *RegistryEndpoint) manifest(
 	input *registryInput,
 	route reference.Route,
 	method string,
-) (*registryOutput, func()) {
-	result, err := e.manifests.Get(ctx, cache.ManifestRequest{
+) (*registryOutput, func() error) {
+	result, complete, err := e.prepareManifest(ctx, cache.ManifestRequest{
 		UpstreamAlias: route.Alias,
 		Repo:          route.Repo,
 		Reference:     route.Reference,
@@ -39,14 +40,19 @@ func (e *RegistryEndpoint) manifest(
 		out.ContentLength = strconv.FormatInt(result.Size, 10)
 	}
 	if method != http.MethodHead {
-		stream, streamErr := e.streamMetadata(ctx, result.Body)
+		stream, cleanup, streamErr := e.streamMetadataWithCleanup(ctx, result.Body)
 		if streamErr != nil {
-			return errorOutput(distribution.FromError(streamErr)), nil
+			if complete == nil {
+				return errorOutput(distribution.FromError(streamErr)), nil
+			}
+			finalize := func() error { return errors.Join(streamErr, complete.Finalize(ctx)) }
+			return errorOutput(distribution.FromError(streamErr)), finalize
 		}
 		out.Body = streamWithStatus(out.Status, stream)
-		return out, e.prepareManifestBlobFill(ctx, route, result)
+		out.cleanup = cleanup
+		return out, manifestCompletion(ctx, complete, e.prepareManifestBlobFill(ctx, route, result))
 	}
-	return out, nil
+	return out, manifestCompletion(ctx, complete, nil)
 }
 
 func (e *RegistryEndpoint) blob(ctx context.Context, input *registryInput, route reference.Route, method string) *registryOutput {

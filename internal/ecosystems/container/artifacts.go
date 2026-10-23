@@ -16,94 +16,26 @@ func (e *RegistryEndpoint) prepareManifestBlobFill(
 	ctx context.Context,
 	route reference.Route,
 	manifest *cache.CachedManifest,
-) func() {
-	if e == nil || e.blobs == nil || manifest == nil {
+) (plan *manifestBlobFillPlan) {
+	release := e.admitManifestBlobFill(ctx, route, manifest)
+	if release == nil {
 		return nil
 	}
+	defer func() {
+		if plan == nil {
+			release()
+		}
+	}()
 	mediaType := cachedManifestMediaType(manifest)
 	manifestDigest := manifest.Digest
 	if isImageManifestMediaType(mediaType) {
-		descriptors, err := imageManifestBlobDescriptors(manifest)
-		if err != nil {
-			e.logger.WarnContext(ctx, "decode image manifest for blob fill failed",
-				"alias", route.Alias,
-				"repository", route.Repo,
-				"reference", route.Reference,
-				"digest", manifestDigest,
-				"media_type", mediaType,
-				"error", err,
-			)
-			return nil
-		}
-		return func() {
-			e.submitManifestBlobFill(ctx, route, mediaType, manifestDigest, func(taskCtx context.Context) {
-				e.fillManifestBlobs(taskCtx, route, manifestDigest, descriptors)
-			})
-		}
+		return e.prepareImageBlobFillPlan(ctx, route, manifest, mediaType, release)
 	}
 	if isIndexManifestMediaType(mediaType) {
-		selected, err := prewarmManifestChildren(route.Alias, manifest)
-		if err != nil {
-			e.logger.WarnContext(ctx, "decode image index for blob fill failed",
-				"alias", route.Alias,
-				"repository", route.Repo,
-				"reference", route.Reference,
-				"digest", manifestDigest,
-				"media_type", mediaType,
-				"error", err,
-			)
-			return nil
-		}
-		if len(selected) == 0 {
-			e.logSkippedManifestBlobFill(ctx, route, manifestDigest, mediaType, "no configured platform child manifest")
-			return nil
-		}
-		return func() {
-			e.submitManifestBlobFill(ctx, route, mediaType, manifestDigest, func(taskCtx context.Context) {
-				e.fillManifestBlobsForIndex(taskCtx, route, manifestDigest, selected)
-			})
-		}
+		return e.prepareIndexBlobFillPlan(ctx, route, manifest, mediaType, release)
 	}
 	e.logSkippedManifestBlobFill(ctx, route, manifestDigest, mediaType, "unsupported manifest media type")
 	return nil
-}
-
-func (e *RegistryEndpoint) submitManifestBlobFill(
-	ctx context.Context,
-	route reference.Route,
-	mediaType string,
-	manifestDigest string,
-	task func(context.Context),
-) {
-	if task == nil {
-		return
-	}
-	taskCtx := context.WithoutCancel(ctx)
-	if e.workers == nil {
-		e.logSkippedManifestBlobFill(ctx, route, manifestDigest, mediaType, "worker pool unavailable")
-		return
-	}
-	pool := e.workers.IOPool()
-	if pool == nil {
-		e.logSkippedManifestBlobFill(ctx, route, manifestDigest, mediaType, "worker pool unavailable")
-		return
-	}
-	if pool.Free() == 0 {
-		e.logSkippedManifestBlobFill(ctx, route, manifestDigest, mediaType, "worker pool saturated")
-		return
-	}
-	if err := pool.Submit(func() {
-		task(taskCtx)
-	}); err != nil {
-		e.publishWorkerFillSkipped(ctx, route, "blob", "submit failed")
-		e.logger.DebugContext(ctx, "submit manifest blob fill failed",
-			"alias", route.Alias,
-			"repository", route.Repo,
-			"reference", route.Reference,
-			"digest", manifestDigest,
-			"error", err,
-		)
-	}
 }
 
 func (e *RegistryEndpoint) fillManifestBlobs(

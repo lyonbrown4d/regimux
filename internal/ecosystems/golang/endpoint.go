@@ -2,6 +2,7 @@ package golang
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -9,6 +10,7 @@ import (
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
 	"github.com/lyonbrown4d/regimux/internal/artifactstream"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 )
 
 type Endpoint struct {
@@ -20,18 +22,24 @@ type RootEndpoint struct {
 }
 
 type input struct {
-	Alias string         `path:"alias"`
-	Tail  httpx.PathTail `path:"tail"`
+	Alias   string         `path:"alias"`
+	Tail    httpx.PathTail `path:"tail"`
+	Range   string         `header:"Range"`
+	IfRange string         `header:"If-Range"`
 }
 
 type rootInput struct {
-	Tail httpx.PathTail `path:"tail"`
+	Tail    httpx.PathTail `path:"tail"`
+	Range   string         `header:"Range"`
+	IfRange string         `header:"If-Range"`
 }
 
 type output struct {
 	Status        int
 	ContentType   string `header:"Content-Type"`
 	ContentLength string `header:"Content-Length"`
+	ContentRange  string `header:"Content-Range"`
+	AcceptRanges  string `header:"Accept-Ranges"`
 	ETag          string `header:"ETag"`
 	LastModified  string `header:"Last-Modified"`
 	XMirrorCache  string `header:"X-Mirror-Cache"`
@@ -106,6 +114,10 @@ func (e *Endpoint) dispatch(ctx context.Context, in *input, method string) (*out
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
 	}
+	resp, err = applyClientRange(method, in.Range, in.IfRange, resp)
+	if err != nil {
+		return plainError(http.StatusBadGateway, err.Error()), nil
+	}
 	return outputFromResponse(ctx, in.Alias, in.Tail.String(), method, resp, e.service.logger), nil
 }
 
@@ -123,7 +135,25 @@ func (e *Endpoint) dispatchRoot(ctx context.Context, in *rootInput, method strin
 	if err != nil {
 		return plainError(statusFromError(err), err.Error()), nil
 	}
+	resp, err = applyClientRange(method, in.Range, in.IfRange, resp)
+	if err != nil {
+		return plainError(http.StatusBadGateway, err.Error()), nil
+	}
 	return outputFromResponse(ctx, "", in.Tail.String(), method, resp, e.service.logger), nil
+}
+
+func applyClientRange(method, rangeHeader, ifRange string, response *Response) (*Response, error) {
+	if response == nil {
+		return nil, errors.New("go proxy response is empty")
+	}
+	selected, err := transfer.ApplyRange(method, rangeHeader, ifRange, transfer.Response{
+		Status: response.Status, Headers: response.Headers, Body: response.Body, Size: response.Size,
+	})
+	if err != nil {
+		return nil, wrapError(err, "select go proxy byte range")
+	}
+	response.Status, response.Headers, response.Body, response.Size = selected.Status, selected.Headers, selected.Body, selected.Size
+	return response, nil
 }
 
 func outputFromResponse(ctx context.Context, alias, reference, method string, resp *Response, logger *slog.Logger) *output {
@@ -134,6 +164,8 @@ func outputFromResponse(ctx context.Context, alias, reference, method string, re
 		Status:        resp.Status,
 		ContentType:   resp.Headers.Get("Content-Type"),
 		ContentLength: resp.Headers.Get("Content-Length"),
+		ContentRange:  resp.Headers.Get("Content-Range"),
+		AcceptRanges:  resp.Headers.Get("Accept-Ranges"),
 		ETag:          resp.Headers.Get("ETag"),
 		LastModified:  resp.Headers.Get("Last-Modified"),
 		XMirrorCache:  resp.Headers.Get(headerMirrorCache),

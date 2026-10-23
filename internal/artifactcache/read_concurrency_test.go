@@ -14,6 +14,7 @@ import (
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	ocidigest "github.com/opencontainers/go-digest"
 )
 
 const concurrentArtifactReaders = 512
@@ -21,7 +22,7 @@ const concurrentArtifactReaders = 512
 func TestGetCoalescesMetadataReadsAndOpensIndependentBodies(t *testing.T) {
 	body := []byte("complete artifact body")
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
-	metadata := newReadMetadata(now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour), body)
 	objects := &readObjectStore{body: body}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata,
@@ -67,7 +68,7 @@ func TestGetCoalescesMetadataReadsAndOpensIndependentBodies(t *testing.T) {
 
 func TestGetDoesNotCoalesceDifferentKeys(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
-	metadata := newReadMetadata(now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour), []byte("artifact"))
 	objects := &readObjectStore{body: []byte("artifact")}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata,
@@ -98,7 +99,7 @@ func TestGetDoesNotCoalesceDifferentKeys(t *testing.T) {
 
 func TestGetCanceledFollowerDoesNotCancelSharedMetadataRead(t *testing.T) {
 	now := time.Date(2026, time.October, 16, 12, 0, 0, 0, time.UTC)
-	metadata := newReadMetadata(now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour), []byte("artifact"))
 	objects := &readObjectStore{body: []byte("artifact")}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata,
@@ -187,13 +188,13 @@ type readMetadata struct {
 	lastAccess    time.Time
 }
 
-func newReadMetadata(lastAccess time.Time) *readMetadata {
-	const digest = "sha256:cached-artifact"
+func newReadMetadata(lastAccess time.Time, body []byte) *readMetadata {
+	digest := ocidigest.FromBytes(body).String()
 	return &readMetadata{
 		tag: meta.TagRecord{Digest: digest, ExpiresAt: time.Time{}},
 		manifest: meta.ManifestRecord{
 			Digest: digest,
-			Size:   22,
+			Size:   int64(len(body)),
 			Headers: map[string][]string{
 				"Content-Type": {"application/octet-stream"},
 				"X-Test":       {"first", "second"},
@@ -255,7 +256,9 @@ type readObjectStore struct {
 
 func (s *readObjectStore) Get(context.Context, string, object.GetOptions) (io.ReadCloser, *object.Info, error) {
 	s.gets.Add(1)
-	return io.NopCloser(bytes.NewReader(s.body)), &object.Info{Size: int64(len(s.body))}, nil
+	return io.NopCloser(bytes.NewReader(s.body)), &object.Info{
+		Digest: ocidigest.FromBytes(s.body).String(), Size: int64(len(s.body)),
+	}, nil
 }
 
 type readWaitContext struct {

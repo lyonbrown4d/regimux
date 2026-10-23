@@ -7,12 +7,13 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	ocidigest "github.com/opencontainers/go-digest"
 	"github.com/stretchr/testify/require"
 )
 
 func TestManifestSharesGetFlightWithoutOpeningAnotherBody(t *testing.T) {
 	now := time.Now().UTC()
-	metadata := newReadMetadata(now.Add(-time.Hour))
+	metadata := newReadMetadata(now.Add(-time.Hour), []byte("complete artifact body"))
 	objects := &readObjectStore{body: []byte("complete artifact body")}
 	store := artifactcache.New(artifactcache.Dependencies{
 		Metadata: metadata, Objects: objects, Now: func() time.Time { return now },
@@ -59,7 +60,7 @@ func assertManifestRead(t *testing.T, result manifestReadResult) {
 	require.NoError(t, result.err)
 	require.True(t, result.found)
 	require.NotNil(t, result.manifest)
-	require.Equal(t, "sha256:cached-artifact", result.manifest.Digest)
+	require.Equal(t, ocidigest.FromString("complete artifact body").String(), result.manifest.Digest)
 	require.Equal(t, []string{"first", "second"}, result.manifest.Headers["X-Test"])
 	result.manifest.Headers["X-Test"][0] = "metadata caller mutation"
 }

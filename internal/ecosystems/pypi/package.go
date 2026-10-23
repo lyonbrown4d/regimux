@@ -15,7 +15,8 @@ import (
 
 const (
 	pypiCacheTimeout          = 2 * time.Second
-	pypiBodyIdleTimeout       = 30 * time.Second
+	pypiCacheWriteTimeout     = 30 * time.Second
+	pypiBodyIdleTimeout       = upstreamhttp.DefaultBodyIdleTimeout
 	pypiDefaultAttemptTimeout = 10 * time.Second
 	pypiFillWaitTimeout       = 5 * time.Minute
 )
@@ -33,7 +34,7 @@ func (s *Service) getPackage(ctx context.Context, req Request, route Route, cfg 
 	if cached != nil || err != nil {
 		return cached, err
 	}
-	fetched, err := s.fetchPackage(ctx, req, route, cfg)
+	fetched, err := s.fetchRangedPackage(ctx, req, route, cfg)
 	if err != nil {
 		finish()
 		return nil, err

@@ -38,6 +38,10 @@ type packageBody struct {
 	mu           sync.Mutex
 	stopCleanup  func() bool
 	started      time.Time
+	readLease    *time.Timer
+	readDeadline time.Time
+	closed       bool
+	abandoned    bool
 }
 
 func (s *Service) packageCacheBody(ctx context.Context, req Request, route Route, fetched *upstreamFetch, finish func()) io.ReadCloser {
@@ -72,6 +76,7 @@ func (s *Service) packageCacheBody(ctx context.Context, req Request, route Route
 			s.logger.DebugContext(ctx, "close canceled pypi body failed")
 		}
 	})
+	b.armReadLease()
 	b.mu.Unlock()
 	return b
 }
@@ -79,6 +84,11 @@ func (s *Service) packageCacheBody(ctx context.Context, req Request, route Route
 func (b *packageBody) Read(p []byte) (int, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+	if b.closed || b.abandoned {
+		return 0, io.ErrClosedPipe
+	}
+	b.pauseReadLease()
+	defer b.armReadLease()
 	n, err := b.ReadCloser.Read(p)
 	if n > 0 {
 		if readErr := b.validateRead(p[:n]); readErr != nil {
@@ -148,6 +158,8 @@ func (b *packageBody) close(ctx context.Context) error {
 		closeErr = b.ReadCloser.Close()
 		b.mu.Lock()
 		defer b.mu.Unlock()
+		b.closed = true
+		b.pauseReadLease()
 		defer b.observeTransfer(ctx)
 		if b.stopCleanup != nil {
 			b.stopCleanup()
@@ -177,7 +189,7 @@ func (b *packageBody) cacheComplete(ctx context.Context) {
 	if _, err := b.tmp.Seek(0, io.SeekStart); err != nil {
 		return
 	}
-	writeCtx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
+	writeCtx, cancel := context.WithTimeout(ctx, pypiCacheWriteTimeout)
 	defer cancel()
 	entry, err := b.service.cache.Put(writeCtx, artifactcache.PutRequest{Key: artifactKey(b.route), AcceptKey: acceptKeyPyPI, Body: b.tmp, Headers: b.fetched.headers, ContentType: routeContentType(b.route, b.fetched.headers)})
 	if entry.Body != nil {

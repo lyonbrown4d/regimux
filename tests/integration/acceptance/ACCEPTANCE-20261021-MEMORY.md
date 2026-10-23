@@ -1,53 +1,59 @@
-# 2026-10-21 内存修复发布前验收
+# 2026-10-23 source 41 内存与流式修复验收
 
-## 范围与构建
+**预发布验收通过：source 41 Linux amd64 主候选的完整门禁均通过。** ARM 镜像 smoke 仍属于发布阶段待验证事项；本报告不表示候选已经公开发布。
 
-覆盖合并后的 PR #8（Maven 镜像回退）和 issue #9（S3 小对象上传按 multipart part 大小提前分配内存），以及六个包生态共用的响应流、缓存和元数据内存边界。
+## 验收对象与结果
 
-候选源码以 `cec6d79abd9ad7bfbf04335afd792ea73876b4f1` 为基线，冻结清单为 `tmp/memory-20261021/source-freeze-12.json`（956 个文件，逐文件 SHA-256）。候选镜像 `regimux-memory:20261021` 的 ID 为 `sha256:42b3a9967fc10f17157cf2940b842ecf1b945bf314da7caf19120be6395561bd`。它由本机 Go 1.27.3 交叉编译为 Linux amd64、CGO 关闭，再经 UPX 5.2.1 `--best --lzma` 打包。该候选镜像来自提交前的源码，正式发布需从干净的发布提交重新构建并检查版本和提交身份。
+- Source freeze：1054 个文件，SHA-256 92d8c52d616689995952ebe025254e604a033502e5e1604b401eb7601aadaf91，核验无差异。
+- 候选镜像：regimux-memory:20261021-gate41，sha256:09699174aa424ce219de7a0d43801da7f561bf2e0e7009db8cc3e41f233fdb3a。
+- 最终汇总 final41-v6-machine-summary.json 为 accepted=true，74/74 场景通过，errors 为空；51 包全量测试、覆盖 24 包相关场景的定向 race 检查、冻结源码 49 项 lint 均通过。source41 lint 抑制审计新增命中为 0，接受的 lint 规则配置未再改变。
+- govuln source41 扫描未发现可达漏洞；另有 1 项未使用 OpenPGP 模块 advisory，故不表述为“无漏洞”。
+- canonical audit 的 PostgreSQL 与 MySQL 严格核验均通过：各 9 行，5,632 项匹配。
+- Maven #8 六项命名场景通过：404-to-200、cached-content、HEAD、all-404、404-and-503、terminal-401。
+- 六生态 Range 验收通过：73 个 HTTP 请求、6 个 targets、317/317 项检查通过。证据绑定候选镜像。OCI 416 响应可包含 JSON 错误正文；该检查验证错误响应，不要求空正文。RANGE_INVALID 是测试 registry 的错误码，不是 OCI 通用错误码。
+- Source 40 曾在 Range 上得到 315/317；一项是 Dist warm HEAD ETag 为空，source41 修复响应头 canonicalization 并通过新增回归；另一项是把 OCI 416 JSON 错误正文误判为失败，source41 按错误响应语义修正了预期。
 
-未新增第三方依赖；复用已有 AWS SDK、semaphore、errgroup、LRU、JSON/XML/HTML 解析库。此次改动未新增 lint 抑制指令，也未降低 lint 规则。
+## 并发矩阵
 
-## 已完成检查
+常规矩阵 48 组（MySQL、SQLite、PostgreSQL 各 16），distinct 矩阵 26 组（MySQL、PostgreSQL 各 13）。 常规冷缓存使用 512 VUs，热点使用 512/1024 VUs，混合负载使用 512 VUs；应用容器上限 1 GiB，GOMEMLIMIT 768 MiB。Distinct 每场景请求 512 个不同缓存键，使用 512 VUs、应用容器上限 512 MiB、GOMEMLIMIT 384 MiB。各组 threshold failures、HTTP failure rate 和 corrupt responses 均为 0。
 
-Go 测试与 lint 在 Go 1.27.2 Linux 容器内运行：
+| 组别 | 后端 | 场景 | 检查通过/失败 | 迭代 / HTTP 请求 | 最大 p95 / 场景最大延迟（ms） |
+| --- | --- | ---: | ---: | ---: | ---: |
+| 常规 | MySQL | 16 | 50,824 / 0 | 25,340 / 25,440 | 5,980.859 / 7,265.871 |
+| 常规 | SQLite | 16 | 383,676 / 0 | 191,792 / 191,866 | 530.343 / 687.029 |
+| 常规 | PostgreSQL | 16 | 261,800 / 0 | 130,828 / 130,928 | 1,386.988 / 1,550.960 |
+| distinct | MySQL | 13 | 19,968 / 0 | 6,656 / 13,338 | 73,190.205 / 74,629.644 |
+| distinct | PostgreSQL | 13 | 19,968 / 0 | 6,656 / 13,338 | 21,032.037 / 21,428.693 |
 
-| 检查 | 结果 | 本地证据 |
+常规 fixture payload 参数为 128 KiB，distinct 为 1 KiB；各协议实际正文大小会因元数据或归档开销而不同，Go info 正文实际约 50 bytes。MySQL distinct 的 p95 达 73 秒以上，是本轮压测的观测值，不是低延迟 SLO，也不能解释为 SLO 通过。
+
+## 稳定窗口与资源
+
+每个 backend 的稳定采样窗口约 95.3 秒。最终服务均保持运行，OOM 和重启为 0。进程 RSS/HWM 用 KiB；cgroup current/peak 用 bytes。
+
+| 矩阵 | 应用进程 RSS / HWM（KiB） | cgroup current / peak（bytes） |
 | --- | --- | --- |
-| 根模块 `go test -ldflags="-s -w" -p 1 ./... -count=1 -timeout=360s` | 全部包通过 | `go-full-11.log/.exit` |
-| 最后一次 lint 整理后的 Maven、PyPI、memory backend、meta 全包测试 | 通过 | `affected-12.log/.exit` |
-| 现有 49 项 golangci-lint 检查 | 0 issues | `lint-freeze-12.log/.exit` |
-| artifactstream、object 全包 `go test -race -v` | 通过 | `core-race-12.log/.exit` |
-| 标准 HTTP 与 Fiber，已知/未知长度真实响应流 | 正文尚未完成时已收到响应头；正文完整、只关闭一次 | `core-race-12.log` |
-| OCI 慢客户端取消、PyPI 上游正文阻塞的真实 HTTP 回归 | 通过 | `streaming-9.log/.exit` |
-| S3 代理请求分块、签名头、扩展与 trailer 转发 | 2 项通过 | `proxy-unit-final.log` |
-| 本机 GoReleaser 2.17.1 配置检查 | 通过 | `tmp/release-v1.3.6/native-goreleaser-check.log` |
+| 常规 MySQL 主 / peer | 188,280 / 230,876；219,300 / 226,816 | 227,635,200 / 313,352,192；258,539,520 / 321,368,064 |
+| 常规 SQLite | 195,792 / 256,816 | 244,563,968 / 325,558,272 |
+| 常规 PostgreSQL 主 / peer | 202,940 / 245,712；187,904 / 247,772 | 241,999,872 / 330,203,136；227,004,416 / 336,990,208 |
+| distinct MySQL 主 / peer | 185,748 / 196,424；179,608 / 194,928 | 225,271,808 / 241,061,888；219,848,704 / 239,030,272 |
+| distinct PostgreSQL 主 / peer | 175,144 / 191,408；175,384 / 195,016 | 213,340,160 / 235,126,784；215,052,288 / 237,543,424 |
 
-全量测试对应第 11 次冻结；第 12 次只调整测试辅助函数与 Maven XML 错误文本的大小写。受影响包已完整重测，并完成第 12 次全仓 lint 和上述 race 检查。日志除特别注明外均位于 `tmp/memory-20261021/`。
+这些是本次 Linux amd64 候选及给定负载下的测量值，不构成其他部署环境的内存上限保证。
 
-S3 race 测试中，4 个并发 1 KiB 未知长度上传阻塞期间，存活堆新增 160,808 字节（原实现红测约 67.15 MB）。约 20 MiB multipart 输入的阻塞上传新增存活堆为 6,816 字节。这是测试进程的堆差值，不代表服务 RSS 上限。上传准入取消不读取源、取消后释放名额、失败 abort、spool 清理、调用方文件快照、不可变文件复用和起始偏移均通过回归。
+## PyPI、wheel 与依赖边界
 
-## 真实容器验收
+- 512 并发的 MySQL PyPI wheel 场景通过，1,536 项检查通过、HTTP failure rate 和 corrupt response 均为 0；场景用时约 44.4 秒。该并发负载不代表 512 个 75.5 MB wheel。
+- 单独的严格 uv wheel 验收用时 15.0540732 秒。固定 macOS wheel 为 75,545,685 bytes，SHA-256 65f20c541a499f08c36ac3bfdafce350ca8c7cc23488c1faf4d9b9524b547156；从 8 MiB 位置以 Range 和强 ETag 续传并返回 206，10 个安装文件逐字节验证。未在 Linux 上执行其原生代码。
+- 完整 PyPI 下载 10.76812496597995 秒，75,545,685 bytes，recoveries=1；客户端最大 RSS 25,756 KiB。regimux-demo 的 uv lock/sync/run import 与 pip 下载是单独验证。
+- 主模块更新 13 个既有直接依赖、23 个既有间接依赖，并加入 go.opentelemetry.io/otel/log；Python lock 更新 7 项，build 模块更新 3 个既有间接依赖。没有任意升级主版本，也没有放宽 lint 规则或新增抑制。
 
-Maven 在独立 SQLite/local-object 容器中通过全部 6 个场景：404 后回退至 200、完整 POM 校验与缓存命中不回源、HEAD 长度和空正文、全部 404、后续 503 保留、401 不再回退。证据为 `maven8-acceptance.log/.exit`（退出码 0）。
+## ORAS 与发布范围
 
-S3 使用 PostgreSQL、Redis、SeaweedFS 和请求级流式代理；代理为每个 PUT 增加 100 ms 延迟。两个 RegiMux 副本各限制 512 MiB，设置 `GOMEMLIMIT=384MiB`。k6 同时请求 512 个不同的 Go ZIP 冷对象，每个正文完整校验 SHA-256，并逐键检查恰好一次上游 GET：
+ORAS 更新至 v2.6.4。私有 registry 与 Bearer realm 可使用相同主机名、不同端口；跨私有主机名的 token realm 或重定向会被拒绝，不向其他主机发送凭据。
 
-| 项目 | 结果 |
-| --- | --- |
-| 完成请求 | 512/512 |
-| 内容或计数断言 | 1,536 次通过，0 失败 |
-| HTTP 错误率、损坏正文 | 均为 0 |
-| 客户端退出码 | 0 |
-| 服务及依赖 OOM、重启 | 均为 0 |
-| 主副本进程 RSS/HWM 最大观测 | 157,268 KiB / 157,268 KiB |
-| 另一副本进程 RSS/HWM 最大观测 | 155,176 KiB / 155,176 KiB |
-| 两副本 cgroup 内存峰值 | 198,021,120 / 195,670,016 字节 |
+本轮候选与运行验证覆盖 Linux amd64。ARM smoke 尚未运行，需在发布阶段单独验证。报告中的矩阵与 Range 数字均绑定 source41 freeze 和候选镜像；当前验收通过不表示已创建公开发布或发布标签。
 
-证据位于 `tmp/memory-20261021/core-pg/`：k6 JSON/日志、各阶段进程内存采样、服务日志和容器最终状态均保留。PID 1 为 docker-init，RSS/HWM 来自实际 regimuxd 进程；cgroup 数值单独记录。
+## 证据索引
 
-该冷对象场景的 HTTP p95 为 70.58 秒、最大 71.73 秒（含 fixture 准备请求）。没有设置延迟通过阈值，因此上述结果只证明正确性和本场景资源边界，不能据此宣称高并发尾延迟已优化。运行中保留的 goroutine 样本显示部分请求等待目录元数据刷新。
-
-## 尚待完成
-
-SQLite/PostgreSQL/MySQL 的完整 48 组冷、热与混合并发矩阵，以及 PostgreSQL/MySQL 的完整 26 组不同冷对象内存矩阵，尚未在此候选镜像上全部完成。不能将本报告表述为完整 74 组验收通过。正式双架构镜像的提交身份、启动和公开标签校验，以及其他平台安装包验收另行记录。
+核心机器汇总为 final41-v6-machine-summary.json；canonical 对照记录位于 canonical-audit41/mysql-observed.txt 与 canonical-audit41/postgres-observed.txt；Range 详细请求与逐项断言位于 range41-evidence/http-transcript.jsonl 和 range41-evidence/probe-summary.json；新增 lint 抑制审计为 no-nolint41-audit.json。go-full-41.exit、transfer-race-41.exit、lint49-validation41a.exit、govuln41b-runner.exit、canonical41-runner.exit、range41-runner.exit 与 runtime41-complete.exit 均为 0。

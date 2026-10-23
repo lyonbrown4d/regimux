@@ -98,18 +98,12 @@ func (s *SQLStore) TouchBlob(ctx context.Context, key BlobKey, at time.Time) err
 			sqlBlobRows.Digest.Eq(key.Digest),
 			sqlBlobRows.LastAccessAt.Lt(stamp),
 		))
-	result, err := s.blobs.Update(ctx, query)
+	_, err = s.blobs.Update(ctx, query)
 	if err != nil {
 		return wrapError(err, "touch blob access metadata")
 	}
-	rows, err := result.RowsAffected()
-	if err != nil {
-		return wrapError(err, "count touched blob metadata rows")
-	}
-	if rows == 0 {
-		return nil
-	}
-	return s.refreshRepositoriesForBlob(ctx, key.Digest, metadataNow())
+	// Catalog access timestamps come from repository links, not this global blob.
+	return nil
 }
 
 func (s *SQLStore) writeBlobRow(ctx context.Context, record *BlobRecord, row blobRow) error {
@@ -225,11 +219,23 @@ func (*SQLStore) blobRowsToRecords(
 	return records, nil
 }
 func (s *SQLStore) updateBlobRow(ctx context.Context, row blobRow) error {
-	return patchRowByKey(ctx, s.blobs, sqlBlobRows.Digest, row.Digest, "upsert blob metadata",
+	query := querydsl.Update(sqlBlobRows).Set(
 		sqlBlobRows.Size.Set(row.Size),
 		sqlBlobRows.MediaType.Set(row.MediaType),
 		sqlBlobRows.ObjectKey.Set(row.ObjectKey),
 		sqlBlobRows.CreatedAt.Set(row.CreatedAt),
 		sqlBlobRows.UpdatedAt.Set(row.UpdatedAt),
-	)
+	).Where(querydsl.And(
+		sqlBlobRows.Digest.Eq(row.Digest),
+		querydsl.Or(
+			sqlBlobRows.Size.Ne(row.Size),
+			blobTextDiffers(sqlBlobRows.MediaType, row.MediaType),
+			blobTextDiffers(sqlBlobRows.ObjectKey, row.ObjectKey),
+		),
+	))
+	_, err := s.blobs.Update(ctx, query)
+	if err != nil {
+		return wrapError(err, "upsert blob metadata")
+	}
+	return nil
 }

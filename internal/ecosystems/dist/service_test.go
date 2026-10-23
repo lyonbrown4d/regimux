@@ -167,6 +167,23 @@ func TestServiceRangeMissPassesThroughWithoutCaching(t *testing.T) {
 	}
 }
 
+func TestServiceRejectsMismatchedInitialPartialRange(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set(distribution.HeaderContentRange, "bytes 0-1/10")
+		w.Header().Set(distribution.HeaderContentLength, "2")
+		w.WriteHeader(http.StatusPartialContent)
+		writeBody(t, w, "01")
+	}))
+	t.Cleanup(upstream.Close)
+	service, _, _ := newTestService(t.Context(), t, upstream.URL, nil)
+	_, err := service.Get(t.Context(), dist.Request{
+		Alias: "gradle", Tail: "gradle-8.7-bin.zip", Method: http.MethodGet, Range: "bytes=8-9",
+	})
+	if err == nil {
+		t.Fatal("service accepted a partial response for a different range")
+	}
+}
+
 func TestServiceRangeHitReadsCachedObject(t *testing.T) {
 	ctx := context.Background()
 	var requests atomic.Int64

@@ -49,7 +49,7 @@ func (s *Service) cachePreparedSimpleIndex(
 	tmp *spool.TempBody,
 	serveFromTemp func() (*Response, error),
 ) (*Response, error) {
-	writeCtx, cancel := context.WithTimeout(ctx, pypiCacheTimeout)
+	writeCtx, cancel := context.WithTimeout(ctx, pypiCacheWriteTimeout)
 	entry, err := s.cache.Put(writeCtx, artifactcache.PutRequest{
 		Key:         artifactKey(route),
 		AcceptKey:   acceptKeyPyPI,

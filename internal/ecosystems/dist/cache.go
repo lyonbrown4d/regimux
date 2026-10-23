@@ -3,12 +3,14 @@ package dist
 import (
 	"context"
 	"errors"
+	"io"
 	"net/http"
 	"strings"
 
 	"github.com/lyonbrown4d/regimux/internal/artifactcache"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -36,11 +38,12 @@ func (s *Service) cachedMetadata(ctx context.Context, requestRoute Route) (*meta
 
 func (s *Service) openCachedObject(ctx context.Context, req Request, tag meta.TagRecord, manifest meta.ManifestRecord) (storedResponse, bool, error) {
 	headers := http.Header(manifest.Headers).Clone()
-	opts, status, responseSize, err := cachedGetOptions(req, manifest.Size, headers)
-	if err != nil {
-		return storedResponse{}, false, err
+	opts, status, responseSize := cachedGetOptions(req, manifest.Size, headers)
+	reader := io.ReadCloser(http.NoBody)
+	var err error
+	if status != http.StatusRequestedRangeNotSatisfiable {
+		reader, _, err = s.openRecoverableObject(ctx, objectKey(manifest), manifest.Digest, manifest.Size, opts)
 	}
-	reader, _, err := s.objects.Get(ctx, objectKey(manifest), opts)
 	if errors.Is(err, object.ErrNotFound) {
 		return storedResponse{}, false, nil
 	}
@@ -64,20 +67,22 @@ func objectKey(manifest meta.ManifestRecord) string {
 	return manifest.Digest
 }
 
-func cachedGetOptions(req Request, size int64, headers http.Header) (object.GetOptions, int, int64, error) {
-	if methodOrGet(req.Method) != http.MethodGet || strings.TrimSpace(req.Range) == "" {
-		return object.GetOptions{}, http.StatusOK, size, nil
+func cachedGetOptions(req Request, size int64, headers http.Header) (object.GetOptions, int, int64) {
+	if methodOrGet(req.Method) != http.MethodGet || strings.TrimSpace(req.Range) == "" || !transfer.MatchesIfRange(req.IfRange, headers) {
+		return object.GetOptions{}, http.StatusOK, size
 	}
 	resolved, err := resolveCachedRange(req.Range, size)
 	if err != nil {
-		return object.GetOptions{}, 0, 0, err
+		headers.Set(distribution.HeaderContentRange, "bytes */"+formatInt64(size))
+		headers.Set(distribution.HeaderContentLength, "0")
+		return object.GetOptions{}, http.StatusRequestedRangeNotSatisfiable, 0
 	}
 	if resolved == nil {
-		return object.GetOptions{}, http.StatusOK, size, nil
+		return object.GetOptions{}, http.StatusOK, size
 	}
 	headers.Set(distribution.HeaderContentRange, resolved.ContentRange(size))
 	headers.Set(distribution.HeaderContentLength, formatInt64(resolved.Length()))
-	return object.GetOptions{Range: resolved}, http.StatusPartialContent, resolved.Length(), nil
+	return object.GetOptions{Range: resolved}, http.StatusPartialContent, resolved.Length()
 }
 
 func resolveCachedRange(header string, size int64) (*object.HTTPRange, error) {

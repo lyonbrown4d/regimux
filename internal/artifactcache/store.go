@@ -7,8 +7,10 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/lyonbrown4d/regimux/internal/coalescer"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
 	"github.com/lyonbrown4d/regimux/internal/store/object"
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 	"github.com/samber/oops"
 )
 
@@ -26,11 +28,13 @@ func New(deps Dependencies) *Store {
 		fills = NewFillTracker()
 	}
 	return &Store{
-		metadata: deps.Metadata,
-		objects:  deps.Objects,
-		fills:    fills,
-		logger:   logger.With("component", "artifact-cache"),
-		now:      now,
+		metadata:     deps.Metadata,
+		objects:      deps.Objects,
+		fills:        fills,
+		logger:       logger.With("component", "artifact-cache"),
+		now:          now,
+		accesses:     coalescer.NewTracker(),
+		submitAccess: deps.SubmitAccess,
 	}
 }
 
@@ -107,9 +111,7 @@ func (s *Store) readAndTouch(ctx context.Context, key Key) (readSnapshot, error)
 	if err != nil || !ok {
 		return readSnapshot{}, err
 	}
-	if touchErr := Touch(ctx, s.metadata, *manifest, s.now()); touchErr != nil {
-		s.logger.WarnContext(ctx, "touch artifact cache access failed", "digest", manifest.Digest, "error", touchErr)
-	}
+	s.touchAccess(ctx, *manifest, s.now())
 	return readSnapshot{
 		tag:      *tag,
 		manifest: cloneManifestHeaders(*manifest),
@@ -153,7 +155,9 @@ func (s *Store) open(ctx context.Context, manifest meta.ManifestRecord) (Entry, 
 	if objectKey == "" {
 		objectKey = manifest.Digest
 	}
-	reader, info, err := s.objects.Get(ctx, objectKey, object.GetOptions{})
+	reader, info, err := transfer.OpenObject(ctx, s.objects, transfer.ObjectRequest{
+		Key: objectKey, Digest: manifest.Digest, Size: manifest.Size,
+	})
 	if errors.Is(err, object.ErrNotFound) {
 		return Entry{}, false, nil
 	}
@@ -161,7 +165,7 @@ func (s *Store) open(ctx context.Context, manifest meta.ManifestRecord) (Entry, 
 		return Entry{}, false, wrapError(err, "open cached artifact object")
 	}
 	size := manifest.Size
-	if size <= 0 && info != nil {
+	if size < 0 && info != nil {
 		size = info.Size
 	}
 	return Entry{

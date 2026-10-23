@@ -11,6 +11,9 @@ import (
 )
 
 func (p blobProxy) Get(ctx context.Context, req BlobRequest) (*BlobReadResult, error) {
+	if req.Method == http.MethodHead {
+		req.Range = nil
+	}
 	if err := ValidateRouteParts(req.UpstreamAlias, req.Repo); err != nil {
 		return nil, err
 	}
@@ -283,13 +286,5 @@ func (p blobProxy) fetchPassthrough(ctx context.Context, req BlobRequest) (*Blob
 		}
 		reader = io.NopCloser(bytes.NewReader(nil))
 	}
-	return &BlobReadResult{
-		Reader:  reader,
-		Digest:  resp.Digest,
-		Size:    resp.Size,
-		Range:   req.Range,
-		Status:  resp.StatusCode,
-		Headers: resp.Headers,
-		Cache:   CacheBypass,
-	}, nil
+	return rangedBlobPassthrough(req, resp, reader)
 }

@@ -18,15 +18,12 @@ func TestBlobFillLeaseRenewalStopsOnReleaseWithoutWaitingForTTL(t *testing.T) {
 		Repo:          "library/alpine",
 		Digest:        "sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 	}, lease)
-	scheduler.waitSubmitted(t)
-
 	cancel()
 	release()
 	release()
-	scheduler.waitDone(t)
 
-	if got := scheduler.calls(); got != 1 {
-		t.Fatalf("scheduler calls = %d, want 1", got)
+	if got := scheduler.calls(); got != 0 {
+		t.Fatalf("scheduler calls = %d, want 0 before renewal TTL", got)
 	}
 	if got := lease.extendCalls(); got != 0 {
 		t.Fatalf("lease extend calls = %d, want 0 before renewal TTL", got)
@@ -50,27 +47,17 @@ func TestBlobFillLeaseRenewalStopsOnReleaseWithoutWaitingForTTL(t *testing.T) {
 type recordingLeaseRenewScheduler struct {
 	mu        sync.Mutex
 	submitted int
-	once      sync.Once
-	ready     chan struct{}
-	done      chan struct{}
 }
 
 func newRecordingLeaseRenewScheduler() *recordingLeaseRenewScheduler {
-	return &recordingLeaseRenewScheduler{
-		ready: make(chan struct{}),
-		done:  make(chan struct{}),
-	}
+	return &recordingLeaseRenewScheduler{}
 }
 
 func (s *recordingLeaseRenewScheduler) Submit(task func()) error {
 	s.mu.Lock()
 	s.submitted++
 	s.mu.Unlock()
-	s.once.Do(func() { close(s.ready) })
-	go func() {
-		defer close(s.done)
-		task()
-	}()
+	go task()
 	return nil
 }
 
@@ -78,24 +65,6 @@ func (s *recordingLeaseRenewScheduler) calls() int {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.submitted
-}
-
-func (s *recordingLeaseRenewScheduler) waitSubmitted(t *testing.T) {
-	t.Helper()
-	select {
-	case <-s.ready:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("lease renewal task was not submitted")
-	}
-}
-
-func (s *recordingLeaseRenewScheduler) waitDone(t *testing.T) {
-	t.Helper()
-	select {
-	case <-s.done:
-	case <-time.After(100 * time.Millisecond):
-		t.Fatal("lease renewal task did not stop after release")
-	}
 }
 
 type recordingLease struct {

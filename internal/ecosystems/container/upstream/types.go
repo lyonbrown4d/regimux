@@ -54,10 +54,11 @@ type ProbeConfig struct {
 }
 
 type HTTPConfig struct {
-	Timeout time.Duration   `json:"timeout" koanf:"timeout" yaml:"timeout"`
-	HTTP2   HTTP2Config     `json:"http2"   koanf:"http2"   yaml:"http2"`
-	Retry   HTTPRetryConfig `json:"retry"   koanf:"retry"   yaml:"retry"`
-	TLS     HTTPTLSConfig   `json:"tls"     koanf:"tls"     yaml:"tls"`
+	AttemptTimeout time.Duration   `json:"attempt_timeout" koanf:"attempt_timeout" yaml:"attempt_timeout"`
+	Timeout        time.Duration   `json:"timeout"         koanf:"timeout"         yaml:"timeout"`
+	HTTP2          HTTP2Config     `json:"http2"           koanf:"http2"           yaml:"http2"`
+	Retry          HTTPRetryConfig `json:"retry"           koanf:"retry"           yaml:"retry"`
+	TLS            HTTPTLSConfig   `json:"tls"             koanf:"tls"             yaml:"tls"`
 }
 
 type HTTP2Config struct {

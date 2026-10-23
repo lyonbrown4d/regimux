@@ -71,6 +71,22 @@ function fetchJSON(path: string): unknown {
   return response.json();
 }
 
+function responseBodyPreview(body: string | ArrayBuffer | null): string | undefined {
+  if (body === null) return undefined;
+  if (typeof body === 'string') return body.slice(0, 512);
+  const bytes = new Uint8Array(body, 0, Math.min(body.byteLength, 512));
+  let preview = '';
+  for (let index = 0; index < bytes.length; index++) {
+    const byte = bytes[index];
+    if (byte === 9) preview += '\\t';
+    else if (byte === 10) preview += '\\n';
+    else if (byte === 13) preview += '\\r';
+    else if (byte >= 32 && byte <= 126) preview += String.fromCharCode(byte);
+    else preview += `\\x${byte.toString(16).padStart(2, '0')}`;
+  }
+  return preview;
+}
+
 function request(base: string, target: Target, measured = true): boolean {
   const method = measured && mixedMethods && __VU % 2 === 0 ? 'HEAD' : 'GET';
   const response = http.request(method, base + target.path, null, {
@@ -103,6 +119,7 @@ function request(base: string, target: Target, measured = true): boolean {
     target: target.name, status: response.status, bodyOK, error: response.error,
     errorCode: response.error_code, durationMs: response.timings.duration,
     vu: __VU, iteration: __ITER, cache: response.headers['X-Mirror-Cache'],
+    contentType: response.headers['Content-Type'], bodyPreview: responseBodyPreview(body),
   }));
   return ok;
 }

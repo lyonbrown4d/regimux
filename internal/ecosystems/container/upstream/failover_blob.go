@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"errors"
 	"sync"
 
 	collectionlist "github.com/arcgolabs/collectionx/list"
@@ -12,22 +13,22 @@ type attemptResult struct {
 	runtime upstreamRuntime
 	err     error
 	attempt int
+	cancel  context.CancelFunc
 }
 
 type blobFailoverRunner struct {
 	client     *Client
-	ctx        context.Context
-	attemptCtx context.Context
-	cancel     context.CancelFunc
 	alias      string
 	operation  string
 	repository string
 	digest     string
 	pool       *upstreamPool
 	runtimes   *collectionlist.List[upstreamRuntime]
-	fn         func(upstreamRuntime) error
+	fn         func(context.Context, upstreamRuntime) error
+	hasSuccess func() bool
 	results    chan attemptResult
 	req        failoverRequest
+	active     map[int]context.CancelFunc
 
 	maxAttempts int
 	nextAttempt int
@@ -40,28 +41,24 @@ func (c *Client) doWithConcurrentFailover(
 	req failoverRequest,
 	pool *upstreamPool,
 	runtimes *collectionlist.List[upstreamRuntime],
-	fn func(upstreamRuntime) error,
-) error {
+	fn func(context.Context, upstreamRuntime) error,
+) (context.CancelFunc, error) {
 	if pool == nil {
-		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+		return nil, c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 	}
 	maxAttempts := pool.blobAttemptConcurrency()
 	if maxAttempts <= 1 {
-		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+		return nil, c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 	}
 	if runtimes == nil {
-		return c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
+		return nil, c.doWithSequentialFailover(ctx, req, pool, runtimes, fn)
 	}
 	if maxAttempts > runtimes.Len() {
 		maxAttempts = runtimes.Len()
 	}
 
-	attemptCtx, cancel := context.WithCancel(ctx)
 	runner := &blobFailoverRunner{
 		client:      c,
-		ctx:         ctx,
-		attemptCtx:  attemptCtx,
-		cancel:      cancel,
 		alias:       req.alias,
 		operation:   req.operation,
 		repository:  req.repository,
@@ -69,51 +66,61 @@ func (c *Client) doWithConcurrentFailover(
 		pool:        pool,
 		runtimes:    runtimes,
 		fn:          fn,
+		hasSuccess:  req.hasConcurrentSuccess,
 		results:     make(chan attemptResult, runtimes.Len()),
 		req:         req,
 		maxAttempts: maxAttempts,
+		active:      make(map[int]context.CancelFunc, maxAttempts),
 	}
-	defer cancel()
-	runner.startInitial()
-	return runner.wait()
+	runner.startInitial(ctx)
+	return runner.wait(ctx)
 }
 
-func (r *blobFailoverRunner) startInitial() {
+func (r *blobFailoverRunner) startInitial(ctx context.Context) {
 	for range r.maxAttempts {
-		if !r.startNext() {
+		if !r.startNext(ctx) {
 			return
 		}
 	}
 }
 
-func (r *blobFailoverRunner) wait() error {
+func (r *blobFailoverRunner) wait(ctx context.Context) (context.CancelFunc, error) {
 	for !r.done() {
 		select {
 		case result := <-r.results:
-			finished, err := r.handleResult(result)
+			finished, winnerCancel, err := r.handleResult(ctx, result)
 			if finished {
-				return err
+				return winnerCancel, err
 			}
-		case <-r.attemptCtx.Done():
-			return r.doneContextError()
+		case <-ctx.Done():
+			r.cancelAttemptsExcept(0)
+			return nil, r.doneContextError(ctx)
 		}
 	}
+	if err := r.doneContextError(ctx); err != nil {
+		return nil, err
+	}
 
-	return distribution.ErrUpstream.WithDetail("all upstream blob attempts failed for " + r.alias)
+	return nil, distribution.ErrUpstream.WithDetail("all upstream blob attempts failed for " + r.alias)
 }
 
-func (r *blobFailoverRunner) startNext() bool {
+func (r *blobFailoverRunner) startNext(ctx context.Context) bool {
 	runtime, attempt, ok := r.nextRuntime()
 	if !ok {
 		return false
 	}
 	req := decorateFailoverRequest(r.req, r.pool, runtime)
-	r.client.logBlobAttempt(r.ctx, req, runtime, attempt, r.runtimes.Len(), r.maxAttempts)
+	r.client.logBlobAttempt(ctx, req, runtime, attempt, r.runtimes.Len(), r.maxAttempts)
+	attemptCtx, cancel := context.WithCancel(ctx)
+	r.mu.Lock()
+	r.active[attempt] = cancel
+	r.mu.Unlock()
 	go func() {
 		r.results <- attemptResult{
 			runtime: runtime,
-			err:     runAgainstRuntime(r.attemptCtx, r.pool, r.operation, runtime, r.fn),
+			err:     runAgainstRuntime(attemptCtx, r.pool, r.operation, runtime, r.fn),
 			attempt: attempt,
+			cancel:  cancel,
 		}
 	}()
 	return true
@@ -135,38 +142,63 @@ func (r *blobFailoverRunner) nextRuntime() (upstreamRuntime, int, bool) {
 	return runtime, attempt, true
 }
 
-func (r *blobFailoverRunner) handleResult(result attemptResult) (bool, error) {
-	remaining, inFlightRemaining, hasNext := r.finishAttempt()
+func (r *blobFailoverRunner) handleResult(ctx context.Context, result attemptResult) (bool, context.CancelFunc, error) {
+	remaining, inFlightRemaining, hasNext := r.finishAttempt(result.attempt)
 	req := decorateFailoverRequest(r.req, r.pool, result.runtime)
-	if result.err == nil {
-		r.client.recordEndpointSuccess(r.ctx, req, r.pool, result.runtime)
-		r.client.logBlobEndpointSelected(r.ctx, req, result.runtime, result.attempt, r.runtimes.Len())
-		r.cancel()
-		return true, nil
+	if errors.Is(result.err, errBlobAttemptUnselected) {
+		result.cancel()
+		return false, nil, nil
 	}
-	if ctxErr := r.attemptCtx.Err(); ctxErr != nil {
-		return true, wrapError(ctxErr, "upstream %s context", r.operation)
+	if result.err == nil {
+		r.client.recordEndpointSuccess(ctx, req, r.pool, result.runtime)
+		r.client.logBlobEndpointSelected(ctx, req, result.runtime, result.attempt, r.runtimes.Len())
+		r.cancelAttemptsExcept(result.attempt)
+		return true, result.cancel, nil
+	}
+	result.cancel()
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		r.cancelAttemptsExcept(0)
+		return true, nil, wrapError(ctxErr, "upstream %s context", r.operation)
+	}
+	if r.hasSelectedSuccess() {
+		return false, nil, nil
 	}
 	if !shouldFailover(req, result.err) {
-		r.cancel()
-		return true, result.err
+		r.cancelAttemptsExcept(0)
+		return true, nil, result.err
 	}
 
-	r.client.recordEndpointFailure(r.ctx, req, r.pool, result.runtime, result.err)
-	r.client.logBlobAttemptFailure(r.ctx, req, result.runtime, result.err, result.attempt, r.runtimes.Len(), remaining+inFlightRemaining)
+	r.client.recordEndpointFailure(ctx, req, r.pool, result.runtime, result.err)
+	r.client.logBlobAttemptFailure(ctx, req, result.runtime, result.err, result.attempt, r.runtimes.Len(), remaining+inFlightRemaining)
 	r.client.logFailover(req, result.runtime, result.err, hasNext)
-	r.client.publishFailover(r.ctx, req, result.runtime, result.err, hasNext)
+	r.client.publishFailover(ctx, req, result.runtime, result.err, hasNext)
 	if hasNext {
-		r.startNext()
+		r.startNext(ctx)
 	}
-	return false, nil
+	return false, nil, nil
 }
 
-func (r *blobFailoverRunner) finishAttempt() (int, int, bool) {
+func (r *blobFailoverRunner) hasSelectedSuccess() bool {
+	return r.hasSuccess != nil && r.hasSuccess()
+}
+
+func (r *blobFailoverRunner) finishAttempt(attempt int) (int, int, bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.inFlight--
+	delete(r.active, attempt)
 	return r.runtimes.Len() - r.nextAttempt, r.inFlight, r.nextAttempt < r.runtimes.Len()
+}
+
+func (r *blobFailoverRunner) cancelAttemptsExcept(keep int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	for attempt, cancel := range r.active {
+		if attempt != keep {
+			cancel()
+			delete(r.active, attempt)
+		}
+	}
 }
 
 func (r *blobFailoverRunner) done() bool {
@@ -175,8 +207,8 @@ func (r *blobFailoverRunner) done() bool {
 	return r.nextAttempt >= r.runtimes.Len() && r.inFlight == 0
 }
 
-func (r *blobFailoverRunner) doneContextError() error {
-	if ctxErr := r.ctx.Err(); ctxErr != nil {
+func (r *blobFailoverRunner) doneContextError(ctx context.Context) error {
+	if ctxErr := ctx.Err(); ctxErr != nil {
 		return wrapError(ctxErr, "upstream %s context", r.operation)
 	}
 	return nil
