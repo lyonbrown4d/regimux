@@ -2,6 +2,7 @@ package dist
 
 import (
 	"context"
+	"errors"
 	"log/slog"
 	"net/http"
 	"path"
@@ -94,14 +95,6 @@ func (s *Service) Get(ctx context.Context, req Request) (*Response, error) {
 
 func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute Route, upstreamCfg config.UpstreamConfig, mode requestMode) (*Response, error) {
 	cached, cachedOK, err := s.cached(ctx, req, requestRoute)
-	if err != nil {
-		return nil, err
-	}
-	cachedResp, cacheOK, cacheErr := s.responseFromCache(req, requestRoute, cached, cachedOK, mode)
-	if cacheOK || cacheErr != nil {
-		return cachedResp, cacheErr
-	}
-
 	fillReq := upstreamFillRequest{
 		ctx:      ctx,
 		req:      req,
@@ -110,6 +103,13 @@ func (s *Service) getFromUpstream(ctx context.Context, req Request, requestRoute
 		cached:   cached,
 		cachedOK: cachedOK,
 		mode:     mode,
+	}
+	if err != nil {
+		return s.fetchAfterCacheReadError(fillReq, err)
+	}
+	cachedResp, cacheOK, cacheErr := s.responseFromCache(req, requestRoute, cached, cachedOK, mode)
+	if cacheOK || cacheErr != nil {
+		return cachedResp, cacheErr
 	}
 	if shouldCoalesceFill(req, mode) {
 		return s.coalesceFill(fillReq)
@@ -135,7 +135,8 @@ func (s *Service) coalesceFill(fillReq upstreamFillRequest) (*Response, error) {
 		Wait: func() (*Response, bool, error) {
 			refreshed, ok, refreshErr := s.cached(fillReq.ctx, fillReq.req, fillReq.route)
 			if refreshErr != nil {
-				return nil, true, refreshErr
+				resp, fallbackErr := s.fetchAfterCacheReadError(fillReq, refreshErr)
+				return resp, true, fallbackErr
 			}
 			cachedResp, cacheOK, cacheErr := s.responseFromCache(fillReq.req, fillReq.route, refreshed, ok, fillReq.mode)
 			if cacheOK || cacheErr != nil {
@@ -151,6 +152,23 @@ func (s *Service) coalesceFill(fillReq upstreamFillRequest) (*Response, error) {
 		return nil, wrapError(err, "coalesce dist artifact fill")
 	}
 	return resp, nil
+}
+
+func (s *Service) fetchAfterCacheReadError(fillReq upstreamFillRequest, cacheErr error) (*Response, error) {
+	if ctxErr := fillReq.ctx.Err(); ctxErr != nil {
+		return nil, wrapError(ctxErr, "read dist cache")
+	}
+	errorKind := "cache_read"
+	switch {
+	case errors.Is(cacheErr, context.DeadlineExceeded):
+		errorKind = "cache_timeout"
+	case errors.Is(cacheErr, context.Canceled):
+		errorKind = "cache_canceled"
+	}
+	s.logger.WarnContext(fillReq.ctx, "dist cache read failed; fetching upstream", "alias", fillReq.route.Alias, "reference", fillReq.route.Reference, "error_kind", errorKind)
+	fillReq.cached = storedResponse{}
+	fillReq.cachedOK = false
+	return s.fetchUncached(fillReq)
 }
 
 func (s *Service) fetchUncached(fillReq upstreamFillRequest) (*Response, error) {
