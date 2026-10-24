@@ -116,8 +116,23 @@ func defaultCacheConfig() CacheConfig {
 
 func defaultStoreConfig() StoreConfig {
 	return StoreConfig{
-		Meta:   StoreMetaConfig{Driver: "sqlite", Path: "data/regimux.db"},
-		Object: StoreObjectConfig{Driver: "local", Path: "data/objects"},
+		Meta: StoreMetaConfig{Driver: "sqlite", Path: "data/regimux.db"},
+		Object: StoreObjectConfig{
+			Driver:    "local",
+			Path:      "data/objects",
+			DiskCache: defaultStoreObjectDiskCacheConfig(),
+		},
+	}
+}
+
+func defaultStoreObjectDiskCacheConfig() StoreObjectDiskCacheConfig {
+	return StoreObjectDiskCacheConfig{
+		Directory:          "./data/object-cache",
+		MaxBytes:           defaultObjectDiskCacheMaxBytes,
+		MaxObjectBytes:     defaultObjectDiskCacheMaxObjectBytes,
+		MaxEntries:         defaultObjectDiskCacheMaxEntries,
+		MaxConcurrentFills: defaultObjectDiskCacheMaxConcurrentFills,
+		TTL:                defaultObjectDiskCacheTTL,
 	}
 }
 

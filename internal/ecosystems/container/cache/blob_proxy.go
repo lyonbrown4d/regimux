@@ -21,11 +21,13 @@ func (p blobProxy) Get(ctx context.Context, req BlobRequest) (*BlobReadResult, e
 		return p.withCacheAccess(ctx, req, cached, err)
 	}
 	if cached, ok, err := p.lookup(ctx, req); err != nil || ok {
+		cached, err = p.fallbackAfterStoredObjectOpenError(ctx, req, cached, err)
 		return p.withCacheAccess(ctx, req, cached, err)
 	}
 
 	if p.shouldStreamAndCache(req) {
 		result, err := p.fetchStreamAndStore(ctx, req)
+		result, err = p.fallbackAfterStoredObjectOpenError(ctx, req, result, err)
 		return p.withCacheAccess(ctx, req, result, err)
 	}
 
@@ -34,6 +36,7 @@ func (p blobProxy) Get(ctx context.Context, req BlobRequest) (*BlobReadResult, e
 		return p.withCacheAccess(ctx, req, result, err)
 	}
 	result, err := p.fetchStored(ctx, req)
+	result, err = p.fallbackAfterStoredObjectOpenError(ctx, req, result, err)
 	return p.withCacheAccess(ctx, req, result, err)
 }
 

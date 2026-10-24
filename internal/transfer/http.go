@@ -176,18 +176,25 @@ type digestBody struct {
 	size      int64
 	read      int64
 	recovered func() bool
+	terminal  error
 }
 
 func (b *digestBody) Read(payload []byte) (int, error) {
+	if b.terminal != nil {
+		return 0, b.terminal
+	}
 	n, err := b.ReadCloser.Read(payload)
 	if n > 0 {
 		if _, hashErr := b.verifier.Write(payload[:n]); hashErr != nil {
-			return n, fmt.Errorf("hash artifact continuation: %w", hashErr)
+			b.terminal = fmt.Errorf("hash artifact continuation: %w", hashErr)
+			return 0, b.terminal
 		}
 		b.read += int64(n)
 	}
 	if b.read == b.size && b.recovered() && !b.verifier.Verified() {
-		return n, errors.New("artifact continuation SHA-256 mismatch")
+		// A known-length consumer can discard an error returned with its final bytes.
+		b.terminal = errors.New("artifact continuation SHA-256 mismatch")
+		return 0, b.terminal
 	}
 	return readResult(n, err)
 }

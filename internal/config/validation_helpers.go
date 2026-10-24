@@ -46,6 +46,7 @@ func (c *Config) normalizeObjectStore() {
 	c.Store.Object.S3.SecretAccessKey = strings.TrimSpace(c.Store.Object.S3.SecretAccessKey)
 	c.Store.Object.S3.SessionToken = strings.TrimSpace(c.Store.Object.S3.SessionToken)
 	c.Store.Object.S3.Profile = strings.TrimSpace(c.Store.Object.S3.Profile)
+	c.Store.Object.DiskCache.Directory = strings.TrimSpace(c.Store.Object.DiskCache.Directory)
 }
 
 func (c Config) OrderedContainerUpstreams() *collectionmapping.OrderedMap[string, UpstreamConfig] {

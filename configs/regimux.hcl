@@ -135,6 +135,18 @@ store {
     #   upload_concurrency = 4
     #   max_concurrent_uploads = 16 # Shared across objects; parts stream from seekable sources.
     # }
+    #
+    # The local L1 is available only with the S3 driver and is disabled by default.
+    # Keep this directory private to this RegiMux instance.
+    # disk_cache {
+    #   enabled = true
+    #   directory = "./data/object-cache"
+    #   max_bytes = 10737418240
+    #   max_object_bytes = 1073741824
+    #   max_entries = 10000
+    #   max_concurrent_fills = 4
+    #   ttl = "24h"
+    # }
   }
 }
 

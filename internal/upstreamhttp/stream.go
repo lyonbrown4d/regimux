@@ -2,6 +2,8 @@ package upstreamhttp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"time"
@@ -11,8 +13,8 @@ import (
 // resumed, leaving time within common package-manager download deadlines.
 const DefaultBodyIdleTimeout = 10 * time.Second
 
-// WithIdleTimeout starts the idle budget at the first nonempty Read, then
-// cancels the response context if reads stop making progress for timeout.
+// WithIdleTimeout bounds active reads and pauses between progress reads.
+// Empty progress reads keep consuming the current read budget.
 // The owner must Close even an unread body to release its request resources.
 func WithIdleTimeout(body io.ReadCloser, cancel context.CancelFunc, timeout time.Duration) io.ReadCloser {
 	if timeout <= 0 {
@@ -30,6 +32,7 @@ type idleResponseBody struct {
 	deadline time.Time
 	closed   bool
 	timedOut bool
+	progress bool
 	once     sync.Once
 	err      error
 }
@@ -42,12 +45,32 @@ func (b *idleResponseBody) Read(p []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 	n, err := b.ReadCloser.Read(p)
+	b.mu.Lock()
 	if err != nil {
-		b.mu.Lock()
 		b.stopTimer()
-		b.mu.Unlock()
+	} else if n > 0 && !b.closed && !b.timedOut {
+		b.progress = true
+		b.resetTimer()
 	}
-	return n, err //nolint:wrapcheck // io.Reader must preserve the EOF sentinel.
+	timedOut := b.timedOut
+	b.mu.Unlock()
+	return idleReadResult(n, err, timedOut)
+}
+
+func idleReadResult(n int, err error, timedOut bool) (int, error) {
+	if timedOut && err == nil {
+		err = context.Canceled
+	}
+	if err == nil {
+		return n, nil
+	}
+	if errors.Is(err, io.EOF) {
+		return n, io.EOF
+	}
+	if timedOut {
+		err = errors.Join(ErrBodyIdleTimeout, err)
+	}
+	return n, fmt.Errorf("read upstream response body: %w", err)
 }
 
 func (b *idleResponseBody) beginRead() bool {
@@ -56,15 +79,21 @@ func (b *idleResponseBody) beginRead() bool {
 	if b.closed {
 		return false
 	}
-	if !b.timedOut {
-		b.deadline = time.Now().Add(b.timeout)
-		if b.timer == nil {
-			b.timer = time.AfterFunc(b.timeout, b.expire)
-		} else {
-			b.timer.Reset(b.timeout)
-		}
+	if !b.timedOut && (b.timer == nil || b.progress) {
+		b.resetTimer()
+		b.progress = false
 	}
 	return true
+}
+
+// resetTimer requires b.mu. A completed progress read renews the idle budget.
+func (b *idleResponseBody) resetTimer() {
+	b.deadline = time.Now().Add(b.timeout)
+	if b.timer == nil {
+		b.timer = time.AfterFunc(b.timeout, b.expire)
+	} else {
+		b.timer.Reset(b.timeout)
+	}
 }
 
 func (b *idleResponseBody) expire() {

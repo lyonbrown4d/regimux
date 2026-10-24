@@ -39,6 +39,7 @@ type Proxy struct {
 	smallBlobGate        *semaphore.Weighted
 	blobLeaseScheduler   leaseRenewScheduler
 	blobStreamScheduler  blobStreamScheduler
+	blobOpenFallbackGate *semaphore.Weighted
 	logger               *slog.Logger
 	manifestGroup        singleflightx.Group[string, *CachedManifest]
 	blobGroup            singleflightx.Group[string, bool]
@@ -69,8 +70,9 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 			maxSizeBytes: deps.CacheConfig.Blob.SmallCache.MaxSizeBytes,
 			ttl:          deps.CacheConfig.Blob.SmallCache.TTL,
 		},
-		smallBlobGate: semaphore.NewWeighted(smallBlobCacheMaxReaders),
-		blobFills:     coalescer.NewTracker(),
+		smallBlobGate:        semaphore.NewWeighted(smallBlobCacheMaxReaders),
+		blobOpenFallbackGate: semaphore.NewWeighted(blobOpenFallbackConcurrency),
+		blobFills:            coalescer.NewTracker(),
 	}
 	if deps.CacheConfig.Manifest.TagTTL > 0 {
 		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
@@ -137,6 +139,7 @@ func (p *Proxy) Blobs() BlobService {
 		smallBlobGate:    p.smallBlobGate,
 		leaseScheduler:   p.blobLeaseScheduler,
 		streamScheduler:  p.blobStreamScheduler,
+		openFallbackGate: p.blobOpenFallbackGate,
 		group:            &p.blobGroup,
 		accessGroup:      &p.accessGroup,
 		fills:            p.blobFills,
@@ -190,6 +193,7 @@ type blobProxy struct {
 	smallBlobGate    *semaphore.Weighted
 	leaseScheduler   leaseRenewScheduler
 	streamScheduler  blobStreamScheduler
+	openFallbackGate *semaphore.Weighted
 	group            *singleflightx.Group[string, bool]
 	accessGroup      *singleflightx.Group[string, bool]
 	fills            *coalescer.Tracker

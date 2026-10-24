@@ -17,14 +17,19 @@ import (
 const envPrefix = "REGIMUX"
 
 const (
-	defaultUpstreamBlobTopN        = 3
-	defaultUpstreamBlobMaxAttempts = 1
-	defaultUpstreamProbeInterval   = 30 * time.Second
-	defaultUpstreamProbeTimeout    = 3 * time.Second
-	defaultUpstreamProbeCooldown   = 2 * time.Minute
-	defaultUpstreamProbeJitter     = 5 * time.Second
-	defaultSmallBlobCacheMaxSize   = 4 * 1024 * 1024
-	defaultSmallBlobCacheTTL       = 24 * time.Hour
+	defaultUpstreamBlobTopN                        = 3
+	defaultUpstreamBlobMaxAttempts                 = 1
+	defaultUpstreamProbeInterval                   = 30 * time.Second
+	defaultUpstreamProbeTimeout                    = 3 * time.Second
+	defaultUpstreamProbeCooldown                   = 2 * time.Minute
+	defaultUpstreamProbeJitter                     = 5 * time.Second
+	defaultSmallBlobCacheMaxSize                   = 4 * 1024 * 1024
+	defaultSmallBlobCacheTTL                       = 24 * time.Hour
+	defaultObjectDiskCacheMaxBytes           int64 = 10 << 30
+	defaultObjectDiskCacheMaxObjectBytes     int64 = 1 << 30
+	defaultObjectDiskCacheMaxEntries               = 10_000
+	defaultObjectDiskCacheMaxConcurrentFills       = 4
+	defaultObjectDiskCacheTTL                      = 24 * time.Hour
 )
 
 func Load(ctx context.Context, path string, args ...string) (Config, error) {

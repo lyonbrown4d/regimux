@@ -61,9 +61,23 @@ func (b *recoveryBody) Read(payload []byte) (int, error) {
 			continue
 		}
 		n, err = readResult(n, err)
-		b.terminal = err
-		return n, err
+		b.terminal = b.finalReadError(err)
+		return n, b.terminal
 	}
+}
+
+func (b *recoveryBody) finalReadError(err error) error {
+	if err == nil || errors.Is(err, io.EOF) || b.retries == 0 {
+		return err
+	}
+	return b.continuationError(err)
+}
+
+func (b *recoveryBody) continuationError(err error) error {
+	if b.ctx.Err() != nil {
+		return err
+	}
+	return errors.Join(ErrContinuationFailed, err)
 }
 
 func (b *recoveryBody) ready() (io.ReadCloser, error) {
@@ -124,7 +138,7 @@ func (b *recoveryBody) current() (io.ReadCloser, bool) {
 
 func (b *recoveryBody) reopen() error {
 	if b.retries >= 3 {
-		return fmt.Errorf("artifact continuation budget exhausted: %w", b.pending)
+		return fmt.Errorf("artifact continuation budget exhausted: %w", b.continuationError(b.pending))
 	}
 	previous, closed := b.current()
 	if closed {
@@ -137,7 +151,7 @@ func (b *recoveryBody) reopen() error {
 		retry.WithJitterPercent(20, retry.NewExponential(50*time.Millisecond)))
 	next, err := retry.DoValue(b.ctx, backoff, b.openNext)
 	if err != nil {
-		return fmt.Errorf("resume artifact at %d: %w", b.read, err)
+		return fmt.Errorf("resume artifact at %d: %w", b.read, b.continuationError(err))
 	}
 	if next == nil {
 		return errors.New("resume artifact returned an empty reader")

@@ -1,14 +1,16 @@
 """Bounded streaming S3 HTTP proxy for container memory acceptance."""
 from __future__ import annotations
 
+import io
 import os
 import re
+import selectors
 import socket
 import threading
 import time
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
-from typing import BinaryIO, Callable
+from typing import BinaryIO, Callable, cast
 
 
 HOST = os.environ.get("S3_PROXY_HOST", "0.0.0.0")
@@ -20,6 +22,33 @@ COPY_BYTES = 32 * 1024
 MAX_LINE_BYTES = 16 * 1024
 MAX_HEADER_BYTES = 64 * 1024
 CHUNK_SIZE_RE = re.compile(rb"^[0-9a-fA-F]+(?:;[^\r\n]*)?$")
+
+
+class _PrefixReader(io.RawIOBase):
+    """Replay admission bytes before reading the existing socket file."""
+
+    def __init__(self, prefix: bytes, source: io.BufferedReader) -> None:
+        self._prefix = memoryview(prefix)
+        self._source = source
+
+    def readable(self) -> bool:
+        return True
+
+    def readinto(self, buffer: bytearray | memoryview) -> int:
+        if self._prefix:
+            size = min(len(buffer), len(self._prefix))
+            buffer[:size] = self._prefix[:size]
+            self._prefix = self._prefix[size:]
+            return size
+        # readinto1 performs at most one underlying read. readinto could wait
+        # for a full buffer after a short streamed body on a persistent socket.
+        return self._source.readinto1(buffer)
+
+    def close(self) -> None:
+        try:
+            self._source.close()
+        finally:
+            super().close()
 
 
 def _copy_exact(source: BinaryIO, send: Callable[[bytes], None], size: int) -> None:
@@ -83,6 +112,13 @@ class S3ProxyHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
     server_version = "RegiMuxMemoryS3Proxy/1.0"
 
+    def setup(self) -> None:
+        super().setup()
+        server = cast(BoundedProxyServer, self.server)
+        prefix = server.take_prefix(self.connection)
+        if prefix:
+            self.rfile = io.BufferedReader(_PrefixReader(prefix, cast(io.BufferedReader, self.rfile)))
+
     def do_GET(self) -> None:
         self._forward()
 
@@ -110,23 +146,30 @@ class S3ProxyHandler(BaseHTTPRequestHandler):
         if self.path == "/__healthz":
             self._health()
             return
+        server = cast(BoundedProxyServer, self.server)
+        with server._slots:
+            self._forward_request()
+
+    def _forward_request(self) -> None:
+        self.close_connection = True
         response_started = False
         try:
             with socket.create_connection((TARGET_HOST, TARGET_PORT), timeout=15) as upstream:
                 upstream.settimeout(120)
-                upstream.sendall(f"{self.command} {self.path} HTTP/1.1\r\n".encode("latin1"))
+                request_header_parts = [f"{self.command} {self.path} HTTP/1.1\r\n".encode("latin1")]
                 transfer_encoding = ""
                 content_length: int | None = None
                 for name, value in self.headers.raw_items():
                     lowered = name.lower()
-                    if lowered in ("connection", "proxy-connection", "expect"):
+                    if lowered in ("connection", "keep-alive", "proxy-connection", "expect"):
                         continue
                     if lowered == "transfer-encoding":
                         transfer_encoding = value.lower()
                     elif lowered == "content-length":
                         content_length = int(value)
-                    upstream.sendall(f"{name}: {value}\r\n".encode("latin1"))
-                upstream.sendall(b"Connection: close\r\n\r\n")
+                    request_header_parts.append(f"{name}: {value}\r\n".encode("latin1"))
+                request_header_parts.append(b"Connection: close\r\n\r\n")
+                upstream.sendall(b"".join(request_header_parts))
 
                 if self.command == "PUT" and (content_length or "chunked" in transfer_encoding):
                     if PUT_DELAY_MS:
@@ -139,10 +182,7 @@ class S3ProxyHandler(BaseHTTPRequestHandler):
                 with upstream.makefile("rb") as response:
                     while True:
                         status_line, header_lines, status, headers = _response_headers(response)
-                        self.connection.sendall(status_line)
-                        for line in header_lines:
-                            self.connection.sendall(line)
-                        self.connection.sendall(b"\r\n")
+                        self._send_response_headers(status_line, header_lines, close=not 100 <= status < 200)
                         response_started = True
                         if status == HTTPStatus.CONTINUE or 100 <= status < 200:
                             continue
@@ -165,11 +205,24 @@ class S3ProxyHandler(BaseHTTPRequestHandler):
                 self.send_error(HTTPStatus.BAD_GATEWAY, "S3 backend unavailable")
             print(f"proxy request failed: {type(error).__name__}", flush=True)
 
+    def _send_response_headers(self, status_line: bytes, header_lines: list[bytes], *, close: bool) -> None:
+        response_header_parts = [status_line]
+        for line in header_lines:
+            name = line.partition(b":")[0].strip().lower()
+            if name in (b"connection", b"keep-alive"):
+                continue
+            response_header_parts.append(line)
+        if close:
+            response_header_parts.append(b"Connection: close\r\n")
+        response_header_parts.append(b"\r\n")
+        self.connection.sendall(b"".join(response_header_parts))
+
     def _send_client(self, data: bytes) -> None:
         self.wfile.write(data)
         self.wfile.flush()
 
     def _health(self) -> None:
+        self.close_connection = True
         try:
             with socket.create_connection((TARGET_HOST, TARGET_PORT), timeout=2):
                 status = HTTPStatus.OK
@@ -180,6 +233,7 @@ class S3ProxyHandler(BaseHTTPRequestHandler):
         self.send_response(status)
         self.send_header("Content-Type", "text/plain")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Connection", "close")
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -188,29 +242,115 @@ class S3ProxyHandler(BaseHTTPRequestHandler):
         return
 
 
+class _PendingRequest:
+    def __init__(self, address: tuple[str, int]) -> None:
+        self.address = address
+        self.prefix = bytearray()
+        self.complete = False
+
+
 class BoundedProxyServer(ThreadingHTTPServer):
     daemon_threads = True
     request_queue_size = 128
 
     def __init__(self, address: tuple[str, int], handler: type[BaseHTTPRequestHandler]) -> None:
-        super().__init__(address, handler)
         from threading import BoundedSemaphore
 
         self._slots = BoundedSemaphore(64)
+        self._handlers = BoundedSemaphore(64)
+        self._health_handlers = BoundedSemaphore(1)
+        self._pending: dict[socket.socket, _PendingRequest] = {}
+        self._prefixes: dict[socket.socket, bytes] = {}
+        self._admissions: dict[socket.socket, threading.BoundedSemaphore] = {}
+        self._state_lock = threading.Lock()
+        self._pending_selector = selectors.DefaultSelector()
+        super().__init__(address, handler)
+
+    def serve_forever(self, poll_interval: float = 0.01) -> None:
+        # The base server selects the listener; sample pending socket readiness
+        # on this bounded tick as well. No request timeout is changed.
+        super().serve_forever(poll_interval)
 
     def process_request(self, request: socket.socket, client_address: tuple[str, int]) -> None:
-        self._slots.acquire()
-        try:
-            super().process_request(request, client_address)
-        except BaseException:
-            self._slots.release()
-            raise
+        if len(self._pending) >= self.request_queue_size:
+            oldest_idle = next((sock for sock, state in self._pending.items() if not state.complete), None)
+            if oldest_idle is None:
+                self.shutdown_request(request)
+                return
+            self._drop_pending(oldest_idle)
+        request.setblocking(False)
+        self._pending[request] = _PendingRequest(client_address)
+        self._pending_selector.register(request, selectors.EVENT_READ)
+
+    def service_actions(self) -> None:
+        # One bounded recv per ready socket/tick consumes partial headers. They
+        # cease being level-trigger ready, rather than spinning on MSG_PEEK.
+        for key, _ in self._pending_selector.select(timeout=0):
+            request = cast(socket.socket, key.fileobj)
+            pending = self._pending[request]
+            try:
+                block = request.recv(min(COPY_BYTES, MAX_HEADER_BYTES - len(pending.prefix)))
+            except BlockingIOError:
+                continue
+            except OSError:
+                self._drop_pending(request)
+                continue
+            if not block:
+                self._drop_pending(request)
+                continue
+            pending.prefix.extend(block)
+            if b"\r\n\r\n" in pending.prefix:
+                pending.complete = True
+                self._pending_selector.unregister(request)
+            elif len(pending.prefix) >= MAX_HEADER_BYTES:
+                self._drop_pending(request)
+
+        for request, pending in list(self._pending.items()):
+            if not pending.complete:
+                continue
+            request_line = pending.prefix.split(b"\r\n", 1)[0].split()
+            is_health = len(request_line) >= 2 and request_line[1] == b"/__healthz"
+            admission = self._health_handlers if is_health else self._handlers
+            if not admission.acquire(blocking=False):
+                continue
+            del self._pending[request]
+            request.setblocking(True)
+            with self._state_lock:
+                self._prefixes[request] = bytes(pending.prefix)
+                self._admissions[request] = admission
+            try:
+                super().process_request(request, pending.address)
+            except BaseException:
+                self._release_handler(request)
+                self.shutdown_request(request)
+                raise
+
+    def take_prefix(self, request: socket.socket) -> bytes:
+        with self._state_lock:
+            return self._prefixes.pop(request)
+
+    def _drop_pending(self, request: socket.socket) -> None:
+        if not self._pending.pop(request).complete:
+            self._pending_selector.unregister(request)
+        self.shutdown_request(request)
+
+    def _release_handler(self, request: socket.socket) -> None:
+        with self._state_lock:
+            self._prefixes.pop(request, None)
+            admission = self._admissions.pop(request)
+        admission.release()
 
     def process_request_thread(self, request: socket.socket, client_address: tuple[str, int]) -> None:
         try:
             super().process_request_thread(request, client_address)
         finally:
-            self._slots.release()
+            self._release_handler(request)
+
+    def server_close(self) -> None:
+        for request in list(self._pending):
+            self._drop_pending(request)
+        self._pending_selector.close()
+        super().server_close()
 
 
 def main() -> None:

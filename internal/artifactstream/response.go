@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"math"
 	"net/http"
+	"time"
 
 	"github.com/arcgolabs/httpx"
 	"github.com/danielgtaylor/huma/v2"
@@ -31,7 +32,7 @@ func Response(ctx context.Context, req ResponseRequest) httpx.ResponseStream {
 	if req.Body == nil {
 		req.Body = http.NoBody
 	}
-	body := &responseBody{ctx: ctx, req: req}
+	body := &responseBody{ctx: ctx, req: req, startedAt: time.Now()}
 	return func(streamCtx huma.Context) {
 		if streamCtx == nil {
 			body.close()
@@ -44,7 +45,9 @@ func Response(ctx context.Context, req ResponseRequest) httpx.ResponseStream {
 		defer body.close()
 		writer := streamCtx.BodyWriter()
 		flushResponse(writer)
-		Copy(ctx, req.copyRequest(flushingWriter{Writer: writer}))
+		copyReq := req.copyRequest(flushingWriter{Writer: writer})
+		copyReq.Source = body
+		Copy(ctx, copyReq)
 	}
 }
 

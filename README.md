@@ -43,6 +43,8 @@ Artifact bodies stream through object storage and temporary files. S3 uploads us
 
 S3 reads reuse the existing AWS SDK HTTP client with up to 1,024 idle connections per host and 2,048 idle connections overall. The SDK's active connection limit and timeouts remain in effect. Complete object downloads take their size, content type, and ETag from GET; range reads still resolve against HEAD before opening the selected bytes.
 
+S3 deployments can optionally enable a bounded per-instance disk L1 for object bodies. It is disabled by default and requires a private cache directory for each RegiMux instance. See [S3 object disk cache](docs/object-disk-cache.md) for configuration and deployment guidance.
+
 The memory cache defaults to 10,000 entries and 64 MiB of combined key/value bytes. Configure `cache.memory.max_items` and `max_bytes` to override these bounds; zero selects the defaults. Oversized entries bypass the cache. These limits exclude caller-owned copies and Go runtime overhead, so they are not a process RSS limit.
 
 npm and PyPI admit two metadata transformations per service and spool their results before serving slow clients. Input and rewritten-output limits are 64 MiB for npm metadata and 32 MiB for PyPI indexes. PyPI checks its budget while rewriting links; npm checks cumulative URL growth and escaped JSON output size before encoding. These are body-size limits; decoded metadata and runtime overhead also consume memory. OCI HTTP metadata requests admit four cache-decode/fetch operations at a time and spool response bodies before releasing admission. Temporary files are removed after response completion or cancellation.

@@ -3,7 +3,9 @@ package store
 
 import (
 	"context"
+	"errors"
 	"log/slog"
+	"strings"
 
 	"github.com/arcgolabs/dbx"
 	"github.com/arcgolabs/dix"
@@ -109,6 +111,9 @@ func metadataDBHooks(metrics *observability.Metrics, driver string) []dbx.Hook {
 func NewObjectStore(deps ObjectStoreDependencies) (object.Store, error) {
 	cfg := deps.Config
 	logger := storeLogger(deps.Logger, "store.object")
+	if cfg.DiskCache.Enabled && strings.ToLower(strings.TrimSpace(cfg.Driver)) != "s3" {
+		return nil, oops.In("store").With("driver", cfg.Driver).Errorf("object disk cache requires the S3 object store")
+	}
 	store, err := object.NewWithOptions(context.Background(), object.Options{
 		Driver: cfg.Driver,
 		Path:   cfg.Path,
@@ -131,8 +136,46 @@ func NewObjectStore(deps ObjectStoreDependencies) (object.Store, error) {
 	if err != nil {
 		return nil, oops.Wrapf(err, "create object store")
 	}
+	if cfg.DiskCache.Enabled {
+		store, err = wrapObjectStoreWithDiskCache(store, cfg.DiskCache, logger, deps.Metrics)
+		if err != nil {
+			return nil, err
+		}
+	}
 	logger.Info("object store opened", "driver", cfg.Driver)
 	return store, nil
+}
+
+func wrapObjectStoreWithDiskCache(
+	backend object.Store,
+	cfg config.StoreObjectDiskCacheConfig,
+	logger *slog.Logger,
+	metrics *observability.Metrics,
+) (object.Store, error) {
+	var observe func(context.Context, object.DiskCacheEvent)
+	if metrics != nil {
+		observe = metrics.ObserveObjectDiskCache
+	}
+	diskCache, err := object.NewDiskCache(backend, object.DiskCacheOptions{
+		Directory:          cfg.Directory,
+		MaxBytes:           cfg.MaxBytes,
+		MaxObjectBytes:     cfg.MaxObjectBytes,
+		MaxEntries:         cfg.MaxEntries,
+		MaxConcurrentFills: cfg.MaxConcurrentFills,
+		TTL:                cfg.TTL,
+		Logger:             logger,
+		Observe:            observe,
+	})
+	if err != nil {
+		if closeErr := closeObjectStore(context.Background(), backend, logger); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+		return nil, oops.Wrapf(err, "create object disk cache")
+	}
+	if metrics != nil {
+		metrics.RegisterObjectDiskCacheStats(diskCache.Stats)
+	}
+	return diskCache, nil
 }
 
 func closeObjectStore(_ context.Context, store object.Store, logger *slog.Logger) error {

@@ -26,6 +26,7 @@ type Metrics struct {
 	scheduler  schedulerMetrics
 	upstream   upstreamMetrics
 	object     objectUploadMetrics
+	diskCache  objectDiskCacheMetrics
 }
 
 func NewMetrics(logger *slog.Logger) *Metrics {
@@ -50,6 +51,7 @@ func NewMetricsFromObservability(obs observabilityx.Observability, handler http.
 		scheduler:  newSchedulerMetrics(obs),
 		upstream:   newUpstreamMetrics(obs),
 		object:     newObjectUploadMetrics(obs),
+		diskCache:  newObjectDiskCacheMetrics(obs),
 	}
 }
 
@@ -57,5 +59,8 @@ func (m *Metrics) Handler() http.Handler {
 	if m == nil || m.handler == nil {
 		return http.NotFoundHandler()
 	}
-	return m.handler
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		m.recordObjectDiskCacheStats(r.Context())
+		m.handler.ServeHTTP(w, r)
+	})
 }

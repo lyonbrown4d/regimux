@@ -96,7 +96,7 @@ func openObjectAttempt(ctx context.Context, objects object.Store, request Object
 
 func (attempt objectAttempt) finish(reader io.ReadCloser, info *object.Info, request ObjectRequest, err error) (io.ReadCloser, *object.Info, error) {
 	if !attempt.timer.Stop() {
-		err = errors.Join(err, context.DeadlineExceeded)
+		err = errors.Join(err, context.DeadlineExceeded, ErrObjectOpenTimeout)
 	}
 	if contextErr := attempt.ctx.Err(); contextErr != nil {
 		err = errors.Join(err, contextErr)

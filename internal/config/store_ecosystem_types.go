@@ -14,9 +14,20 @@ type StoreMetaConfig struct {
 }
 
 type StoreObjectConfig struct {
-	Driver string              `json:"driver" koanf:"driver" mapstructure:"driver" validate:"omitempty,oneof=local s3"`
-	Path   string              `json:"path"   koanf:"path"   mapstructure:"path"`
-	S3     StoreObjectS3Config `json:"s3"     koanf:"s3"     mapstructure:"s3"`
+	Driver    string                     `json:"driver"     koanf:"driver"     mapstructure:"driver"     validate:"omitempty,oneof=local s3"`
+	Path      string                     `json:"path"       koanf:"path"       mapstructure:"path"`
+	S3        StoreObjectS3Config        `json:"s3"         koanf:"s3"         mapstructure:"s3"`
+	DiskCache StoreObjectDiskCacheConfig `json:"disk_cache" koanf:"disk_cache" mapstructure:"disk_cache"`
+}
+
+type StoreObjectDiskCacheConfig struct {
+	Enabled            bool          `json:"enabled"              koanf:"enabled"              mapstructure:"enabled"`
+	Directory          string        `json:"directory"            koanf:"directory"            mapstructure:"directory"`
+	MaxBytes           int64         `json:"max_bytes"            koanf:"max_bytes"            mapstructure:"max_bytes"`
+	MaxObjectBytes     int64         `json:"max_object_bytes"     koanf:"max_object_bytes"     mapstructure:"max_object_bytes"`
+	MaxEntries         int           `json:"max_entries"          koanf:"max_entries"          mapstructure:"max_entries"`
+	MaxConcurrentFills int           `json:"max_concurrent_fills" koanf:"max_concurrent_fills" mapstructure:"max_concurrent_fills"`
+	TTL                time.Duration `json:"ttl"                  koanf:"ttl"                  mapstructure:"ttl"`
 }
 
 type StoreObjectS3Config struct {

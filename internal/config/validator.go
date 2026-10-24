@@ -1,6 +1,7 @@
 package config
 
 import (
+	"path/filepath"
 	"reflect"
 	"strings"
 
@@ -97,6 +98,34 @@ func validateStoreObjectStruct(sl validator.StructLevel) {
 		return
 	}
 	validateStoreObjectS3(sl, object)
+	validateStoreObjectDiskCache(sl, object)
+}
+
+func validateStoreObjectDiskCache(sl validator.StructLevel, object StoreObjectConfig) {
+	diskCache := object.DiskCache
+	if !diskCache.Enabled {
+		return
+	}
+	if object.Driver != "s3" {
+		sl.ReportError(object.Driver, "driver", "Driver", "requires_s3_disk_cache", "")
+	}
+	if strings.TrimSpace(diskCache.Directory) == "" || filepath.Clean(diskCache.Directory) == "." {
+		sl.ReportError(diskCache.Directory, "disk_cache.directory", "DiskCache.Directory", "valid_disk_cache_directory", "")
+	}
+	validatePositiveDiskCacheLimit(sl, diskCache.MaxBytes, "max_bytes", "MaxBytes")
+	validatePositiveDiskCacheLimit(sl, diskCache.MaxObjectBytes, "max_object_bytes", "MaxObjectBytes")
+	validatePositiveDiskCacheLimit(sl, int64(diskCache.MaxEntries), "max_entries", "MaxEntries")
+	validatePositiveDiskCacheLimit(sl, int64(diskCache.MaxConcurrentFills), "max_concurrent_fills", "MaxConcurrentFills")
+	validatePositiveDiskCacheLimit(sl, int64(diskCache.TTL), "ttl", "TTL")
+	if diskCache.MaxBytes > 0 && diskCache.MaxObjectBytes > diskCache.MaxBytes {
+		sl.ReportError(diskCache.MaxObjectBytes, "disk_cache.max_object_bytes", "DiskCache.MaxObjectBytes", "ltefield", "disk_cache.max_bytes")
+	}
+}
+
+func validatePositiveDiskCacheLimit(sl validator.StructLevel, value int64, fieldName, structField string) {
+	if value <= 0 {
+		sl.ReportError(value, "disk_cache."+fieldName, "DiskCache."+structField, "gt", "0")
+	}
 }
 
 func validateStoreObjectS3(sl validator.StructLevel, object StoreObjectConfig) {

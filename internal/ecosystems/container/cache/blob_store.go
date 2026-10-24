@@ -139,7 +139,7 @@ func (p blobProxy) openStored(ctx context.Context, req BlobRequest, cacheStatus 
 	if req.Method != http.MethodHead {
 		reader, info, err = p.openRecoverableBlob(ctx, req, storedInfo.Size, opts)
 		if err != nil {
-			return nil, wrapError(err, "open stored blob object")
+			return nil, newStoredBlobOpenError(err)
 		}
 		size = info.Size
 	}
