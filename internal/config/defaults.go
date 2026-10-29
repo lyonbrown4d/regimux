@@ -102,6 +102,7 @@ func defaultCacheConfig() CacheConfig {
 		Valkey:     ExternalCacheConfig{Addrs: []string{"127.0.0.1:6379"}, DB: 0},
 		Manifest:   ManifestCacheConfig{TagTTL: 10 * time.Minute, StaleIfError: true, MaxStale: 168 * time.Hour},
 		Blob: BlobCacheConfig{
+			OpenTimeout:    defaultBlobOpenTimeout,
 			VerifyTTL:      0,
 			StreamAndCache: true,
 			SmallCache: SmallBlobCacheConfig{

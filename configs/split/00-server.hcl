@@ -55,6 +55,8 @@ cache {
   }
 
   blob {
+    # Each OCI cache Get/open and continuation reopen; zero uses the 2s default.
+    open_timeout = "2s"
     stream_and_cache = true
   }
 }

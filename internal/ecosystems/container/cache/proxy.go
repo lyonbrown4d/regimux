@@ -35,6 +35,7 @@ type Proxy struct {
 	events               events.Bus
 	blobStreamAndCache   bool
 	blobVerifyTTL        time.Duration
+	blobOpenTimeout      time.Duration
 	blobSmallCache       smallBlobCacheConfig
 	smallBlobGate        *semaphore.Weighted
 	blobLeaseScheduler   leaseRenewScheduler
@@ -60,6 +61,7 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 		manifestTTL:          defaultManifestTTL(),
 		manifestMaxStale:     168 * time.Hour,
 		blobVerifyTTL:        deps.CacheConfig.Blob.VerifyTTL,
+		blobOpenTimeout:      2 * time.Second,
 		tagsTTL:              5 * time.Minute,
 		referrersTTL:         5 * time.Minute,
 		manifestStaleIfError: deps.CacheConfig.Manifest.StaleIfError,
@@ -76,6 +78,9 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 	}
 	if deps.CacheConfig.Manifest.TagTTL > 0 {
 		p.manifestTTL = deps.CacheConfig.Manifest.TagTTL
+	}
+	if deps.CacheConfig.Blob.OpenTimeout > 0 {
+		p.blobOpenTimeout = deps.CacheConfig.Blob.OpenTimeout
 	}
 	if deps.CacheConfig.Manifest.MaxStale > 0 {
 		p.manifestMaxStale = deps.CacheConfig.Manifest.MaxStale
@@ -101,6 +106,7 @@ func NewProxy(deps ProxyDependencies) *Proxy {
 		"referrers_ttl", p.referrersTTL,
 		"blob_stream_and_cache", p.blobStreamAndCache,
 		"blob_verify_ttl", p.blobVerifyTTL,
+		"blob_open_timeout", p.blobOpenTimeout,
 		"blob_small_cache_enabled", p.blobSmallCache.enabled,
 		"blob_small_cache_max_size_bytes", p.blobSmallCache.maxSizeBytes,
 		"blob_small_cache_ttl", p.blobSmallCache.ttl,
@@ -135,6 +141,7 @@ func (p *Proxy) Blobs() BlobService {
 		logger:           p.logger,
 		streamAndCache:   p.blobStreamAndCache,
 		verifyMembership: p.blobVerifyTTL,
+		openTimeout:      p.blobOpenTimeout,
 		smallCache:       p.blobSmallCache,
 		smallBlobGate:    p.smallBlobGate,
 		leaseScheduler:   p.blobLeaseScheduler,
@@ -189,6 +196,7 @@ type blobProxy struct {
 	logger           *slog.Logger
 	streamAndCache   bool
 	verifyMembership time.Duration
+	openTimeout      time.Duration
 	smallCache       smallBlobCacheConfig
 	smallBlobGate    *semaphore.Weighted
 	leaseScheduler   leaseRenewScheduler

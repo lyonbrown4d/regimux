@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/lyonbrown4d/regimux/internal/transfer"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 	ocidigest "github.com/opencontainers/go-digest"
 )
@@ -45,7 +46,8 @@ func (p blobProxy) fallbackAfterStoredObjectOpenError(
 	if p.logger != nil {
 		p.logger.WarnContext(ctx, "stored blob open failed; fetching upstream",
 			"alias", req.UpstreamAlias, "repository", req.Repo, "digest", req.Digest,
-			"error_kind", "stored_object_open")
+			"error_kind", "stored_object_open",
+			"open_error_kind", blobOpenErrorKind(cause), "open_timeout", p.openTimeout)
 	}
 	fallback, err := p.fetchPassthrough(ctx, req)
 	if err != nil {
@@ -53,6 +55,13 @@ func (p blobProxy) fallbackAfterStoredObjectOpenError(
 		return nil, err
 	}
 	return wrapBlobOpenFallback(ctx, req, fallback, release)
+}
+
+func blobOpenErrorKind(cause error) string {
+	if errors.Is(cause, transfer.ErrObjectOpenTimeout) {
+		return "object_open_timeout"
+	}
+	return "object_store_error"
 }
 
 func (p blobProxy) acquireOpenFallback(ctx context.Context) (func(), error) {

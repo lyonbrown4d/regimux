@@ -23,6 +23,7 @@ const (
 	defaultUpstreamProbeTimeout                    = 3 * time.Second
 	defaultUpstreamProbeCooldown                   = 2 * time.Minute
 	defaultUpstreamProbeJitter                     = 5 * time.Second
+	defaultBlobOpenTimeout                         = 2 * time.Second
 	defaultSmallBlobCacheMaxSize                   = 4 * 1024 * 1024
 	defaultSmallBlobCacheTTL                       = 24 * time.Hour
 	defaultObjectDiskCacheMaxBytes           int64 = 10 << 30
@@ -198,6 +199,9 @@ func (c *Config) normalizeLog() {
 
 func (c *Config) normalizeCache() {
 	c.Cache.Backend = strings.ToLower(strings.TrimSpace(c.Cache.Backend))
+	if c.Cache.Blob.OpenTimeout == 0 {
+		c.Cache.Blob.OpenTimeout = defaultBlobOpenTimeout
+	}
 	if c.Cache.Blob.SmallCache.Enabled {
 		c.Cache.Blob.SmallCache.MaxSizeBytes = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.MaxSizeBytes, defaultSmallBlobCacheMaxSize)
 		c.Cache.Blob.SmallCache.TTL = lo.CoalesceOrEmpty(c.Cache.Blob.SmallCache.TTL, defaultSmallBlobCacheTTL)

@@ -116,6 +116,9 @@ cache {
   }
 
   blob {
+    # Budget for each OCI cached-object Get/open and continuation reopen.
+    # Zero uses 2s; negative values are rejected. Stat/Exists and body idle are separate.
+    open_timeout = "2s"
     stream_and_cache = true
 
     small_cache {

@@ -159,6 +159,8 @@ type ManifestCacheConfig struct {
 }
 
 type BlobCacheConfig struct {
+	// OpenTimeout bounds each OCI cached-object Get and continuation open.
+	OpenTimeout time.Duration `json:"open_timeout" koanf:"open_timeout" mapstructure:"open_timeout" validate:"min=0"`
 	// VerifyTTL controls how often shared blobs are re-verified against upstream.
 	VerifyTTL      time.Duration        `json:"verify_ttl"       koanf:"verify_ttl"       mapstructure:"verify_ttl"       validate:"min=0"`
 	StreamAndCache bool                 `json:"stream_and_cache" koanf:"stream_and_cache" mapstructure:"stream_and_cache"`
