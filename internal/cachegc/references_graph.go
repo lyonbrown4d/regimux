@@ -189,9 +189,6 @@ func (s *Service) readManifest(ctx context.Context, manifest meta.ManifestRecord
 		return nil, nil
 	}
 	r, _, err := s.objects.Get(ctx, key, object.GetOptions{})
-	if errors.Is(err, object.ErrNotFound) {
-		return nil, nil
-	}
 	if err != nil {
 		return nil, fmt.Errorf("get manifest object for cleanup: %w", err)
 	}

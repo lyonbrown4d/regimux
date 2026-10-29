@@ -12,6 +12,7 @@ import (
 
 	"github.com/lyonbrown4d/regimux/internal/ecosystem"
 	"github.com/lyonbrown4d/regimux/internal/store/meta"
+	"github.com/lyonbrown4d/regimux/internal/store/object"
 	"github.com/lyonbrown4d/regimux/pkg/distribution"
 )
 
@@ -29,8 +30,19 @@ type cleanupIndex struct {
 func (r *Runtime) PlanCacheCleanup(
 	ctx context.Context,
 	inventory ecosystem.CacheCleanupInventory,
-	_ ecosystem.CacheCleanupOptions,
+	opts ecosystem.CacheCleanupOptions,
 ) ([]ecosystem.CacheCleanupGroup, error) {
+	groups, err := r.planCacheCleanup(ctx, inventory)
+	if !errors.Is(err, object.ErrNotFound) {
+		return groups, err
+	}
+	if err := r.recoverCleanupManifests(ctx, inventory.Manifests, opts.DryRun); err != nil {
+		return nil, err
+	}
+	return r.planCacheCleanup(ctx, inventory)
+}
+
+func (r *Runtime) planCacheCleanup(ctx context.Context, inventory ecosystem.CacheCleanupInventory) ([]ecosystem.CacheCleanupGroup, error) {
 	if err := validateCleanupPlan(ctx, r); err != nil {
 		return nil, err
 	}
